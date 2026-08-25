@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>JARVIS Reactor — free HUD animation</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05080f; display: grid; place-items: center; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="480" height="480"></canvas>
+<script>
+// Self-drawn Jarvis-style HUD. No assets, no licenses — use freely.
+const ctx = document.getElementById('c').getContext('2d');
+const CYAN = '#37d5ee', DIM = 'rgba(55,213,238,0.25)';
+const RINGS = [
+  { r: 200, w: 2,  speed:  0.15, segs: 60, gap: 0.35, color: DIM },
+  { r: 178, w: 6,  speed: -0.4,  segs: 4,  gap: 0.9,  color: CYAN },
+  { r: 150, w: 1,  speed:  0.6,  segs: 90, gap: 0.5,  color: DIM },
+  { r: 128, w: 10, speed: -0.25, segs: 8,  gap: 0.45, color: CYAN },
+  { r: 100, w: 2,  speed:  0.9,  segs: 36, gap: 0.3,  color: CYAN },
+];
+function arc(cx, cy, r, a0, a1, w, color) {
+  ctx.beginPath(); ctx.arc(cx, cy, r, a0, a1);
+  ctx.lineWidth = w; ctx.strokeStyle = color; ctx.stroke();
+}
+function frame(t) {
+  const s = t / 1000, cx = 240, cy = 240;
+  ctx.clearRect(0, 0, 480, 480);
+  ctx.lineCap = 'round';
+  for (const ring of RINGS) {
+    const rot = s * ring.speed, step = (Math.PI * 2) / ring.segs;
+    for (let i = 0; i < ring.segs; i++) {
+      const a = rot + i * step;
+      arc(cx, cy, ring.r, a, a + step * (1 - ring.gap), ring.w, ring.color);
+    }
+  }
+  // Pulsing core with glow
+  const pulse = 1 + 0.08 * Math.sin(s * 3), core = 62 * pulse;
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, core * 1.8);
+  g.addColorStop(0, 'rgba(180,245,255,0.9)');
+  g.addColorStop(0.45, 'rgba(55,213,238,0.35)');
+  g.addColorStop(1, 'rgba(55,213,238,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(cx, cy, core * 1.8, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(10,25,35,0.9)';
+  ctx.beginPath(); ctx.arc(cx, cy, core * 0.72, 0, Math.PI * 2); ctx.fill();
+  arc(cx, cy, core * 0.72, 0, Math.PI * 2, 2, CYAN);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

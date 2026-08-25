@@ -1,0 +1,31 @@
+name: Build jarvis.exe
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Run tests
+        run: python -m unittest discover -s tests
+
+      - name: Build exe
+        run: pyinstaller jarvis.spec --clean --noconfirm
+
+      - name: Upload jarvis.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-windows-x64
+          path: dist/jarvis.exe

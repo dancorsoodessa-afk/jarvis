@@ -1,0 +1,6 @@
+build/
+dist/
+__pycache__/
+*.pyc
+jarvis_memory.json
+jarvis_reminders.json
