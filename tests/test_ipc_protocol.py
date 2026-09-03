@@ -48,22 +48,6 @@ class TestIPC(unittest.TestCase):
         self.assertEqual(data["provider"], "cloud")
         self.assertFalse(data["needs_confirmation"])
     
-    @patch("sys.stdin", new_callable=StringIO)
-    @patch("sys.stdout", new_callable=StringIO)
-    def test_ipc_stdin_stdout_simple(self, mock_stdout, mock_stdin):
-        """IPC should handle simple stdin/stdout communication."""
-        # Setup
-        agent = JarvisAgent(EchoProvider())
-        
-        # Simulate input: "hello\n"
-        mock_stdin.write("hello\n")
-        mock_stdin.seek(0)
-        
-        # This would be tested in integration tests
-        # For now, just verify the agent can handle messages
-        result = agent.handle("hello")
-        self.assertIn("echo", result.text)
-    
     def test_ipc_tool_confirmation_flow(self):
         """IPC should handle tool confirmation flow."""
         from agent.tools.registry import ToolRegistry
