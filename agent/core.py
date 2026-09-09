@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, List
 
 from .tools.registry import ConfirmationRequired, ToolRegistry
 from .memory.store import MemoryStore
@@ -106,29 +106,47 @@ class JarvisAgent:
             else:
                 output = self.tools.call(name, *map(str, args.values()))
         except ConfirmationRequired:
-            return "Инструмент требует подтверждения пользователя. " \
-                   "Скажите пользователю подтвердить действие вручную."
-        except (ValueError, RuntimeError, OSError) as exc:
+            self._pending_tool = (name, args, {})
+            return "Инструмент требует подтверждения. Выполнить? (yes/да)"
+        except Exception as exc:
             return f"Ошибка инструмента: {exc}"
         return str(output)
 
     def _handle_tool_command(self, text: str) -> AgentResult:
+        if not text:
+            return AgentResult("Я здесь. Что нужно сделать?", self.provider.name)
+        if not text.startswith("/"):
+            # Этот метод должен вызываться только для слэш-команд
+            return AgentResult("Неверный запрос")
+        if not text[1:].strip():
+            return AgentResult(
+                f"Неизвестный инструмент. Используйте /<имя> [аргументы]",
+                self.provider.name,
+            )
         parts = text[1:].split()
-        name, args = parts[0], tuple(parts[1:])
+        if not parts:
+            return AgentResult(
+                f"Неизвестный инструмент. Используйте /<ия> [аргументы]",
+                self.provider.name,
+            )
+        name = parts[0]
+        args = tuple(parts[1:])
+        if name not in self.tools.names():
+            return AgentResult(
+                f"Неизвестный инструмент «{name}». Доступны: {', '.join(self.tools.names()) or '—'}",
+                self.provider.name,
+            )
         try:
             output = self.tools.call(name, *args)
         except ConfirmationRequired:
             self._pending_tool = (name, args, {})
             return AgentResult(
                 f"Инструмент «{name}» требует подтверждения. Выполнить? (yes/да)",
-                self.provider.name, tool_used=name, needs_confirmation=True,
-            )
-        except KeyError:
-            return AgentResult(
-                f"Неизвестный инструмент «{name}». Доступны: {', '.join(self.tools.names()) or '—'}",
                 self.provider.name,
+                tool_used=name,
+                needs_confirmation=True,
             )
-        except (ValueError, RuntimeError, OSError) as exc:
+        except Exception as exc:
             return AgentResult(f"Ошибка инструмента «{name}»: {exc}",
                                self.provider.name, tool_used=name)
         self._remember(text, str(output))
