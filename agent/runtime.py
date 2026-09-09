@@ -12,6 +12,7 @@ from .reminders import ReminderService
 from .tools import apps, audio, clipboard, files, processes, screenshot, system, web
 from .tools.registry import ToolRegistry
 from . import stt, tts
+from .skills import NoteStore, calculate, now
 
 
 def build_agent(settings: Settings | None = None) -> JarvisAgent:
@@ -84,6 +85,23 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("transcribe", stt.transcribe,
                    description="Распознать речь из wav-файла и вернуть текст (STT).",
                    parameters={"audio_path": "путь к wav-файлу"})
+
+    notes = NoteStore(str(Path(settings.memory_path).with_name("jarvis_notes.json")))
+    tools.register("remember", notes.add,
+                   description="Сохранить факт/заметку в долговременную память о пользователе.",
+                   parameters={"text": "что запомнить",
+                               "tags": "теги через пробел (необязательно)"})
+    tools.register("recall", notes.recall,
+                   description="Найти сохранённые заметки/факты по ключевым словам.",
+                   parameters={"query": "ключевые слова (необязательно)"})
+    tools.register("forget", notes.forget,
+                   description="Удалить заметку по номеру.",
+                   parameters={"note_id": "номер заметки"})
+    tools.register("calc", calculate,
+                   description="Вычислить арифметическое выражение (+ - * / ** %).",
+                   parameters={"expression": "выражение, например (2+3)*7"})
+    tools.register("now", lambda: now(),
+                   description="Текущая дата и время.")
 
     agent = JarvisAgent(provider, tools=tools,
                         memory=memory,
