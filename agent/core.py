@@ -26,6 +26,15 @@ class JarvisAgent:
         self.memory = memory
         self.reminders = reminders
         self._pending_tool: tuple[str, tuple, dict] | None = None
+        self.on_exchange = None  # optional callback(user, assistant)
+
+    def _notify(self, user: str, assistant: str):
+        self._remember(user, assistant)
+        if self.on_exchange:
+            try:
+                self.on_exchange(user, assistant)
+            except Exception:
+                pass
 
     def handle(self, message: str) -> AgentResult:
         text = message.strip()
@@ -58,15 +67,45 @@ class JarvisAgent:
             except (ValueError, RuntimeError) as exc:
                 return AgentResult(f"Ошибка инструмента «{name}»: {exc}",
                                    self.provider.name, tool_used=name)
-            self._remember(text, str(output))
+            self._notify(text, str(output))
             return AgentResult(str(output), self.provider.name, tool_used=name)
 
         if text.startswith("/"):
             return self._handle_tool_command(text)
 
-        reply = self.provider.generate(text)
-        self._remember(text, reply)
+        # Function calling: let the model pick tools itself, if supported.
+        generate = self.provider.generate
+        try:
+            if hasattr(self.provider, "tool_executor"):
+                self.provider.tool_executor = self._execute_for_llm
+                reply = generate(text, tools=self.tools.specs())
+            else:
+                reply = generate(text)
+        except (ValueError, RuntimeError, OSError) as exc:
+            return AgentResult(f"Ошибка провайдера: {exc}", self.provider.name)
+        self._notify(text, reply)
         return AgentResult(reply, self.provider.name)
+
+    def _execute_for_llm(self, name: str, args: dict) -> str:
+        """Run a tool requested by the model. Args are passed as kwargs when
+        the tool accepts them, otherwise joined as positional strings."""
+        import inspect
+        fn = self.tools._tools.get(name)
+        if fn is None:
+            raise KeyError(name)
+        func = fn[0]
+        try:
+            params = list(inspect.signature(func).parameters)
+            if args and params:
+                output = self.tools.call(name, **args)
+            else:
+                output = self.tools.call(name, *map(str, args.values()))
+        except ConfirmationRequired:
+            return "Инструмент требует подтверждения пользователя. " \
+                   "Скажите пользователю подтвердить действие вручную."
+        except (ValueError, RuntimeError, OSError) as exc:
+            return f"Ошибка инструмента: {exc}"
+        return str(output)
 
     def _handle_tool_command(self, text: str) -> AgentResult:
         parts = text[1:].split()
@@ -84,7 +123,7 @@ class JarvisAgent:
                 f"Неизвестный инструмент «{name}». Доступны: {', '.join(self.tools.names()) or '—'}",
                 self.provider.name,
             )
-        except (ValueError, RuntimeError) as exc:
+        except (ValueError, RuntimeError, OSError) as exc:
             return AgentResult(f"Ошибка инструмента «{name}»: {exc}",
                                self.provider.name, tool_used=name)
         self._remember(text, str(output))

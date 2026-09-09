@@ -40,11 +40,17 @@ class JarvisIpc {
   final Process _process;
   int _nextId = 0;
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
+  final _deltaController = StreamController<Map<int, String>>.broadcast();
   bool _listening = false;
+
+  /// Streaming deltas: 'id' -> accumulated text so far. The UI can listen
+  /// to show the answer as it is generated.
+  Stream<Map<int, String>> get deltas => _deltaController.stream;
 
   void _ensureListening() {
     if (_listening) return;
     _listening = true;
+    final accumulated = <int, String>{};
     _process.stdout
         .transform(utf8.decoder)
         .transform(const LineSplitter())
@@ -52,6 +58,11 @@ class JarvisIpc {
       if (line.trim().isEmpty) return;
       final msg = jsonDecode(line) as Map<String, dynamic>;
       final id = msg['id'] as int?;
+      if (msg['type'] == 'delta' && id != null) {
+        accumulated[id] = (accumulated[id] ?? '') + (msg['text'] as String);
+        _deltaController.add({id: accumulated[id]!});
+        return;
+      }
       final completer = id != null ? _pending.remove(id) : null;
       completer?.complete(msg);
       // Messages with id == null (e.g. pushed reminders) can be surfaced

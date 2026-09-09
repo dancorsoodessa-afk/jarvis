@@ -106,6 +106,13 @@ class TestEndToEndSubprocess(unittest.TestCase):
                 msg_resp = json.loads(proc.stdout.readline())
             finally:
                 proc.kill()
+                proc.wait()
+                for stream in (proc.stdin, proc.stdout):
+                    if stream:
+                        try:
+                            stream.close()
+                        except (OSError, ValueError):
+                            pass
         self.assertIn("status", tools_resp["tools"])
         self.assertIn("os", msg_resp["text"])
 

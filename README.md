@@ -33,6 +33,32 @@ runs tests and produces `jarvis.exe` as a downloadable artifact on every push.
 Configuration via environment variables (see agent/config.py):
 `JARVIS_LOCAL`, `JARVIS_CLOUD_URL`, `JARVIS_LLAMA_CLI`, `JARVIS_MODEL`, ...
 
+## Quick start: real cloud AI (OpenAI-compatible)
+
+```powershell
+$env:JARVIS_CLOUD_URL   = "https://api.openai.com/v1/chat/completions"
+$env:JARVIS_CLOUD_KEY   = "sk-..."        # keep OUT of the repo!
+$env:JARVIS_CLOUD_MODEL = "gpt-4o-mini"
+$env:JARVIS_TTS         = "auto"          # voice on Windows (SAPI), no install
+jarvis
+```
+
+Then just talk (no slash commands needed — the model picks tools itself):
+
+> какая погода в Москве?  → Jarvis calls `weather`
+> поставь громкость 30    → Jarvis calls `set_volume`
+> найди все pdf на диске D → Jarvis calls `search`
+
+Works with any OpenAI-compatible endpoint: OpenRouter, Groq,
+local llama.cpp server (`--server`), LM Studio, etc.
+
+Voice via Piper (better quality):
+```powershell
+$env:JARVIS_TTS          = "piper"
+$env:JARVIS_PIPER        = "C:\tools\piper\piper.exe"
+$env:JARVIS_PIPER_VOICE  = "C:\tools\piper\voice\ru_RU-dmitri-medium.onnx"
+```
+
 ## Flutter UI (ui/)
 
 ```powershell

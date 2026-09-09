@@ -29,6 +29,24 @@ def _result_payload(result: AgentResult) -> dict:
     }
 
 
+class _DeltaEmitter:
+    """Forwards provider streaming deltas to the IPC writer as events.
+    Events have id=null (not responses to any request)."""
+
+    def __init__(self, writer, req_id=None):
+        self._writer = writer
+        self._req_id = req_id
+
+    def __call__(self, delta: str):
+        try:
+            self._writer.write(json.dumps(
+                {"id": self._req_id, "type": "delta", "text": delta},
+                ensure_ascii=False) + "\n")
+            self._writer.flush()
+        except (ValueError, OSError):
+            pass
+
+
 def handle_request(agent: JarvisAgent, req: dict) -> dict:
     """One request -> one response dict. Pure function, easy to test."""
     req_id = req.get("id")
@@ -57,6 +75,7 @@ def handle_request(agent: JarvisAgent, req: dict) -> dict:
 
 def serve_stream(agent: JarvisAgent, reader: IO[str], writer: IO[str]):
     """Process JSON-lines requests until EOF."""
+    provider = getattr(agent, "provider", None)
     for line in reader:
         line = line.strip()
         if not line:
@@ -68,7 +87,16 @@ def serve_stream(agent: JarvisAgent, reader: IO[str], writer: IO[str]):
         if not isinstance(req, dict):
             response = {"id": None, "type": "error", "message": "invalid JSON request"}
         else:
-            response = handle_request(agent, req)
+            # Wire streaming deltas (if any) to this writer for the duration
+            # of the request.
+            emitter = _DeltaEmitter(writer, req.get("id"))
+            if provider is not None and hasattr(provider, "on_delta"):
+                provider.on_delta = emitter
+            try:
+                response = handle_request(agent, req)
+            finally:
+                if provider is not None and hasattr(provider, "on_delta"):
+                    provider.on_delta = None
         writer.write(json.dumps(response, ensure_ascii=False) + "\n")
         writer.flush()
 
