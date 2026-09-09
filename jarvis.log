@@ -5,3 +5,16 @@
 2026-09-09 15:51:23,253 INFO    jarvis.runtime: Старт агента (local=False)
 2026-09-09 15:51:23,353 INFO    jarvis.core: Ответ модели (echo): echo:hi
 2026-09-09 15:51:23,353 INFO    jarvis.core: Ответ модели (echo): echo:ok
+2026-09-09 17:05:10,760 INFO    jarvis.core: Ответ модели (echo): echo:привет
+2026-09-09 17:05:10,794 INFO    jarvis.core: Модель вызвала инструмент double({'n': '21'})
+2026-09-09 17:05:10,796 INFO    jarvis.core: Ответ модели (cloud): Ответ: 42
+2026-09-09 17:05:11,807 INFO    jarvis.core: Ответ модели (stream): один два
+2026-09-09 17:05:12,311 INFO    jarvis.runtime: Старт агента (local=False)
+2026-09-09 17:05:12,398 INFO    jarvis.core: Ответ модели (echo): echo:hi
+2026-09-09 17:05:12,399 INFO    jarvis.core: Ответ модели (echo): echo:ok
+2026-09-09 17:09:02,459 INFO    jarvis.core: Ответ модели (echo): echo:привет
+2026-09-09 17:09:02,492 INFO    jarvis.core: Модель вызвала инструмент double({'n': '21'})
+2026-09-09 17:09:02,494 INFO    jarvis.core: Ответ модели (cloud): Ответ: 42
+2026-09-09 17:09:03,005 INFO    jarvis.core: Ответ модели (stream): один два
+2026-09-09 17:09:03,012 INFO    jarvis.runtime: Старт агента (local=False)
+2026-09-09 17:13:56,441 INFO    jarvis.core: Ответ модели (echo): echo:привет
