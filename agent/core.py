@@ -3,6 +3,7 @@ from typing import Protocol
 
 from .tools.registry import ConfirmationRequired, ToolRegistry
 from .memory.store import MemoryStore
+from .logging_setup import get as get_log
 
 
 class AIProvider(Protocol):
@@ -27,6 +28,7 @@ class JarvisAgent:
         self.reminders = reminders
         self._pending_tool: tuple[str, tuple, dict] | None = None
         self.on_exchange = None  # optional callback(user, assistant)
+        self.log = get_log("core")
 
     def _notify(self, user: str, assistant: str):
         self._remember(user, assistant)
@@ -82,7 +84,9 @@ class JarvisAgent:
             else:
                 reply = generate(text)
         except (ValueError, RuntimeError, OSError) as exc:
+            self.log.warning("Ошибка провайдера: %s", exc)
             return AgentResult(f"Ошибка провайдера: {exc}", self.provider.name)
+        self.log.info("Ответ модели (%s): %.120s", self.provider.name, reply)
         self._notify(text, reply)
         return AgentResult(reply, self.provider.name)
 
@@ -90,6 +94,7 @@ class JarvisAgent:
         """Run a tool requested by the model. Args are passed as kwargs when
         the tool accepts them, otherwise joined as positional strings."""
         import inspect
+        self.log.info("Модель вызвала инструмент %s(%s)", name, args)
         fn = self.tools._tools.get(name)
         if fn is None:
             raise KeyError(name)

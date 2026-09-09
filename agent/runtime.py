@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .config import Settings
 from .core import JarvisAgent
+from .logging_setup import get as get_log
 from .memory.store import MemoryStore
 from .providers.cloud import OpenAIChatProvider
 from .providers.local_vulkan import LocalVulkanProvider
@@ -17,6 +18,8 @@ from .skills import NoteStore, calculate, now
 
 def build_agent(settings: Settings | None = None) -> JarvisAgent:
     settings = settings or Settings.from_env()
+    log = get_log("runtime")
+    log.info("Старт агента (local=%s)", settings.use_local)
     memory = MemoryStore(settings.memory_path)
 
     if settings.use_local:
