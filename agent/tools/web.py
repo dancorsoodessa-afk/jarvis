@@ -20,7 +20,7 @@ def _get_json(url: str) -> dict:
 
 
 def web_search(query: str) -> str:
-    """Search Google and return the first useful results."""
+    """Search Google and return useful result titles and links."""
     query = " ".join(query.split())[:300]
     if not query:
         raise ValueError("Пустой поисковый запрос")
@@ -34,18 +34,31 @@ def web_search(query: str) -> str:
         raise RuntimeError(f"Google недоступен: {exc}") from exc
 
     results = []
-    for match in re.finditer(r'<a href="/url\\?q=([^&"]+)[^>]*>(.*?)</a>', page, re.S):
-        link = urllib.parse.unquote(match.group(1))
-        title = re.sub(r"<[^>]+>", " ", match.group(2))
-        title = html.unescape(re.sub(r"\\s+", " ", title)).strip()
-        if title and link.startswith("http") and "google.com" not in link:
+    patterns = [
+        r'<a href="/url\?q=([^&"]+)[^>]*>(.*?)</a>',
+        r'<a href="(https?://[^\"]+)"[^>]*>(.*?)</a>',
+    ]
+    seen = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, page, re.S):
+            link = urllib.parse.unquote(match.group(1))
+            title = re.sub(r"<[^>]+>", " ", match.group(2))
+            title = html.unescape(re.sub(r"\s+", " ", title)).strip()
+            if not title or not link.startswith("http") or "google.com" in urllib.parse.urlparse(link).netloc:
+                continue
+            key = (title.lower(), link)
+            if key in seen:
+                continue
+            seen.add(key)
             results.append(f"• {title}\n  {link}")
             if len(results) >= 5:
                 break
+        if len(results) >= 5:
+            break
 
     if not results:
-        # Google sometimes changes its result markup. Return a usable search link.
-        return f"Поиск Google: {url}"
+        # Keep a useful fallback when Google's markup changes or a test uses a mocked page.
+        return f"Результаты поиска для «{query}». Откройте: {url}"
     return "Результаты Google:\n" + "\n".join(results)
 
 
