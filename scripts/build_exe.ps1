@@ -2,6 +2,8 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 $ErrorActionPreference = "Stop"
 
+python -m pip install --upgrade pip
+python -m pip install -e ".[all]"
 python -m pip install --upgrade pyinstaller
 python -m unittest discover -s tests
 if ($LASTEXITCODE -ne 0) { throw "Tests failed, aborting build" }
