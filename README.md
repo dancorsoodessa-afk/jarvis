@@ -25,32 +25,33 @@ On your Windows PC, from the project root:
 powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 ```
 
-Result: `dist\jarvis.exe` — single console exe, no Python needed on the machine.
+The build script installs the project with all Windows extras, runs the full unittest suite, and then creates `dist\jarvis.exe`.
 
-Or let GitHub build it: the workflow in `.github/workflows/build-exe.yml`
-runs tests and produces `jarvis.exe` as a downloadable artifact on every push.
+Result: `dist\jarvis.exe` — single console exe, with the optional Windows audio and screenshot dependencies bundled.
 
-Configuration via environment variables (see agent/config.py):
-`JARVIS_LOCAL`, `JARVIS_CLOUD_URL`, `JARVIS_LLAMA_CLI`, `JARVIS_MODEL`, ...
+GitHub Actions also builds the Windows executable on pushes and pull requests targeting `foundation`; the resulting `jarvis.exe` is uploaded as a workflow artifact.
 
-## Quick start: real cloud AI (OpenAI-compatible)
+## Quick start: real cloud AI (OpenRouter)
+
+OpenRouter exposes an OpenAI-compatible chat-completions endpoint. citeturn0search0turn0search9
 
 ```powershell
-$env:JARVIS_CLOUD_URL   = "https://api.openai.com/v1/chat/completions"
-$env:JARVIS_CLOUD_KEY   = "sk-..."        # keep OUT of the repo!
-$env:JARVIS_CLOUD_MODEL = "gpt-4o-mini"
-$env:JARVIS_TTS         = "auto"          # voice on Windows (SAPI), no install
-jarvis
+$env:JARVIS_CLOUD_URL   = "https://openrouter.ai/api/v1/chat/completions"
+$env:JARVIS_CLOUD_KEY   = "sk-or-v1-..."   # keep OUT of the repo!
+$env:JARVIS_CLOUD_MODEL = "openai/gpt-5.3-chat"
+$env:JARVIS_TTS         = "auto"           # voice on Windows (SAPI), no install
+.\dist\jarvis.exe
 ```
 
-Then just talk (no slash commands needed — the model picks tools itself):
+Then just talk (no slash commands needed — the model can call tools itself):
 
 > какая погода в Москве?  → Jarvis calls `weather`
 > поставь громкость 30    → Jarvis calls `set_volume`
 > найди все pdf на диске D → Jarvis calls `search`
 
-Works with any OpenAI-compatible endpoint: OpenRouter, Groq,
-local llama.cpp server (`--server`), LM Studio, etc.
+Works with OpenAI-compatible endpoints such as OpenRouter, OpenAI, Groq,
+local llama.cpp servers, and LM Studio. Change `JARVIS_CLOUD_URL`,
+`JARVIS_CLOUD_KEY`, and `JARVIS_CLOUD_MODEL` without changing the code.
 
 Voice via Piper (better quality):
 ```powershell
@@ -70,3 +71,14 @@ flutter run -d windows        # or: flutter build windows
 The UI spawns the agent itself: put `jarvis.exe` next to the UI binary,
 or have Python on PATH (fallback: `python -m agent --ipc`).
 Preview of the reactor animation without Flutter: open `ui/jarvis_reactor.html`.
+
+## Release checklist
+
+Before publishing a release, verify:
+1. `git pull origin foundation`
+2. `powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1`
+3. `dist\jarvis.exe` starts and `/status`, `/calc`, `/now`, `/volume`, `/exit` work.
+4. Configure a fresh cloud API key through environment variables; never commit it.
+5. Run the Flutter UI smoke test if the UI is part of the release.
+
+Never put API keys, memory files, reminders, or runtime logs into Git.
