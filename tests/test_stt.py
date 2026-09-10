@@ -41,18 +41,32 @@ class TestSTT(unittest.TestCase):
 
     def test_whisper_cpp_run(self):
         import tempfile
+        from types import SimpleNamespace
+
         os.environ["JARVIS_STT"] = "whisper-cpp"
         with tempfile.TemporaryDirectory() as d:
             exe = Path(d) / "fake_whisper"
-            exe.write_text("#!/bin/sh\necho 'привет мир'\n")
-            exe.chmod(0o755)
+            exe.write_text("fake executable placeholder")
             model = Path(d) / "fake_model.bin"
             model.write_text("x")
             wav = Path(d) / "fake.wav"
             wav.write_bytes(b"RIFF")
             os.environ["JARVIS_WHISPER"] = str(exe)
             os.environ["JARVIS_WHISPER_MODEL"] = str(model)
-            self.assertEqual(stt.transcribe(str(wav)), "привет мир")
+
+            completed = SimpleNamespace(
+                returncode=0,
+                stdout="привет мир".encode("utf-8"),
+                stderr=b"",
+            )
+            with mock.patch.object(stt.subprocess, "run", return_value=completed) as run:
+                self.assertEqual(stt.transcribe(str(wav)), "привет мир")
+
+            run.assert_called_once_with(
+                [str(exe), "-m", str(model), "-f", str(wav), "-nt", "-l", "ru"],
+                capture_output=True,
+                timeout=300,
+            )
 
     def test_transcribe_tool_registered(self):
         from agent.runtime import build_agent
