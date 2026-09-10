@@ -33,7 +33,7 @@ GitHub Actions also builds the Windows executable on pushes and pull requests ta
 
 ## Quick start: real cloud AI (OpenRouter)
 
-OpenRouter exposes an OpenAI-compatible chat-completions endpoint. citeturn0search0turn0search9
+OpenRouter provides an OpenAI-compatible chat-completions endpoint.
 
 ```powershell
 $env:JARVIS_CLOUD_URL   = "https://openrouter.ai/api/v1/chat/completions"
