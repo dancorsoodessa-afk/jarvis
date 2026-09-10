@@ -2,7 +2,7 @@
 
 Silero is the preferred local Russian TTS engine. The selected model is
 cached under %APPDATA%\\JARVIS\\voice and downloaded once on first use.
-Windows SAPI remains a fallback when Silero/PyTorch is unavailable.
+Windows SAPI remains a fallback when Silero/PyTorch is unavailable or fails.
 
 Environment:
   JARVIS_TTS=auto|silero|sapi|piper|off
@@ -124,8 +124,19 @@ def speak(text: str) -> Path:
 
 
 def speak_and_play(text: str) -> Path:
-    """Synthesize and play the result. Returns the wav path."""
-    path = speak(text)
+    """Synthesize and play the result.
+
+    In auto mode Silero is always attempted first. If the local Silero model,
+    PyTorch runtime, or model download fails, Windows SAPI is used immediately
+    so the desktop assistant never becomes silent.
+    """
+    try:
+        path = speak(text)
+    except Exception:
+        if os.environ.get("JARVIS_TTS", "auto").lower() == "auto" and sys.platform == "win32":
+            path = _run_windows_sapi(" ".join(text.split())[:500], Path(tempfile.gettempdir()) / "jarvis_tts.wav")
+        else:
+            raise
     if sys.platform == "win32":
         ps = "(New-Object Media.SoundPlayer '%s').PlaySync();" % str(path).replace("'", "''")
         subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=True, timeout=120, capture_output=True)
