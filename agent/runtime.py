@@ -28,8 +28,6 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
             ctx=settings.ctx, threads=settings.threads,
         )
     else:
-        # Restore dialogue history from memory so the model keeps context
-        # across restarts.
         saved = memory.load()
         history = [m for m in saved.get("chat_history", [])
                    if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
@@ -51,6 +49,9 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("launch", apps.launch, confirm=True,
                    description="Запустить приложение. Требует подтверждения.",
                    parameters={"name": "имя приложения или путь"})
+    tools.register("open_path", apps.open_path,
+                   description="Открыть локальный файл или папку в Windows Explorer. Используй для команд вроде «открой диск C», «открой C:\\», «открой папку загрузки» при наличии точного пути.",
+                   parameters={"path": "полный локальный путь, например C:\\ или C:\\Users\\User\\Downloads"})
     tools.register("open_url", apps.open_url,
                    description="Открыть веб-страницу в браузере. Используй для команд вроде «открой YouTube», «открой сайт Google» и других HTTP(S) адресов.",
                    parameters={"url": "полный адрес страницы, начиная с http:// или https://"})
@@ -112,7 +113,6 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     agent = JarvisAgent(provider, tools=tools,
                         memory=memory,
                         reminders=reminders)
-    # Persist chat history on every turn.
     if not settings.use_local:
         def _sync_memory(user: str, assistant: str):
             data = memory.load()
