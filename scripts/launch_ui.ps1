@@ -1,2 +1,8 @@
+# Launch the native live JARVIS desktop application.
+$ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-Start-Process (Join-Path $root 'ui\jarvis_desktop.html')
+$exe = Join-Path $root 'dist\jarvis_desktop.exe'
+if (-not (Test-Path $exe)) {
+    throw "dist\jarvis_desktop.exe not found. Build first with scripts\build_exe.ps1"
+}
+Start-Process $exe
