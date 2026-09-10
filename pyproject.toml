@@ -5,6 +5,7 @@ description = "Personal AI agent / desktop assistant for Windows x64 (cloud-firs
 authors = ["Jarvis Developer"]
 license = "MIT"
 readme = "README.md"
+packages = [{ include = "agent" }]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.15"
