@@ -2,12 +2,18 @@
 # Build: pyinstaller jarvis.spec
 from PyInstaller.utils.hooks import collect_submodules
 
+hiddenimports = collect_submodules("agent") + [
+    "pycaw",
+    "pycaw.pycaw",
+    "comtypes",
+]
+
 a = Analysis(
     ["jarvis_cli.py"],
     pathex=["."],
     binaries=[],
     datas=[("docs", "docs")],
-    hiddenimports=collect_submodules("agent"),
+    hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
     excludes=["tkinter.test", "unittest"],
