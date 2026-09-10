@@ -51,6 +51,9 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("launch", apps.launch, confirm=True,
                    description="Запустить приложение. Требует подтверждения.",
                    parameters={"name": "имя приложения или путь"})
+    tools.register("open_url", apps.open_url,
+                   description="Открыть веб-страницу в браузере. Используй для команд вроде «открой YouTube», «открой сайт Google» и других HTTP(S) адресов.",
+                   parameters={"url": "полный адрес страницы, начиная с http:// или https://"})
     tools.register("volume", audio.get_volume,
                    description="Показать текущую громкость.")
     tools.register("set_volume", audio.set_volume,
