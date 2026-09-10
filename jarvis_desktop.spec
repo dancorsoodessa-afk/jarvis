@@ -1,10 +1,13 @@
 # PyInstaller spec for the native JARVIS desktop application.
-from PyInstaller.utils.hooks import collect_submodules
-
-hiddenimports = collect_submodules("agent") + [
+# Keep this list explicit: collecting every agent submodule pulls optional ML
+# stacks (torch/transformers/cv2) into the desktop build and makes it huge.
+hiddenimports = [
     "pycaw",
     "pycaw.pycaw",
     "comtypes",
+    "sounddevice",
+    "speech_recognition",
+    "keyring.backends.Windows",
 ]
 
 a = Analysis(
