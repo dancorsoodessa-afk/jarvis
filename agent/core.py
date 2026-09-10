@@ -115,6 +115,16 @@ class JarvisAgent:
     def _handle_tool_command(self, text: str) -> AgentResult:
         parts = text[1:].split()
         name, args = parts[0], tuple(parts[1:])
+
+        # /tools is a built-in command for the UI/CLI command palette, not a
+        # registered OS tool. Keep it here so the visible tool list is always
+        # available even when the cloud provider is not configured.
+        if name.lower() == "tools":
+            names = self.tools.names()
+            output = "Доступные инструменты: " + (", ".join(names) if names else "—")
+            self._remember(text, output)
+            return AgentResult(output, self.provider.name)
+
         try:
             output = self.tools.call(name, *args)
         except ConfirmationRequired:
