@@ -1,7 +1,0 @@
-2026-09-09 15:51:22,206 INFO    jarvis.core: Ответ модели (echo): echo:привет
-2026-09-09 15:51:22,245 INFO    jarvis.core: Модель вызвала инструмент double({'n': '21'})
-2026-09-09 15:51:22,246 INFO    jarvis.core: Ответ модели (cloud): Ответ: 42
-2026-09-09 15:51:23,252 INFO    jarvis.core: Ответ модели (stream): один два
-2026-09-09 15:51:23,253 INFO    jarvis.runtime: Старт агента (local=False)
-2026-09-09 15:51:23,353 INFO    jarvis.core: Ответ модели (echo): echo:hi
-2026-09-09 15:51:23,353 INFO    jarvis.core: Ответ модели (echo): echo:ok
