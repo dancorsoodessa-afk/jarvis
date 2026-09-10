@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 jarvis_memory.json
 jarvis_reminders.json
+jarvis_notes.json
+jarvis.log
+*.log
