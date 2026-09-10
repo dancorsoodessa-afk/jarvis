@@ -1,14 +1,12 @@
-"""Web tools: DuckDuckGo instant answers + open-meteo weather.
+"""Web tools: Google search + open-meteo weather."""
 
-Both work without API keys. Use only stdlib. Network failures raise
-RuntimeError with a readable message (the agent turns them into text).
-"""
-
+import html
 import json
+import re
 import urllib.parse
 import urllib.request
 
-USER_AGENT = "JarvisAgent/0.1"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128 Safari/537.36 JARVIS/0.1"
 TIMEOUT = 15
 
 
@@ -17,47 +15,38 @@ def _get_json(url: str) -> dict:
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             return json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:  # noqa: BLE001 — network layer, report as text
+    except Exception as exc:
         raise RuntimeError(f"Сеть недоступна: {exc}") from exc
 
 
 def web_search(query: str) -> str:
-    """DuckDuckGo instant answer API: abstract + related topics."""
+    """Search Google and return the first useful results."""
     query = " ".join(query.split())[:300]
     if not query:
         raise ValueError("Пустой поисковый запрос")
-    data = _get_json(
-        "https://api.duckduckgo.com/?"
-        + urllib.parse.urlencode({"q": query, "format": "json", "no_html": 1}))
-    parts = []
-    if data.get("AbstractText"):
-        parts.append(data["AbstractText"])
-        if data.get("AbstractURL"):
-            parts.append(f"({data['AbstractURL']})")
-    for topic in data.get("RelatedTopics", [])[:5]:
-        text = topic.get("Text") if isinstance(topic, dict) else None
-        if text:
-            parts.append(f"• {text}")
-    if not parts:
-        # Instant answer API is limited; fall back to the HTML lite page.
-        return _search_lite(query)
-    return "\n".join(parts)
-
-
-def _search_lite(query: str) -> str:
-    req = urllib.request.Request(
-        "https://lite.duckduckgo.com/lite/?"
-        + urllib.parse.urlencode({"q": query}),
-        headers={"User-Agent": USER_AGENT})
+    url = "https://www.google.com/search?" + urllib.parse.urlencode({
+        "q": query, "hl": "ru", "num": 5, "safe": "active"})
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Language": "ru-RU,ru;q=0.9"})
     try:
-        html = urllib.request.urlopen(req, timeout=TIMEOUT).read().decode(
-            "utf-8", errors="replace")
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"Поиск недоступен: {exc}") from exc
-    import re
-    text = re.sub(r"<[^>]+>", " ", html)
-    text = re.sub(r"\s+", " ", text)
-    return text[:1500].strip() or "Ничего не найдено."
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            page = resp.read().decode("utf-8", errors="replace")
+    except Exception as exc:
+        raise RuntimeError(f"Google недоступен: {exc}") from exc
+
+    results = []
+    for match in re.finditer(r'<a href="/url\\?q=([^&"]+)[^>]*>(.*?)</a>', page, re.S):
+        link = urllib.parse.unquote(match.group(1))
+        title = re.sub(r"<[^>]+>", " ", match.group(2))
+        title = html.unescape(re.sub(r"\\s+", " ", title)).strip()
+        if title and link.startswith("http") and "google.com" not in link:
+            results.append(f"• {title}\n  {link}")
+            if len(results) >= 5:
+                break
+
+    if not results:
+        # Google sometimes changes its result markup. Return a usable search link.
+        return f"Поиск Google: {url}"
+    return "Результаты Google:\n" + "\n".join(results)
 
 
 def weather(city: str) -> str:
@@ -66,31 +55,22 @@ def weather(city: str) -> str:
     if not city:
         raise ValueError("Укажите город")
     geo = _get_json(
-        "https://geocoding-api.open-meteo.com/v1/search?"
-        + urllib.parse.urlencode({"name": city, "count": 1, "language": "ru"}))
+        "https://geocoding-api.open-meteo.com/v1/search?" +
+        urllib.parse.urlencode({"name": city, "count": 1, "language": "ru"}))
     results = geo.get("results") or []
     if not results:
         raise ValueError(f"Город не найден: {city}")
     place = results[0]
     lat, lon = place["latitude"], place["longitude"]
     data = _get_json(
-        "https://api.open-meteo.com/v1/forecast?"
-        + urllib.parse.urlencode({
+        "https://api.open-meteo.com/v1/forecast?" +
+        urllib.parse.urlencode({
             "latitude": lat, "longitude": lon,
-            "current": "temperature_2m,apparent_temperature,wind_speed_10m,"
-                       "relative_humidity_2m,weather_code",
+            "current": "temperature_2m,apparent_temperature,wind_speed_10m,relative_humidity_2m,weather_code",
         }))
     cur = data.get("current", {})
-    codes = {0: "ясно", 1: "в основном ясно", 2: "переменная облачность",
-             3: "пасмурно", 45: "туман", 48: "изморозь",
-             51: "морось", 53: "морось", 55: "сильная морось",
-             61: "дождь", 63: "дождь", 65: "сильный дождь",
-             71: "снег", 73: "снег", 75: "сильный снег",
-             80: "ливни", 81: "ливни", 82: "сильные ливни",
-             95: "гроза", 96: "гроза с градом", 99: "гроза с градом"}
+    codes = {0: "ясно", 1: "в основном ясно", 2: "переменная облачность", 3: "пасмурно", 45: "туман", 48: "изморозь", 51: "морось", 53: "морось", 55: "сильная морось", 61: "дождь", 63: "дождь", 65: "сильный дождь", 71: "снег", 73: "снег", 75: "сильный снег", 80: "ливни", 81: "ливни", 82: "сильные ливни", 95: "гроза", 96: "гроза с градом", 99: "гроза с градом"}
     desc = codes.get(cur.get("weather_code"), "неизвестно")
     return (f"Погода в {place['name']}: {desc}, "
-            f"{cur.get('temperature_2m')}°C "
-            f"(ощущается {cur.get('apparent_temperature')}°C), "
-            f"ветер {cur.get('wind_speed_10m')} км/ч, "
-            f"влажность {cur.get('relative_humidity_2m')}%.")
+            f"{cur.get('temperature_2m')}°C (ощущается {cur.get('apparent_temperature')}°C), "
+            f"ветер {cur.get('wind_speed_10m')} км/ч, влажность {cur.get('relative_humidity_2m')}%.")
