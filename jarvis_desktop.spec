@@ -1,9 +1,9 @@
 # PyInstaller spec for the native JARVIS desktop application.
-# Keep the agent imports explicit, but bundle PyTorch because the desktop GUI
-# uses Silero TTS directly and the import is dynamic at runtime.
+# Bundle PyTorch and NumPy because Silero TTS and local VAD import them dynamically.
 hiddenimports = [
     "torch",
     "torch._C",
+    "numpy",
     "pycaw",
     "pycaw.pycaw",
     "comtypes",
