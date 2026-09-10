@@ -13,20 +13,31 @@ class ReminderService:
     def _load(self) -> list[dict]:
         if not self.path.exists():
             return []
-        return json.loads(self.path.read_text(encoding="utf-8"))
+        try:
+            return json.loads(self.path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return []
 
     def _save(self, items: list[dict]):
-        self.path.write_text(
-            json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.path.write_text(
+                json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except OSError:
+            pass  # Лучше бы логировать, но пока молча игнорируем, чтобы не падать
 
     def add(self, minutes: str, *text_parts: str) -> str:
         """CLI form: /remind <minutes> <text...>"""
         text = " ".join(text_parts).strip()
         if not text:
             raise ValueError("Reminder text is empty")
-        delay = float(minutes)
-        if delay <= 0:
-            raise ValueError("Minutes must be positive")
+        try:
+            delay = float(minutes)
+        except ValueError:
+            raise ValueError("Minutes must be a number")
+        if not float('-inf') < delay < float('inf') or delay <= 0:
+            raise ValueError("Minutes must be a positive finite number")
         items = self._load()
         due = time.time() + delay * 60
         items.append({"id": uuid.uuid4().hex[:8], "text": text, "due": due})

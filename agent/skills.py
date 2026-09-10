@@ -3,7 +3,6 @@
 All stdlib, cross-platform. Notes live in the memory JSON store under
 "notes": [{"id", "text", "tags", "created"}].
 """
-
 import ast
 import datetime as _dt
 import json
@@ -44,7 +43,8 @@ class NoteStore:
         existing["notes"] = notes[-MAX_NOTES:]
         self.path.write_text(
             json.dumps(existing, ensure_ascii=False, indent=2),
-            encoding="utf-8")
+            encoding="utf-8"
+        )
 
     def add(self, text: str, tags: str = "") -> str:
         text = " ".join(text.split()).strip()
@@ -109,7 +109,7 @@ def _calc_node(node):
         return node.value
     if isinstance(node, ast.BinOp) and type(node.op) in _CALC_OPS:
         return _CALC_OPS[type(node.op)](_calc_node(node.left),
-                                        _calc_node(node.right))
+                                         _calc_node(node.right))
     if isinstance(node, ast.UnaryOp) and type(node.op) in _CALC_OPS:
         return _CALC_OPS[type(node.op)](_calc_node(node.operand))
     raise ValueError("Разрешены только числа и + - * / // % ** ( )")
@@ -125,10 +125,17 @@ def calculate(expression: str) -> str:
         tree = ast.parse(expr, mode="eval")
     except SyntaxError as exc:
         raise ValueError(f"Не удалось разобрать выражение: {expression!r}") from exc
-    result = _calc_node(tree)
-    if isinstance(result, float) and result.is_integer():
-        result = int(result)
-    return f"{expression.strip()} = {result}"
+    try:
+        result = _calc_node(tree)
+        if isinstance(result, float) and result.is_integer():
+            result = int(result)
+        return f"{expression.strip()} = {result}"
+    except ZeroDivisionError:
+        return f"{expression.strip()} = Деление на ноль невозможно"
+    except OverflowError:
+        return f"{expression.strip()} = Результат слишком велик"
+    except Exception as exc:
+        return f"{expression.strip()} = Ошибка вычисления: {exc}"
 
 
 # -- Date / time --------------------------------------------------------------
@@ -141,3 +148,25 @@ def now() -> str:
               "июля", "августа", "сентября", "октября", "ноября", "декабря"]
     return (f"Сейчас {d.strftime('%H:%M:%S')}, "
             f"{d.day} {months[d.month]} {d.year} года, {days[d.weekday()]}.")
+
+
+# -- Skills registered in runtime --------------------------------------------
+
+def _register_skills(registry):
+    """Register skills with the tool registry."""
+    from agent.tools.registry import ToolRegistry
+    registry.register("remember", NoteStore.add,
+                      description="Сохранить факт/заметку в долговременную память о пользователе.",
+                      parameters={"text": "что запомнить",
+                                  "tags": "теги через пробел (необязательно)"})
+    registry.register("recall", NoteStore.recall,
+                      description="Найти сохранённые заметки/факты по ключевым словам.",
+                      parameters={"query": "ключевые слова (необязательно)"})
+    registry.register("forget", NoteStore.forget,
+                      description="Удалить заметку по номеру.",
+                      parameters={"note_id": "номер заметки"})
+    registry.register("calc", calculate,
+                      description="Вычислить арифметическое выражение (+ - * / // % **).",
+                      parameters={"expression": "выражение, например (2+3)*7"})
+    registry.register("now", lambda: now(),
+                      description="Текущая дата и время.")
