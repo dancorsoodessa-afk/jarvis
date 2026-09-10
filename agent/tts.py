@@ -50,8 +50,8 @@ def _silero_model():
 
 
 def _run_silero(text: str, out_path: Path) -> Path:
-    import torch
     import wave
+    import torch
 
     torch.set_num_threads(min(4, os.cpu_count() or 1))
     model = _silero_model()
@@ -60,8 +60,8 @@ def _run_silero(text: str, out_path: Path) -> Path:
     if speaker not in allowed:
         speaker = DEFAULT_SILERO_VOICE
     audio = model.apply_tts(text=text, speaker=speaker, sample_rate=48000)
-    samples = audio.detach().cpu().numpy()
-    pcm = (samples * 32767).clamp(-32768, 32767).short().numpy().tobytes()
+    audio = audio.detach().cpu().clamp(-1, 1)
+    pcm = (audio * 32767).short().numpy().tobytes()
     with wave.open(str(out_path), "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
