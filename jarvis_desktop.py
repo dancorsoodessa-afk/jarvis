@@ -1,11 +1,4 @@
-"""Native Windows desktop UI for JARVIS.
-
-The GUI talks to the real JarvisAgent. Settings persist between launches;
-the cloud API key is stored in Windows Credential Manager when keyring is
-available. Voice input records from the default microphone and transcribes
-Russian speech through the voice backend. Replies are spoken automatically
-through the configured local TTS engine.
-"""
+"""Native Windows desktop UI for JARVIS."""
 
 import json
 import os
@@ -76,6 +69,7 @@ class JarvisDesktop(tk.Tk):
         self.events = queue.Queue()
         self.tool_names = []
         self._recording = False
+        self._voice_loop_running = False
         self._apply_saved_settings()
         self._build_style()
         self._build_ui()
@@ -135,7 +129,7 @@ class JarvisDesktop(tk.Tk):
         scroll = ttk.Scrollbar(chat_frame, command=self.chat.yview); scroll.grid(row=0, column=1, sticky="ns"); self.chat.configure(yscrollcommand=scroll.set)
         input_frame = tk.Frame(center, bg=BG); input_frame.grid(row=2, column=0, sticky="ew", pady=(10, 0)); input_frame.grid_columnconfigure(0, weight=1)
         self.input = tk.Entry(input_frame, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", font=("Segoe UI", 11)); self.input.grid(row=0, column=0, sticky="ew", ipady=12, padx=(0, 8)); self.input.bind("<Return>", lambda _e: self.send())
-        self.voice_button = ttk.Button(input_frame, text="🎙 ГОЛОС", command=self.start_voice); self.voice_button.grid(row=0, column=1, padx=(0, 8), ipady=3)
+        self.voice_button = ttk.Button(input_frame, text="🎙 АВТО", command=self.start_voice); self.voice_button.grid(row=0, column=1, padx=(0, 8), ipady=3)
         self.send_button = ttk.Button(input_frame, text="SEND", style="Accent.TButton", command=self.send); self.send_button.grid(row=0, column=2, ipadx=10, ipady=3)
 
     def _build_right(self):
@@ -160,6 +154,30 @@ class JarvisDesktop(tk.Tk):
             except Exception as exc: self.events.put(("agent_error", str(exc)))
         threading.Thread(target=work, daemon=True).start()
 
+    def _start_voice_loop(self):
+        if self._voice_loop_running or not voice.available():
+            return
+        self._voice_loop_running = True
+        self.voice_button.config(text="🎙 АВТО СЛУШАЮ")
+
+        def on_speech_start():
+            if tts.is_playing():
+                tts.stop()
+                self.events.put(("voice_status", "Перебивание: голос JARVIS остановлен, слушаю вас."))
+
+        def work():
+            while self._voice_loop_running:
+                try:
+                    command = voice.listen_for_wake_and_command(on_speech_start=on_speech_start)
+                    if command and self._voice_loop_running:
+                        self.events.put(("voice_text", command))
+                except Exception as exc:
+                    self.events.put(("voice_error", str(exc)))
+                    break
+            self._voice_loop_running = False
+
+        threading.Thread(target=work, daemon=True).start()
+
     def _drain_events(self):
         try:
             while True:
@@ -170,15 +188,23 @@ class JarvisDesktop(tk.Tk):
                     self.metrics["Core"].config(text="ONLINE", fg=GREEN); self.metrics["AI Provider"].config(text=provider); self.metrics["Memory"].config(text="ACTIVE", fg=GREEN); self.metrics["Tools"].config(text=str(len(self.tool_names)))
                     voice_ok = voice.available(); tts_engine = tts.current_engine()
                     self.metrics["Voice"].config(text=("STT + " + tts_engine.upper()) if voice_ok else tts_engine.upper(), fg=GREEN if tts_engine != "off" else RED)
-                    self.tools_label.config(text="\n".join("• /" + n for n in self.tool_names)); self._append("JARVIS", "Система готова. Я подключён к реальному ядру и голосовому модулю.")
+                    self.tools_label.config(text="\n".join("• /" + n for n in self.tool_names)); self._append("JARVIS", "Система готова. Автоматическое слушание по слову «Джарвис» включено.")
+                    if voice_ok:
+                        self._start_voice_loop()
                 elif kind == "reply":
                     reply = event[1]
                     self._append("JARVIS", reply); self.busy = False; self.send_button.config(state="normal"); self.status.config(text="● ONLINE", fg=GREEN)
                     threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
                 elif kind == "voice_text":
-                    self.voice_button.config(state="normal", text="🎙 ГОЛОС"); self.input.delete(0, "end"); self.input.insert(0, event[1]); self.send(event[1])
+                    if self.busy:
+                        continue
+                    self.input.delete(0, "end"); self.input.insert(0, event[1]); self.send(event[1])
+                elif kind == "voice_status":
+                    self._append("VOICE", event[1])
                 elif kind == "voice_error":
-                    self.voice_button.config(state="normal", text="🎙 ГОЛОС"); self._append("VOICE", "Ошибка: " + event[1])
+                    self._append("VOICE", "Ошибка: " + event[1])
+                elif kind == "tts_error":
+                    self._append("VOICE", "Ошибка TTS: " + event[1]); self.metrics["Voice"].config(fg=RED)
                 elif kind == "agent_error":
                     self.status.config(text="● ERROR", fg=RED); self._append("SYSTEM", "Не удалось запустить ядро: " + event[1]); self.busy = False; self.send_button.config(state="normal")
         except queue.Empty: pass
@@ -205,14 +231,12 @@ class JarvisDesktop(tk.Tk):
         threading.Thread(target=work, daemon=True).start()
 
     def start_voice(self):
-        if self._recording or self.agent is None: return
-        if not voice.available(): self._append("VOICE", "Голосовой ввод недоступен. Пересоберите приложение из актуальной foundation-ветки."); return
-        self._recording = True; self.voice_button.config(state="disabled", text="🎙 СЛУШАЮ…"); self._append("VOICE", "Говорите сейчас. Запись длится до 7 секунд…")
-        def work():
-            try: self.events.put(("voice_text", voice.record_and_transcribe(7)))
-            except Exception as exc: self.events.put(("voice_error", str(exc)))
-            finally: self._recording = False
-        threading.Thread(target=work, daemon=True).start()
+        if self._voice_loop_running:
+            self._append("VOICE", "Автоматическое слушание уже включено. Скажите «Джарвис» и продолжайте команду.")
+            return
+        self._start_voice_loop()
+        if not self._voice_loop_running:
+            self._append("VOICE", "Голосовой ввод недоступен. Пересоберите приложение из актуальной foundation-ветки.")
 
     def show_system(self): self.send("/status")
     def show_memory(self): self.send("/recall")
@@ -236,9 +260,11 @@ class JarvisDesktop(tk.Tk):
             win.destroy(); self._reload_agent()
         ttk.Button(win, text="Сохранить и подключить AI", style="Accent.TButton", command=apply).grid(row=4, column=0, columnspan=2, pady=18, ipadx=12)
 
-    def _reload_agent(self):
-        self.status.config(text="● RESTARTING", fg=CYAN); self.agent = None; self._start_agent()
-    def _close(self): self.destroy()
+    def _reload_agent(self): self.status.config(text="● RESTARTING", fg=CYAN); self.agent = None; self._start_agent()
+    def _close(self):
+        self._voice_loop_running = False
+        tts.stop()
+        self.destroy()
 
 
 if __name__ == "__main__":
