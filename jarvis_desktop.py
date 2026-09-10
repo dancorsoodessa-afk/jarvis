@@ -3,7 +3,8 @@
 The GUI talks to the real JarvisAgent. Settings persist between launches;
 the cloud API key is stored in Windows Credential Manager when keyring is
 available. Voice input records from the default microphone and transcribes
-Russian speech through the voice backend.
+Russian speech through the voice backend. Replies are spoken automatically
+through the configured local TTS engine.
 """
 
 import json
@@ -15,7 +16,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from agent.runtime import build_agent
-from agent import voice
+from agent import tts, voice
 
 BG = "#05080f"
 PANEL = "#0b111b"
@@ -167,10 +168,13 @@ class JarvisDesktop(tk.Tk):
                     self.agent = event[1]; self.tool_names = list(self.agent.tools.names()); provider = getattr(self.agent.provider, "name", "unknown").upper()
                     self.status.config(text="● ONLINE", fg=GREEN); self.hud_text.config(text="Ядро активно\nAI: " + provider)
                     self.metrics["Core"].config(text="ONLINE", fg=GREEN); self.metrics["AI Provider"].config(text=provider); self.metrics["Memory"].config(text="ACTIVE", fg=GREEN); self.metrics["Tools"].config(text=str(len(self.tool_names)))
-                    voice_ok = voice.available(); self.metrics["Voice"].config(text="READY" if voice_ok else "NOT INSTALLED", fg=GREEN if voice_ok else RED)
-                    self.tools_label.config(text="\n".join("• /" + n for n in self.tool_names)); self._append("JARVIS", "Система готова. Я подключён к реальному ядру и готов выполнять команды.")
+                    voice_ok = voice.available(); tts_engine = tts.current_engine()
+                    self.metrics["Voice"].config(text=("STT + " + tts_engine.upper()) if voice_ok else tts_engine.upper(), fg=GREEN if tts_engine != "off" else RED)
+                    self.tools_label.config(text="\n".join("• /" + n for n in self.tool_names)); self._append("JARVIS", "Система готова. Я подключён к реальному ядру и голосовому модулю.")
                 elif kind == "reply":
-                    self._append("JARVIS", event[1]); self.busy = False; self.send_button.config(state="normal"); self.status.config(text="● ONLINE", fg=GREEN)
+                    reply = event[1]
+                    self._append("JARVIS", reply); self.busy = False; self.send_button.config(state="normal"); self.status.config(text="● ONLINE", fg=GREEN)
+                    threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
                 elif kind == "voice_text":
                     self.voice_button.config(state="normal", text="🎙 ГОЛОС"); self.input.delete(0, "end"); self.input.insert(0, event[1]); self.send(event[1])
                 elif kind == "voice_error":
@@ -179,6 +183,12 @@ class JarvisDesktop(tk.Tk):
                     self.status.config(text="● ERROR", fg=RED); self._append("SYSTEM", "Не удалось запустить ядро: " + event[1]); self.busy = False; self.send_button.config(state="normal")
         except queue.Empty: pass
         self.after(80, self._drain_events)
+
+    def _speak_reply(self, text: str):
+        try:
+            tts.speak_and_play(text)
+        except Exception as exc:
+            self.events.put(("tts_error", str(exc)))
 
     def _append(self, who, text):
         self.chat.configure(state="normal"); self.chat.insert("end", f"{who}\n", "who"); self.chat.insert("end", text + "\n\n", "body")
