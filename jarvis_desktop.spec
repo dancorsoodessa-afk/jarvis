@@ -1,7 +1,9 @@
 # PyInstaller spec for the native JARVIS desktop application.
-# Keep this list explicit: collecting every agent submodule pulls optional ML
-# stacks (torch/transformers/cv2) into the desktop build and makes it huge.
+# Keep the agent imports explicit, but bundle PyTorch because the desktop GUI
+# uses Silero TTS directly and the import is dynamic at runtime.
 hiddenimports = [
+    "torch",
+    "torch._C",
     "pycaw",
     "pycaw.pycaw",
     "comtypes",
