@@ -59,4 +59,17 @@ class ToolRegistry:
             raise KeyError(name)
         if entry.confirm and not _confirmed:
             raise ConfirmationRequired(name)
-        return entry.fn(*args, **kwargs)
+        # Slash-command convenience: if a tool takes exactly one string
+        # parameter, pass all CLI words as a single joined argument
+        # (e.g. `/remember я живу в Москве` -> text="я живу в Москве").
+        if args and len(args) > 1 and len(entry.parameters) == 1 \
+                and not kwargs:
+            args = (" ".join(map(str, args)),)
+        try:
+            return entry.fn(*args, **kwargs)
+        except TypeError:
+            # Slash-command convenience: a free-text tool (e.g. remember,
+            # say) got one word per CLI token. Retry with the words joined.
+            if len(args) > 1 and not kwargs:
+                return entry.fn(" ".join(map(str, args)))
+            raise
