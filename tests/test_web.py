@@ -11,7 +11,12 @@ from agent.tools import web
 
 
 def _fake_urlopen(payload):
-    body = json.dumps(payload).encode()
+    if isinstance(payload, bytes):
+        body = payload
+    elif isinstance(payload, str):
+        body = payload.encode()
+    else:
+        body = json.dumps(payload).encode()
     ctx = mock.MagicMock()
     ctx.read.return_value = body
     cm = mock.MagicMock()
@@ -45,13 +50,20 @@ class TestWeather(unittest.TestCase):
 
 
 class TestWebSearch(unittest.TestCase):
-    def test_uses_abstract(self):
-        ddg = {"AbstractText": "Python — язык программирования",
-               "AbstractURL": "https://ru.wikipedia.org/wiki/Python",
-               "RelatedTopics": []}
-        with mock.patch("urllib.request.urlopen", return_value=_fake_urlopen(ddg)):
+    def test_parses_google_results(self):
+        page = ('<html><body>'
+                '<a href="/url?q=https://ru.wikipedia.org/wiki/Python&amp;sa=x">'
+                'Python \u2014 \u044f\u0437\u044b\u043a \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u043c\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f</a>'
+                '</body></html>')
+        with mock.patch("urllib.request.urlopen", return_value=_fake_urlopen(page)):
             out = web.web_search("python")
         self.assertIn("язык программирования", out)
+        self.assertIn("https://ru.wikipedia.org/wiki/Python", out)
+
+    def test_fallback_when_markup_unknown(self):
+        with mock.patch("urllib.request.urlopen", return_value=_fake_urlopen("<html></html>")):
+            out = web.web_search("python")
+        self.assertIn("Результаты поиска для «python»", out)
 
     def test_empty_query_raises(self):
         with self.assertRaises(ValueError):
