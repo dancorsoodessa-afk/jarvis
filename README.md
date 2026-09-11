@@ -82,3 +82,34 @@ Before publishing a release, verify:
 5. Run the Flutter UI smoke test if the UI is part of the release.
 
 Never put API keys, memory files, reminders, or runtime logs into Git.
+
+## Память диалогов
+
+- **Краткосрочная**: история сообщений (`chat_history`) сохраняется в `jarvis_memory.json`
+  и восстанавливается при перезапуске. Ограничение — 40 обменов.
+- **Долгосрочная**: заметки (`remember/recall`) и граф знаний (`kg_*`) — через инструменты.
+- **RAG**: перед каждым вопросом в системный промпт автоматически подмешиваются
+  релевантные заметки — модель «знает» факты без явного `/recall`.
+- Очистка истории: `python -m agent --memory-clear`, кнопка 🧹 в UI,
+  IPC-запрос `{"type": "clear_memory"}`.
+
+## Голосовой режим (wake word)
+
+```powershell
+poetry install --extras voice          # sounddevice + numpy
+$env:JARVIS_STT = "faster-whisper"     # или whisper-cpp
+$env:JARVIS_TTS  = "auto"
+python -m agent --voice                # jarvis.exe --voice
+```
+
+Цикл: микрофон → STT → фильтр горячего слова «Джарвис» (`JARVIS_WAKE_WORD`,
+отключается `JARVIS_WAKE=off`) → ответ агента → TTS. Запись ограничена
+12 секундами с детекцией тишины.
+
+## Windows-полировка
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_autostart.ps1          # автозапуск при логине
+powershell -ExecutionPolicy Bypass -File scripts\install_autostart.ps1 -Remove  # убрать
+```
+

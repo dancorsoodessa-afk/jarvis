@@ -31,6 +31,9 @@ class NoteStore:
         except (json.JSONDecodeError, OSError):
             return []
 
+    def all(self) -> list:
+        return self._load()
+
     def _save(self, notes: list):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         existing = {}
@@ -51,8 +54,9 @@ class NoteStore:
         if not text:
             raise ValueError("Пустая заметка")
         notes = self._load()
+        next_id = max((n["id"] for n in notes), default=0) + 1
         notes.append({
-            "id": (notes[-1]["id"] + 1) if notes else 1,
+            "id": next_id,
             "text": text[:2000],
             "tags": " ".join(tags.split())[:200],
             "created": _dt.datetime.now().isoformat(timespec="seconds"),

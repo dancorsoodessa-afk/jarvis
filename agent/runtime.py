@@ -6,7 +6,7 @@ from pathlib import Path
 from .config import Settings
 from .core import JarvisAgent
 from .logging_setup import get as get_log
-from .memory.store import MemoryStore
+from .memory import KnowledgeGraph, MemoryStore, SessionMemory, relevant_notes
 from .providers.cloud import OpenAIChatProvider
 from .providers.local_vulkan import LocalVulkanProvider
 from .reminders import ReminderService
@@ -28,10 +28,9 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
             ctx=settings.ctx, threads=settings.threads,
         )
     else:
-        saved = memory.load()
-        history = [m for m in saved.get("chat_history", [])
-                   if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
-        provider = OpenAIChatProvider(history=history)
+        # Restore dialogue history from memory so the model keeps context
+        # across restarts.
+        provider = OpenAIChatProvider(history=SessionMemory(memory).load_history())
 
     reminders = ReminderService(
         str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
@@ -104,6 +103,28 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("forget", notes.forget,
                    description="Удалить заметку по номеру.",
                    parameters={"note_id": "номер заметки"})
+
+    kg_path = settings.kg_path or str(Path(settings.memory_path).with_name("jarvis_kg.json"))
+    kg = KnowledgeGraph(kg_path)
+    tools.register("kg_add", kg.add_fact,
+                   description="Добавить факт/связь в граф знаний: субъект, отношение, объект (например: 'Алексей', 'разработчик', 'Jarvis').",
+                   parameters={"source": "исходная сущность / субъект",
+                               "relation": "тип связи / отношение",
+                               "target": "целевая сущность / объект"})
+    tools.register("kg_query", kg.query,
+                   description="Найти информацию, сущности и связи в графе знаний по ключевому слову или имени.",
+                   parameters={"query": "имя сущности или поисковый запрос (необязательно)"})
+    tools.register("kg_relate", kg.find_path,
+                   description="Найти цепочку связей между двумя сущностями в графе знаний.",
+                   parameters={"source": "первая сущность",
+                               "target": "вторая сущность"})
+    tools.register("kg_forget", kg.delete,
+                   description="Удалить факт или сущность из графа знаний.",
+                   parameters={"target": "имя сущности или формат 'субъект; отношение; объект'"})
+    tools.register("kg_show", lambda focus="": kg.visualize(focus),
+                   description="Показать граф знаний в виде схемы (Mermaid) и сводки (можно указать конкретную сущность).",
+                   parameters={"focus": "имя сущности для подграфа (необязательно)"})
+
     tools.register("calc", calculate,
                    description="Вычислить арифметическое выражение (+ - * / ** %).",
                    parameters={"expression": "выражение, например (2+3)*7"})
@@ -114,9 +135,24 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
                         memory=memory,
                         reminders=reminders)
     if not settings.use_local:
+        session = SessionMemory(memory)
+
         def _sync_memory(user: str, assistant: str):
+            session.append(user, assistant)
             data = memory.load()
             data["chat_history"] = provider.history
             memory.save(data)
         agent.on_exchange = _sync_memory
+        agent.session = session  # exposed for IPC "clear_memory"
+
+        # RAG: before each turn, inject notes relevant to the recent dialogue
+        # into the model's system prompt so long-term facts are seen without
+        # explicit /recall calls.
+        base_prompt = provider.system_prompt
+
+        def _rag_hook(text: str):
+            block = relevant_notes(notes, session.last_user_text(2) + [text])
+            provider.system_prompt = (
+                base_prompt + "\n\n" + block) if block else base_prompt
+        agent.context_hook = _rag_hook
     return agent

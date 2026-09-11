@@ -21,6 +21,7 @@ Requests:
 - `{"id": N, "type": "message", "text": "..."}`
 - `{"id": N, "type": "tool", "tool": "search", "args": ["*.txt", "C:\\"]}`
 - `{"id": N, "type": "tools"}` — list registered tools
+- `{"id": N, "type": "clear_memory"}` — wipe dialogue history
 - `{"id": N, "type": "ping"}`
 
 Responses: `{"id": N, "type": "message", "text", "provider", "tool_used",

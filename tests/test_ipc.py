@@ -62,6 +62,51 @@ class TestHandleRequest(unittest.TestCase):
             self.assertEqual(resp["type"], "error")
             self.assertEqual(resp["id"], bad["id"])
 
+    def test_tool_request_without_args(self):
+        self.agent.tools.register("hello", lambda: "hi")
+        resp = ipc.handle_request(self.agent,
+                                  {"id": 9, "type": "tool", "tool": "hello"})
+        self.assertEqual(resp["type"], "message")
+        self.assertEqual(resp["text"], "hi")
+
+    def test_tool_request_unknown_tool_returns_unknown_message(self):
+        resp = ipc.handle_request(self.agent,
+                                  {"id": 10, "type": "tool", "tool": "nope"})
+        self.assertEqual(resp["type"], "message")
+        self.assertIn("nope", resp["text"])
+
+    def test_tool_request_args_not_list_is_error(self):
+        resp = ipc.handle_request(self.agent,
+                                  {"id": 11, "type": "tool",
+                                   "tool": "x", "args": "not-a-list"})
+        self.assertEqual(resp["type"], "error")
+        self.assertIn("args", resp["message"])
+
+    def test_tool_request_tool_not_string_is_error(self):
+        resp = ipc.handle_request(self.agent,
+                                  {"id": 12, "type": "tool",
+                                   "tool": ["not", "a", "string"], "args": []})
+        self.assertEqual(resp["type"], "error")
+        self.assertIn("tool", resp["message"])
+
+    def test_tools_listing_includes_registered_names(self):
+        self.agent.tools.register("a", lambda: 1, description="a")
+        self.agent.tools.register("b", lambda: 2, description="b")
+        resp = ipc.handle_request(self.agent, {"id": 13, "type": "tools"})
+        self.assertEqual(resp["type"], "tools")
+        self.assertEqual(set(resp["tools"]), {"a", "b"})
+
+    def test_ping_preserves_request_id(self):
+        resp = ipc.handle_request(self.agent, {"id": 99, "type": "ping"})
+        self.assertEqual(resp, {"id": 99, "type": "pong"})
+
+    def test_error_response_shape(self):
+        resp = ipc.handle_request(self.agent, {"id": 14, "type": "nonsense"})
+        self.assertEqual(set(resp), {"id", "type", "message"})
+        self.assertEqual(resp["type"], "error")
+        self.assertEqual(resp["id"], 14)
+        self.assertIsInstance(resp["message"], str)
+
     def test_confirmation_over_ipc(self):
         self.agent.tools.register("wipe", lambda: "wiped", confirm=True)
         ask = ipc.handle_request(self.agent,

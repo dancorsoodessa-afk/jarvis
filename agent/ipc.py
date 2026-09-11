@@ -66,6 +66,13 @@ def handle_request(agent: JarvisAgent, req: dict) -> dict:
             return {"id": req_id, "type": "message", **_result_payload(agent.handle(command))}
         if req_type == "tools":
             return {"id": req_id, "type": "tools", "tools": list(agent.tools.names())}
+        if req_type == "clear_memory":
+            session = getattr(agent, "session", None)
+            if session is None:
+                raise RuntimeError("Сессия недоступна")
+            return {"id": req_id, "type": "message",
+                    **_result_payload(AgentResult(session.clear(),
+                                                  agent.provider.name))}
         if req_type == "ping":
             return {"id": req_id, "type": "pong"}
         raise ValueError(f"unknown request type: {req_type!r}")

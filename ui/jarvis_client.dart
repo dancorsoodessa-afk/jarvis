@@ -73,11 +73,23 @@ class JarvisIpc {
   Future<Map<String, dynamic>> _request(Map<String, dynamic> body) {
     _ensureListening();
     final id = _nextId++;
+    _activeId = id;
     final completer = Completer<Map<String, dynamic>>();
     _pending[id] = completer;
     _process.stdin.writeln(jsonEncode({...body, 'id': id}));
     return completer.future;
   }
+
+  int? _activeId;
+
+  /// Id of the request currently in flight (to match delta events).
+  int? get activeId => _activeId;
+
+  /// Stream of accumulated partial answers for the active request.
+  Stream<String> partials() => deltas
+      .map((m) => m[activeId])
+      .where((t) => t != null)
+      .cast<String>();
 
   Future<JarvisReply> sendMessage(String text) async {
     final resp = await _request({'type': 'message', 'text': text});
@@ -88,6 +100,11 @@ class JarvisIpc {
   }
 
   Future<JarvisReply> confirm(String yesOrNo) => sendMessage(yesOrNo);
+
+  /// Clear the persisted dialogue history (short-term memory).
+  Future<void> clearMemory() async {
+    await _request({'type': 'clear_memory'});
+  }
 
   Future<List<String>> listTools() async {
     final resp = await _request({'type': 'tools'});

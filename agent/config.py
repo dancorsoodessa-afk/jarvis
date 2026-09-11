@@ -13,6 +13,7 @@ class Settings:
     ctx: int = 2048
     threads: int = 6
     memory_path: str = "jarvis_memory.json"
+    kg_path: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -23,4 +24,6 @@ class Settings:
             ctx=int(os.environ.get("JARVIS_CTX", "2048")),
             threads=int(os.environ.get("JARVIS_THREADS", "6")),
             memory_path=os.environ.get("JARVIS_MEMORY", "jarvis_memory.json"),
+            kg_path=os.environ.get("JARVIS_KG"),
         )
+

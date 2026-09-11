@@ -24,6 +24,19 @@ def main():
         ipc.serve_tcp(agent, port=port)
         return
 
+    if "--voice" in args:
+        from .voice_loop import VoiceLoop
+        VoiceLoop(agent).run()
+        return
+
+    if "--memory-clear" in args:
+        from .memory import SessionMemory
+        from .memory.store import MemoryStore
+        from .config import Settings
+        store = MemoryStore(Settings.from_env().memory_path)
+        print(SessionMemory(store).clear())
+        return
+
     names = ", ".join(f"/{n}" for n in agent.tools.names())
     print(f"JARVIS готов (provider: {agent.provider.name}). "
           f"Инструменты: {names}. Выход: /exit, Ctrl+C.")

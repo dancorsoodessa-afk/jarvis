@@ -6,6 +6,7 @@
 // Fallback: `python -m agent --ipc` if python is on PATH.
 //
 // Run:  flutter run -d windows   (from this ui/ folder)
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -57,11 +58,24 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   final List<_Msg> _messages = [];
   bool _busy = false;
   String _status = 'Подключение к агенту…';
+  String _toolStatus = '';
+  String _streamText = '';
+  StreamSubscription<String>? _partialSub;
 
   @override
   void initState() {
     super.initState();
     _connect();
+  }
+
+  void _listenPartials() {
+    _partialSub?.cancel();
+    _partialSub = _jarvis!.partials().listen((text) {
+      setState(() => _streamText = text);
+      if (_scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
+    });
   }
 
   Future<void> _connect() async {
@@ -73,6 +87,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           : JarvisIpc.spawn('python', ['-m', 'agent', '--ipc']));
       final tools = await _jarvis!.listTools();
       setState(() => _status = 'Агент готов · инструментов: ${tools.length}');
+      _listenPartials();
     } catch (e) {
       setState(() => _status = 'Агент не запущен: $e');
     }
@@ -85,6 +100,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     setState(() {
       _messages.add(_Msg(text, isUser: true));
       _busy = true;
+      _streamText = '';
+      _toolStatus = '';
     });
     try {
       var reply = await _jarvis!.sendMessage(text);
@@ -106,11 +123,18 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         );
         reply = await _jarvis!.sendMessage(ok == true ? 'да' : 'нет');
       }
-      setState(() => _messages.add(_Msg(reply.text, isUser: false)));
+      setState(() {
+        _messages.add(_Msg(reply.text, isUser: false));
+        if (reply.toolUsed != null) _toolStatus = reply.toolUsed!;
+      });
     } catch (e) {
       setState(() => _messages.add(_Msg('Ошибка: $e', isUser: false)));
     } finally {
-      setState(() => _busy = false);
+      setState(() {
+        _busy = false;
+        _streamText = '';
+        _toolStatus = '';
+      });
       await Future.delayed(const Duration(milliseconds: 50));
       if (_scroll.hasClients) {
         _scroll.jumpTo(_scroll.position.maxScrollExtent);
@@ -118,8 +142,20 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
   }
 
+  Future<void> _clearMemory() async {
+    try {
+      await _jarvis!.clearMemory();
+      setState(() {
+        _messages.add(_Msg('🧹 История диалога очищена.', isUser: false));
+      });
+    } catch (e) {
+      setState(() => _messages.add(_Msg('Ошибка: $e', isUser: false)));
+    }
+  }
+
   @override
   void dispose() {
+    _partialSub?.cancel();
     _jarvis?.dispose();
     _input.dispose();
     _scroll.dispose();
@@ -137,6 +173,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             Text(_status,
                 style: const TextStyle(color: kCyan, fontSize: 12),
                 textAlign: TextAlign.center),
+            if (_toolStatus.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('🔧 $_toolStatus',
+                    style: TextStyle(color: kCyan.withOpacity(0.7),
+                        fontSize: 11)),
+              ),
             const SizedBox(height: 8),
             Expanded(
               child: ListView.builder(
@@ -146,14 +189,36 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 itemBuilder: (_, i) => _bubble(_messages[i]),
               ),
             ),
-            if (_busy)
-              const Padding(
-                  padding: EdgeInsets.only(bottom: 4),
-                  child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: kCyan))),
+            if (_busy) ...[
+              if (_streamText.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      decoration: BoxDecoration(
+                        color: kPanel,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: kCyan.withOpacity(0.4)),
+                      ),
+                      child: SelectableText('$_streamText▌'),
+                    ),
+                  ),
+                )
+              else
+                const Padding(
+                    padding: EdgeInsets.only(bottom: 4),
+                    child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: kCyan))),
+            ],
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               child: Row(
@@ -173,6 +238,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  IconButton(
+                      tooltip: 'Очистить память диалога',
+                      onPressed: _busy ? null : _clearMemory,
+                      icon: const Icon(Icons.delete_outline,
+                          color: Colors.white38)),
                   IconButton(
                       onPressed: _busy ? null : () => _send(_input.text),
                       icon: const Icon(Icons.send, color: kCyan)),
