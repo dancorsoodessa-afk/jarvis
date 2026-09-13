@@ -31,10 +31,13 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         history = session.load_history()
         if settings.router_enabled:
             provider = CloudRouterProvider(
-                url=settings.chat_url, api_key=settings.chat_key,
+                url=settings.chat_url,
+                api_key=settings.chat_key,
                 primary_model=settings.primary_model,
                 code_model=settings.code_model,
                 fast_model=settings.fast_model,
+                universal_model_1=settings.universal_model_1,
+                universal_model_2=settings.universal_model_2,
                 history=history,
             )
         else:
