@@ -14,7 +14,7 @@ class Settings:
     code_model: str = "z-ai/glm-5.3-flash:free"
     fast_model: str = "deepseek/deepseek-v4-flash:free"
     universal_model_1: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
-    universal_model_2: str = "nvidia/nemotron-3-super:free"
+    universal_model_2: str = "nvidia/nemotron-3-super-120b-a12b:free"
     router_enabled: bool = True
     llama_cli: str = "llama-cli"
     model: str = "model.gguf"
@@ -42,7 +42,7 @@ class Settings:
             code_model=os.environ.get("JARVIS_CODE_MODEL", "z-ai/glm-5.3-flash:free"),
             fast_model=os.environ.get("JARVIS_FAST_MODEL", "deepseek/deepseek-v4-flash:free"),
             universal_model_1=os.environ.get("JARVIS_UNIVERSAL_MODEL_1", "nvidia/nemotron-3-ultra-550b-a55b:free"),
-            universal_model_2=os.environ.get("JARVIS_UNIVERSAL_MODEL_2", "nvidia/nemotron-3-super:free"),
+            universal_model_2=os.environ.get("JARVIS_UNIVERSAL_MODEL_2", "nvidia/nemotron-3-super-120b-a12b:free"),
             router_enabled=os.environ.get("JARVIS_ROUTER", "1").strip().lower() not in ("0", "false", "off"),
             llama_cli=os.environ.get("JARVIS_LLAMA_CLI", "llama-cli"),
             model=os.environ.get("JARVIS_MODEL", "model.gguf"),
