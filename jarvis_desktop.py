@@ -1,6 +1,7 @@
 """Native Windows desktop UI for JARVIS using free/local providers."""
 
 import json
+import math
 import os
 import queue
 import threading
@@ -45,6 +46,8 @@ class JarvisDesktop(tk.Tk):
         self.events = queue.Queue()
         self.tool_names = []
         self._voice_loop_running = False
+        self._orb_phase = 0.0
+        self._orb_after = None
         self._apply_saved_settings()
         self._build_style()
         self._build_ui()
@@ -57,8 +60,10 @@ class JarvisDesktop(tk.Tk):
         provider = saved.get("provider") or os.environ.get("JARVIS_PROVIDER") or DEFAULT_PROVIDER
         url = saved.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL
         model = saved.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or ""
+        api_key = saved.get("api_key") or os.environ.get("JARVIS_CHAT_KEY") or ""
         os.environ["JARVIS_PROVIDER"] = provider
         os.environ["JARVIS_CHAT_URL"] = url
+        os.environ["JARVIS_CHAT_KEY"] = api_key
         if model:
             os.environ["JARVIS_CHAT_MODEL"] = model
 
@@ -85,17 +90,14 @@ class JarvisDesktop(tk.Tk):
         side = tk.Frame(self, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
         side.grid(row=1, column=0, sticky="nsew", padx=(12, 6), pady=(0, 12))
         tk.Label(side, text="CONTROL", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"), padx=18, pady=18).pack(anchor="w")
-        for text, command in [("◈  Система", self.show_system), ("◉  Память", self.show_memory), ("⌁  Инструменты", self.show_tools), ("⚙  Настройки", self.show_settings)]:
-            ttk.Button(side, text=text, command=command).pack(fill="x", padx=12, pady=5)
-        tk.Label(side, text="QUICK ACTIONS", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"), padx=18, pady=18).pack(anchor="w")
-        for label, command in [("Статус системы", "/status"), ("Время", "/now"), ("Что ты умеешь?", "Что ты умеешь?"), ("Список инструментов", "/tools")]:
-            ttk.Button(side, text=label, command=lambda c=command: self.send(c)).pack(fill="x", padx=12, pady=4)
+        ttk.Button(side, text="⌁  Инструменты", command=self.show_tools).pack(fill="x", padx=12, pady=5)
+        ttk.Button(side, text="⚙  Настройки", command=self.show_settings).pack(fill="x", padx=12, pady=5)
 
     def _build_center(self):
         center = tk.Frame(self, bg=BG); center.grid(row=1, column=1, sticky="nsew", padx=6, pady=(0, 12))
         center.grid_rowconfigure(1, weight=1); center.grid_columnconfigure(0, weight=1)
-        hud = tk.Frame(center, bg=BG, height=210); hud.grid(row=0, column=0, sticky="ew"); hud.grid_propagate(False)
-        self.canvas = tk.Canvas(hud, width=220, height=200, bg=BG, highlightthickness=0); self.canvas.pack(side="left", padx=28); self._draw_orb()
+        hud = tk.Frame(center, bg=BG, height=250); hud.grid(row=0, column=0, sticky="ew"); hud.grid_propagate(False)
+        self.canvas = tk.Canvas(hud, width=300, height=235, bg=BG, highlightthickness=0); self.canvas.pack(side="left", padx=12); self._draw_orb()
         self.hud_text = tk.Label(hud, text="Инициализация ядра…", bg=BG, fg=CYAN, font=("Segoe UI", 12, "bold"), justify="left"); self.hud_text.pack(side="left", anchor="center")
         chat_frame = tk.Frame(center, bg=PANEL, highlightbackground=LINE, highlightthickness=1); chat_frame.grid(row=1, column=0, sticky="nsew")
         chat_frame.grid_rowconfigure(0, weight=1); chat_frame.grid_columnconfigure(0, weight=1)
@@ -115,13 +117,31 @@ class JarvisDesktop(tk.Tk):
             row = tk.Frame(right, bg=PANEL); row.pack(fill="x", padx=16, pady=7)
             tk.Label(row, text=name, bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(side="left")
             value = tk.Label(row, text="—", bg=PANEL, fg=CYAN, font=("Segoe UI", 9, "bold")); value.pack(side="right"); self.metrics[name] = value
-        tk.Label(right, text="AGENT TOOLS", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"), padx=16, pady=18).pack(anchor="w")
-        self.tools_label = tk.Label(right, text="Загрузка…", bg=PANEL, fg=TEXT, justify="left", wraplength=210, padx=16); self.tools_label.pack(anchor="w")
 
     def _draw_orb(self):
-        self.canvas.delete("all"); cx, cy = 100, 98
-        for r in (78, 62, 45, 28): self.canvas.create_oval(cx-r, cy-r, cx+r, cy+r, outline="#1b7f99" if r > 30 else CYAN, width=1)
-        self.canvas.create_oval(cx-10, cy-10, cx+10, cy+10, fill=CYAN, outline=""); self.canvas.create_text(cx, cy+118, text="J·A·R", fill=CYAN, font=("Segoe UI", 16, "bold"))
+        self.canvas.delete("all")
+        cx, cy = 150, 112
+        phase = self._orb_phase
+        # Perspective rings create a lightweight 3D reactor without external graphics libraries.
+        for rx, ry, offset in ((104, 104, 0), (82, 48, 0.9), (82, 48, -0.9), (58, 28, 1.8)):
+            a = phase + offset
+            self.canvas.create_oval(cx-rx, cy-ry, cx+rx, cy+ry, outline="#1b6f88", width=1)
+            dx = math.cos(a) * rx * 0.82
+            dy = math.sin(a) * ry * 0.82
+            self.canvas.create_oval(cx+dx-3, cy+dy-3, cx+dx+3, cy+dy+3, fill=CYAN, outline="")
+        for i in range(20):
+            a = phase * 1.7 + i * (math.pi * 2 / 20)
+            z = (math.sin(a) + 1) / 2
+            r = 72 + 24 * z
+            x = cx + math.cos(a) * r
+            y = cy + math.sin(a) * r * 0.55
+            size = 1 + int(3 * z)
+            self.canvas.create_oval(x-size, y-size, x+size, y+size, fill="#37d5ee", outline="")
+        pulse = 12 + 4 * (math.sin(phase * 2) + 1)
+        self.canvas.create_oval(cx-pulse, cy-pulse, cx+pulse, cy+pulse, fill=CYAN, outline="")
+        self.canvas.create_text(cx, cy+126, text="J·A·R", fill=CYAN, font=("Segoe UI", 16, "bold"))
+        self._orb_phase += 0.055
+        self._orb_after = self.after(40, self._draw_orb)
 
     def _start_agent(self):
         def work():
@@ -155,7 +175,7 @@ class JarvisDesktop(tk.Tk):
                     self.metrics["Core"].config(text="ONLINE", fg=GREEN); self.metrics["AI Provider"].config(text=provider); self.metrics["Memory"].config(text="ACTIVE", fg=GREEN); self.metrics["Tools"].config(text=str(len(self.tool_names)))
                     voice_ok = voice.available(); tts_engine = tts.current_engine()
                     self.metrics["Voice"].config(text=("STT + " + tts_engine.upper()) if voice_ok else tts_engine.upper(), fg=GREEN if tts_engine != "off" else RED)
-                    self.tools_label.config(text="\n".join("• /" + n for n in self.tool_names)); self._append("JARVIS", "Система готова.")
+                    self._append("JARVIS", "Система готова.")
                     if voice_ok: self._start_voice_loop()
                 elif kind == "reply":
                     reply = event[1]; self._append("JARVIS", reply); self.busy = False; self.send_button.config(state="normal"); self.status.config(text="● ONLINE", fg=GREEN)
@@ -195,42 +215,48 @@ class JarvisDesktop(tk.Tk):
         self._start_voice_loop()
         if not self._voice_loop_running: self._append("VOICE", "Голосовой ввод недоступен.")
 
-    def show_system(self): self.send("/status")
-    def show_memory(self): self.send("/recall")
     def show_tools(self): self._append("JARVIS", "Доступные инструменты:\n" + "\n".join("• /" + n for n in self.tool_names))
 
     def show_settings(self):
-        win = tk.Toplevel(self); win.title("JARVIS — Настройки"); win.configure(bg=PANEL); win.geometry("700x360"); win.transient(self); win.grab_set()
+        win = tk.Toplevel(self); win.title("JARVIS — Настройки"); win.configure(bg=PANEL); win.geometry("720x430"); win.transient(self); win.grab_set()
         saved = _load_saved_settings()
         fields = [
             ("Провайдер", "provider", os.environ.get("JARVIS_PROVIDER", saved.get("provider", DEFAULT_PROVIDER))),
             ("OpenAI-compatible URL", "url", os.environ.get("JARVIS_CHAT_URL", saved.get("url", DEFAULT_URL))),
             ("Модель", "model", os.environ.get("JARVIS_CHAT_MODEL", saved.get("model", ""))),
+            ("API ключ", "api_key", os.environ.get("JARVIS_CHAT_KEY", saved.get("api_key", ""))),
         ]
         entries = {}
         for i, (label, name, value) in enumerate(fields):
             tk.Label(win, text=label, bg=PANEL, fg=MUTED).grid(row=i, column=0, sticky="w", padx=20, pady=(20 if i == 0 else 10, 4))
-            entry = tk.Entry(win, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", width=58); entry.insert(0, value); entry.grid(row=i, column=1, padx=20, pady=(20 if i == 0 else 10, 4), ipady=7); entries[name] = entry
-        tk.Label(win, text="Только бесплатные/локальные провайдеры. Ключ API не требуется для локальных серверов Ollama, llama.cpp или LM Studio.", bg=PANEL, fg=MUTED, wraplength=640, justify="left").grid(row=3, column=0, columnspan=2, padx=20, pady=14)
+            entry = tk.Entry(win, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", width=58, show="•" if name == "api_key" else "")
+            entry.insert(0, value); entry.grid(row=i, column=1, padx=20, pady=(20 if i == 0 else 10, 4), ipady=7); entries[name] = entry
+        tk.Label(win, text="Для OpenRouter/OpenAI-compatible укажи полный chat-completions URL и API ключ. Для локальных Ollama/llama.cpp/LM Studio ключ можно оставить пустым.", bg=PANEL, fg=MUTED, wraplength=660, justify="left").grid(row=4, column=0, columnspan=2, padx=20, pady=14)
         def apply():
             provider = entries["provider"].get().strip() or DEFAULT_PROVIDER
             url = entries["url"].get().strip() or DEFAULT_URL
             model = entries["model"].get().strip()
-            os.environ["JARVIS_PROVIDER"] = provider; os.environ["JARVIS_CHAT_URL"] = url
+            api_key = entries["api_key"].get().strip()
+            os.environ["JARVIS_PROVIDER"] = provider; os.environ["JARVIS_CHAT_URL"] = url; os.environ["JARVIS_CHAT_KEY"] = api_key
             if model: os.environ["JARVIS_CHAT_MODEL"] = model
             else: os.environ.pop("JARVIS_CHAT_MODEL", None)
             try:
                 APP_DIR.mkdir(parents=True, exist_ok=True)
-                SETTINGS_FILE.write_text(json.dumps({"provider": provider, "url": url, "model": model}, ensure_ascii=False, indent=2), encoding="utf-8")
+                SETTINGS_FILE.write_text(json.dumps({"provider": provider, "url": url, "model": model, "api_key": api_key}, ensure_ascii=False, indent=2), encoding="utf-8")
             except OSError as exc:
                 messagebox.showerror("JARVIS", f"Не удалось сохранить настройки: {exc}", parent=win); return
             win.destroy(); self._reload_agent()
-        ttk.Button(win, text="Сохранить и подключить AI", style="Accent.TButton", command=apply).grid(row=4, column=0, columnspan=2, pady=18, ipadx=12)
+        ttk.Button(win, text="Сохранить и подключить AI", style="Accent.TButton", command=apply).grid(row=5, column=0, columnspan=2, pady=18, ipadx=12)
 
     def _reload_agent(self): self.status.config(text="● RESTARTING", fg=CYAN); self.agent = None; self._start_agent()
 
     def _close(self):
-        self._voice_loop_running = False; tts.stop(); self.destroy()
+        self._voice_loop_running = False
+        tts.stop()
+        if self._orb_after:
+            try: self.after_cancel(self._orb_after)
+            except tk.TclError: pass
+        self.destroy()
 
 
 if __name__ == "__main__":
