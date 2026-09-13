@@ -1,4 +1,4 @@
-"""Multi-model provider router for JARVIS."""
+"""Cloud model router for JARVIS."""
 from __future__ import annotations
 
 from typing import Optional
@@ -7,22 +7,18 @@ from .openai_chat import DEFAULT_SYSTEM_PROMPT, OpenAIChatProvider
 
 
 class CloudRouterProvider:
-    """Route normal, coding and fast requests to dedicated cloud models."""
+    """Route requests to the three selected assistants."""
 
     name = "главный диспетчер"
 
     def __init__(self, url: str, api_key: str, primary_model: str,
                  code_model: str, fast_model: str,
-                 universal_model_1: str = "",
-                 universal_model_2: str = "",
                  history: Optional[list] = None):
         self.url = url
         self.api_key = api_key
         self.primary_model = primary_model
         self.code_model = code_model
         self.fast_model = fast_model
-        self.universal_model_1 = universal_model_1
-        self.universal_model_2 = universal_model_2
         self.history = history if history is not None else []
         self.tool_executor = None
         self.on_delta = None
@@ -56,29 +52,16 @@ class CloudRouterProvider:
             "быстрый": self.fast_model,
             "главный": self.primary_model,
         }[route]
-        # Universal free models are deterministic fallbacks, never a surprise
-        # replacement for the user's selected primary assistant.
-        fallbacks = [self.universal_model_1, self.universal_model_2]
-        return [m for m in [primary, *fallbacks] if m]
+        return [primary]
 
     def generate(self, prompt: str, tools=None, max_steps: int = 4) -> str:
         route = self.classify(prompt)
         self.last_route = route
-        last_error: Exception | None = None
-
-        for model in self._models_for_route(route):
-            provider = self._provider(model)
-            provider.tool_executor = self.tool_executor
-            provider.on_delta = self.on_delta
-            try:
-                result = provider.generate(prompt, tools=tools, max_steps=max_steps)
-                self.last_model = model
-                self.history[:] = provider.history
-                return result
-            except Exception as exc:
-                last_error = exc
-                continue
-
-        if last_error is not None:
-            raise last_error
-        raise RuntimeError("Не настроена ни одна облачная модель.")
+        model = self._models_for_route(route)[0]
+        provider = self._provider(model)
+        provider.tool_executor = self.tool_executor
+        provider.on_delta = self.on_delta
+        result = provider.generate(prompt, tools=tools, max_steps=max_steps)
+        self.last_model = model
+        self.history[:] = provider.history
+        return result
