@@ -22,7 +22,9 @@ jobs:
 
       - name: Generate Android platform
         working-directory: ui
-        run: flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
+        run: |
+          flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
+          rm -f test/widget_test.dart
 
       - name: Allow network connection for Android client
         working-directory: ui
@@ -33,7 +35,6 @@ jobs:
           text = p.read_text(encoding='utf-8')
           permission = '    <uses-permission android:name="android.permission.INTERNET" />\n'
           if 'android.permission.INTERNET' not in text:
-              text = text.replace('<manifest ', '<manifest ', 1)
               pos = text.find('>') + 1
               text = text[:pos] + '\n' + permission + text[pos:]
               p.write_text(text, encoding='utf-8')
@@ -56,3 +57,4 @@ jobs:
         with:
           name: jarvis-android-apk
           path: ui/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
