@@ -1,4 +1,4 @@
-name: Build jarvis.exe
+name: Build JARVIS для Windows
 
 on:
   push:
@@ -17,19 +17,31 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install project and release dependencies
+      - name: Установить зависимости
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[all]"
           python -m pip install --upgrade pyinstaller pytest
-      - name: Run tests
+
+      - name: Проверить тесты
         run: pytest tests/ -q
 
-      - name: Build exe
+      - name: Собрать JARVIS.exe
         run: pyinstaller jarvis.spec --clean --noconfirm
 
-      - name: Upload jarvis.exe
+      - name: Собрать JARVIS Desktop.exe
+        run: pyinstaller jarvis_desktop.spec --clean --noconfirm
+
+      - name: Подготовить пакет для ПК
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item dist\jarvis.exe release\JARVIS.exe
+          Copy-Item dist\jarvis_desktop.exe release\JARVIS-Desktop.exe
+          Compress-Archive -Path release\JARVIS.exe,release\JARVIS-Desktop.exe -DestinationPath JARVIS-Windows-x64.zip -Force
+
+      - name: Загрузить сборку
         uses: actions/upload-artifact@v4
         with:
-          name: jarvis-windows-x64
-          path: dist/jarvis.exe
+          name: JARVIS-Windows-x64
+          path: JARVIS-Windows-x64.zip
