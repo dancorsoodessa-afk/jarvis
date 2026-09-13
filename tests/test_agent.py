@@ -15,7 +15,6 @@ from agent.tools.registry import ConfirmationRequired, ToolRegistry
 
 class EchoProvider:
     name = "echo"
-
     def generate(self, prompt: str) -> str:
         return f"echo:{prompt}"
 
@@ -54,11 +53,9 @@ class TestAgent(unittest.TestCase):
     def test_confirmation_flow(self):
         agent = self.make_agent()
         agent.tools.register("wipe", lambda: "wiped", confirm=True)
-
         ask = agent.handle("/wipe")
         self.assertTrue(ask.needs_confirmation)
         self.assertNotIn("wiped", ask.text)
-
         done = agent.handle("да")
         self.assertEqual(done.text, "wiped")
         self.assertEqual(done.tool_used, "wipe")
@@ -84,18 +81,17 @@ class TestLocalVulkan(unittest.TestCase):
 
 
 class TestSettings(unittest.TestCase):
-    def test_local_is_opt_in_by_default(self):
-        self.assertFalse(Settings.from_env().use_local)
-
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_free_provider_is_default(self):
+        settings = Settings.from_env()
+        self.assertEqual(settings.provider, "openai-compatible")
+        self.assertFalse(settings.use_local)
 
 
 class TestOpenAIChatProvider(unittest.TestCase):
     def _provider(self, handler, **kwargs):
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer
+        from agent.providers.openai_chat import OpenAIChatProvider
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
@@ -104,59 +100,53 @@ class TestOpenAIChatProvider(unittest.TestCase):
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(body)
-
             def log_message(self, *a):
                 pass
 
         server = HTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.handle_request, daemon=True).start()
         self.addCleanup(server.server_close)
-        from agent.providers.cloud import OpenAIChatProvider
-        return OpenAIChatProvider(
-            url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
-            api_key="test-key", model="test-model", **kwargs)
+        return OpenAIChatProvider(url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions", api_key="test-key", model="test-model", **kwargs)
 
     def test_generate_parses_reply(self):
-        import json as _json
         def handler(body):
-            req = _json.loads(body)
+            req = json.loads(body)
             self.assertEqual(req["model"], "test-model")
             self.assertEqual(req["messages"][-1]["role"], "user")
-            return _json.dumps(
-                {"choices": [{"message": {"role": "assistant", "content": "Привет!"}}]}
-            ).encode()
+            return json.dumps({"choices": [{"message": {"role": "assistant", "content": "Привет!"}}]}).encode()
         p = self._provider(handler)
         self.assertEqual(p.generate("тест"), "Привет!")
         self.assertEqual(len(p.history), 2)
 
     def test_error_raises_runtime(self):
-        from agent.providers.cloud import OpenAIChatProvider
+        from agent.providers.openai_chat import OpenAIChatProvider
         p = OpenAIChatProvider(url="", model="m")
+        with self.assertRaises(RuntimeError):
+            p.generate("hi")
+
+    def test_no_model_raises_runtime(self):
+        from agent.providers.openai_chat import OpenAIChatProvider
+        p = OpenAIChatProvider(url="http://127.0.0.1:1/v1", model="")
         with self.assertRaises(RuntimeError):
             p.generate("hi")
 
 
 class TestFunctionCalling(unittest.TestCase):
-    """Full ReAct loop: model asks for a tool, gets the result, answers."""
-
     def _provider(self, responses):
         import threading
-        import json as _json
         from http.server import BaseHTTPRequestHandler, HTTPServer
-        from agent.providers.cloud import OpenAIChatProvider
-
+        from agent.providers.openai_chat import OpenAIChatProvider
         calls = {"n": 0}
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 i = min(calls["n"], len(responses) - 1)
                 calls["n"] += 1
-                body = responses[i]
+                self.rfile.read(int(self.headers["Content-Length"]))
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
-                self.wfile.write(_json.dumps(body).encode())
-
+                self.wfile.write(json.dumps(responses[i]).encode())
             def log_message(self, *a):
                 pass
 
@@ -164,73 +154,47 @@ class TestFunctionCalling(unittest.TestCase):
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
-        p = OpenAIChatProvider(
-            url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
-            api_key="k", model="m")
-        return p
+        return OpenAIChatProvider(url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions", api_key="k", model="m")
 
     def test_react_loop_executes_tool(self):
-        tool_call = {"choices": [{"message": {
-            "role": "assistant", "content": "",
-            "tool_calls": [{"id": "c1", "type": "function", "function": {
-                "name": "double", "arguments": "{\"n\": \"21\"}"}}],
-        }}]}
-        final = {"choices": [{"message": {
-            "role": "assistant", "content": "Ответ: 42"}}]}
+        tool_call = {"choices": [{"message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "double", "arguments": "{\"n\": \"21\"}"}}]}}]}
+        final = {"choices": [{"message": {"role": "assistant", "content": "Ответ: 42"}}]}
         p = self._provider([tool_call, final])
-
         registry = ToolRegistry()
-        registry.register("double", lambda n: int(n) * 2,
-                          description="Удвоить число",
-                          parameters={"n": "число"})
+        registry.register("double", lambda n: int(n) * 2, description="Удвоить число", parameters={"n": "число"})
         agent = JarvisAgent(p, tools=registry)
         result = agent.handle("удвой 21")
         self.assertEqual(result.text, "Ответ: 42")
         self.assertEqual(p.history[-1]["content"], "Ответ: 42")
 
     def test_specs_sent_to_api(self):
-        import json as _json
         seen = {}
-        def handler_factory(out):
-            def handler(body):
-                out.update(_json.loads(body))
-                return _json.dumps(
-                    {"choices": [{"message": {"role": "assistant", "content": "ok"}}]}
-                ).encode()
-            return handler
-
+        def handler(body):
+            seen.update(json.loads(body))
+            return json.dumps({"choices": [{"message": {"role": "assistant", "content": "ok"}}]}).encode()
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer
-        from agent.providers.cloud import OpenAIChatProvider
-        payload = {}
-        holder = {"handler": None}
-
+        from agent.providers.openai_chat import OpenAIChatProvider
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
-                holder["handler"](self.rfile.read(int(self.headers["Content-Length"])))
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                response = handler(body)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
-                self.wfile.write(_json.dumps(
-                    {"choices": [{"message": {"content": "ok"}}]}).encode())
-
+                self.wfile.write(response)
             def log_message(self, *a):
                 pass
-
         server = HTTPServer(("127.0.0.1", 0), Handler)
-        holder["handler"] = handler_factory(payload)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
-
         registry = ToolRegistry()
-        registry.register("double", lambda n: n * 2,
-                          description="Удвоить", parameters={"n": "число"})
-        p = OpenAIChatProvider(
-            url=f"http://127.0.0.1:{server.server_port}/v1", model="m")
+        registry.register("double", lambda n: n * 2, description="Удвоить", parameters={"n": "число"})
+        p = OpenAIChatProvider(url=f"http://127.0.0.1:{server.server_port}/v1", model="m")
         p.tool_executor = lambda name, args: "x"
         p.generate("hi", tools=registry.specs())
-        self.assertEqual(payload["tools"][0]["function"]["name"], "double")
+        self.assertEqual(seen["tools"][0]["function"]["name"], "double")
 
 
 class TestTTS(unittest.TestCase):
@@ -265,7 +229,7 @@ class TestTTS(unittest.TestCase):
 
     def test_say_tool_registered(self):
         from agent.runtime import build_agent
-        agent = build_agent()
+        agent = build_agent(Settings(provider="openai-compatible", chat_url="http://127.0.0.1:1/v1", chat_model="m"))
         self.assertIn("say", agent.tools.names())
         spec = agent.tools.spec("say")
         self.assertEqual(spec["function"]["name"], "say")
@@ -274,19 +238,12 @@ class TestTTS(unittest.TestCase):
 
 class TestStreamingIPC(unittest.TestCase):
     def test_sse_stream_parses_deltas_and_content(self):
-        """Provider-level: mock SSE server, check deltas emitted + content."""
-        import json as _json
         import threading
-        import io as _io
         from http.server import BaseHTTPRequestHandler, HTTPServer
-        from agent.providers.cloud import OpenAIChatProvider
-
-        sse = (
-            'data: {"choices":[{"delta":{"content":"При"}}]}\n\n'
-            'data: {"choices":[{"delta":{"content":"вет"}}]}\n\n'
-            "data: [DONE]\n\n"
-        )
-
+        from agent.providers.openai_chat import OpenAIChatProvider
+        sse = ('data: {"choices":[{"delta":{"content":"При"}}]}\n\n'
+               'data: {"choices":[{"delta":{"content":"вет"}}]}\n\n'
+               'data: [DONE]\n\n')
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 self.rfile.read(int(self.headers["Content-Length"]))
@@ -294,18 +251,13 @@ class TestStreamingIPC(unittest.TestCase):
                 self.send_header("Content-Type", "text/event-stream")
                 self.end_headers()
                 self.wfile.write(sse.encode())
-
             def log_message(self, *a):
                 pass
-
         server = HTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
-
-        p = OpenAIChatProvider(
-            url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
-            api_key="k", model="m")
+        p = OpenAIChatProvider(url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions", api_key="k", model="m")
         deltas = []
         p.on_delta = deltas.append
         reply = p.generate("hi", tools=[{"type": "function", "function": {"name": "x"}}])
@@ -313,12 +265,8 @@ class TestStreamingIPC(unittest.TestCase):
         self.assertEqual(deltas, ["При", "вет"])
 
     def test_ipc_emits_delta_events(self):
-        """IPC-level: agent with a provider whose on_delta is called."""
-        import json as _json
-        import io as _io
+        import io
         from agent import ipc
-        from agent.core import JarvisAgent
-
         class StreamingEcho:
             name = "stream"
             def __init__(self):
@@ -329,13 +277,11 @@ class TestStreamingIPC(unittest.TestCase):
                     for word in ("один ", "два"):
                         self.on_delta(word)
                 return "один два"
-
         agent = JarvisAgent(StreamingEcho())
-        out = _io.StringIO()
-        inp = _io.StringIO('{"id": 1, "type": "message", "text": "привет"}\n')
+        out = io.StringIO()
+        inp = io.StringIO('{"id": 1, "type": "message", "text": "привет"}\n')
         ipc.serve_stream(agent, inp, out)
-        lines = [_json.loads(l) for l in out.getvalue().splitlines()]
-        self.assertEqual([l["type"] for l in lines],
-                         ["delta", "delta", "message"])
+        lines = [json.loads(l) for l in out.getvalue().splitlines()]
+        self.assertEqual([l["type"] for l in lines], ["delta", "delta", "message"])
         self.assertEqual(lines[0]["text"], "один ")
         self.assertEqual(lines[-1]["text"], "один два")
