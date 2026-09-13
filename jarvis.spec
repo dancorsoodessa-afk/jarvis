@@ -1,15 +1,19 @@
-# PyInstaller spec for jarvis.exe
-# Build: pyinstaller jarvis.spec
-from PyInstaller.utils.hooks import collect_submodules
-
-hiddenimports = collect_submodules("agent") + [
+# PyInstaller spec for the JARVIS desktop command center.
+# The desktop build is the primary Windows EXE.
+hiddenimports = [
+    "torch",
+    "torch._C",
+    "numpy",
     "pycaw",
     "pycaw.pycaw",
     "comtypes",
+    "sounddevice",
+    "speech_recognition",
+    "keyring.backends.Windows",
 ]
 
 a = Analysis(
-    ["jarvis_cli.py"],
+    ["jarvis_desktop.py"],
     pathex=["."],
     binaries=[],
     datas=[("docs", "docs")],
@@ -20,7 +24,6 @@ a = Analysis(
     noarchive=False,
 )
 pyz = PYZ(a.pure)
-
 exe = EXE(
     pyz,
     a.scripts,
@@ -31,6 +34,6 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=False,
-    console=True,
+    console=False,
     icon=None,
 )
