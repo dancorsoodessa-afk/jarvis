@@ -25,6 +25,9 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         provider = os.environ.get("JARVIS_PROVIDER", "openai-compatible").strip().lower()
+        provider = provider.replace("_", "-").replace(" ", "-")
+        if provider in {"openai", "openai-compatible-api", "openai-compatible-client"}:
+            provider = "openai-compatible"
         if os.environ.get("JARVIS_LOCAL") == "1":
             provider = "local-vulkan"
         return cls(
