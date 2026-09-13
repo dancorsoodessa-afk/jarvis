@@ -9,7 +9,9 @@ from .openai_chat import DEFAULT_SYSTEM_PROMPT, OpenAIChatProvider
 class CloudRouterProvider:
     """Route requests to the three selected assistants."""
 
-    name = "главный диспетчер"
+    # Keep the provider-compatible public name expected by existing clients;
+    # the actual route is exposed separately through ``last_route``.
+    name = "openai-chat"
 
     def __init__(self, url: str, api_key: str, primary_model: str,
                  code_model: str, fast_model: str,
@@ -47,12 +49,11 @@ class CloudRouterProvider:
         )
 
     def _models_for_route(self, route: str) -> list[str]:
-        primary = {
+        return [{
             "код": self.code_model,
             "быстрый": self.fast_model,
             "главный": self.primary_model,
-        }[route]
-        return [primary]
+        }[route]][:1]
 
     def generate(self, prompt: str, tools=None, max_steps: int = 4) -> str:
         route = self.classify(prompt)
