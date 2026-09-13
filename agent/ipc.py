@@ -21,6 +21,8 @@ class _DeltaEmitter:
 def handle_request(agent: JarvisAgent, req: dict) -> dict:
     req_id = req.get("id")
     kind = req.get("type", "message")
+    if kind == "ping":
+        return {"id": req_id, "type": "pong"}
     if kind == "tools":
         return {"id": req_id, "type": "tools", "tools": list(agent.tools.names())}
     if kind == "message":
