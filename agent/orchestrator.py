@@ -1,10 +1,4 @@
-"""JARVIS universal orchestration layer.
-
-This module defines the separation between the dispatcher, the local Core,
-cloud/vision/code/web specialists, MCP tools, memory, planner loop, safety
-and the visual/voice surfaces. It deliberately does not hard-code an Ollama
-model tag: the selected local Core model is configuration data.
-"""
+"""Unified JARVIS orchestration layer."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -54,13 +48,7 @@ class TaskPlan:
 
 @dataclass
 class Orchestrator:
-    """Deterministic control plane around model providers.
-
-    The orchestrator does not replace the LLM. It decides which specialist is
-    appropriate, keeps task state, applies the safety gate, and exposes hooks
-    for the future MCP/web/vision/code/3D implementations.
-    """
-
+    """Single control plane connecting all JARVIS capabilities."""
     core: Any = None
     cloud: Any = None
     vision: Any = None
@@ -72,19 +60,26 @@ class Orchestrator:
     visual: Any = None
     voice: Any = None
     confirmation: Callable[[str], bool] | None = None
+    max_loop_steps: int = 8
+    last_role: Role = Role.CORE
+    last_action: str = ""
 
     def classify(self, request: str) -> Role:
         text = request.lower()
-        if any(x in text for x in ("фото", "изображен", "картин", "скриншот", "видео")):
+        if any(x in text for x in ("фото", "изображен", "картин", "скриншот", "видео", "что на картинке")):
             return Role.VISION
-        if any(x in text for x in ("код", "программа", "python", "исправь", "напиши скрипт")):
+        if any(x in text for x in ("код", "программа", "python", "javascript", "git", "репозитор", "исправь")):
             return Role.CODE
-        if any(x in text for x in ("найди в интернете", "поищи в интернете", "сайт", "новости", "веб")):
+        if any(x in text for x in ("mcp", "инструмент сервера", "mcp-сервер")):
+            return Role.MCP
+        if any(x in text for x in ("найди в интернете", "поищи в интернете", "сайт", "новости", "веб", "погода")):
             return Role.WEB
         return Role.CORE
 
     def plan(self, goal: str, steps: list[str] | None = None) -> TaskPlan:
-        return TaskPlan(goal=goal, steps=list(steps or []), status="готов к выполнению")
+        if steps is None:
+            steps = ["понять задачу", "выполнить действие", "проверить результат"]
+        return TaskPlan(goal=goal, steps=list(steps), status="готов к выполнению")
 
     def risk(self, action: str) -> ActionRisk:
         return DANGEROUS_ACTIONS.get(action, ActionRisk.SAFE)
@@ -97,20 +92,44 @@ class Orchestrator:
             return False
         return bool(self.confirmation and self.confirmation(action))
 
-    def execute(self, request: str, handler: Callable[[str], str]) -> str:
-        """Execute a prepared task through the selected handler.
-
-        Higher-level planners may call this repeatedly after each verification
-        step. The handler itself remains responsible for model/tool execution.
-        """
-        role = self.classify(request)
-        target = {
+    def target(self, role: Role) -> Any:
+        return {
             Role.CORE: self.core,
             Role.CLOUD: self.cloud,
             Role.VISION: self.vision,
             Role.CODE: self.code,
             Role.WEB: self.web,
             Role.MCP: self.mcp,
+            Role.MEMORY: self.memory,
+            Role.LOOP: self.loop,
+            Role.VISUAL: self.visual,
+            Role.VOICE: self.voice,
         }.get(role)
-        _ = target  # provider selection is intentionally injectable
-        return handler(request)
+
+    def execute(self, request: str, handler: Callable[[str], str] | None = None) -> str:
+        role = self.classify(request)
+        self.last_role = role
+        self.last_action = request
+        if handler is not None:
+            return handler(request)
+        target = self.target(role)
+        if target is None:
+            raise RuntimeError(f"Модуль «{role.value}» не подключён")
+        method = getattr(target, "execute", None) or getattr(target, "handle", None)
+        if method is None:
+            raise RuntimeError(f"Модуль «{role.value}» не имеет метода выполнения")
+        return str(method(request))
+
+    def run_loop(self, goal: str, step: Callable[[str, int], tuple[bool, str]]) -> list[str]:
+        """Run bounded plan/act/check iterations; never loops indefinitely."""
+        plan = self.plan(goal)
+        outputs: list[str] = []
+        for index, item in enumerate(plan.steps[: self.max_loop_steps], 1):
+            done, output = step(item, index)
+            outputs.append(str(output))
+            if done:
+                plan.status = "завершён"
+                break
+        else:
+            plan.status = "остановлен по лимиту шагов"
+        return outputs
