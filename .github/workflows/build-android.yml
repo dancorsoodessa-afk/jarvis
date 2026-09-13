@@ -24,7 +24,16 @@ jobs:
         working-directory: ui
         run: |
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
-          rm -f test/widget_test.dart
+          rm -rf test
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('pubspec.yaml')
+          text = p.read_text(encoding='utf-8')
+          if 'flutter_lints:' not in text:
+              text = text.replace('dev_dependencies:\n', 'dev_dependencies:\n  flutter_lints: ^6.0.0\n')
+              p.write_text(text, encoding='utf-8')
+          PY
+          test ! -e test/widget_test.dart
 
       - name: Allow network connection for Android client
         working-directory: ui
