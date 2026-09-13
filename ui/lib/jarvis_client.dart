@@ -42,7 +42,10 @@ class JarvisIpc {
 
   Stream<Map<int, String>> get deltas => _deltaController.stream;
   int? get activeId => _activeId;
-  Stream<String> partials() => deltas.map((m) => m[activeId]).whereType<String>();
+  Stream<String> partials() => deltas
+      .map((m) => m[activeId])
+      .where((value) => value != null)
+      .cast<String>();
 
   void _ensureListening() {
     if (_listening) return;
