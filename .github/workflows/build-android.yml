@@ -2,7 +2,7 @@ name: Build JARVIS Android APK
 
 on:
   push:
-    branches: [foundation]
+    branches: [foundation, standalone-pc-android]
   pull_request:
     branches: [foundation]
   workflow_dispatch:
@@ -35,7 +35,7 @@ jobs:
           PY
           test ! -e test/widget_test.dart
 
-      - name: Allow network connection for Android client
+      - name: Allow internet access for standalone AI providers
         working-directory: ui
         run: |
           python3 - <<'PY'
