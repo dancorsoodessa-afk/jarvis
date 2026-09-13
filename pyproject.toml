@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "jarvis-agent"
 version = "0.1.0"
-description = "Personal AI agent / desktop assistant for Windows x64 (cloud-first, local llama.cpp + Vulkan opt-in)"
+description = "Personal AI agent / desktop assistant for Windows x64 (free OpenAI-compatible + local llama.cpp/Vulkan providers)"
 authors = ["Jarvis Developer"]
 license = "MIT"
 readme = "README.md"
@@ -17,15 +17,12 @@ pycaw = { version = ">=20240210", optional = true, markers = "sys_platform == 'w
 sounddevice = { version = ">=0.5.0", optional = true }
 numpy = { version = ">=1.24", optional = true }
 SpeechRecognition = { version = ">=3.10.0", optional = true }
-# Windows Credential Manager for the cloud API key
-keyring = { version = ">=25.0", optional = true }
 
 [tool.poetry.extras]
 screenshot = ["Pillow"]
 windows-audio = ["pycaw"]
 voice = ["sounddevice", "numpy", "SpeechRecognition"]
-secure-settings = ["keyring"]
-all = ["Pillow", "pycaw", "sounddevice", "numpy", "SpeechRecognition", "keyring"]
+all = ["Pillow", "pycaw", "sounddevice", "numpy", "SpeechRecognition"]
 
 [tool.poetry.scripts]
 jarvis = "agent.__main__:main"
