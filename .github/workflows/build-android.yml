@@ -1,0 +1,58 @@
+name: Build JARVIS Android APK
+
+on:
+  push:
+    branches: [foundation]
+  pull_request:
+    branches: [foundation]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android platform
+        working-directory: ui
+        run: flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
+
+      - name: Allow network connection for Android client
+        working-directory: ui
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          text = p.read_text(encoding='utf-8')
+          permission = '    <uses-permission android:name="android.permission.INTERNET" />\n'
+          if 'android.permission.INTERNET' not in text:
+              text = text.replace('<manifest ', '<manifest ', 1)
+              pos = text.find('>') + 1
+              text = text[:pos] + '\n' + permission + text[pos:]
+              p.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Get dependencies
+        working-directory: ui
+        run: flutter pub get
+
+      - name: Analyze Dart code
+        working-directory: ui
+        run: flutter analyze
+
+      - name: Build release APK
+        working-directory: ui
+        run: flutter build apk --release
+
+      - name: Upload JARVIS APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-android-apk
+          path: ui/build/app/outputs/flutter-apk/app-release.apk
