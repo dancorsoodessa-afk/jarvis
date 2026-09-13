@@ -1,4 +1,4 @@
-"""Native Windows desktop UI for JARVIS."""
+"""Native Windows desktop UI for JARVIS using free/local providers."""
 
 import json
 import os
@@ -20,11 +20,10 @@ TEXT = "#e7f6ff"
 MUTED = "#7890a3"
 GREEN = "#55e39b"
 RED = "#ff647c"
-SERVICE = "JARVIS Desktop"
 APP_DIR = Path(os.environ.get("APPDATA", Path.home())) / "JARVIS"
 SETTINGS_FILE = APP_DIR / "settings.json"
-DEFAULT_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_PROVIDER = "openai-compatible"
+DEFAULT_URL = "http://127.0.0.1:11434/v1/chat/completions"
 
 
 def _load_saved_settings() -> dict:
@@ -32,29 +31,6 @@ def _load_saved_settings() -> dict:
         return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-
-
-def _load_key() -> str:
-    try:
-        import keyring
-        return keyring.get_password(SERVICE, "cloud_api_key") or ""
-    except Exception:
-        return ""
-
-
-def _save_key(value: str) -> None:
-    try:
-        import keyring
-        if value:
-            keyring.set_password(SERVICE, "cloud_api_key", value)
-        else:
-            try:
-                keyring.delete_password(SERVICE, "cloud_api_key")
-            except Exception:
-                pass
-    except Exception:
-        if value:
-            os.environ["JARVIS_CLOUD_KEY"] = value
 
 
 class JarvisDesktop(tk.Tk):
@@ -68,7 +44,6 @@ class JarvisDesktop(tk.Tk):
         self.busy = False
         self.events = queue.Queue()
         self.tool_names = []
-        self._recording = False
         self._voice_loop_running = False
         self._apply_saved_settings()
         self._build_style()
@@ -79,13 +54,13 @@ class JarvisDesktop(tk.Tk):
 
     def _apply_saved_settings(self):
         saved = _load_saved_settings()
-        url = saved.get("url") or os.environ.get("JARVIS_CLOUD_URL") or DEFAULT_URL
-        model = saved.get("model") or os.environ.get("JARVIS_CLOUD_MODEL") or DEFAULT_MODEL
-        key = _load_key() or os.environ.get("JARVIS_CLOUD_KEY", "")
-        os.environ["JARVIS_CLOUD_URL"] = url
-        os.environ["JARVIS_CLOUD_MODEL"] = model
-        if key:
-            os.environ["JARVIS_CLOUD_KEY"] = key
+        provider = saved.get("provider") or os.environ.get("JARVIS_PROVIDER") or DEFAULT_PROVIDER
+        url = saved.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL
+        model = saved.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or ""
+        os.environ["JARVIS_PROVIDER"] = provider
+        os.environ["JARVIS_CHAT_URL"] = url
+        if model:
+            os.environ["JARVIS_CHAT_MODEL"] = model
 
     def _build_style(self):
         style = ttk.Style(self)
@@ -150,32 +125,24 @@ class JarvisDesktop(tk.Tk):
 
     def _start_agent(self):
         def work():
-            try: self.events.put(("ready", build_agent(), None))
+            try: self.events.put(("ready", build_agent()))
             except Exception as exc: self.events.put(("agent_error", str(exc)))
         threading.Thread(target=work, daemon=True).start()
 
     def _start_voice_loop(self):
-        if self._voice_loop_running or not voice.available():
-            return
-        self._voice_loop_running = True
-        self.voice_button.config(text="🎙 АВТО СЛУШАЮ")
-
+        if self._voice_loop_running or not voice.available(): return
+        self._voice_loop_running = True; self.voice_button.config(text="🎙 АВТО СЛУШАЮ")
         def on_speech_start():
             if tts.is_playing():
-                tts.stop()
-                self.events.put(("voice_status", "Перебивание: голос JARVIS остановлен, слушаю вас."))
-
+                tts.stop(); self.events.put(("voice_status", "Перебивание: голос JARVIS остановлен, слушаю вас."))
         def work():
             while self._voice_loop_running:
                 try:
                     command = voice.listen_for_wake_and_command(on_speech_start=on_speech_start)
-                    if command and self._voice_loop_running:
-                        self.events.put(("voice_text", command))
+                    if command and self._voice_loop_running: self.events.put(("voice_text", command))
                 except Exception as exc:
-                    self.events.put(("voice_error", str(exc)))
-                    break
+                    self.events.put(("voice_error", str(exc))); break
             self._voice_loop_running = False
-
         threading.Thread(target=work, daemon=True).start()
 
     def _drain_events(self):
@@ -188,33 +155,25 @@ class JarvisDesktop(tk.Tk):
                     self.metrics["Core"].config(text="ONLINE", fg=GREEN); self.metrics["AI Provider"].config(text=provider); self.metrics["Memory"].config(text="ACTIVE", fg=GREEN); self.metrics["Tools"].config(text=str(len(self.tool_names)))
                     voice_ok = voice.available(); tts_engine = tts.current_engine()
                     self.metrics["Voice"].config(text=("STT + " + tts_engine.upper()) if voice_ok else tts_engine.upper(), fg=GREEN if tts_engine != "off" else RED)
-                    self.tools_label.config(text="\n".join("• /" + n for n in self.tool_names)); self._append("JARVIS", "Система готова. Автоматическое слушание по слову «Джарвис» включено.")
-                    if voice_ok:
-                        self._start_voice_loop()
+                    self.tools_label.config(text="\n".join("• /" + n for n in self.tool_names)); self._append("JARVIS", "Система готова.")
+                    if voice_ok: self._start_voice_loop()
                 elif kind == "reply":
-                    reply = event[1]
-                    self._append("JARVIS", reply); self.busy = False; self.send_button.config(state="normal"); self.status.config(text="● ONLINE", fg=GREEN)
+                    reply = event[1]; self._append("JARVIS", reply); self.busy = False; self.send_button.config(state="normal"); self.status.config(text="● ONLINE", fg=GREEN)
                     threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
                 elif kind == "voice_text":
-                    if self.busy:
-                        continue
+                    if self.busy: continue
                     self.input.delete(0, "end"); self.input.insert(0, event[1]); self.send(event[1])
-                elif kind == "voice_status":
-                    self._append("VOICE", event[1])
-                elif kind == "voice_error":
-                    self._append("VOICE", "Ошибка: " + event[1])
-                elif kind == "tts_error":
-                    self._append("VOICE", "Ошибка TTS: " + event[1]); self.metrics["Voice"].config(fg=RED)
+                elif kind == "voice_status": self._append("VOICE", event[1])
+                elif kind == "voice_error": self._append("VOICE", "Ошибка: " + event[1])
+                elif kind == "tts_error": self._append("VOICE", "Ошибка TTS: " + event[1]); self.metrics["Voice"].config(fg=RED)
                 elif kind == "agent_error":
                     self.status.config(text="● ERROR", fg=RED); self._append("SYSTEM", "Не удалось запустить ядро: " + event[1]); self.busy = False; self.send_button.config(state="normal")
         except queue.Empty: pass
         self.after(80, self._drain_events)
 
-    def _speak_reply(self, text: str):
-        try:
-            tts.speak_and_play(text)
-        except Exception as exc:
-            self.events.put(("tts_error", str(exc)))
+    def _speak_reply(self, text):
+        try: tts.speak_and_play(text)
+        except Exception as exc: self.events.put(("tts_error", str(exc)))
 
     def _append(self, who, text):
         self.chat.configure(state="normal"); self.chat.insert("end", f"{who}\n", "who"); self.chat.insert("end", text + "\n\n", "body")
@@ -232,39 +191,46 @@ class JarvisDesktop(tk.Tk):
 
     def start_voice(self):
         if self._voice_loop_running:
-            self._append("VOICE", "Автоматическое слушание уже включено. Скажите «Джарвис» и продолжайте команду.")
-            return
+            self._append("VOICE", "Автоматическое слушание уже включено."); return
         self._start_voice_loop()
-        if not self._voice_loop_running:
-            self._append("VOICE", "Голосовой ввод недоступен. Пересоберите приложение из актуальной foundation-ветки.")
+        if not self._voice_loop_running: self._append("VOICE", "Голосовой ввод недоступен.")
 
     def show_system(self): self.send("/status")
     def show_memory(self): self.send("/recall")
     def show_tools(self): self._append("JARVIS", "Доступные инструменты:\n" + "\n".join("• /" + n for n in self.tool_names))
 
     def show_settings(self):
-        win = tk.Toplevel(self); win.title("JARVIS — Настройки"); win.configure(bg=PANEL); win.geometry("620x400"); win.transient(self); win.grab_set()
-        fields = [("Cloud URL", "url", os.environ.get("JARVIS_CLOUD_URL", DEFAULT_URL)), ("Cloud model", "model", os.environ.get("JARVIS_CLOUD_MODEL", DEFAULT_MODEL)), ("Cloud key", "key", os.environ.get("JARVIS_CLOUD_KEY", ""))]; entries = {}
+        win = tk.Toplevel(self); win.title("JARVIS — Настройки"); win.configure(bg=PANEL); win.geometry("700x360"); win.transient(self); win.grab_set()
+        saved = _load_saved_settings()
+        fields = [
+            ("Провайдер", "provider", os.environ.get("JARVIS_PROVIDER", saved.get("provider", DEFAULT_PROVIDER))),
+            ("OpenAI-compatible URL", "url", os.environ.get("JARVIS_CHAT_URL", saved.get("url", DEFAULT_URL))),
+            ("Модель", "model", os.environ.get("JARVIS_CHAT_MODEL", saved.get("model", ""))),
+        ]
+        entries = {}
         for i, (label, name, value) in enumerate(fields):
             tk.Label(win, text=label, bg=PANEL, fg=MUTED).grid(row=i, column=0, sticky="w", padx=20, pady=(20 if i == 0 else 10, 4))
-            entry = tk.Entry(win, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", width=52, show="•" if name == "key" else ""); entry.insert(0, value); entry.grid(row=i, column=1, padx=20, pady=(20 if i == 0 else 10, 4), ipady=7); entries[name] = entry
-        tk.Label(win, text="URL и модель сохраняются в %APPDATA%\\JARVIS. API-ключ хранится в Windows Credential Manager.", bg=PANEL, fg=MUTED, wraplength=560, justify="left").grid(row=3, column=0, columnspan=2, padx=20, pady=14)
+            entry = tk.Entry(win, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", width=58); entry.insert(0, value); entry.grid(row=i, column=1, padx=20, pady=(20 if i == 0 else 10, 4), ipady=7); entries[name] = entry
+        tk.Label(win, text="Только бесплатные/локальные провайдеры. Ключ API не требуется для локальных серверов Ollama, llama.cpp или LM Studio.", bg=PANEL, fg=MUTED, wraplength=640, justify="left").grid(row=3, column=0, columnspan=2, padx=20, pady=14)
         def apply():
-            url = entries["url"].get().strip() or DEFAULT_URL; model = entries["model"].get().strip() or DEFAULT_MODEL; key = entries["key"].get().strip()
-            os.environ["JARVIS_CLOUD_URL"] = url; os.environ["JARVIS_CLOUD_MODEL"] = model
-            if key: os.environ["JARVIS_CLOUD_KEY"] = key
-            elif "JARVIS_CLOUD_KEY" in os.environ: del os.environ["JARVIS_CLOUD_KEY"]
+            provider = entries["provider"].get().strip() or DEFAULT_PROVIDER
+            url = entries["url"].get().strip() or DEFAULT_URL
+            model = entries["model"].get().strip()
+            os.environ["JARVIS_PROVIDER"] = provider; os.environ["JARVIS_CHAT_URL"] = url
+            if model: os.environ["JARVIS_CHAT_MODEL"] = model
+            else: os.environ.pop("JARVIS_CHAT_MODEL", None)
             try:
-                APP_DIR.mkdir(parents=True, exist_ok=True); SETTINGS_FILE.write_text(json.dumps({"url": url, "model": model}, ensure_ascii=False, indent=2), encoding="utf-8"); _save_key(key)
-            except OSError as exc: messagebox.showerror("JARVIS", f"Не удалось сохранить настройки: {exc}", parent=win); return
+                APP_DIR.mkdir(parents=True, exist_ok=True)
+                SETTINGS_FILE.write_text(json.dumps({"provider": provider, "url": url, "model": model}, ensure_ascii=False, indent=2), encoding="utf-8")
+            except OSError as exc:
+                messagebox.showerror("JARVIS", f"Не удалось сохранить настройки: {exc}", parent=win); return
             win.destroy(); self._reload_agent()
         ttk.Button(win, text="Сохранить и подключить AI", style="Accent.TButton", command=apply).grid(row=4, column=0, columnspan=2, pady=18, ipadx=12)
 
     def _reload_agent(self): self.status.config(text="● RESTARTING", fg=CYAN); self.agent = None; self._start_agent()
+
     def _close(self):
-        self._voice_loop_running = False
-        tts.stop()
-        self.destroy()
+        self._voice_loop_running = False; tts.stop(); self.destroy()
 
 
 if __name__ == "__main__":
