@@ -21,11 +21,13 @@ class AgentResult:
 
 class JarvisAgent:
     def __init__(self, provider: AIProvider, tools: ToolRegistry | None = None,
-                 memory: MemoryStore | None = None, reminders=None):
+                 memory: MemoryStore | None = None, reminders=None,
+                 orchestrator=None):
         self.provider = provider
         self.tools = tools or ToolRegistry()
         self.memory = memory
         self.reminders = reminders
+        self.orchestrator = orchestrator
         self._pending_tool: tuple[str, tuple, dict] | None = None
         self.on_exchange = None
         self.context_hook = None
@@ -64,8 +66,7 @@ class JarvisAgent:
                 return AgentResult("Отменено.", self.provider.name)
             name, args, kwargs = self._pending_tool
             self._pending_tool = None
-            return self._run_tool(name, remember=text,
-                                  confirmed=True, *args, **kwargs)
+            return self._run_tool(name, remember=text, confirmed=True, *args, **kwargs)
 
         if text.startswith("/"):
             return self._handle_tool_command(text)
@@ -75,6 +76,9 @@ class JarvisAgent:
                 self.context_hook(text)
             except Exception:
                 self.log.warning("context_hook failed", exc_info=True)
+        if self.orchestrator is not None:
+            role = self.orchestrator.classify(text)
+            self.log.info("Диспетчер: %s", role.value)
         generate = self.provider.generate
         try:
             if hasattr(self.provider, "tool_executor"):
@@ -87,7 +91,7 @@ class JarvisAgent:
             return AgentResult(f"Ошибка провайдера: {exc}", self.provider.name)
         self.log.info("Ответ модели (%s): %.120s", self.provider.name, reply)
         self._notify(text, reply)
-        return AgentResult(reply, self.provider.name)
+        return AgentResult(reply, getattr(self.provider, "last_route", self.provider.name))
 
     def _run_tool(self, name: str, *args, remember: str | None = None,
                   confirmed: bool = False, ask_confirmation: bool = True,
@@ -98,23 +102,20 @@ class JarvisAgent:
             if ask_confirmation:
                 self._pending_tool = (name, args, kwargs)
                 return AgentResult(
-                    f"Инструмент «{name}» требует подтверждения. Выполнить? (yes/да)",
+                    f"Инструмент «{name}» требует подтверждения. Выполнить? (да/нет)",
                     self.provider.name, tool_used=name, needs_confirmation=True,
                 )
             return AgentResult(
-                "Инструмент требует подтверждения пользователя. "
-                "Автоматически опасное действие не выполняю.",
+                "Инструмент требует подтверждения пользователя. Автоматически опасное действие не выполняю.",
                 self.provider.name, tool_used=name,
             )
         except KeyError:
             return AgentResult(
-                f"Неизвестный инструмент «{name}». "
-                f"Доступны: {', '.join(self.tools.names()) or '—'}",
+                f"Неизвестный инструмент «{name}». Доступны: {', '.join(self.tools.names()) or '—'}",
                 self.provider.name,
             )
         except (TypeError, ValueError, RuntimeError, OSError) as exc:
-            return AgentResult(f"Ошибка инструмента «{name}»: {exc}",
-                               self.provider.name, tool_used=name)
+            return AgentResult(f"Ошибка инструмента «{name}": {exc}", self.provider.name, tool_used=name)
         if remember is not None:
             self._remember(remember, str(output))
         return AgentResult(str(output), self.provider.name, tool_used=name)
@@ -136,11 +137,7 @@ class JarvisAgent:
         except ValueError:
             parts = text[1:].split()
         if not parts:
-            return AgentResult(
-                "Не указана команда. Доступные инструменты: "
-                f"{', '.join(self.tools.names()) or '—'}",
-                self.provider.name,
-            )
+            return AgentResult("Не указана команда. Доступные инструменты: " + (", ".join(self.tools.names()) or "—"), self.provider.name)
         name, args = parts[0], tuple(parts[1:])
         if name.lower() == "tools":
             names = self.tools.names()
