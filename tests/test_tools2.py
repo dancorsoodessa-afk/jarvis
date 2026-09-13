@@ -92,7 +92,7 @@ class TestRuntimeWiring(unittest.TestCase):
                         "set_volume", "screenshot", "ps", "kill",
                         "clip_get", "clip_set", "remind", "reminders"}
             self.assertTrue(expected <= names, expected - names)
-            self.assertEqual(agent.provider.name, "cloud")
+            self.assertEqual(agent.provider.name, "openai-chat")
 
 
 if __name__ == "__main__":
