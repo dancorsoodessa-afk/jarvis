@@ -1,7 +1,7 @@
 """Entry points:
   python -m agent            interactive CLI
-  python -m agent --ipc      JSON-lines over stdin/stdout (for Flutter UI)
-  python -m agent --ipc-tcp [port]  JSON-lines over TCP (remote UI)
+  python -m agent --ipc      JSON-lines over stdin/stdout (desktop UI)
+  python -m agent --ipc-tcp [port] [host]  JSON-lines over TCP (Android/remote UI)
 """
 
 import sys
@@ -21,7 +21,8 @@ def main():
     if "--ipc-tcp" in args:
         i = args.index("--ipc-tcp")
         port = int(args[i + 1]) if i + 1 < len(args) else 8765
-        ipc.serve_tcp(agent, port=port)
+        host = args[i + 2] if i + 2 < len(args) else "127.0.0.1"
+        ipc.serve_tcp(agent, host=host, port=port)
         return
 
     if "--voice" in args:
