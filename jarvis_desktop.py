@@ -1,4 +1,4 @@
-"""JARVIS Windows desktop command center with a continuous neural-humanoid visual state engine."""
+"""JARVIS Windows desktop command center."""
 import json, math, os, queue, random, threading, tkinter as tk
 from pathlib import Path
 from tkinter import ttk
@@ -51,6 +51,7 @@ class JarvisDesktop(tk.Tk):
     def _apply_settings(self):
         s=load_settings(); os.environ["JARVIS_PROVIDER"]=s.get("provider") or os.environ.get("JARVIS_PROVIDER") or DEFAULT_PROVIDER; os.environ["JARVIS_CHAT_URL"]=s.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL
         if s.get("model") or os.environ.get("JARVIS_CHAT_MODEL"):os.environ["JARVIS_CHAT_MODEL"]=s.get("model") or os.environ["JARVIS_CHAT_MODEL"]
+        if s.get("api_key") is not None: os.environ["JARVIS_CHAT_KEY"]=s.get("api_key") or ""
     def _style(self):
         st=ttk.Style(self); st.theme_use("clam"); st.configure("TButton",background=PANEL2,foreground=TEXT,bordercolor=LINE,padding=(11,9),font=("Segoe UI",10)); st.map("TButton",background=[("active","#123044")]); st.configure("Accent.TButton",background="#103b4a",foreground=CYAN,bordercolor=CYAN)
     def _ui(self):
@@ -91,41 +92,42 @@ class JarvisDesktop(tk.Tk):
                 if k=="ready":
                     self.agent=e[1]; self.tool_names=list(self.agent.tools.names()); p=getattr(self.agent.provider,"name","unknown").upper(); self.metrics["Core"].config(text="ONLINE",fg=GREEN); self.metrics["AI Provider"].config(text=p,fg=GREEN); self.metrics["Memory"].config(text="ACTIVE",fg=GREEN); self.metrics["Tools"].config(text=str(len(self.tool_names)),fg=GREEN); ve=voice.available(); te=tts.current_engine(); self.metrics["Voice"].config(text=("STT + "+te.upper()) if ve else te.upper(),fg=GREEN if te!="off" else RED); self.hud.config(text="Нейросеть активна • "+p); self._append("JARVIS","Система готова. Нейронное ядро активно."); self._set_state("listening","Голосовой контур готов");
                     if ve:self._start_voice_loop()
+                elif k=="agent_error":self.metrics["Core"].config(text="ERROR",fg=RED); self._set_state("error",e[1]); self._append("ОШИБКА",e[1])
+                elif k=="voice_error":self.metrics["Voice"].config(text="ERROR",fg=RED); self._set_state("error",e[1]); self._append("ГОЛОС",e[1]); self.voice_button.config(text="🎙 ПОВТОРИТЬ")
                 elif k=="voice_text":self.input.delete(0,"end"); self.input.insert(0,e[1]); self.send(e[1])
-                elif k=="reply":
-                    reply=e[1]; self._append("JARVIS",reply); self.busy=False; self.send_button.config(state="normal"); self._set_state("speaking","Формирую и озвучиваю ответ"); threading.Thread(target=self._speak,args=(reply,),daemon=True).start()
-                elif k=="done_speaking":self._set_state("listening","Готов к следующей команде")
-                elif k=="agent_error":self.busy=False; self.send_button.config(state="normal"); self._append("СИСТЕМА","Ошибка запуска: "+e[1]); self._set_state("error",e[1])
-                elif k=="voice_error":self._append("ГОЛОС","Ошибка: "+e[1]); self._set_state("error",e[1])
-                elif k=="tts_error":self._append("ГОЛОС","Ошибка TTS: "+e[1]); self._set_state("error",e[1])
+                elif k=="reply":self._append("JARVIS",e[1]); self._set_state("speaking"); self.after(500,lambda:self._set_state("listening"))
+                elif k=="error":self._append("ОШИБКА",e[1]); self._set_state("error",e[1]); self.busy=False; self.send_button.config(state="normal")
         except queue.Empty:pass
         self.after(70,self._drain)
-    def _speak(self,text):
-        try:tts.speak_and_play(text)
-        except Exception as e:self.events.put(("tts_error",str(e)))
-        self.events.put(("done_speaking",))
     def _append(self,who,text):
-        self.chat.configure(state="normal"); self.chat.insert("end",who+"\n","who"); self.chat.insert("end",text+"\n\n","body"); self.chat.tag_configure("who",foreground=CYAN,font=("Segoe UI",9,"bold")); self.chat.tag_configure("body",foreground=TEXT); self.chat.see("end"); self.chat.configure(state="disabled")
+        self.chat.config(state="normal"); self.chat.insert("end",f"{who}: {text}\n\n"); self.chat.see("end"); self.chat.config(state="disabled")
     def send(self,text=None):
-        if text is None:text=self.input.get()
-        text=text.strip()
-        if not text or self.agent is None or self.busy:return
-        self.input.delete(0,"end"); self._append("ВЫ",text); self.busy=True; self.send_button.config(state="disabled"); self._set_state("thinking","Анализирую запрос")
+        text=text if text is not None else self.input.get().strip()
+        if not text or self.busy or self.agent is None:return
+        self.busy=True; self.send_button.config(state="disabled"); self._set_state("thinking","Обрабатываю запрос")
+        self._append("ВЫ",text); self.input.delete(0,"end")
         def work():
-            try:self.events.put(("reply",self.agent.handle(text).text))
-            except Exception as e:self.events.put(("reply","Ошибка: "+str(e)))
+            try:
+                self.agent.provider.tool_executor=lambda name,args:self.agent.tools.execute(name,args)
+                self.events.put(("reply",self.agent.ask(text)))
+            except Exception as e:self.events.put(("error",str(e)))
+            finally:self.busy=False
         threading.Thread(target=work,daemon=True).start()
     def start_voice(self):
-        if self._voice_loop_running:self._append("ГОЛОС","Режим слушания уже активен."); return
+        if not voice.available():self._set_state("error","Голосовой модуль недоступен: проверьте микрофон и зависимости."); return
         self._start_voice_loop()
-        if not self._voice_loop_running:self._append("ГОЛОС","Голосовой ввод недоступен.")
-    def show_tools(self):self._append("JARVIS","Инструменты:\n"+"\n".join("• /"+n for n in self.tool_names))
+    def show_tools(self):
+        win=tk.Toplevel(self); win.title("JARVIS — Инструменты"); win.geometry("620x500"); win.configure(bg=PANEL); tk.Label(win,text="ИНСТРУМЕНТЫ",bg=PANEL,fg=CYAN,font=("Segoe UI",15,"bold")).pack(anchor="w",padx=20,pady=15); tk.Listbox(win,bg=PANEL2,fg=TEXT,relief="flat",font=("Segoe UI",10)).pack(fill="both",expand=True,padx=20,pady=10); [win.winfo_children()[-1].insert("end",n) for n in self.tool_names]
     def show_settings(self):
-        win=tk.Toplevel(self); win.title("JARVIS — Настройки"); win.geometry("720x350"); win.configure(bg=PANEL); win.transient(self); win.grab_set(); s=load_settings(); fields=(("Провайдер","provider",os.environ.get("JARVIS_PROVIDER",DEFAULT_PROVIDER)),("URL","url",os.environ.get("JARVIS_CHAT_URL",DEFAULT_URL)),("Модель","model",os.environ.get("JARVIS_CHAT_MODEL",s.get("model","")))); ent={}
-        for i,(lab,key,val) in enumerate(fields):tk.Label(win,text=lab,bg=PANEL,fg=MUTED).grid(row=i,column=0,sticky="w",padx=20,pady=(20 if i==0 else 12)); ent[key]=tk.Entry(win,bg=PANEL2,fg=TEXT,insertbackground=CYAN,relief="flat"); ent[key].grid(row=i,column=1,sticky="ew",padx=20,pady=(20 if i==0 else 12),ipady=7); ent[key].insert(0,val)
+        s=load_settings(); win=tk.Toplevel(self); win.title("JARVIS — Настройки"); win.geometry("700x430"); win.configure(bg=PANEL)
+        fields=[("Провайдер","provider",s.get("provider",DEFAULT_PROVIDER)),("OpenAI Compatible URL","url",s.get("url",DEFAULT_URL)),("Модель","model",s.get("model","")),("API ключ","api_key",s.get("api_key",os.environ.get("JARVIS_CHAT_KEY","")))]
+        entries={}
+        for i,(label,key,val) in enumerate(fields):
+            tk.Label(win,text=label,bg=PANEL,fg=MUTED).grid(row=i,column=0,sticky="w",padx=20,pady=12); ent=tk.Entry(win,bg=PANEL2,fg=TEXT,insertbackground=CYAN,relief="flat",show="*" if key=="api_key" else ""); ent.insert(0,val); ent.grid(row=i,column=1,sticky="ew",padx=20,ipady=8); entries[key]=ent
         win.grid_columnconfigure(1,weight=1)
         def save():
-            data={"provider":ent["provider"].get().strip(),"url":ent["url"].get().strip(),"model":ent["model"].get().strip()}; save_settings(data); os.environ.update({"JARVIS_PROVIDER":data["provider"],"JARVIS_CHAT_URL":data["url"],"JARVIS_CHAT_MODEL":data["model"]}); self._append("СИСТЕМА","Настройки сохранены. Перезапустите JARVIS для нового подключения."); win.destroy()
-        ttk.Button(win,text="СОХРАНИТЬ",style="Accent.TButton",command=save).grid(row=4,column=1,sticky="e",padx=20,pady=20)
-    def _close(self):self._set_state("exiting","Завершение JARVIS"); self._voice_loop_running=False; self.after(220,self.destroy)
+            d={k:e.get().strip() for k,e in entries.items()}; save_settings(d); self._apply_settings(); win.destroy(); self._append("JARVIS","Настройки сохранены. Перезапустите JARVIS для применения подключения.")
+        ttk.Button(win,text="СОХРАНИТЬ",style="Accent.TButton",command=save).grid(row=5,column=1,sticky="e",padx=20,pady=20)
+    def _close(self):
+        self._voice_loop_running=False; self._set_state("exiting"); self.destroy()
 if __name__=="__main__":JarvisDesktop().mainloop()
