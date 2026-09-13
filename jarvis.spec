@@ -1,15 +1,13 @@
-# PyInstaller spec for jarvis.exe
-# Build: pyinstaller jarvis.spec
+# Windows GUI build for JARVIS
 from PyInstaller.utils.hooks import collect_submodules
 
 hiddenimports = collect_submodules("agent") + [
-    "pycaw",
-    "pycaw.pycaw",
-    "comtypes",
+    "pycaw", "pycaw.pycaw", "comtypes",
+    "sounddevice", "numpy", "speech_recognition",
 ]
 
 a = Analysis(
-    ["jarvis_cli.py"],
+    ["jarvis_desktop.py"],
     pathex=["."],
     binaries=[],
     datas=[("docs", "docs")],
@@ -20,7 +18,6 @@ a = Analysis(
     noarchive=False,
 )
 pyz = PYZ(a.pure)
-
 exe = EXE(
     pyz,
     a.scripts,
@@ -31,6 +28,6 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=False,
-    console=True,
+    console=False,
     icon=None,
 )
