@@ -6,6 +6,7 @@ import pytest
 
 from agent.core import JarvisAgent
 from agent.memory import MemoryStore, SessionMemory, keywords, relevant_notes
+from agent.providers.openai_chat import OpenAIChatProvider
 from agent.skills import NoteStore
 
 
@@ -75,7 +76,6 @@ def test_context_hook_injects_into_provider(store, tmp_path):
     notes.add("Пользователя зовут Алексей", tags="имя")
     provider = FakeProvider()
     agent = JarvisAgent(provider, memory=store)
-    session = SessionMemory(store)
 
     def hook(text):
         block = relevant_notes(notes, [text])
@@ -90,9 +90,8 @@ def test_context_hook_injects_into_provider(store, tmp_path):
 
 def test_history_restored_into_provider(store):
     SessionMemory(store).append("старый вопрос", "старый ответ")
-    from agent.providers.cloud import OpenAIChatProvider
     provider = OpenAIChatProvider(
-        history=SessionMemory(store).load_history())
+        history=SessionMemory(store).load_history(), model="test-model")
     assert provider.history[0] == {"role": "user", "content": "старый вопрос"}
     messages = provider._messages("новый вопрос")
     roles = [m["role"] for m in messages]
