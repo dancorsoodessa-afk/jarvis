@@ -61,9 +61,9 @@ class TestReminders(unittest.TestCase):
 
     def test_add_validates_input(self):
         with self.assertRaises(ValueError):
-            self.svc.add("5")          # no text
+            self.svc.add("5")
         with self.assertRaises(ValueError):
-            self.svc.add("-1", "text")  # negative delay
+            self.svc.add("-1", "text")
 
     def test_pop_due_returns_and_removes(self):
         self.svc.add("0.001", "срочное")
@@ -92,7 +92,7 @@ class TestRuntimeWiring(unittest.TestCase):
                         "set_volume", "screenshot", "ps", "kill",
                         "clip_get", "clip_set", "remind", "reminders"}
             self.assertTrue(expected <= names, expected - names)
-            self.assertEqual(agent.provider.name, "openai-chat")
+            self.assertEqual(agent.provider.name, "Джарвис ИИ")
 
 
 if __name__ == "__main__":
