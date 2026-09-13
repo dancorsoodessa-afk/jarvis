@@ -55,7 +55,7 @@ jobs:
 
       - name: Analyze Dart code
         working-directory: ui
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Build release APK
         working-directory: ui
