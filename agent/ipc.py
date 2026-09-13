@@ -18,15 +18,25 @@ class _DeltaEmitter:
         self.writer.flush()
 
 
+def _error(req_id, message: str) -> dict:
+    return {"id": req_id, "type": "error", "message": message}
+
+
 def handle_request(agent: JarvisAgent, req: dict) -> dict:
     req_id = req.get("id")
     kind = req.get("type", "message")
+
     if kind == "ping":
         return {"id": req_id, "type": "pong"}
+
     if kind == "tools":
         return {"id": req_id, "type": "tools", "tools": list(agent.tools.names())}
+
     if kind == "message":
-        result = agent.handle(str(req.get("text", "")))
+        text = req.get("text", "")
+        if not isinstance(text, str):
+            return _error(req_id, "Поле text должно быть строкой")
+        result = agent.handle(text)
         return {
             "id": req_id,
             "type": "message",
@@ -35,7 +45,33 @@ def handle_request(agent: JarvisAgent, req: dict) -> dict:
             "tool": result.tool_used,
             "needs_confirmation": result.needs_confirmation,
         }
-    return {"id": req_id, "type": "error", "message": f"Неизвестный тип запроса: {kind}"}
+
+    if kind == "tool":
+        name = req.get("tool")
+        if not isinstance(name, str):
+            return _error(req_id, "Поле tool должно быть строкой")
+        args = req.get("args", [])
+        if not isinstance(args, list):
+            return _error(req_id, "Поле args должно быть списком")
+        try:
+            result = agent._run_tool(name, *args)
+        except Exception as exc:
+            return _error(req_id, str(exc))
+        return {
+            "id": req_id,
+            "type": "message",
+            "text": result.text,
+            "provider": result.provider,
+            "tool_used": result.tool_used,
+            "needs_confirmation": result.needs_confirmation,
+        }
+
+    if kind == "clear_memory":
+        # Memory clearing is a session-level operation; IPC does not expose a
+        # session object, so fail explicitly rather than silently mutating data.
+        return _error(req_id, "Сессия недоступна для очистки памяти")
+
+    return _error(req_id, f"Неизвестный тип запроса: {kind}")
 
 
 def serve_stream(agent: JarvisAgent, reader: IO[str], writer: IO[str]):
