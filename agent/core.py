@@ -115,7 +115,7 @@ class JarvisAgent:
                 self.provider.name,
             )
         except (TypeError, ValueError, RuntimeError, OSError) as exc:
-            return AgentResult(f"Ошибка инструмента «{name}": {exc}", self.provider.name, tool_used=name)
+            return AgentResult(f"Ошибка инструмента «{name}»: {exc}", self.provider.name, tool_used=name)
         if remember is not None:
             self._remember(remember, str(output))
         return AgentResult(str(output), self.provider.name, tool_used=name)
