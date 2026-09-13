@@ -1,9 +1,4 @@
-"""OpenAI-compatible chat provider for free/local endpoints.
-
-This provider does not require a paid cloud service. It can talk to any
-OpenAI-compatible local endpoint such as Ollama, llama.cpp server, or
-LM Studio.
-"""
+"""Провайдер чата для OpenAI-совместимых API."""
 
 import json
 import os
@@ -12,17 +7,19 @@ import urllib.request
 from typing import Optional
 
 DEFAULT_SYSTEM_PROMPT = (
-    "Ты — Джарвис, персональный AI-ассистент пользователя. "
-    "У тебя есть инструменты для управления компьютером. "
-    "Если задача требует инструмента — вызывай его, не проси пользователя "
-    "делать это вручную. Отвечай кратко, по делу и на языке пользователя."
+    "Ты — Джарвис, персональный ИИ-ассистент пользователя. "
+    "Всегда отвечай на русском языке, если пользователь явно не попросил другой язык. "
+    "Названия инструментов, кнопок, действий и подсказок формулируй на русском языке. "
+    "Если задача требует инструмента — используй доступный инструмент самостоятельно. "
+    "Не заставляй пользователя выполнять действие вручную, если ты можешь выполнить его инструментом. "
+    "Отвечай понятно, кратко и по делу. Не выдумывай результат: если действие не выполнено или недоступно, прямо сообщи об этом."
 )
 
 MAX_HISTORY_MESSAGES = 12
 
 
 class OpenAIChatProvider:
-    name = "openai-chat"
+    name = "Джарвис ИИ"
 
     def __init__(self, url: Optional[str] = None, api_key: Optional[str] = None,
                  model: Optional[str] = None, timeout: int = 30,
@@ -54,9 +51,9 @@ class OpenAIChatProvider:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:300]
-            raise RuntimeError(f"OpenAI-compatible API HTTP {exc.code}: {detail}") from exc
+            raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"OpenAI-compatible API недоступен: {exc.reason}") from exc
+            raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
 
     def _request_stream(self, payload: dict) -> dict:
         data = json.dumps({**payload, "stream": True}).encode("utf-8")
@@ -101,9 +98,9 @@ class OpenAIChatProvider:
                             dst["function"]["arguments"] += fn["arguments"]
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:300]
-            raise RuntimeError(f"OpenAI-compatible API HTTP {exc.code}: {detail}") from exc
+            raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"OpenAI-compatible API недоступен: {exc.reason}") from exc
+            raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
         msg: dict = {"role": "assistant", "content": "".join(content_parts)}
         if tool_calls:
             msg["tool_calls"] = tool_calls
@@ -113,14 +110,14 @@ class OpenAIChatProvider:
         try:
             msg = body["choices"][0]["message"]
         except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError(f"Неожиданный ответ OpenAI-compatible API: {body!r}") from exc
+            raise RuntimeError(f"ИИ вернул неожиданный ответ: {body!r}") from exc
         return {"content": msg.get("content") or "", "tool_calls": msg.get("tool_calls") or []}
 
     def generate(self, prompt: str, tools: Optional[list] = None, max_steps: int = 4) -> str:
         if not self.url:
-            raise RuntimeError("OpenAI-compatible provider не настроен: задайте JARVIS_CHAT_URL")
+            raise RuntimeError("ИИ не настроен: укажите адрес API в настройках")
         if not self.model:
-            raise RuntimeError("OpenAI-compatible provider не настроен: задайте JARVIS_CHAT_MODEL")
+            raise RuntimeError("Модель не настроена: укажите модель в настройках")
         messages = self._messages(prompt)
         payload = {"model": self.model, "messages": messages, "temperature": 0.25}
         if tools:
@@ -141,10 +138,10 @@ class OpenAIChatProvider:
                     args = json.loads(fn.get("arguments") or "{}")
                     output = self.tool_executor(fn.get("name", ""), args)
                 except Exception as exc:
-                    output = f"Ошибка: {exc}"
+                    output = f"Ошибка выполнения инструмента: {exc}"
                 messages.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": str(output)[:2000]})
         else:
-            result_content = result_content or "Достигнут лимит шагов агента."
+            result_content = result_content or "Достигнут предел шагов агента."
 
         self.history.append({"role": "user", "content": prompt})
         self.history.append({"role": "assistant", "content": result_content})
