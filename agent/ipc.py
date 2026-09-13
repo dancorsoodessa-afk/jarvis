@@ -94,8 +94,6 @@ def serve_stream(agent: JarvisAgent, reader: IO[str], writer: IO[str]):
         if not isinstance(req, dict):
             response = {"id": None, "type": "error", "message": "invalid JSON request"}
         else:
-            # Wire streaming deltas (if any) to this writer for the duration
-            # of the request.
             emitter = _DeltaEmitter(writer, req.get("id"))
             if provider is not None and hasattr(provider, "on_delta"):
                 provider.on_delta = emitter
@@ -109,6 +107,12 @@ def serve_stream(agent: JarvisAgent, reader: IO[str], writer: IO[str]):
 
 
 def serve_stdio(agent: JarvisAgent):
+    """Run UTF-8 JSON-lines IPC on Windows and POSIX stdio."""
+    for stream in (sys.stdin, sys.stdout):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="strict")
+        except (AttributeError, ValueError):
+            pass
     serve_stream(agent, sys.stdin, sys.stdout)
 
 
