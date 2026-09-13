@@ -1,5 +1,7 @@
 """Assemble a runnable agent from settings."""
 
+import json
+import os
 from pathlib import Path
 
 from .config import Settings
@@ -15,6 +17,9 @@ from .tools import apps, audio, clipboard, files, processes, screenshot, system,
 from .tools.registry import ToolRegistry
 from . import stt, tts
 from .skills import NoteStore, calculate, now
+from .web_agent import WebAgent
+from .vision import VisionService
+from .mcp import MCPClient, MCPServer
 
 
 def build_agent(settings: Settings | None = None) -> JarvisAgent:
@@ -64,9 +69,30 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("remind", reminders.add, description="Поставить напоминание.", parameters={"when": "время", "text": "текст напоминания"})
     tools.register("reminders", reminders.list_pending, description="Показать активные напоминания.")
     tools.register("say", lambda text: tts.speak_and_play(text) and f"Озвучено: {text[:100]}", description="Озвучить текст голосом (TTS).", parameters={"text": "текст для озвучки"})
-    tools.register("web_search", web.web_search, description="Найти информацию в интернете (DuckDuckGo).", parameters={"query": "поисковый запрос"})
+    tools.register("web_search", web.web_search, description="Найти информацию в интернете.", parameters={"query": "поисковый запрос"})
     tools.register("weather", web.weather, description="Текущая погода в городе.", parameters={"city": "название города"})
     tools.register("transcribe", stt.transcribe, description="Распознать речь из wav-файла.", parameters={"audio_path": "путь к wav-файлу"})
+
+    web_agent = WebAgent()
+    tools.register("web_agent", web_agent.execute, description="Выполнить веб-задачу: поиск или погода.", parameters={"request": "веб-запрос"})
+
+    vision = VisionService()
+    tools.register("vision", vision.analyze, description="Проанализировать локальное изображение через настроенную мультимодальную модель.", parameters={"image_path": "путь к изображению", "prompt": "что определить на изображении"})
+
+    mcp_client = None
+    mcp_raw = os.environ.get("JARVIS_MCP_COMMAND", "").strip()
+    if mcp_raw:
+        try:
+            command = json.loads(mcp_raw)
+            if not isinstance(command, list) or not all(isinstance(x, str) for x in command):
+                raise ValueError("JARVIS_MCP_COMMAND должен быть JSON-массивом строк")
+            mcp_client = MCPClient(MCPServer(command=command, cwd=os.environ.get("JARVIS_MCP_CWD") or None))
+        except (ValueError, json.JSONDecodeError) as exc:
+            log.warning("MCP не настроен: %s", exc)
+
+    if mcp_client is not None:
+        tools.register("mcp_tools", lambda: json.dumps(mcp_client.list_tools(), ensure_ascii=False), description="Получить список инструментов MCP-сервера.")
+        tools.register("mcp_call", lambda name, arguments="{}": json.dumps(mcp_client.call_tool(name, json.loads(arguments)), ensure_ascii=False), description="Вызвать инструмент MCP-сервера.", parameters={"name": "имя MCP-инструмента", "arguments": "JSON-аргументы"})
 
     notes = NoteStore(str(Path(settings.memory_path).with_name("jarvis_notes.json")))
     tools.register("remember", notes.add, description="Сохранить факт/заметку.", parameters={"text": "что запомнить", "tags": "теги через пробел"})
@@ -83,7 +109,14 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("calc", calculate, description="Вычислить арифметическое выражение.", parameters={"expression": "выражение"})
     tools.register("now", lambda: now(), description="Текущая дата и время.")
 
-    orchestrator = Orchestrator(core=provider, cloud=provider, memory=memory)
+    orchestrator = Orchestrator(
+        core=provider,
+        cloud=provider,
+        vision=vision,
+        web=web_agent,
+        mcp=mcp_client,
+        memory=memory,
+    )
     agent = JarvisAgent(provider, tools=tools, memory=memory, reminders=reminders, orchestrator=orchestrator)
     if session is not None:
         def _sync_memory(user: str, assistant: str):
@@ -102,9 +135,6 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         def _rag_hook(text: str):
             block = relevant_notes(notes, session.last_user_text(2) + [text])
             prompt = (base_prompt + "\n\n" + block) if block else base_prompt
-            if isinstance(provider, CloudRouterProvider):
-                provider.system_prompt = prompt
-            else:
-                provider.system_prompt = prompt
+            provider.system_prompt = prompt
         agent.context_hook = _rag_hook
     return agent
