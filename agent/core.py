@@ -27,9 +27,7 @@ class JarvisAgent:
         self.memory = memory
         self.reminders = reminders
         self._pending_tool: tuple[str, tuple, dict] | None = None
-        self.on_exchange = None  # optional callback(user, assistant)
-        # Optional callable(text) -> None: called before each turn so runtime
-        # can inject RAG context (relevant long-term facts) into the prompt.
+        self.on_exchange = None
         self.context_hook = None
         self.log = get_log("core")
 
@@ -45,7 +43,6 @@ class JarvisAgent:
         text = message.strip()
         if not text:
             return AgentResult("Я здесь. Что нужно сделать?", self.provider.name)
-
         due = self._due_reminders()
         result = self._dispatch(text)
         if due:
@@ -73,7 +70,6 @@ class JarvisAgent:
         if text.startswith("/"):
             return self._handle_tool_command(text)
 
-        # Function calling: let the model pick tools itself, if supported.
         if self.context_hook:
             try:
                 self.context_hook(text)
@@ -96,14 +92,6 @@ class JarvisAgent:
     def _run_tool(self, name: str, *args, remember: str | None = None,
                   confirmed: bool = False, ask_confirmation: bool = True,
                   **kwargs) -> AgentResult:
-        """Run a registered tool and map every failure mode to an AgentResult.
-
-        Shared by the pending-confirmation branch, slash commands and the
-        LLM function-calling path. ``remember`` stores the exchange in
-        memory; ``confirmed`` bypasses the confirmation gate; when
-        ``ask_confirmation`` is False (LLM path) a confirmation gate is
-        reported as a message instead of arming the pending-tool state.
-        """
         try:
             output = self.tools.call(name, *args, _confirmed=confirmed, **kwargs)
         except ConfirmationRequired:
@@ -115,7 +103,7 @@ class JarvisAgent:
                 )
             return AgentResult(
                 "Инструмент требует подтверждения пользователя. "
-                "Скажите пользователю подтвердить действие вручную.",
+                "Автоматически опасное действие не выполняю.",
                 self.provider.name, tool_used=name,
             )
         except KeyError:
@@ -132,23 +120,14 @@ class JarvisAgent:
         return AgentResult(str(output), self.provider.name, tool_used=name)
 
     def _execute_for_llm(self, name: str, args: dict) -> str:
-        """Run a tool requested by the model. Args are passed as kwargs when
-        the tool accepts them, otherwise joined as positional strings."""
-        import inspect
-        self.log.info("Модель вызвала инструмент %s(%s)", name, args)
-        fn = self.tools._tools.get(name)
-        if fn is None:
+        """Execute a model-requested tool through the same safety gate as CLI tools."""
+        entry = self.tools.get(name)
+        if entry is None:
             raise KeyError(name)
-        params = list(inspect.signature(fn[0]).parameters)
-        if args and params:
-            try:
-                return self._run_tool(name, ask_confirmation=False, **args).text
-            except TypeError:
-                # Model passed argument names that don't match the tool's
-                # signature; fall back to positional strings.
-                pass
-        return self._run_tool(name, *map(str, args.values()),
-                              ask_confirmation=False).text
+        if not isinstance(args, dict):
+            raise TypeError("Аргументы инструмента должны быть объектом JSON")
+        self.log.info("Модель вызвала инструмент %s", name)
+        return self._run_tool(name, ask_confirmation=False, **args).text
 
     def _handle_tool_command(self, text: str) -> AgentResult:
         import shlex
@@ -163,20 +142,14 @@ class JarvisAgent:
                 self.provider.name,
             )
         name, args = parts[0], tuple(parts[1:])
-
-        # /tools is a built-in command for the UI/CLI command palette, not a
-        # registered OS tool. Keep it here so the visible tool list is always
-        # available even when the cloud provider is not configured.
         if name.lower() == "tools":
             names = self.tools.names()
             output = "Доступные инструменты: " + (", ".join(names) if names else "—")
             self._remember(text, output)
             return AgentResult(output, self.provider.name)
-
         return self._run_tool(name, *args, remember=text)
 
     def _remember(self, user: str, assistant: str):
-        """Persist the exchange to the store (trimmed history)."""
         if self.memory is None:
             return
         data = self.memory.load()
