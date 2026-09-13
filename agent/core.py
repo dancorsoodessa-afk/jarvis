@@ -8,7 +8,7 @@ from .logging_setup import get as get_log
 
 class AIProvider(Protocol):
     name: str
-    def generate(self, prompt: str) -> str: ...
+    def generate(self, prompt: str, **kwargs) -> str: ...
 
 
 @dataclass
@@ -66,7 +66,7 @@ class JarvisAgent:
                 return AgentResult("Отменено.", self.provider.name)
             name, args, kwargs = self._pending_tool
             self._pending_tool = None
-            return self._run_tool(name, remember=text, confirmed=True, *args, **kwargs)
+            return self._run_tool(name, *args, remember=text, confirmed=True, **kwargs)
 
         if text.startswith("/"):
             return self._handle_tool_command(text)
