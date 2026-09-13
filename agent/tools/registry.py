@@ -23,14 +23,17 @@ class ToolRegistry:
     def register(self, name: str, fn: Callable[..., object], confirm: bool = False,
                  description: str | None = None,
                  parameters: dict[str, str] | None = None) -> None:
-        """parameters: JSON-schema-ish dict {"param": "description"}.
-        Built into an OpenAI tool spec for function calling."""
+        """Register a callable and its function-calling metadata."""
         self._tools[name] = ToolEntry(
             fn=fn, confirm=confirm,
             description=description or "", parameters=parameters or {})
 
     def names(self):
         return tuple(self._tools)
+
+    def get(self, name: str) -> ToolEntry | None:
+        """Return registered tool metadata without exposing internal storage."""
+        return self._tools.get(name)
 
     def spec(self, name: str) -> dict:
         entry = self._tools[name]
@@ -59,17 +62,12 @@ class ToolRegistry:
             raise KeyError(name)
         if entry.confirm and not _confirmed:
             raise ConfirmationRequired(name)
-        # Slash-command convenience: if a tool takes exactly one string
-        # parameter, pass all CLI words as a single joined argument
-        # (e.g. `/remember я живу в Москве` -> text="я живу в Москве").
         if args and len(args) > 1 and len(entry.parameters) == 1 \
                 and not kwargs:
             args = (" ".join(map(str, args)),)
         try:
             return entry.fn(*args, **kwargs)
         except TypeError:
-            # Slash-command convenience: a free-text tool (e.g. remember,
-            # say) got one word per CLI token. Retry with the words joined.
             if len(args) > 1 and not kwargs:
                 return entry.fn(" ".join(map(str, args)))
             raise
