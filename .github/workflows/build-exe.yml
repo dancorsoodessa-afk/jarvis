@@ -2,7 +2,7 @@ name: Build jarvis.exe
 
 on:
   push:
-    branches: [foundation]
+    branches: [foundation, standalone-pc-android]
   pull_request:
     branches: [foundation]
   workflow_dispatch:
