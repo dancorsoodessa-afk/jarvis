@@ -1,16 +1,16 @@
-"""JSON-lines IPC for the Flutter UI (Flutter <-> Python agent core).
+"""JSON-lines IPC for the UI (UI <-> Python agent core).
 
 Protocol: one JSON object per line, UTF-8.
 
   Request : {"id": 1, "type": "message", "text": "привет"}
             {"id": 2, "type": "tool", "tool": "search", "args": ["*.txt", "C:\\"]}
   Response: {"id": 1, "type": "message",
-             "text": "...", "provider": "cloud",
+             "text": "...", "provider": "openai-chat",
              "tool_used": null, "needs_confirmation": false}
             {"id": null, "type": "error", "message": "..."}
 
-Default transport is stdin/stdout so Flutter can spawn the agent as a child
-process with Process.start(). TCP transport is available for remote UIs.
+Default transport is stdin/stdout so a UI can spawn the agent as a child
+process. TCP transport is available for local/remote UI integrations.
 """
 
 import json
@@ -69,7 +69,7 @@ def handle_request(agent: JarvisAgent, req: dict) -> dict:
         if req_type == "clear_memory":
             session = getattr(agent, "session", None)
             if session is None:
-                raise RuntimeError("Сессия недоступна")
+                raise RuntimeError("Сессия недоступна для текущего провайдера")
             return {"id": req_id, "type": "message",
                     **_result_payload(AgentResult(session.clear(),
                                                   agent.provider.name))}
