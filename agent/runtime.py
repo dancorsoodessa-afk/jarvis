@@ -36,8 +36,6 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
                 primary_model=settings.primary_model,
                 code_model=settings.code_model,
                 fast_model=settings.fast_model,
-                universal_model_1=settings.universal_model_1,
-                universal_model_2=settings.universal_model_2,
                 history=history,
             )
         else:
