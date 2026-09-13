@@ -116,6 +116,11 @@ class TestHandleRequest(unittest.TestCase):
                                   {"id": 8, "type": "message", "text": "да"})
         self.assertEqual(done["text"], "wiped")
 
+    def test_clear_memory_without_session_is_json_error(self):
+        resp = ipc.handle_request(self.agent, {"id": 15, "type": "clear_memory"})
+        self.assertEqual(resp["type"], "error")
+        self.assertIn("Сессия недоступна", resp["message"])
+
 
 class TestServeStream(unittest.TestCase):
     def test_multiple_requests_and_bad_json(self):
