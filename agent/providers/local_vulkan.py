@@ -1,6 +1,7 @@
 from pathlib import Path
 import subprocess
 
+
 class LocalVulkanProvider:
     """Thin adapter around llama.cpp's llama-cli with Vulkan backend.
 
@@ -25,14 +26,17 @@ class LocalVulkanProvider:
             "-n", "512",
             "-p", prompt,
         ]
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            encoding="utf-8",
-            errors="replace",
-        )
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                encoding="utf-8",
+                errors="replace",
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("llama.cpp превысил лимит ожидания (120 с)") from exc
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "llama.cpp failed")
         return result.stdout.strip()
