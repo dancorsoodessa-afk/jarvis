@@ -9,13 +9,11 @@ Target hardware:
 - Windows 10 x64
 
 AI strategy:
-- Cloud provider: primary
-- Local provider: llama.cpp + Vulkan
-- Ollama: not required
+- **Free OpenAI-compatible provider: primary**
+- **Local provider: llama.cpp + Vulkan**
+- Paid/cloud provider integration is removed
+- Ollama is optional when exposed through its OpenAI-compatible API
 - Model is replaceable; Jarvis is not tied to one runtime
-
-Performance rule:
-Never load a local model just because it exists. Local inference is opt-in and bounded.
 
 ## Build jarvis.exe (Windows x64)
 
@@ -31,34 +29,34 @@ Result: `dist\jarvis.exe` — single console exe, with the optional Windows audi
 
 GitHub Actions also builds the Windows executable on pushes and pull requests targeting `foundation`; the resulting `jarvis.exe` is uploaded as a workflow artifact.
 
-## Quick start: real cloud AI (OpenRouter)
+## AI providers
 
-OpenRouter provides an OpenAI-compatible chat-completions endpoint.
+JARVIS no longer contains a paid/cloud provider. The supported paths are:
+
+### 1. OpenAI-compatible provider — default
+
+Use any **free/local** service that exposes an OpenAI-compatible `/v1/chat/completions` endpoint. No paid API is required by JARVIS.
 
 ```powershell
-$env:JARVIS_CLOUD_URL   = "https://openrouter.ai/api/v1/chat/completions"
-$env:JARVIS_CLOUD_KEY   = "sk-or-v1-..."   # keep OUT of the repo!
-$env:JARVIS_CLOUD_MODEL = "openai/gpt-5.3-chat"
-$env:JARVIS_TTS         = "auto"           # voice on Windows (SAPI), no install
+$env:JARVIS_PROVIDER  = "openai-compatible"
+$env:JARVIS_CHAT_URL  = "http://127.0.0.1:11434/v1/chat/completions"
+$env:JARVIS_CHAT_KEY  = ""
+$env:JARVIS_CHAT_MODEL = "your-local-model"
 .\dist\jarvis.exe
 ```
 
-Then just talk (no slash commands needed — the model can call tools itself):
+The URL and model are configurable so the same provider can work with compatible local runtimes such as Ollama, llama.cpp server, or LM Studio.
 
-> какая погода в Москве?  → Jarvis calls `weather`
-> поставь громкость 30    → Jarvis calls `set_volume`
-> найди все pdf на диске D → Jarvis calls `search`
+### 2. llama.cpp + Vulkan — direct local provider
 
-Works with OpenAI-compatible endpoints such as OpenRouter, OpenAI, Groq,
-local llama.cpp servers, and LM Studio. Change `JARVIS_CLOUD_URL`,
-`JARVIS_CLOUD_KEY`, and `JARVIS_CLOUD_MODEL` without changing the code.
-
-Voice via Piper (better quality):
 ```powershell
-$env:JARVIS_TTS          = "piper"
-$env:JARVIS_PIPER        = "C:\tools\piper\piper.exe"
-$env:JARVIS_PIPER_VOICE  = "C:\tools\piper\voice\ru_RU-dmitri-medium.onnx"
+$env:JARVIS_PROVIDER = "local-vulkan"
+$env:JARVIS_LLAMA_CLI = "llama-cli"
+$env:JARVIS_MODEL = "model.gguf"
+.\dist\jarvis.exe
 ```
+
+This path runs the model locally and does not require an API key.
 
 ## Flutter UI (ui/)
 
@@ -78,7 +76,7 @@ Before publishing a release, verify:
 1. `git pull origin foundation`
 2. `powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1`
 3. `dist\jarvis.exe` starts and `/status`, `/calc`, `/now`, `/volume`, `/exit` work.
-4. Configure a fresh cloud API key through environment variables; never commit it.
+4. Verify the selected free/local AI provider and model through environment variables.
 5. Run the Flutter UI smoke test if the UI is part of the release.
 
 Never put API keys, memory files, reminders, or runtime logs into Git.
@@ -96,9 +94,9 @@ Never put API keys, memory files, reminders, or runtime logs into Git.
 ## Голосовой режим (wake word)
 
 ```powershell
-poetry install --extras voice          # sounddevice + numpy
-$env:JARVIS_STT = "faster-whisper"     # или whisper-cpp
-$env:JARVIS_TTS  = "auto"
+poetry install --extras voice
+$env:JARVIS_STT = "faster-whisper"
+$env:JARVIS_TTS = "auto"
 python -m agent --voice                # jarvis.exe --voice
 ```
 
@@ -109,7 +107,6 @@ python -m agent --voice                # jarvis.exe --voice
 ## Windows-полировка
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install_autostart.ps1          # автозапуск при логине
-powershell -ExecutionPolicy Bypass -File scripts\install_autostart.ps1 -Remove  # убрать
+powershell -ExecutionPolicy Bypass -File scripts\install_autostart.ps1
+powershell -ExecutionPolicy Bypass -File scripts\install_autostart.ps1 -Remove
 ```
-
