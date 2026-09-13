@@ -40,7 +40,7 @@ class _ReactorPainter extends CustomPainter {
     for (final ring in _rings) {
       final r = ring[0], width = ring[1], speed = ring[2];
       final segments = ring[3].toInt(), gap = ring[4];
-      paint..strokeWidth = width..color = color.withOpacity(r == 0.72 || r == 0.96 ? 0.25 : 1);
+      paint..strokeWidth = width..color = color.withValues(alpha: r == 0.72 || r == 0.96 ? 0.25 : 1);
       final rot = time.value * speed * 2 * math.pi;
       final step = 2 * math.pi / segments;
       for (var i = 0; i < segments; i++) {
@@ -51,7 +51,7 @@ class _ReactorPainter extends CustomPainter {
     final pulse = 1 + 0.08 * math.sin(time.value * 10 * 2 * math.pi * 0.3);
     final core = radius * 0.30 * pulse;
     canvas.drawCircle(center, core * 1.8, Paint()..shader = RadialGradient(colors: [
-      const Color(0xE6B4F5FF), color.withOpacity(0.35), color.withOpacity(0),
+      const Color(0xE6B4F5FF), color.withValues(alpha: 0.35), color.withValues(alpha: 0),
     ]).createShader(Rect.fromCircle(center: center, radius: core * 1.8)));
     canvas.drawCircle(center, core * 0.72, Paint()..color = const Color(0xE60A1923));
     paint..strokeWidth = 2..color = color;
