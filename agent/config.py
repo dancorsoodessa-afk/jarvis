@@ -13,6 +13,9 @@ def normalize_provider(value: str | None) -> str:
         "openai-compatible-api": "openai-compatible",
         "openai-compatible-client": "openai-compatible",
         "openai-compatible-provider": "openai-compatible",
+        "dragon": "openai-compatible",
+        "dragon-local": "openai-compatible",
+        "dragon-ai": "openai-compatible",
         "local": "local-vulkan",
         "vulkan": "local-vulkan",
         "llama": "local-vulkan",
@@ -26,7 +29,8 @@ class Settings:
     """Runtime settings for free/local AI providers only."""
 
     provider: str = "openai-compatible"
-    chat_url: str = "http://127.0.0.1:11434/v1/chat/completions"
+    # Empty means: discover a healthy local OpenAI-compatible backend.
+    chat_url: str = ""
     chat_key: str = ""
     chat_model: str = ""
     llama_cli: str = "llama-cli"
@@ -58,7 +62,7 @@ class Settings:
             threads = 6
         return cls(
             provider=provider,
-            chat_url=os.environ.get("JARVIS_CHAT_URL", "http://127.0.0.1:11434/v1/chat/completions").strip(),
+            chat_url=os.environ.get("JARVIS_CHAT_URL", "").strip(),
             chat_key=os.environ.get("JARVIS_CHAT_KEY", ""),
             chat_model=os.environ.get("JARVIS_CHAT_MODEL", "").strip(),
             llama_cli=os.environ.get("JARVIS_LLAMA_CLI", "llama-cli").strip(),
