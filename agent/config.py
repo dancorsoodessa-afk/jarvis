@@ -2,6 +2,25 @@ import os
 from dataclasses import dataclass
 
 
+SUPPORTED_PROVIDERS = ("openai-compatible", "local-vulkan")
+
+
+def normalize_provider(value: str | None) -> str:
+    provider = (value or "openai-compatible").strip().lower()
+    provider = provider.replace("_", "-").replace(" ", "-")
+    aliases = {
+        "openai": "openai-compatible",
+        "openai-compatible-api": "openai-compatible",
+        "openai-compatible-client": "openai-compatible",
+        "openai-compatible-provider": "openai-compatible",
+        "local": "local-vulkan",
+        "vulkan": "local-vulkan",
+        "llama": "local-vulkan",
+        "llama-cpp": "local-vulkan",
+    }
+    return aliases.get(provider, provider)
+
+
 @dataclass
 class Settings:
     """Runtime settings for free/local AI providers only."""
@@ -17,28 +36,35 @@ class Settings:
     memory_path: str = "jarvis_memory.json"
     kg_path: str | None = None
 
+    def __post_init__(self):
+        self.provider = normalize_provider(self.provider)
+
     @property
     def use_local(self) -> bool:
-        """Backward-compatible view for older callers/tests."""
         return self.provider == "local-vulkan"
 
     @classmethod
     def from_env(cls) -> "Settings":
-        provider = os.environ.get("JARVIS_PROVIDER", "openai-compatible").strip().lower()
-        provider = provider.replace("_", "-").replace(" ", "-")
-        if provider in {"openai", "openai-compatible-api", "openai-compatible-client"}:
-            provider = "openai-compatible"
+        provider = normalize_provider(os.environ.get("JARVIS_PROVIDER"))
         if os.environ.get("JARVIS_LOCAL") == "1":
             provider = "local-vulkan"
+        try:
+            ctx = max(256, int(os.environ.get("JARVIS_CTX", "2048")))
+        except ValueError:
+            ctx = 2048
+        try:
+            threads = max(1, int(os.environ.get("JARVIS_THREADS", "6")))
+        except ValueError:
+            threads = 6
         return cls(
             provider=provider,
-            chat_url=os.environ.get("JARVIS_CHAT_URL", "http://127.0.0.1:11434/v1/chat/completions"),
+            chat_url=os.environ.get("JARVIS_CHAT_URL", "http://127.0.0.1:11434/v1/chat/completions").strip(),
             chat_key=os.environ.get("JARVIS_CHAT_KEY", ""),
-            chat_model=os.environ.get("JARVIS_CHAT_MODEL", ""),
-            llama_cli=os.environ.get("JARVIS_LLAMA_CLI", "llama-cli"),
-            model=os.environ.get("JARVIS_MODEL", "model.gguf"),
-            ctx=int(os.environ.get("JARVIS_CTX", "2048")),
-            threads=int(os.environ.get("JARVIS_THREADS", "6")),
+            chat_model=os.environ.get("JARVIS_CHAT_MODEL", "").strip(),
+            llama_cli=os.environ.get("JARVIS_LLAMA_CLI", "llama-cli").strip(),
+            model=os.environ.get("JARVIS_MODEL", "model.gguf").strip(),
+            ctx=ctx,
+            threads=threads,
             memory_path=os.environ.get("JARVIS_MEMORY", "jarvis_memory.json"),
             kg_path=os.environ.get("JARVIS_KG"),
         )
