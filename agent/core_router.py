@@ -17,6 +17,17 @@ class CoreSelection:
     source: str
 
 
+# Common local OpenAI-compatible endpoints. The explicit environment URL always wins.
+LOCAL_BACKEND_CANDIDATES = (
+    "http://127.0.0.1:1234/v1/chat/completions",  # LM Studio / compatible local runtimes
+    "http://127.0.0.1:11434/v1/chat/completions",  # Ollama compatibility API
+    "http://127.0.0.1:8080/v1/chat/completions",  # common local servers
+    "http://127.0.0.1:8000/v1/chat/completions",
+    "http://127.0.0.1:10000/v1/chat/completions",  # llama.cpp server
+    "http://127.0.0.1:9119/v1/chat/completions",  # local AI server stacks
+)
+
+
 def _models_endpoint(chat_url: str) -> str:
     parsed = urllib.parse.urlsplit(chat_url.rstrip("/"))
     path = parsed.path
@@ -27,6 +38,37 @@ def _models_endpoint(chat_url: str) -> str:
     elif not path.endswith("/models"):
         path = path.rstrip("/") + "/v1/models"
     return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+
+def _probe_models(chat_url: str, timeout: float = 1.5) -> list[str]:
+    url = _models_endpoint(chat_url)
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    data = payload.get("data", []) if isinstance(payload, dict) else []
+    return [str(item.get("id", "")).strip() for item in data if isinstance(item, dict) and str(item.get("id", "")).strip()]
+
+
+def discover_chat_endpoint(preferred_url: str = "", timeout: float = 1.5) -> tuple[str, list[str]]:
+    """Find a healthy local OpenAI-compatible chat endpoint and its models."""
+    candidates: list[str] = []
+    if preferred_url.strip():
+        candidates.append(preferred_url.strip())
+    candidates.extend(url for url in LOCAL_BACKEND_CANDIDATES if url not in candidates)
+    failures: list[str] = []
+    for url in candidates:
+        try:
+            models = _probe_models(url, timeout=timeout)
+            if models:
+                return url, models
+            failures.append(f"{url}: сервер отвечает, но моделей нет")
+        except Exception as exc:
+            failures.append(f"{url}: {exc}")
+    raise RuntimeError(
+        "Локальный AI-backend не найден. Проверены: "
+        + ", ".join(candidates)
+        + ". Запустите Dragon/LM Studio/другой OpenAI-compatible сервер или задайте JARVIS_CHAT_URL."
+    )
 
 
 def discover_model(chat_url: str, timeout: float = 3.0) -> str:
@@ -71,5 +113,5 @@ def select_core(provider: str, chat_url: str, configured_model: str = "") -> Cor
         return CoreSelection(provider=provider, model=configured_model, source="Локально / llama.cpp + Vulkan")
     if provider != "openai-compatible":
         raise RuntimeError(f"Неизвестный провайдер: {provider}. Доступны: openai-compatible, local-vulkan")
-    model = configured_model or discover_model(chat_url)
-    return CoreSelection(provider=provider, model=model, source="OpenAI-compatible сервер")
+    endpoint, models = discover_chat_endpoint(chat_url)
+    return CoreSelection(provider=provider, model=configured_model or models[0], source=f"Локальный AI: {endpoint}")
