@@ -65,7 +65,7 @@ class TestSTT(unittest.TestCase):
             run.assert_called_once_with(
                 [str(exe), "-m", str(model), "-f", str(wav), "-nt", "-l", "ru"],
                 capture_output=True,
-                timeout=300,
+                timeout=120,
             )
 
     def test_transcribe_tool_registered(self):
