@@ -1,15 +1,12 @@
 # PyInstaller spec for the native JARVIS desktop application.
-# Bundle PyTorch and NumPy because Silero TTS and local VAD import them dynamically.
+# Torch is intentionally optional: when it is not installed, TTS falls back to SAPI/Piper.
 hiddenimports = [
-    "torch",
-    "torch._C",
     "numpy",
     "pycaw",
     "pycaw.pycaw",
     "comtypes",
     "sounddevice",
     "speech_recognition",
-    "keyring.backends.Windows",
 ]
 
 a = Analysis(
