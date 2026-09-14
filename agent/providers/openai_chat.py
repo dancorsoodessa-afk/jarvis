@@ -18,6 +18,7 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 MAX_HISTORY_MESSAGES = 12
+CONFIRMATION_PREFIX = "Инструмент «"
 
 
 class OpenAIChatProvider:
@@ -178,6 +179,7 @@ class OpenAIChatProvider:
             if not tool_calls or self.tool_executor is None:
                 break
             messages.append({"role": "assistant", "content": reply["content"], "tool_calls": tool_calls})
+            confirmation_pending = False
             for tc in tool_calls:
                 fn = tc.get("function", {})
                 try:
@@ -185,7 +187,14 @@ class OpenAIChatProvider:
                     output = self.tool_executor(fn.get("name", ""), args)
                 except Exception as exc:
                     output = f"Ошибка выполнения инструмента: {exc}"
-                messages.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": str(output)[:2000]})
+                output_text = str(output)[:2000]
+                messages.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": output_text})
+                if output_text.startswith(CONFIRMATION_PREFIX) and "требует подтверждения" in output_text:
+                    result_content = output_text
+                    confirmation_pending = True
+                    break
+            if confirmation_pending:
+                break
             payload = {"model": model, "messages": messages, "temperature": 0.25}
             if tools:
                 payload["tools"] = tools
