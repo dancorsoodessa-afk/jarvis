@@ -19,6 +19,7 @@ DEFAULT_SYSTEM_PROMPT = (
 
 MAX_HISTORY_MESSAGES = 12
 CONFIRMATION_PREFIX = "Инструмент «"
+OPENROUTER_FREE_COMPAT_MODEL = "meta-llama/llama-3.3-8b-instruct:free"
 
 
 class OpenAIChatProvider:
@@ -39,7 +40,6 @@ class OpenAIChatProvider:
         self._discovered_model: str | None = None
 
     def _ensure_endpoint(self) -> None:
-        """Resolve a local OpenAI-compatible backend only when an AI request is made."""
         if self.url:
             return
         from agent.core_router import discover_chat_endpoint
@@ -52,6 +52,15 @@ class OpenAIChatProvider:
         messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
         messages.append({"role": "user", "content": prompt})
         return messages
+
+    @staticmethod
+    def _normalize_model(model: str) -> str:
+        # Some OpenAI-compatible gateways reject OpenRouter's router slug even
+        # though OpenRouter itself supports it. Use a current free model that
+        # is valid for chat/completions and tool-capable workflows.
+        if model.strip().lower() == "openrouter/free":
+            return OPENROUTER_FREE_COMPAT_MODEL
+        return model
 
     def _request(self, payload: dict) -> dict:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -82,14 +91,13 @@ class OpenAIChatProvider:
         return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
     def discover_model(self) -> str:
-        """Discover the first model exposed by an OpenAI-compatible server."""
         if self.model:
-            return self.model
+            return self._normalize_model(self.model)
         if self._discovered_model:
-            return self._discovered_model
+            return self._normalize_model(self._discovered_model)
         self._ensure_endpoint()
         if self._discovered_model:
-            return self._discovered_model
+            return self._normalize_model(self._discovered_model)
         url = self._models_url()
         headers = {"Accept": "application/json"}
         if self.api_key:
@@ -113,7 +121,7 @@ class OpenAIChatProvider:
                 "Сервер ИИ доступен, но не сообщил ни одной модели. "
                 "Укажите JARVIS_CHAT_MODEL вручную или запустите модель на сервере.")
         self._discovered_model = ids[0]
-        return self._discovered_model
+        return self._normalize_model(self._discovered_model)
 
     def _request_stream(self, payload: dict) -> dict:
         data = json.dumps({**payload, "stream": True}, ensure_ascii=False).encode("utf-8")
