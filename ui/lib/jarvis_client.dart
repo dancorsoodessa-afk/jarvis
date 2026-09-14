@@ -43,15 +43,12 @@ class JarvisIpc {
 
   static Future<JarvisIpc> connectAi(
     String apiUrl, {
-    required String model,
+    String model = '',
     String apiKey = '',
   }) async {
     final normalized = apiUrl.trim().replaceFirst(RegExp(r'/+$'), '');
     if (normalized.isEmpty) {
       throw ArgumentError('AI endpoint не указан');
-    }
-    if (model.trim().isEmpty) {
-      throw ArgumentError('Модель не указана');
     }
 
     final client = HttpClient()
@@ -140,7 +137,33 @@ class JarvisIpc {
     return completer.future;
   }
 
+  Future<String> _resolveModel() async {
+    if (_model != null && _model!.isNotEmpty) return _model!;
+    final uri = Uri.parse('$_apiUrl/models');
+    final request = await _httpClient!.getUrl(uri);
+    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    if (_apiKey != null && _apiKey!.isNotEmpty) {
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_apiKey');
+    }
+    final response = await request.close();
+    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError('Не удалось получить список AI-моделей: HTTP ${response.statusCode}');
+    }
+    final decoded = body.isEmpty ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
+    final data = decoded['data'];
+    if (data is List) {
+      for (final item in data) {
+        if (item is Map && item['id'] is String && (item['id'] as String).trim().isNotEmpty) {
+          return (item['id'] as String).trim();
+        }
+      }
+    }
+    throw StateError('AI-сервер не сообщил доступных моделей. Укажите модель вручную.');
+  }
+
   Future<JarvisReply> _sendStandalone(String text) async {
+    final model = await _resolveModel();
     final historyForRequest = <Map<String, String>>[
       {
         'role': 'system',
@@ -160,13 +183,11 @@ class JarvisIpc {
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_apiKey');
     }
     request.headers.set('Accept', 'application/json');
-    request.write(
-      jsonEncode({
-        'model': _model,
-        'messages': historyForRequest,
-        'stream': false,
-      }),
-    );
+    request.write(jsonEncode({
+      'model': model,
+      'messages': historyForRequest,
+      'stream': false,
+    }));
 
     final response = await request.close();
     final body = await utf8.decoder.bind(response).join();
@@ -209,9 +230,13 @@ class JarvisIpc {
   }
 
   Future<JarvisReply> sendMessage(String text) async {
-    if (_standalone) return _sendStandalone(text);
+    final normalized = text.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError('Пустое сообщение');
+    }
+    if (_standalone) return _sendStandalone(normalized);
 
-    final resp = await _request({'type': 'message', 'text': text});
+    final resp = await _request({'type': 'message', 'text': normalized});
     if (resp['type'] == 'error') {
       throw StateError(resp['message'] as String);
     }
