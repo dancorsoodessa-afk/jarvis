@@ -2,7 +2,6 @@
 from pathlib import Path
 from .config import Settings
 from .core import JarvisAgent
-from .core_router import discover_chat_endpoint
 from .logging_setup import get as get_log
 from .memory import KnowledgeGraph, MemoryStore, SessionMemory, relevant_notes
 from .providers.local_vulkan import LocalVulkanProvider
@@ -33,10 +32,10 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         provider=LocalVulkanProvider(settings.llama_cli,settings.model,ctx=settings.ctx,threads=settings.threads); session=None
     elif settings.provider == "openai-compatible":
         session=SessionMemory(memory)
+        # Не требуем работающий backend на этапе сборки агента. Это важно для IPC,
+        # slash-команд и тестов: подключение к Dragon/другому backend выполняется
+        # лениво при первом AI-запросе.
         chat_url = settings.chat_url.strip()
-        if not chat_url:
-            chat_url, discovered_models = discover_chat_endpoint()
-            log.info("Найден локальный AI-backend: %s (модели: %s)", chat_url, ", ".join(discovered_models))
         provider=OpenAIChatProvider(url=chat_url,api_key=settings.chat_key,model=settings.chat_model,history=session.load_history())
     else: raise RuntimeError(f"Неизвестный провайдер: {settings.provider}. Доступны: openai-compatible, local-vulkan")
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
