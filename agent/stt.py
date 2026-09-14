@@ -1,24 +1,21 @@
-"""Speech-to-text for Jarvis (opt-in, mirrors agent/tts.py strategy).
+"""Speech-to-text engines for JARVIS.
 
-Engines:
-  1. whisper.cpp CLI  (JARVIS_STT=whisper-cpp, JARVIS_WHISPER=path,
-                       JARVIS_WHISPER_MODEL=path/to/ggml-model.bin)
-     — fits the project's local llama.cpp + Vulkan strategy.
-  2. faster-whisper Python package (JARVIS_STT=faster-whisper; lazy import).
-  3. Off (JARVIS_STT=off) — default.
-
-transcribe(path) -> text. Network-free for both engines.
+Priority:
+1. whisper.cpp when JARVIS_WHISPER is configured (fully local).
+2. faster-whisper when installed (local CPU, int8).
+3. Voice module may use its lightweight network fallback when no local engine
+   exists. STT itself never performs network requests.
 """
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 
 def available_engines() -> list[str]:
     engines = []
-    if os.environ.get("JARVIS_WHISPER"):
+    exe = os.environ.get("JARVIS_WHISPER", "").strip()
+    if exe and Path(exe).exists():
         engines.append("whisper-cpp")
     try:
         import faster_whisper  # noqa: F401
@@ -29,26 +26,33 @@ def available_engines() -> list[str]:
 
 
 def current_engine() -> str:
-    mode = os.environ.get("JARVIS_STT", "off").lower()
+    mode = os.environ.get("JARVIS_STT", "auto").strip().lower()
     if mode == "auto":
         engines = available_engines()
         return engines[0] if engines else "off"
-    return mode
+    if mode in {"off", "whisper-cpp", "faster-whisper"}:
+        return mode
+    return "off"
 
 
 def _run_whisper_cpp(wav_path: Path) -> str:
-    exe = os.environ.get("JARVIS_WHISPER")
-    model = os.environ.get("JARVIS_WHISPER_MODEL", "")
+    exe = os.environ.get("JARVIS_WHISPER", "").strip()
+    model = os.environ.get("JARVIS_WHISPER_MODEL", "").strip()
     if not exe or not Path(exe).exists():
         raise RuntimeError(f"whisper.cpp не найден: {exe}")
     if not model or not Path(model).exists():
         raise RuntimeError(f"Модель whisper не найдена: {model}")
     proc = subprocess.run(
         [exe, "-m", model, "-f", str(wav_path), "-nt", "-l", "ru"],
-        capture_output=True, timeout=300)
+        capture_output=True,
+        timeout=120,
+    )
     text = proc.stdout.decode("utf-8", errors="replace").strip()
     if proc.returncode != 0:
-        raise RuntimeError(f"whisper.cpp ошибка: {proc.stderr.decode('utf-8', errors='replace')[:200]}")
+        raise RuntimeError(
+            "whisper.cpp ошибка: "
+            + proc.stderr.decode("utf-8", errors="replace")[:300]
+        )
     return text
 
 
@@ -56,21 +60,24 @@ def _run_faster_whisper(wav_path: Path) -> str:
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
-        raise RuntimeError(
-            "faster-whisper не установлен: poetry add faster-whisper") from exc
-    model_size = os.environ.get("JARVIS_STT_MODEL_SIZE", "small")
+        raise RuntimeError("faster-whisper не установлен") from exc
+    model_size = os.environ.get("JARVIS_STT_MODEL_SIZE", "tiny").strip() or "tiny"
     model = WhisperModel(model_size, device="cpu", compute_type="int8")
-    segments, _info = model.transcribe(str(wav_path), language="ru")
+    segments, _info = model.transcribe(
+        str(wav_path),
+        language="ru",
+        beam_size=1,
+        vad_filter=True,
+    )
     return " ".join(seg.text.strip() for seg in segments).strip()
 
 
 def transcribe(audio_path: str) -> str:
-    """Transcribe a wav file to text."""
     engine = current_engine()
     if engine == "off":
         raise RuntimeError(
-            "STT отключён (JARVIS_STT=off). Доступно: "
-            + (", ".join(available_engines()) or "нет установленных движков"))
+            "Локальный STT не установлен. Используется резервное распознавание."
+        )
     path = Path(audio_path)
     if not path.exists():
         raise ValueError(f"Файл не найден: {audio_path}")
