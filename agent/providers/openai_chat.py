@@ -3,6 +3,7 @@
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Optional
 
@@ -12,6 +13,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "Названия инструментов, кнопок, действий и подсказок формулируй на русском языке. "
     "Если задача требует инструмента — используй доступный инструмент самостоятельно. "
     "Не заставляй пользователя выполнять действие вручную, если ты можешь выполнить его инструментом. "
+    "Перед опасным действием дождись явного подтверждения пользователя. "
     "Отвечай понятно, кратко и по делу. Не выдумывай результат: если действие не выполнено или недоступно, прямо сообщи об этом."
 )
 
@@ -25,14 +27,15 @@ class OpenAIChatProvider:
                  model: Optional[str] = None, timeout: int = 30,
                  history: Optional[list] = None,
                  system_prompt: Optional[str] = None):
-        self.url = url or os.environ.get("JARVIS_CHAT_URL", "")
-        self.api_key = api_key or os.environ.get("JARVIS_CHAT_KEY", "")
-        self.model = model or os.environ.get("JARVIS_CHAT_MODEL", "")
+        self.url = (url or os.environ.get("JARVIS_CHAT_URL", "")).strip()
+        self.api_key = api_key if api_key is not None else os.environ.get("JARVIS_CHAT_KEY", "")
+        self.model = (model or os.environ.get("JARVIS_CHAT_MODEL", "")).strip()
         self.timeout = timeout
         self.history: list[dict] = history if history is not None else []
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
         self.tool_executor = None
         self.on_delta = None
+        self._discovered_model: str | None = None
 
     def _messages(self, prompt: str) -> list[dict]:
         messages = [{"role": "system", "content": self.system_prompt}]
@@ -41,7 +44,7 @@ class OpenAIChatProvider:
         return messages
 
     def _request(self, payload: dict) -> dict:
-        data = json.dumps(payload).encode("utf-8")
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -50,13 +53,57 @@ class OpenAIChatProvider:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:300]
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
             raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise RuntimeError("ИИ вернул некорректный JSON-ответ") from exc
+
+    def _models_url(self) -> str:
+        parsed = urllib.parse.urlsplit(self.url)
+        path = parsed.path
+        if path.endswith("/chat/completions"):
+            path = path[: -len("/chat/completions")] + "/models"
+        elif path.endswith("/v1"):
+            path += "/models"
+        elif not path.endswith("/models"):
+            path = path.rstrip("/") + "/models"
+        return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+    def discover_model(self) -> str:
+        """Discover the first model exposed by an OpenAI-compatible server."""
+        if self.model:
+            return self.model
+        if self._discovered_model:
+            return self._discovered_model
+        url = self._models_url()
+        headers = {"Accept": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=min(self.timeout, 10)) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:300]
+            raise RuntimeError(f"Не удалось получить список моделей: HTTP {exc.code}. {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"Не удалось подключиться к серверу моделей: {exc.reason}") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise RuntimeError("Сервер моделей вернул некорректный JSON") from exc
+        models = body.get("data") if isinstance(body, dict) else None
+        ids = [str(item.get("id", "")).strip() for item in (models or []) if isinstance(item, dict)]
+        ids = [item for item in ids if item]
+        if not ids:
+            raise RuntimeError(
+                "Сервер ИИ доступен, но не сообщил ни одной модели. "
+                "Укажите JARVIS_CHAT_MODEL вручную или запустите модель на сервере.")
+        self._discovered_model = ids[0]
+        return self._discovered_model
 
     def _request_stream(self, payload: dict) -> dict:
-        data = json.dumps({**payload, "stream": True}).encode("utf-8")
+        data = json.dumps({**payload, "stream": True}, ensure_ascii=False).encode("utf-8")
         headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -66,7 +113,7 @@ class OpenAIChatProvider:
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 for raw in resp:
-                    line = raw.decode("utf-8").strip()
+                    line = raw.decode("utf-8", errors="replace").strip()
                     if not line.startswith("data:"):
                         continue
                     chunk = line[5:].strip()
@@ -74,7 +121,7 @@ class OpenAIChatProvider:
                         break
                     try:
                         piece = json.loads(chunk)["choices"][0].get("delta", {})
-                    except (json.JSONDecodeError, KeyError, IndexError):
+                    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
                         continue
                     delta = piece.get("content") or ""
                     if delta:
@@ -97,7 +144,7 @@ class OpenAIChatProvider:
                         if fn.get("arguments"):
                             dst["function"]["arguments"] += fn["arguments"]
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:300]
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
             raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
@@ -116,10 +163,9 @@ class OpenAIChatProvider:
     def generate(self, prompt: str, tools: Optional[list] = None, max_steps: int = 4) -> str:
         if not self.url:
             raise RuntimeError("ИИ не настроен: укажите адрес API в настройках")
-        if not self.model:
-            raise RuntimeError("Модель не настроена: укажите модель в настройках")
+        model = self.discover_model()
         messages = self._messages(prompt)
-        payload = {"model": self.model, "messages": messages, "temperature": 0.25}
+        payload = {"model": model, "messages": messages, "temperature": 0.25}
         if tools:
             payload["tools"] = tools
 
@@ -140,6 +186,9 @@ class OpenAIChatProvider:
                 except Exception as exc:
                     output = f"Ошибка выполнения инструмента: {exc}"
                 messages.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": str(output)[:2000]})
+            payload = {"model": model, "messages": messages, "temperature": 0.25}
+            if tools:
+                payload["tools"] = tools
         else:
             result_content = result_content or "Достигнут предел шагов агента."
 
