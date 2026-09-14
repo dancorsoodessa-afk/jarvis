@@ -2,9 +2,9 @@ name: Build JARVIS Android APK
 
 on:
   push:
-    branches: [standalone-pc-android]
+    branches: [foundation, standalone-pc-android]
   pull_request:
-    branches: [standalone-pc-android]
+    branches: [foundation, standalone-pc-android]
   workflow_dispatch:
 
 jobs:
