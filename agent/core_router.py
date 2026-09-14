@@ -1,10 +1,13 @@
-"""JARVIS Core routing: local Qwen 3 8B first, cloud only by explicit configuration."""
+"""JARVIS core routing helpers for OpenAI-compatible and local runtimes."""
 from __future__ import annotations
 
 import json
+import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Iterable
+
+from .config import normalize_provider
 
 
 @dataclass(frozen=True)
@@ -15,42 +18,58 @@ class CoreSelection:
 
 
 def _models_endpoint(chat_url: str) -> str:
-    base = chat_url.rstrip("/")
-    marker = "/v1/chat/completions"
-    if base.endswith(marker):
-        return base[: -len(marker)] + "/v1/models"
-    if base.endswith("/v1"):
-        return base + "/models"
-    return base + "/v1/models"
+    parsed = urllib.parse.urlsplit(chat_url.rstrip("/"))
+    path = parsed.path
+    if path.endswith("/chat/completions"):
+        path = path[: -len("/chat/completions")] + "/models"
+    elif path.endswith("/v1"):
+        path += "/models"
+    elif not path.endswith("/models"):
+        path = path.rstrip("/") + "/v1/models"
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
 
-def discover_local_qwen3_8b(chat_url: str, timeout: float = 1.5) -> str:
-    """Return the installed Qwen 3 8B model tag from a local OpenAI-compatible server.
-
-    No model tag is guessed. If the exact family/size is not exposed by the server,
-    the error contains the models that were actually returned.
-    """
+def discover_model(chat_url: str, timeout: float = 3.0) -> str:
+    """Return the first model actually exposed by an OpenAI-compatible server."""
     url = _models_endpoint(chat_url)
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:300]
+        raise RuntimeError(f"Не удалось получить список моделей: HTTP {exc.code}. {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Сервер моделей недоступен: {exc.reason}") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RuntimeError("Сервер моделей вернул некорректный JSON") from exc
+    models = [str(item.get("id", "")).strip() for item in payload.get("data", []) if isinstance(item, dict)]
+    models = [m for m in models if m]
+    if not models:
+        raise RuntimeError("OpenAI-compatible сервер не сообщил доступных моделей.")
+    return models[0]
+
+
+def discover_local_qwen3_8b(chat_url: str, timeout: float = 3.0) -> str:
+    """Backward-compatible helper; require an actual Qwen 3 8B model if requested."""
+    models_url = _models_endpoint(chat_url)
+    req = urllib.request.Request(models_url, headers={"Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
-    models = [str(item.get("id", "")).strip() for item in payload.get("data", []) if item.get("id")]
+    models = [str(item.get("id", "")).strip() for item in payload.get("data", []) if isinstance(item, dict) and item.get("id")]
     matches = [m for m in models if "qwen3" in m.lower() and "8b" in m.lower()]
     if not matches:
-        raise RuntimeError(
-            "Локальное ядро Qwen 3 8B не найдено. Сервер сообщил модели: "
-            + (", ".join(models) if models else "список пуст")
-        )
+        raise RuntimeError("Qwen 3 8B не найден. Доступные модели: " + (", ".join(models) if models else "нет"))
     return sorted(matches, key=lambda value: (":" not in value, len(value)))[0]
 
 
 def select_core(provider: str, chat_url: str, configured_model: str = "") -> CoreSelection:
-    """Select the main reasoning model without silently substituting another model."""
-    provider = (provider or "openai-compatible").strip().lower()
+    """Select a model without assuming a specific vendor or model family."""
+    provider = normalize_provider(provider)
     configured_model = (configured_model or "").strip()
-    if provider == "openai-compatible" and "127.0.0.1:11434" in chat_url:
-        model = configured_model or discover_local_qwen3_8b(chat_url)
-        return CoreSelection(provider=provider, model=model, source="Локально / Qwen 3 8B")
-    if not configured_model:
-        raise RuntimeError("Для облачного провайдера не задана модель JARVIS_CHAT_MODEL.")
-    return CoreSelection(provider=provider, model=configured_model, source="Облачный провайдер")
+    if provider == "local-vulkan":
+        return CoreSelection(provider=provider, model=configured_model, source="Локально / llama.cpp + Vulkan")
+    if provider != "openai-compatible":
+        raise RuntimeError(f"Неизвестный провайдер: {provider}. Доступны: openai-compatible, local-vulkan")
+    model = configured_model or discover_model(chat_url)
+    return CoreSelection(provider=provider, model=model, source="OpenAI-compatible сервер")
