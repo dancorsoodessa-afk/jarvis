@@ -42,9 +42,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
   StreamSubscription<String>? _partialSub;
+  Timer? _visualTimer;
   bool _busy = false;
   String _status = 'Инициализация…';
   String _streamText = '';
+  JarvisVisualState _visualState = JarvisVisualState.idle;
   bool get _android => Platform.isAndroid;
 
   @override
@@ -57,6 +59,18 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
   }
 
+  void _setVisual(JarvisVisualState state) {
+    _visualTimer?.cancel();
+    if (mounted) setState(() => _visualState = state);
+  }
+
+  void _returnToIdle([Duration delay = const Duration(milliseconds: 900)]) {
+    _visualTimer?.cancel();
+    _visualTimer = Timer(delay, () {
+      if (mounted && !_busy) setState(() => _visualState = JarvisVisualState.idle);
+    });
+  }
+
   Future<void> _connectDesktop() async {
     try {
       final dir = File(Platform.resolvedExecutable).parent.path;
@@ -66,7 +80,10 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           : JarvisIpc.spawn('python', ['-m', 'agent', '--ipc']));
       await _finishConnect();
     } catch (e) {
-      if (mounted) setState(() => _status = 'Агент не запущен: $e');
+      if (mounted) {
+        setState(() => _status = 'Агент не запущен: $e');
+        _setVisual(JarvisVisualState.error);
+      }
     }
   }
 
@@ -75,15 +92,18 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final model = _model.text.trim();
     if (endpoint.isEmpty) {
       if (mounted) setState(() => _status = 'Укажите endpoint AI');
+      _setVisual(JarvisVisualState.error);
       return;
     }
     setState(() => _status = model.isEmpty ? 'Поиск модели и подключение…' : 'Подключение к AI…');
+    _setVisual(JarvisVisualState.thinking);
     try {
       await _jarvis?.dispose();
       _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: _apiKey.text.trim(), model: model);
       await _finishConnect();
     } catch (e) {
       if (mounted) setState(() => _status = 'Ошибка AI: $e');
+      _setVisual(JarvisVisualState.error);
     }
   }
 
@@ -91,9 +111,16 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final tools = await _jarvis!.listTools();
     if (!mounted) return;
     setState(() => _status = _android ? 'JARVIS готов · автономный режим' : 'JARVIS подключён · инструментов: ${tools.length}');
+    _setVisual(JarvisVisualState.confirmation);
+    _returnToIdle(const Duration(milliseconds: 1100));
     _partialSub?.cancel();
     _partialSub = _jarvis!.partials().listen((text) {
-      if (mounted) setState(() => _streamText = text);
+      if (mounted) {
+        setState(() {
+          _streamText = text;
+          if (text.isNotEmpty) _visualState = JarvisVisualState.speaking;
+        });
+      }
     });
   }
 
@@ -128,28 +155,49 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     text = text.trim();
     if (text.isEmpty || _jarvis == null || _busy) return;
     _input.clear();
-    setState(() { _messages.add(_Msg(text, isUser: true)); _busy = true; _streamText = ''; });
+    setState(() { _messages.add(_Msg(text, isUser: true)); _busy = true; _streamText = ''; _visualState = JarvisVisualState.listening; });
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+    setState(() => _visualState = JarvisVisualState.thinking);
     try {
       final reply = await _jarvis!.sendMessage(text);
-      if (mounted) setState(() => _messages.add(_Msg(reply.text, isUser: false)));
+      if (mounted) {
+        setState(() {
+          _messages.add(_Msg(reply.text, isUser: false));
+          _visualState = JarvisVisualState.speaking;
+        });
+      }
+      _returnToIdle(const Duration(milliseconds: 1800));
     } catch (e) {
-      if (mounted) setState(() => _messages.add(_Msg('Ошибка: $e', isUser: false)));
+      if (mounted) {
+        setState(() => _messages.add(_Msg('Ошибка: $e', isUser: false)));
+        _setVisual(JarvisVisualState.error);
+      }
     } finally {
       if (mounted) setState(() { _busy = false; _streamText = ''; });
+      if (_visualState == JarvisVisualState.thinking) _returnToIdle();
     }
   }
 
   Future<void> _clearMemory() async {
     try {
       await _jarvis?.clearMemory();
-      if (mounted) setState(() => _messages.add(_Msg('История диалога очищена.', isUser: false)));
+      if (mounted) {
+        setState(() => _messages.add(_Msg('История диалога очищена.', isUser: false)));
+        _setVisual(JarvisVisualState.confirmation);
+        _returnToIdle();
+      }
     } catch (e) {
-      if (mounted) setState(() => _messages.add(_Msg('Ошибка: $e', isUser: false)));
+      if (mounted) {
+        setState(() => _messages.add(_Msg('Ошибка: $e', isUser: false)));
+        _setVisual(JarvisVisualState.error);
+      }
     }
   }
 
   @override
   void dispose() {
+    _visualTimer?.cancel();
     _partialSub?.cancel(); _jarvis?.dispose(); _input.dispose(); _endpoint.dispose(); _apiKey.dispose(); _model.dispose(); _scroll.dispose(); super.dispose();
   }
 
@@ -158,7 +206,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     appBar: AppBar(title: const Text('JARVIS'), actions: [if (_android) IconButton(onPressed: _settings, tooltip: 'Настройки AI', icon: const Icon(Icons.settings))]),
     body: Column(children: [
       const SizedBox(height: 8),
-      const SizedBox(width: 140, height: 140, child: JarvisReactor(color: kCyan)),
+      SizedBox(width: 270, height: 270, child: JarvisReactor(color: kCyan, state: _visualState)),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(_status, style: const TextStyle(color: kCyan, fontSize: 12), textAlign: TextAlign.center)),
       Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length, itemBuilder: (_, i) {
         final m = _messages[i];
@@ -169,7 +217,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         ));
       })),
       if (_busy && _streamText.isNotEmpty) Padding(padding: const EdgeInsets.all(8), child: Text('$_streamText▌')),
-      if (_android && _jarvis == null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: FilledButton.icon(onPressed: _settings, icon: const Icon(Icons.settings), label: const Text('Настроить AI'))),
+      if (_android && _jarvis == null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: FilledButton.icon(onPressed: _settings, icon: const Icon(Icons.settings), label: const Text('Настроить AI')),
       Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
         Expanded(child: TextField(controller: _input, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Сообщение…', filled: true, fillColor: kPanel))),
         IconButton(onPressed: _busy || _jarvis == null ? null : () => _send(_input.text), icon: const Icon(Icons.send, color: kCyan)),
