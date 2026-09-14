@@ -26,7 +26,10 @@ def web_search(query: str) -> str:
         raise ValueError("Пустой поисковый запрос")
     url = "https://www.google.com/search?" + urllib.parse.urlencode({
         "q": query, "hl": "ru", "num": 5, "safe": "active"})
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Language": "ru-RU,ru;q=0.9"})
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": USER_AGENT, "Accept-Language": "ru-RU,ru;q=0.9"},
+    )
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             page = resp.read().decode("utf-8", errors="replace")
@@ -34,17 +37,25 @@ def web_search(query: str) -> str:
         raise RuntimeError(f"Google недоступен: {exc}") from exc
 
     results = []
-    patterns = [
-        r'<a href="/url\?q=([^&"]+)[^>]*>(.*?)</a>',
-        r'<a href="(https?://[^\"]+)"[^>]*>(.*?)</a>',
-    ]
     seen = set()
+    # Google currently emits several anchor layouts. Decode entities before
+    # extracting the destination so both /url?q=... and direct links work.
+    normalized = html.unescape(page)
+    patterns = [
+        r'<a[^>]+href=["\']/url\?q=([^&"\']+)[^>]*>(.*?)</a>',
+        r'<a[^>]+href=["\'](https?://[^"\']+)["\'][^>]*>(.*?)</a>',
+    ]
     for pattern in patterns:
-        for match in re.finditer(pattern, page, re.S):
-            link = urllib.parse.unquote(match.group(1))
+        for match in re.finditer(pattern, normalized, re.S | re.I):
+            link = urllib.parse.unquote(match.group(1)).strip()
             title = re.sub(r"<[^>]+>", " ", match.group(2))
             title = html.unescape(re.sub(r"\s+", " ", title)).strip()
-            if not title or not link.startswith("http") or "google.com" in urllib.parse.urlparse(link).netloc:
+            parsed = urllib.parse.urlparse(link)
+            if (
+                not title
+                or parsed.scheme not in {"http", "https"}
+                or parsed.netloc.endswith("google.com")
+            ):
                 continue
             key = (title.lower(), link)
             if key in seen:
@@ -57,7 +68,6 @@ def web_search(query: str) -> str:
             break
 
     if not results:
-        # Keep a useful fallback when Google's markup changes or a test uses a mocked page.
         return f"Результаты поиска для «{query}». Откройте: {url}"
     return "Результаты Google:\n" + "\n".join(results)
 
