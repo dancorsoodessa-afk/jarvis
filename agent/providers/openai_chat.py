@@ -38,6 +38,15 @@ class OpenAIChatProvider:
         self.on_delta = None
         self._discovered_model: str | None = None
 
+    def _ensure_endpoint(self) -> None:
+        """Resolve a local OpenAI-compatible backend only when an AI request is made."""
+        if self.url:
+            return
+        from agent.core_router import discover_chat_endpoint
+        self.url, models = discover_chat_endpoint()
+        if not self.model and models:
+            self._discovered_model = models[0]
+
     def _messages(self, prompt: str) -> list[dict]:
         messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
@@ -76,6 +85,9 @@ class OpenAIChatProvider:
         """Discover the first model exposed by an OpenAI-compatible server."""
         if self.model:
             return self.model
+        if self._discovered_model:
+            return self._discovered_model
+        self._ensure_endpoint()
         if self._discovered_model:
             return self._discovered_model
         url = self._models_url()
@@ -162,8 +174,7 @@ class OpenAIChatProvider:
         return {"content": msg.get("content") or "", "tool_calls": msg.get("tool_calls") or []}
 
     def generate(self, prompt: str, tools: Optional[list] = None, max_steps: int = 4) -> str:
-        if not self.url:
-            raise RuntimeError("ИИ не настроен: укажите адрес API в настройках")
+        self._ensure_endpoint()
         model = self.discover_model()
         messages = self._messages(prompt)
         payload = {"model": model, "messages": messages, "temperature": 0.25}
