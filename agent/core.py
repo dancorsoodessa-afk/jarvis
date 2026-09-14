@@ -87,7 +87,8 @@ class JarvisAgent:
             return AgentResult(f"Ошибка провайдера: {exc}", self.provider.name)
         self.log.info("Ответ модели (%s): %.120s", self.provider.name, reply)
         self._notify(text, reply)
-        return AgentResult(reply, self.provider.name)
+        return AgentResult(reply, self.provider.name,
+                           needs_confirmation=self._pending_tool is not None)
 
     def _run_tool(self, name: str, *args, remember: str | None = None,
                   confirmed: bool = False, ask_confirmation: bool = True,
@@ -127,7 +128,7 @@ class JarvisAgent:
         if not isinstance(args, dict):
             raise TypeError("Аргументы инструмента должны быть объектом JSON")
         self.log.info("Модель вызвала инструмент %s", name)
-        return self._run_tool(name, ask_confirmation=False, **args).text
+        return self._run_tool(name, ask_confirmation=True, **args).text
 
     def _handle_tool_command(self, text: str) -> AgentResult:
         import shlex
