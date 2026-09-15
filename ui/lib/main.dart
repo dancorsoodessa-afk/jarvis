@@ -8,7 +8,7 @@ import 'jarvis_reactor.dart';
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
-const kDeepSeekFreeModel = 'deepseek/deepseek-v4-flash:free';
+const kFreeRouterModel = 'openrouter/free';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,7 +52,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   StreamSubscription<String>? _partialSub;
   Timer? _visualTimer;
   bool _busy = false;
-  bool _startupFinished = false;
   String _status = 'Запуск JARVIS…';
   String _streamText = '';
   JarvisVisualState _visualState = JarvisVisualState.idle;
@@ -71,10 +70,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     try {
       final prefs = await SharedPreferences.getInstance();
       _endpoint.text = prefs.getString('endpoint') ?? 'https://openrouter.ai/api/v1';
-      _model.text = prefs.getString('model') ?? kDeepSeekFreeModel;
-      if (_model.text.trim() == 'openrouter/free') _model.text = kDeepSeekFreeModel;
+      _model.text = prefs.getString('model') ?? kFreeRouterModel;
+      if (_model.text.trim() == 'deepseek/deepseek-v4-flash:free') _model.text = kFreeRouterModel;
       _apiKey.text = prefs.getString('api_key') ?? '';
-      _startupFinished = true;
       if (!mounted) return;
       if (_apiKey.text.isEmpty) {
         setState(() => _status = 'Настройте OpenRouter');
@@ -136,7 +134,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     if (_jarvis == null) return;
     final tools = _android ? const <String>[] : await _jarvis!.listTools();
     if (!mounted) return;
-    setState(() => _status = _android ? 'OpenRouter · DeepSeek Free · JARVIS активен' : 'JARVIS подключён · инструментов: ${tools.length}');
+    setState(() => _status = _android ? 'OpenRouter · бесплатный роутер · JARVIS активен' : 'JARVIS подключён · инструментов: ${tools.length}');
     _setVisual(JarvisVisualState.confirmation);
     _returnToIdle(const Duration(milliseconds: 1100));
     await _partialSub?.cancel();
@@ -156,10 +154,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Endpoint', hintText: 'https://openrouter.ai/api/v1')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: kDeepSeekFreeModel)),
-          Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => setState(() => _model.text = kDeepSeekFreeModel), icon: const Icon(Icons.code), label: const Text('Выбрать DeepSeek V4 Flash — FREE'))),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: kFreeRouterModel)),
+          Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => setState(() => _model.text = kFreeRouterModel), icon: const Icon(Icons.auto_awesome), label: const Text('Выбрать бесплатный роутер OpenRouter')),
+          ),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API key', hintText: 'sk-or-v1-...')),
-          const Text('Голос временно отключён в этой диагностической сборке, чтобы исключить вылет native-плагина.', style: TextStyle(fontSize: 12)),
+          const Text('OpenRouter автоматически выбирает доступную бесплатную модель. Голос временно отключён в этой диагностической сборке.', style: TextStyle(fontSize: 12)),
         ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
