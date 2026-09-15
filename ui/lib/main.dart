@@ -12,7 +12,16 @@ const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
 const kDeepSeekFreeModel = 'deepseek/deepseek-v4-flash:free';
 
-void main() => runApp(const JarvisApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+  };
+  runZonedGuarded(() => runApp(const JarvisApp()), (error, stack) {
+    debugPrint('JARVIS error: $error');
+    debugPrintStack(stackTrace: stack);
+  });
+}
 
 class JarvisApp extends StatelessWidget {
   const JarvisApp({super.key});
@@ -61,6 +70,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   bool _armed = false;
   bool _startingSpeech = false;
   bool _voiceEnabled = true;
+  bool _startupFinished = false;
   String _status = 'Инициализация…';
   String _streamText = '';
   JarvisVisualState _visualState = JarvisVisualState.idle;
@@ -69,28 +79,41 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   @override
   void initState() {
     super.initState();
-    if (_android) {
-      _status = 'Загрузка настроек…';
-      _initAndroid();
-    } else {
-      _connectDesktop();
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_android) {
+        setState(() => _status = 'Запуск JARVIS…');
+        _initAndroid();
+      } else {
+        _connectDesktop();
+      }
+    });
   }
 
   Future<void> _initAndroid() async {
-    final prefs = await SharedPreferences.getInstance();
-    _endpoint.text = prefs.getString('endpoint') ?? 'https://openrouter.ai/api/v1';
-    _model.text = prefs.getString('model') ?? kDeepSeekFreeModel;
-    if (_model.text.trim() == 'openrouter/free') _model.text = kDeepSeekFreeModel;
-    _apiKey.text = prefs.getString('api_key') ?? '';
-    _voiceEnabled = prefs.getBool('voice_enabled') ?? true;
-    await _initTts();
-    await _initSpeech();
-    if (!mounted) return;
-    if (_apiKey.text.isEmpty) {
-      setState(() => _status = 'Настройте OpenRouter');
-    } else {
-      await _connectAndroid();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _endpoint.text = prefs.getString('endpoint') ?? 'https://openrouter.ai/api/v1';
+      _model.text = prefs.getString('model') ?? kDeepSeekFreeModel;
+      if (_model.text.trim() == 'openrouter/free') _model.text = kDeepSeekFreeModel;
+      _apiKey.text = prefs.getString('api_key') ?? '';
+      _voiceEnabled = prefs.getBool('voice_enabled') ?? true;
+      if (mounted) setState(() => _status = _apiKey.text.isEmpty ? 'Настройте OpenRouter' : 'Подключение…');
+      await _initTts();
+      await _initSpeech();
+      _startupFinished = true;
+      if (!mounted) return;
+      if (_apiKey.text.isEmpty) {
+        setState(() => _status = 'Настройте OpenRouter');
+      } else {
+        await _connectAndroid();
+      }
+    } catch (e) {
+      _startupFinished = true;
+      if (mounted) {
+        setState(() => _status = 'JARVIS запущен · ошибка инициализации: $e');
+        _setVisual(JarvisVisualState.error);
+      }
     }
   }
 
@@ -100,8 +123,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       await _tts.setSpeechRate(0.48);
       await _tts.setPitch(1.0);
       await _tts.setVolume(1.0);
-      await _tts.awaitSpeakCompletion(true);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('JARVIS TTS init: $e');
+    }
   }
 
   Future<void> _speak(String text) async {
@@ -109,21 +133,14 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     try {
       await _tts.stop();
       await _tts.speak(text.trim());
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('JARVIS TTS: $e');
+    }
   }
 
-  String _cleanVoice(String text) => text
-      .toLowerCase()
-      .replaceAll('джарвис', 'джарвис')
-      .replaceAll('jarvis', 'джарвис')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
-
+  String _cleanVoice(String text) => text.toLowerCase().replaceAll('jarvis', 'джарвис').replaceAll(RegExp(r'\s+'), ' ').trim();
   bool _hasWakeWord(String text) => RegExp(r'(^|[\s,!.?:;-])джарвис([\s,!.?:;-]|$)', caseSensitive: false).hasMatch(_cleanVoice(text));
-
-  String _removeWakeWord(String text) => _cleanVoice(text)
-      .replaceFirst(RegExp(r'^джарвис[\s,!.?:;-]*', caseSensitive: false), '')
-      .trim();
+  String _removeWakeWord(String text) => _cleanVoice(text).replaceFirst(RegExp(r'^джарвис[\s,!.?:;-]*', caseSensitive: false), '').trim();
 
   Future<void> _initSpeech() async {
     try {
@@ -132,13 +149,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           if (!mounted) return;
           final active = status == 'listening';
           setState(() => _listening = active);
-          if (!active && !_busy && _jarvis != null && _voiceEnabled) _scheduleWakeListening();
+          if (!active && !_busy && _jarvis != null && _voiceEnabled && _startupFinished) _scheduleWakeListening();
         },
         onError: (error) {
           if (!mounted) return;
           setState(() => _status = 'Голос: ${error.errorMsg}');
           _setVisual(JarvisVisualState.error);
-          if (!_busy && _jarvis != null && _voiceEnabled) _scheduleWakeListening();
+          if (!_busy && _jarvis != null && _voiceEnabled && _startupFinished) _scheduleWakeListening();
         },
       );
       if (!mounted) return;
@@ -147,13 +164,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         if (!available && _jarvis != null) _status = 'AI подключён · голос недоступен';
       });
     } catch (e) {
-      if (mounted) setState(() => _status = 'Голос недоступен: $e');
+      if (mounted) setState(() => _status = 'AI готов · голос недоступен: $e');
     }
   }
 
   void _scheduleWakeListening() {
     _wakeTimer?.cancel();
-    _wakeTimer = Timer(const Duration(milliseconds: 350), _startWakeListening);
+    _wakeTimer = Timer(const Duration(seconds: 2), _startWakeListening);
   }
 
   Future<void> _startWakeListening() async {
@@ -194,7 +211,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           }
         },
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('JARVIS wake listener: $e');
       if (!_busy && _voiceEnabled) _scheduleWakeListening();
     } finally {
       _startingSpeech = false;
@@ -218,23 +236,28 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _setVisual(JarvisVisualState.listening);
     _armed = true;
     if (mounted) setState(() => _status = 'Слушаю команду…');
-    await _speech.listen(
-      localeId: 'ru_RU',
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 3),
-      listenMode: stt.ListenMode.confirmation,
-      partialResults: true,
-      cancelOnError: false,
-      onResult: (result) {
-        final text = result.recognizedWords.trim();
-        if (text.isNotEmpty && mounted) _input.text = text;
-        if (result.finalResult && text.isNotEmpty) {
-          _armed = false;
-          _speech.stop();
-          _send(text);
-        }
-      },
-    );
+    try {
+      await _speech.listen(
+        localeId: 'ru_RU',
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 3),
+        listenMode: stt.ListenMode.confirmation,
+        partialResults: true,
+        cancelOnError: false,
+        onResult: (result) {
+          final text = result.recognizedWords.trim();
+          if (text.isNotEmpty && mounted) _input.text = text;
+          if (result.finalResult && text.isNotEmpty) {
+            _armed = false;
+            _speech.stop();
+            _send(text);
+          }
+        },
+      );
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Голос недоступен: $e');
+      _setVisual(JarvisVisualState.error);
+    }
   }
 
   void _setVisual(JarvisVisualState state) {
@@ -299,7 +322,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Future<void> _finishConnect() async {
-    final tools = await _jarvis!.listTools();
+    if (_jarvis == null) return;
+    final tools = _android ? const <String>[] : await _jarvis!.listTools();
     if (!mounted) return;
     setState(() => _status = _android ? 'OpenRouter · DeepSeek Free · «Джарвис» активен' : 'JARVIS подключён · инструментов: ${tools.length}');
     _setVisual(JarvisVisualState.confirmation);
@@ -311,7 +335,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         if (text.isNotEmpty) _visualState = JarvisVisualState.speaking;
       });
     });
-    if (_android && _voiceEnabled) _scheduleWakeListening();
+    if (_android && _voiceEnabled && _speechReady && _startupFinished) _scheduleWakeListening();
   }
 
   Future<void> _settings() async {
@@ -349,7 +373,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     text = text.trim();
     if (text.isEmpty || _jarvis == null || _busy) return;
     _wakeTimer?.cancel();
-    await _speech.stop();
+    try { await _speech.stop(); } catch (_) {}
     _input.clear();
     setState(() {
       _messages.add(_Msg(text, isUser: true));
@@ -378,7 +402,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       }
     } finally {
       if (mounted) setState(() { _busy = false; _streamText = ''; });
-      if (_android && _voiceEnabled && _jarvis != null) _scheduleWakeListening();
+      if (_android && _voiceEnabled && _jarvis != null && _speechReady) _scheduleWakeListening();
     }
   }
 
