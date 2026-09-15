@@ -57,7 +57,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   void initState() {
     super.initState();
     if (_android) {
-      _status = 'Настройте AI-провайдера';
+      _status = 'Настройте OpenRouter';
       _initSpeech();
     } else {
       _connectDesktop();
@@ -146,12 +146,14 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _connectAndroid() async {
     final endpoint = _endpoint.text.trim();
     final model = _model.text.trim();
+    final key = _apiKey.text.trim();
     if (endpoint.isEmpty) { if (mounted) setState(() => _status = 'Укажите endpoint AI'); _setVisual(JarvisVisualState.error); return; }
-    setState(() => _status = model.isEmpty ? 'Поиск модели и подключение…' : 'Подключение к AI…');
+    if (key.isEmpty) { if (mounted) setState(() => _status = 'Укажите API key OpenRouter'); _setVisual(JarvisVisualState.error); return; }
+    setState(() => _status = 'Подключение к OpenRouter…');
     _setVisual(JarvisVisualState.thinking);
     try {
       await _jarvis?.dispose();
-      _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: _apiKey.text.trim(), model: model);
+      _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model);
       await _finishConnect();
     } catch (e) { if (mounted) setState(() => _status = 'Ошибка AI: $e'); _setVisual(JarvisVisualState.error); }
   }
@@ -159,7 +161,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _finishConnect() async {
     final tools = await _jarvis!.listTools();
     if (!mounted) return;
-    setState(() => _status = _android ? 'JARVIS готов · автономный режим' : 'JARVIS подключён · инструментов: ${tools.length}');
+    setState(() => _status = _android ? 'OpenRouter подключён · JARVIS готов' : 'JARVIS подключён · инструментов: ${tools.length}');
     _setVisual(JarvisVisualState.confirmation);
     _returnToIdle(const Duration(milliseconds: 1100));
     _partialSub?.cancel();
@@ -170,22 +172,22 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _settings() async {
     if (!_android) return;
-    _endpoint.text = _endpoint.text.isEmpty ? const String.fromEnvironment('JARVIS_API_URL', defaultValue: '') : _endpoint.text;
-    _model.text = _model.text.isEmpty ? const String.fromEnvironment('JARVIS_MODEL', defaultValue: '') : _model.text;
+    if (_endpoint.text.isEmpty) _endpoint.text = 'https://openrouter.ai/api/v1';
+    if (_model.text.isEmpty) _model.text = 'openrouter/free';
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('AI-провайдер'),
+        title: const Text('OpenRouter — AI-провайдер'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenAI-compatible endpoint', hintText: 'https://example.com/v1')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: 'необязательно — модель будет найдена автоматически')),
-          TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API key (необязательно)')),
+          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Endpoint', hintText: 'https://openrouter.ai/api/v1')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: 'openrouter/free')),
+          TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API key', hintText: 'sk-or-v1-...')),
           const SizedBox(height: 12),
-          const Text('Android работает самостоятельно и не подключается к JARVIS на ПК. Можно использовать любой OpenAI-compatible AI endpoint.', style: TextStyle(fontSize: 12)),
+          const Text('API key обязателен. Можно вставить как sk-or-v1-... или вместе с Bearer — JARVIS сам уберёт Bearer.', style: TextStyle(fontSize: 12)),
         ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
-          FilledButton(onPressed: () { Navigator.pop(ctx); _connectAndroid(); }, child: const Text('Сохранить и подключить')),
+          FilledButton(onPressed: () { Navigator.pop(ctx); _connectAndroid(); }, child: const Text('Подключить')),
         ],
       ),
     );
@@ -238,7 +240,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(12), constraints: const BoxConstraints(maxWidth: 560), decoration: BoxDecoration(color: m.isUser ? kCyan.withValues(alpha: .15) : kPanel, borderRadius: BorderRadius.circular(12)), child: SelectableText(m.text)));
       })),
       if (_busy && _streamText.isNotEmpty) Padding(padding: const EdgeInsets.all(8), child: Text('$_streamText▌')),
-      if (_android && _jarvis == null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: FilledButton.icon(onPressed: _settings, icon: const Icon(Icons.settings), label: const Text('Настроить AI'))),
+      if (_android && _jarvis == null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: FilledButton.icon(onPressed: _settings, icon: const Icon(Icons.settings), label: const Text('Настроить OpenRouter'))),
       Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
         if (_android) IconButton(onPressed: _busy || _jarvis == null ? null : _toggleListening, tooltip: _listening ? 'Остановить прослушивание' : 'Голосовой ввод', icon: Icon(_listening ? Icons.mic : Icons.mic_none, color: _listening ? kCyan : null)),
         Expanded(child: TextField(controller: _input, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Сообщение…', filled: true, fillColor: kPanel))),
