@@ -19,7 +19,6 @@ DEFAULT_SYSTEM_PROMPT = (
 
 MAX_HISTORY_MESSAGES = 12
 CONFIRMATION_PREFIX = "Инструмент «"
-OPENROUTER_FREE_COMPAT_MODEL = "meta-llama/llama-3.3-8b-instruct:free"
 
 
 class OpenAIChatProvider:
@@ -30,7 +29,8 @@ class OpenAIChatProvider:
                  history: Optional[list] = None,
                  system_prompt: Optional[str] = None):
         self.url = (url or os.environ.get("JARVIS_CHAT_URL", "")).strip()
-        self.api_key = api_key if api_key is not None else os.environ.get("JARVIS_CHAT_KEY", "")
+        configured_key = api_key if api_key is not None else os.environ.get("JARVIS_CHAT_KEY", "")
+        self.api_key = (configured_key or os.environ.get("OPENROUTER_API_KEY", "") or os.environ.get("OPENAI_API_KEY", "")).strip()
         self.model = (model or os.environ.get("JARVIS_CHAT_MODEL", "")).strip()
         self.timeout = timeout
         self.history: list[dict] = history if history is not None else []
@@ -55,19 +55,23 @@ class OpenAIChatProvider:
 
     @staticmethod
     def _normalize_model(model: str) -> str:
-        # Some OpenAI-compatible gateways reject OpenRouter's router slug even
-        # though OpenRouter itself supports it. Use a current free model that
-        # is valid for chat/completions and tool-capable workflows.
-        if model.strip().lower() == "openrouter/free":
-            return OPENROUTER_FREE_COMPAT_MODEL
-        return model
+        # OpenRouter's free router is a real model slug. Do not replace it
+        # with a hard-coded model that may have no available endpoint.
+        return model.strip()
+
+    def _auth_headers(self, *, stream: bool = False) -> dict:
+        if not self.api_key:
+            raise RuntimeError(
+                "API-ключ не задан. Для OpenRouter укажите API key в настройках JARVIS."
+            )
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
+        if stream:
+            headers["Accept"] = "text/event-stream"
+        return headers
 
     def _request(self, payload: dict) -> dict:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        req = urllib.request.Request(self.url, data=data, headers=headers)
+        req = urllib.request.Request(self.url, data=data, headers=self._auth_headers())
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 return json.loads(resp.read().decode("utf-8"))
@@ -99,10 +103,7 @@ class OpenAIChatProvider:
         if self._discovered_model:
             return self._normalize_model(self._discovered_model)
         url = self._models_url()
-        headers = {"Accept": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        req = urllib.request.Request(url, headers=headers)
+        req = urllib.request.Request(url, headers={"Accept": "application/json", "Authorization": f"Bearer {self.api_key}"} if self.api_key else {"Accept": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=min(self.timeout, 10)) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
@@ -125,10 +126,7 @@ class OpenAIChatProvider:
 
     def _request_stream(self, payload: dict) -> dict:
         data = json.dumps({**payload, "stream": True}, ensure_ascii=False).encode("utf-8")
-        headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        req = urllib.request.Request(self.url, data=data, headers=headers)
+        req = urllib.request.Request(self.url, data=data, headers=self._auth_headers(stream=True))
         content_parts: list[str] = []
         tool_calls: list[dict] = []
         try:
