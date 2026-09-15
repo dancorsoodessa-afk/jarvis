@@ -31,10 +31,21 @@ class JarvisIpc {
       normalized = normalized.substring(0, normalized.length - '/chat/completions'.length);
     }
     if (normalized.isEmpty) throw ArgumentError('AI endpoint не указан');
+
+    // OpenRouter/OpenAI-compatible APIs require a Bearer token. Accept both
+    // the raw key and a key pasted together with the "Bearer " prefix.
+    var normalizedKey = apiKey.trim();
+    if (normalizedKey.toLowerCase().startsWith('bearer ')) {
+      normalizedKey = normalizedKey.substring(7).trim();
+    }
+    if (normalizedKey.isEmpty) {
+      throw ArgumentError('API key не указан. Для OpenRouter нужен ключ sk-or-v1-...');
+    }
+
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15)
       ..idleTimeout = const Duration(seconds: 30);
-    return JarvisIpc._(httpClient: client, apiUrl: normalized, apiKey: apiKey.trim(), model: model.trim());
+    return JarvisIpc._(httpClient: client, apiUrl: normalized, apiKey: normalizedKey, model: model.trim());
   }
 
   final Process? _process;
@@ -53,6 +64,16 @@ class JarvisIpc {
   Stream<Map<int, String>> get deltas => _deltaController.stream;
   int? get activeId => _activeId;
   Stream<String> partials() => deltas.map((m) => m[activeId]).where((value) => value != null).cast<String>();
+
+  Map<String, String> _aiHeaders() {
+    final key = _apiKey?.trim() ?? '';
+    if (key.isEmpty) throw StateError('API key отсутствует. Откройте Настройки AI и вставьте ключ OpenRouter.');
+    return <String, String>{
+      HttpHeaders.authorizationHeader: 'Bearer $key',
+      HttpHeaders.acceptHeader: 'application/json',
+      HttpHeaders.contentTypeHeader: 'application/json',
+    };
+  }
 
   void _ensureListening() {
     if (_standalone || _listening) return;
@@ -95,12 +116,17 @@ class JarvisIpc {
     if (_model != null && _model!.isNotEmpty) return _model!;
     final uri = Uri.parse('$_apiUrl/models');
     final request = await _httpClient!.getUrl(uri);
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-    if (_apiKey != null && _apiKey!.isNotEmpty) request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_apiKey');
+    final headers = _aiHeaders();
+    headers.remove(HttpHeaders.contentTypeHeader);
+    headers.forEach(request.headers.set);
     final response = await request.close();
     final body = await utf8.decoder.bind(response).join();
-    if (response.statusCode < 200 || response.statusCode >= 300) throw StateError('Не удалось получить список AI-моделей: HTTP ${response.statusCode}');
     final decoded = body.isEmpty ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final error = decoded['error'];
+      final message = error is Map ? error['message']?.toString() : decoded['message']?.toString();
+      throw StateError(message == null || message.isEmpty ? 'Не удалось получить список AI-моделей: HTTP ${response.statusCode}' : message);
+    }
     final data = decoded['data'];
     if (data is List) {
       for (final item in data) {
@@ -119,9 +145,8 @@ class JarvisIpc {
     ];
     final uri = Uri.parse('$_apiUrl/chat/completions');
     final request = await _httpClient!.postUrl(uri);
-    request.headers.contentType = ContentType.json;
-    if (_apiKey != null && _apiKey!.isNotEmpty) request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_apiKey');
-    request.headers.set('Accept', 'application/json');
+    final headers = _aiHeaders();
+    headers.forEach(request.headers.set);
     request.write(jsonEncode({'model': model, 'messages': historyForRequest, 'stream': false}));
     final response = await request.close();
     final body = await utf8.decoder.bind(response).join();
