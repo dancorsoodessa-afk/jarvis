@@ -8,9 +8,6 @@ import 'jarvis_reactor.dart';
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
-// Verified current free OpenRouter model. Avoid the free router here because
-// its dynamic selection can temporarily choose a provider/model that is no
-// longer available to the account.
 const kFreeModel = 'qwen/qwen3-235b-a22b-2507:free';
 
 void main() {
@@ -69,21 +66,30 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     });
   }
 
+  bool _looksLikeOpenRouterKey(String value) {
+    final key = value.trim();
+    return RegExp(r'^sk-or-v1-[A-Za-z0-9_-]{20,}$').hasMatch(key);
+  }
+
   Future<void> _initAndroid() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _endpoint.text = prefs.getString('endpoint') ?? 'https://openrouter.ai/api/v1';
       final savedModel = prefs.getString('model')?.trim() ?? '';
-      // Migrate every previous free-model setting to the verified free model.
       if (savedModel.isEmpty || savedModel == 'openrouter/free' || savedModel == 'deepseek/deepseek-v4-flash:free') {
         _model.text = kFreeModel;
       } else {
         _model.text = savedModel;
       }
-      _apiKey.text = prefs.getString('api_key') ?? '';
+      final savedKey = prefs.getString('api_key')?.trim() ?? '';
+      // Never reuse an error message or arbitrary text as an Authorization header.
+      _apiKey.text = _looksLikeOpenRouterKey(savedKey) ? savedKey : '';
+      if (!_apiKey.text.isNotEmpty && savedKey.isNotEmpty) {
+        await prefs.remove('api_key');
+      }
       if (!mounted) return;
       if (_apiKey.text.isEmpty) {
-        setState(() => _status = 'Настройте OpenRouter');
+        setState(() => _status = 'Введите API key OpenRouter в Настройках');
       } else {
         await _connectAndroid();
       }
@@ -107,7 +113,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final model = _model.text.trim();
     final key = _apiKey.text.trim();
     if (endpoint.isEmpty || key.isEmpty) {
-      if (mounted) setState(() => _status = 'Настройте Endpoint и API key');
+      if (mounted) setState(() => _status = 'Введите API key OpenRouter в Настройках');
+      _setVisual(JarvisVisualState.error);
+      return;
+    }
+    if (!_looksLikeOpenRouterKey(key)) {
+      if (mounted) setState(() => _status = 'Неверный API key: нужен ключ sk-or-v1-…');
       _setVisual(JarvisVisualState.error);
       return;
     }
@@ -166,7 +177,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => setState(() => _model.text = kFreeModel), icon: const Icon(Icons.auto_awesome), label: const Text('Выбрать бесплатную модель')),
           ),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API key', hintText: 'sk-or-v1-...')),
-          const Text('Используется проверенная бесплатная модель OpenRouter. Голос временно отключён в этой диагностической сборке.', style: TextStyle(fontSize: 12)),
+          const Text('Для OpenRouter нужен ключ, начинающийся с sk-or-v1-. Голос временно отключён в этой диагностической сборке.', style: TextStyle(fontSize: 12)),
         ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
@@ -208,36 +219,23 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
   }
 
-  Future<void> _clearMemory() async {
-    try {
-      await _jarvis?.clearMemory();
-      if (mounted) {
-        setState(() => _messages.add(_Msg('История диалога очищена.', isUser: false)));
-        _setVisual(JarvisVisualState.confirmation);
-        _returnToIdle();
-      }
-    } catch (e) {
-      if (mounted) setState(() => _messages.add(_Msg('Ошибка: $e', isUser: false)));
-      _setVisual(JarvisVisualState.error);
-    }
-  }
-
   void _setVisual(JarvisVisualState state) {
+    if (!mounted) return;
+    setState(() => _visualState = state);
     _visualTimer?.cancel();
-    if (mounted) setState(() => _visualState = state);
   }
 
-  void _returnToIdle([Duration delay = const Duration(milliseconds: 900)]) {
+  void _returnToIdle(Duration delay) {
     _visualTimer?.cancel();
     _visualTimer = Timer(delay, () {
-      if (mounted && !_busy) setState(() => _visualState = JarvisVisualState.idle);
+      if (mounted) setState(() => _visualState = JarvisVisualState.idle);
     });
   }
 
   @override
   void dispose() {
-    _visualTimer?.cancel();
     _partialSub?.cancel();
+    _visualTimer?.cancel();
     _jarvis?.dispose();
     _input.dispose();
     _endpoint.dispose();
@@ -248,23 +246,21 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('JARVIS'), actions: [if (_android) IconButton(onPressed: _settings, tooltip: 'Настройки AI', icon: const Icon(Icons.settings))]),
-    body: Column(children: [
-      const SizedBox(height: 8),
-      SizedBox(width: 270, height: 270, child: JarvisReactor(color: kCyan, state: _visualState)),
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(_status, style: const TextStyle(color: kCyan, fontSize: 12), textAlign: TextAlign.center)),
-      Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length, itemBuilder: (_, i) {
-        final m = _messages[i];
-        return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(12), constraints: const BoxConstraints(maxWidth: 560), decoration: BoxDecoration(color: m.isUser ? kCyan.withValues(alpha: .15) : kPanel, borderRadius: BorderRadius.circular(12)), child: SelectableText(m.text)));
-      })),
-      if (_busy && _streamText.isNotEmpty) Padding(padding: const EdgeInsets.all(8), child: Text('$_streamText▌')),
-      if (_android && _jarvis == null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: FilledButton.icon(onPressed: _settings, icon: const Icon(Icons.settings), label: const Text('Настроить OpenRouter'))),
-      Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
-        Expanded(child: TextField(controller: _input, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Сообщение…', filled: true, fillColor: kPanel))),
-        IconButton(onPressed: _busy || _jarvis == null ? null : () => _send(_input.text), icon: const Icon(Icons.send, color: kCyan)),
-        IconButton(onPressed: _busy || _jarvis == null ? null : _clearMemory, icon: const Icon(Icons.delete_outline)),
-      ])),
-    ]),
-  );
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('JARVIS'), actions: [if (_android) IconButton(onPressed: _settings, icon: const Icon(Icons.settings))]),
+      body: Column(children: [
+        Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0), itemBuilder: (context, index) {
+          if (_streamText.isNotEmpty && index == _messages.length) return Align(alignment: Alignment.centerLeft, child: Text(_streamText));
+          final m = _messages[index];
+          return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: m.isUser ? kPanel : kBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kCyan.withValues(alpha: 0.25))), child: Text(m.text)));
+        })),
+        Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
+          Expanded(child: TextField(controller: _input, textInputAction: TextInputAction.send, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Спросите JARVIS…'))),
+          IconButton(onPressed: _busy ? null : () => _send(_input.text), icon: const Icon(Icons.send)),
+        ])),
+        Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(_status, style: const TextStyle(fontSize: 12))),
+      ]),
+    );
+  }
 }
