@@ -44,6 +44,7 @@ class TestModelConfirmation(unittest.TestCase):
         provider = OpenAIChatProvider(
             url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
             model="test-model",
+            api_key="test-key",
         )
         registry = ToolRegistry()
         registry.register(
