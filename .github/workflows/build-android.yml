@@ -2,9 +2,9 @@ name: Build JARVIS Android APK
 
 on:
   push:
-    branches: [foundation, standalone-pc-android]
+    branches: [foundation, standalone-pc-android, android-final]
   pull_request:
-    branches: [foundation, standalone-pc-android]
+    branches: [foundation, standalone-pc-android, android-final]
   workflow_dispatch:
 
 jobs:
@@ -35,17 +35,22 @@ jobs:
           PY
           test ! -e test/widget_test.dart
 
-      - name: Allow internet access for standalone AI providers
+      - name: Allow internet and microphone access
         working-directory: ui
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('android/app/src/main/AndroidManifest.xml')
           text = p.read_text(encoding='utf-8')
-          permission = '    <uses-permission android:name="android.permission.INTERNET" />\n'
-          if 'android.permission.INTERNET' not in text:
+          marker = '<manifest'
+          permissions = [
+              '    <uses-permission android:name="android.permission.INTERNET" />',
+              '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
+          ]
+          insert = '\n' + '\n'.join(x for x in permissions if x not in text) + '\n'
+          if insert.strip():
               pos = text.find('>') + 1
-              text = text[:pos] + '\n' + permission + text[pos:]
+              text = text[:pos] + insert + text[pos:]
               p.write_text(text, encoding='utf-8')
           PY
 
