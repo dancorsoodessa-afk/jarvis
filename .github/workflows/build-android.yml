@@ -69,7 +69,8 @@ jobs:
           p = Path('lib/main.dart')
           text = p.read_text(encoding='utf-8')
           if "package:speech_to_text/speech_recognition_result.dart" not in text:
-              text = text.replace("import 'package:speech_to_text/speech_to_text.dart' as stt;", "import 'package:speech_to_text/speech_recognition_result.dart';\nimport 'package:speech_to_text/speech_to_text.dart' as stt;")
+              text = text.replace("import 'package:speech_to_text/speech_to_text.dart' as stt;", "import 'package:speech_to_text/speech_recognition_result.dart' as speech_result;\nimport 'package:speech_to_text/speech_to_text.dart' as stt;")
+          text = text.replace("void _onSpeechResult(stt.SpeechRecognitionResult result)", "void _onSpeechResult(dynamic result)")
           p.write_text(text, encoding='utf-8')
           PY
 
