@@ -35,23 +35,26 @@ jobs:
           PY
           test ! -e test/widget_test.dart
 
-      - name: Allow internet and microphone access
+      - name: Allow internet, microphone and TTS access
         working-directory: ui
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('android/app/src/main/AndroidManifest.xml')
           text = p.read_text(encoding='utf-8')
-          marker = '<manifest'
+          pos = text.find('>') + 1
           permissions = [
               '    <uses-permission android:name="android.permission.INTERNET" />',
               '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
           ]
           insert = '\n' + '\n'.join(x for x in permissions if x not in text) + '\n'
           if insert.strip():
-              pos = text.find('>') + 1
               text = text[:pos] + insert + text[pos:]
-              p.write_text(text, encoding='utf-8')
+          if 'android.intent.action.TTS_SERVICE' not in text:
+              marker = '</manifest>'
+              queries = '''\n    <queries>\n        <intent>\n            <action android:name="android.intent.action.TTS_SERVICE" />\n        </intent>\n    </queries>\n'''
+              text = text.replace(marker, queries + marker)
+          p.write_text(text, encoding='utf-8')
           PY
 
       - name: Get dependencies
