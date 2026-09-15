@@ -32,8 +32,6 @@ class JarvisIpc {
     }
     if (normalized.isEmpty) throw ArgumentError('AI endpoint не указан');
 
-    // OpenRouter/OpenAI-compatible APIs require a Bearer token. Accept both
-    // the raw key and a key pasted together with the "Bearer " prefix.
     var normalizedKey = apiKey.trim();
     if (normalizedKey.toLowerCase().startsWith('bearer ')) {
       normalizedKey = normalizedKey.substring(7).trim();
@@ -71,7 +69,7 @@ class JarvisIpc {
     return <String, String>{
       HttpHeaders.authorizationHeader: 'Bearer $key',
       HttpHeaders.acceptHeader: 'application/json',
-      HttpHeaders.contentTypeHeader: 'application/json',
+      HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
     };
   }
 
@@ -147,7 +145,16 @@ class JarvisIpc {
     final request = await _httpClient!.postUrl(uri);
     final headers = _aiHeaders();
     headers.forEach(request.headers.set);
-    request.write(jsonEncode({'model': model, 'messages': historyForRequest, 'stream': false}));
+    final payload = jsonEncode(<String, dynamic>{
+      'model': model,
+      'messages': historyForRequest,
+      'stream': false,
+    });
+    // Send explicit UTF-8 bytes. This avoids Android/Dart HTTP handling
+    // treating a Unicode JSON string as an invalid native string argument.
+    final payloadBytes = utf8.encode(payload);
+    request.contentLength = payloadBytes.length;
+    request.add(payloadBytes);
     final response = await request.close();
     final body = await utf8.decoder.bind(response).join();
     final decoded = body.isEmpty ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
