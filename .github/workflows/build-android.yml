@@ -61,6 +61,18 @@ jobs:
         working-directory: ui
         run: flutter pub get
 
+      - name: Compatibility fix for speech_to_text
+        working-directory: ui
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/main.dart')
+          text = p.read_text(encoding='utf-8')
+          if "package:speech_to_text/speech_recognition_result.dart" not in text:
+              text = text.replace("import 'package:speech_to_text/speech_to_text.dart' as stt;", "import 'package:speech_to_text/speech_recognition_result.dart';\nimport 'package:speech_to_text/speech_to_text.dart' as stt;")
+          p.write_text(text, encoding='utf-8')
+          PY
+
       - name: Analyze Dart code
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
