@@ -10,6 +10,7 @@ import 'jarvis_reactor.dart';
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
+const kDeepSeekFreeModel = 'deepseek/deepseek-v4-flash:free';
 
 void main() => runApp(const JarvisApp());
 
@@ -79,7 +80,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _initAndroid() async {
     final prefs = await SharedPreferences.getInstance();
     _endpoint.text = prefs.getString('endpoint') ?? 'https://openrouter.ai/api/v1';
-    _model.text = prefs.getString('model') ?? 'openrouter/free';
+    _model.text = prefs.getString('model') ?? kDeepSeekFreeModel;
+    if (_model.text.trim() == 'openrouter/free') _model.text = kDeepSeekFreeModel;
     _apiKey.text = prefs.getString('api_key') ?? '';
     _voiceEnabled = prefs.getBool('voice_enabled') ?? true;
     await _initTts();
@@ -130,9 +132,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           if (!mounted) return;
           final active = status == 'listening';
           setState(() => _listening = active);
-          if (!active && !_busy && _jarvis != null && _voiceEnabled) {
-            _scheduleWakeListening();
-          }
+          if (!active && !_busy && _jarvis != null && _voiceEnabled) _scheduleWakeListening();
         },
         onError: (error) {
           if (!mounted) return;
@@ -301,7 +301,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _finishConnect() async {
     final tools = await _jarvis!.listTools();
     if (!mounted) return;
-    setState(() => _status = _android ? 'OpenRouter подключён · «Джарвис» активен' : 'JARVIS подключён · инструментов: ${tools.length}');
+    setState(() => _status = _android ? 'OpenRouter · DeepSeek Free · «Джарвис» активен' : 'JARVIS подключён · инструментов: ${tools.length}');
     _setVisual(JarvisVisualState.confirmation);
     _returnToIdle(const Duration(milliseconds: 1100));
     _partialSub?.cancel();
@@ -323,10 +323,18 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         content: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Endpoint', hintText: 'https://openrouter.ai/api/v1')),
-            TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: 'openrouter/free')),
+            TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: kDeepSeekFreeModel)),
+            Align(alignment: Alignment.centerLeft, child: Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: TextButton.icon(
+                onPressed: () => setState(() => _model.text = kDeepSeekFreeModel),
+                icon: const Icon(Icons.code),
+                label: const Text('Выбрать DeepSeek V4 Flash — FREE'),
+              ),
+            )),
             TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API key', hintText: 'sk-or-v1-...')),
             SwitchListTile(value: _voiceEnabled, onChanged: (v) => setState(() => _voiceEnabled = v), title: const Text('Автоматически слушать «Джарвис»'), contentPadding: EdgeInsets.zero),
-            const Text('Ключ сохраняется на устройстве и не показывается на экране.', style: TextStyle(fontSize: 12)),
+            const Text('Модель: deepseek/deepseek-v4-flash:free. Ключ хранится на устройстве.', style: TextStyle(fontSize: 12)),
           ]),
         ),
         actions: [
@@ -366,7 +374,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       if (mounted) {
         setState(() => _messages.add(_Msg('Ошибка: $e', isUser: false)));
         _setVisual(JarvisVisualState.error);
-        _status = 'Ошибка AI';
+        setState(() => _status = 'Ошибка AI');
       }
     } finally {
       if (mounted) setState(() { _busy = false; _streamText = ''; });
