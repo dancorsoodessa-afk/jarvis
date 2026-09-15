@@ -1,13 +1,11 @@
-# Windows GUI build for JARVIS
+# PyInstaller spec for the JARVIS core executable.
+# The desktop GUI is built separately by jarvis_desktop.spec.
 from PyInstaller.utils.hooks import collect_submodules
 
-hiddenimports = collect_submodules("agent") + [
-    "pycaw", "pycaw.pycaw", "comtypes",
-    "sounddevice", "numpy", "speech_recognition",
-]
+hiddenimports = collect_submodules("agent")
 
 a = Analysis(
-    ["jarvis_desktop.py"],
+    ["agent/__main__.py"],
     pathex=["."],
     binaries=[],
     datas=[("docs", "docs")],
@@ -28,6 +26,6 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=False,
-    console=False,
+    console=True,
     icon=None,
 )
