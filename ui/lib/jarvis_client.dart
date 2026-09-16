@@ -17,8 +17,12 @@ class JarvisReply {
 }
 
 class JarvisIpc {
-  JarvisIpc._({Process? process, Socket? socket, HttpClient? httpClient, String? apiUrl, String? apiKey, String? model})
-      : _process = process, _socket = socket, _httpClient = httpClient, _apiUrl = apiUrl, _apiKey = apiKey, _model = model;
+  JarvisIpc._({Process? process, HttpClient? httpClient, String? apiUrl, String? apiKey, String? model})
+      : _process = process,
+        _httpClient = httpClient,
+        _apiUrl = apiUrl,
+        _apiKey = apiKey,
+        _model = model;
 
   static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async {
     final process = await Process.start(executable, args);
@@ -27,30 +31,30 @@ class JarvisIpc {
 
   static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = ''}) async {
     var normalized = apiUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    if (normalized.endsWith('/chat/completions')) {
-      normalized = normalized.substring(0, normalized.length - '/chat/completions'.length);
+    for (final suffix in ['/chat/completions', '/models']) {
+      if (normalized.endsWith(suffix)) {
+        normalized = normalized.substring(0, normalized.length - suffix.length);
+        break;
+      }
     }
     if (normalized.isEmpty) throw ArgumentError('AI endpoint не указан');
 
     var normalizedKey = apiKey.trim();
-    if (normalizedKey.toLowerCase().startsWith('bearer ')) {
-      normalizedKey = normalizedKey.substring(7).trim();
-    }
-    if (normalizedKey.toLowerCase().startsWith('authorization:')) {
-      normalizedKey = normalizedKey.substring('authorization:'.length).trim();
-      if (normalizedKey.toLowerCase().startsWith('bearer ')) {
-        normalizedKey = normalizedKey.substring(7).trim();
-      }
-    }
+    final authPrefix = RegExp(r'^(?:authorization\s*:\s*)?bearer\s+', caseSensitive: false);
+    normalizedKey = normalizedKey.replaceFirst(authPrefix, '').trim();
 
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15)
-      ..idleTimeout = const Duration(seconds: 30);
-    return JarvisIpc._(httpClient: client, apiUrl: normalized, apiKey: normalizedKey, model: model.trim());
+      ..idleTimeout = const Duration(seconds: 45);
+    return JarvisIpc._(
+      httpClient: client,
+      apiUrl: normalized,
+      apiKey: normalizedKey,
+      model: model.trim(),
+    );
   }
 
   final Process? _process;
-  final Socket? _socket;
   final HttpClient? _httpClient;
   final String? _apiUrl;
   final String? _apiKey;
@@ -70,8 +74,7 @@ class JarvisIpc {
     if (_standalone || _listening) return;
     _listening = true;
     final accumulated = <int, String>{};
-    final lines = (_process != null ? _process!.stdout : _socket!).transform(utf8.decoder).transform(const LineSplitter());
-    lines.listen((line) {
+    _process!.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
       if (line.trim().isEmpty) return;
       final msg = jsonDecode(line) as Map<String, dynamic>;
       final id = msg['id'] is int ? msg['id'] as int : null;
@@ -83,14 +86,15 @@ class JarvisIpc {
       final completer = id == null ? null : _pending.remove(id);
       completer?.complete(msg);
     }, onError: (Object error) {
-      for (final c in _pending.values) { if (!c.isCompleted) c.completeError(error); }
+      for (final c in _pending.values) {
+        if (!c.isCompleted) c.completeError(error);
+      }
       _pending.clear();
     });
   }
 
   void _write(Map<String, dynamic> body) {
-    final line = jsonEncode(body);
-    if (_process != null) { _process!.stdin.writeln(line); } else { _socket!.write('$line\n'); }
+    _process!.stdin.writeln(jsonEncode(body));
   }
 
   Future<Map<String, dynamic>> _request(Map<String, dynamic> body) {
@@ -104,27 +108,46 @@ class JarvisIpc {
   }
 
   void _setAuth(HttpClientRequest request) {
-    if (_apiKey != null && _apiKey!.isNotEmpty) {
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${_apiKey!}');
+    final key = _apiKey?.trim() ?? '';
+    if (key.isEmpty) return;
+    // OrcaRouter and other OpenAI-compatible gateways use Bearer auth.
+    // X-API-Key is also sent for gateways that expose the same API under that convention.
+    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
+    request.headers.set('X-API-Key', key);
+  }
+
+  Future<Map<String, dynamic>> _jsonResponse(HttpClientResponse response) async {
+    final body = await utf8.decoder.bind(response).join();
+    Map<String, dynamic> decoded = <String, dynamic>{};
+    if (body.trim().isNotEmpty) {
+      try {
+        final value = jsonDecode(body);
+        if (value is Map<String, dynamic>) decoded = value;
+      } catch (_) {
+        decoded = {'message': body.trim()};
+      }
     }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final error = decoded['error'];
+      final message = error is Map ? error['message']?.toString() : decoded['message']?.toString();
+      final detail = message == null || message.isEmpty ? 'HTTP ${response.statusCode}' : message;
+      throw StateError('AI ${response.statusCode}: $detail');
+    }
+    return decoded;
   }
 
   Future<String> _resolveModel() async {
     if (_model != null && _model!.isNotEmpty) return _model!;
-    final uri = Uri.parse('$_apiUrl/models');
-    final request = await _httpClient!.getUrl(uri);
+    final request = await _httpClient!.getUrl(Uri.parse('$_apiUrl/models'));
     request.headers.set(HttpHeaders.acceptHeader, 'application/json');
     _setAuth(request);
-    final response = await request.close();
-    final body = await utf8.decoder.bind(response).join();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError('Не удалось получить список AI-моделей: HTTP ${response.statusCode}');
-    }
-    final decoded = body.isEmpty ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
+    final decoded = await _jsonResponse(await request.close());
     final data = decoded['data'];
     if (data is List) {
       for (final item in data) {
-        if (item is Map && item['id'] is String && (item['id'] as String).trim().isNotEmpty) return (item['id'] as String).trim();
+        if (item is Map && item['id'] is String && (item['id'] as String).trim().isNotEmpty) {
+          return (item['id'] as String).trim();
+        }
       }
     }
     throw StateError('AI-сервер не сообщил доступных моделей. Укажите модель вручную.');
@@ -133,30 +156,27 @@ class JarvisIpc {
   Future<JarvisReply> _sendStandalone(String text) async {
     final model = await _resolveModel();
     final historyForRequest = <Map<String, String>>[
-      {'role': 'system', 'content': 'Ты JARVIS — самостоятельный AI-помощник. Отвечай на языке пользователя. Будь точным, кратким и полезным. Не утверждай, что выполнял действия на устройстве, если у тебя нет соответствующего инструмента.'},
+      {
+        'role': 'system',
+        'content': 'Ты JARVIS — самостоятельный AI-помощник. Отвечай на языке пользователя. Будь точным, кратким и полезным. Не утверждай, что выполнял действия на устройстве, если у тебя нет соответствующего инструмента.',
+      },
       ..._history,
       {'role': 'user', 'content': text},
     ];
-    final uri = Uri.parse('$_apiUrl/chat/completions');
-    final request = await _httpClient!.postUrl(uri);
+    final request = await _httpClient!.postUrl(Uri.parse('$_apiUrl/chat/completions'));
     request.headers.contentType = ContentType.json;
     _setAuth(request);
-    request.headers.set('Accept', 'application/json');
+    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
     request.write(jsonEncode({'model': model, 'messages': historyForRequest, 'stream': false}));
-    final response = await request.close();
-    final body = await utf8.decoder.bind(response).join();
-    final decoded = body.isEmpty ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final error = decoded['error'];
-      final message = error is Map ? error['message']?.toString() : decoded['message']?.toString();
-      throw StateError(message == null || message.isEmpty ? 'AI HTTP ${response.statusCode}' : message);
-    }
+    final decoded = await _jsonResponse(await request.close());
     final choices = decoded['choices'];
     if (choices is! List || choices.isEmpty) throw StateError('AI не вернул ответ');
     final message = choices.first['message'];
     final content = message is Map ? message['content'] : null;
     if (content is! String || content.trim().isEmpty) throw StateError('AI вернул пустой ответ');
-    _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': content});
+    _history
+      ..add({'role': 'user', 'content': text})
+      ..add({'role': 'assistant', 'content': content});
     if (_history.length > 40) _history.removeRange(0, _history.length - 40);
     return JarvisReply(content, 'standalone-ai', null, false);
   }
@@ -171,7 +191,10 @@ class JarvisIpc {
   }
 
   Future<void> clearMemory() async {
-    if (_standalone) { _history.clear(); return; }
+    if (_standalone) {
+      _history.clear();
+      return;
+    }
     final resp = await _request({'type': 'clear_memory'});
     if (resp['type'] == 'error') throw StateError(resp['message'] as String);
   }
@@ -185,7 +208,6 @@ class JarvisIpc {
 
   Future<void> dispose() async {
     await _deltaController.close();
-    await _socket?.close();
     _process?.kill();
     _httpClient?.close(force: true);
   }
