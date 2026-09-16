@@ -1,9 +1,13 @@
-class ConfirmationRequired(Exception):
-    """Raised when a tool must be confirmed before running."""
+"""Runtime tool registry with optional per-tool switches."""
 
-
+import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
+
+
+class ConfirmationRequired(Exception):
+    """Raised when a tool must be confirmed before running."""
 
 
 @dataclass(frozen=True)
@@ -16,6 +20,20 @@ class ToolEntry:
     parameters: dict[str, str] = field(default_factory=dict)
 
 
+def _disabled_tools() -> set[str]:
+    """Read disabled tools without making the UI or runtime depend on each other."""
+    raw = os.environ.get("JARVIS_DISABLED_TOOLS", "")
+    if not raw:
+        return set()
+    try:
+        value = json.loads(raw)
+        if isinstance(value, list):
+            return {str(item).strip() for item in value if str(item).strip()}
+    except (TypeError, ValueError):
+        pass
+    return {item.strip() for item in raw.split(",") if item.strip()}
+
+
 class ToolRegistry:
     def __init__(self):
         self._tools: dict[str, ToolEntry] = {}
@@ -23,7 +41,9 @@ class ToolRegistry:
     def register(self, name: str, fn: Callable[..., object], confirm: bool = False,
                  description: str | None = None,
                  parameters: dict[str, str] | None = None) -> None:
-        """Register a callable and its function-calling metadata."""
+        """Register a callable unless its switch is currently disabled."""
+        if name in _disabled_tools():
+            return
         self._tools[name] = ToolEntry(
             fn=fn, confirm=confirm,
             description=description or "", parameters=parameters or {})
@@ -32,7 +52,6 @@ class ToolRegistry:
         return tuple(self._tools)
 
     def get(self, name: str) -> ToolEntry | None:
-        """Return registered tool metadata without exposing internal storage."""
         return self._tools.get(name)
 
     def spec(self, name: str) -> dict:
@@ -62,8 +81,7 @@ class ToolRegistry:
             raise KeyError(name)
         if entry.confirm and not _confirmed:
             raise ConfirmationRequired(name)
-        if args and len(args) > 1 and len(entry.parameters) == 1 \
-                and not kwargs:
+        if args and len(args) > 1 and len(entry.parameters) == 1 and not kwargs:
             args = (" ".join(map(str, args)),)
         try:
             return entry.fn(*args, **kwargs)
