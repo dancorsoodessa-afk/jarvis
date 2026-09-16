@@ -70,10 +70,12 @@ class JarvisDesktop(tk.Tk):
         self.settings["disabled_tools"] = disabled
         self.settings.setdefault("voice_enabled", True)
         self.settings.setdefault("tts_enabled", True)
+        self.settings.setdefault("tts_gender", "male")
         os.environ["JARVIS_PROVIDER"] = provider
         os.environ["JARVIS_CHAT_URL"] = url
         os.environ["JARVIS_CHAT_KEY"] = api_key
         os.environ["JARVIS_DISABLED_TOOLS"] = json.dumps(disabled, ensure_ascii=False)
+        os.environ["JARVIS_TTS_GENDER"] = self.settings["tts_gender"]
         if model:
             os.environ["JARVIS_CHAT_MODEL"] = model
         else:
@@ -190,9 +192,9 @@ class JarvisDesktop(tk.Tk):
         phase = self._orb_phase
         for rx, ry, offset in ((104, 104, 0), (82, 48, 0.9), (82, 48, -0.9), (58, 28, 1.8)):
             a = phase + offset
-            self.canvas.create_oval(cx-rx, cy-ry, cx+rx, cy+ry, outline="#1b6f88", width=1)
             dx = math.cos(a) * rx * 0.82
             dy = math.sin(a) * ry * 0.82
+            self.canvas.create_oval(cx-rx, cy-ry, cx+rx, cy+ry, outline="#1b6f88", width=1)
             self.canvas.create_oval(cx+dx-3, cy+dy-3, cx+dx+3, cy+dy+3, fill=CYAN, outline="")
         for i in range(20):
             a = phase * 1.7 + i * (math.pi * 2 / 20)
@@ -335,6 +337,26 @@ class JarvisDesktop(tk.Tk):
         self.chat.see("end")
         self.chat.configure(state="disabled")
 
+    def _handle_voice_setting_command(self, text):
+        """Handle voice-gender commands locally, without sending them to the AI backend."""
+        normalized = " ".join(text.lower().replace("ё", "е").split())
+        male_phrases = ("голос на мужской", "мужской голос", "сделай голос мужским", "поставь мужской голос", "включи мужской голос")
+        female_phrases = ("голос на женский", "женский голос", "сделай голос женским", "поставь женский голос", "включи женский голос")
+        if any(phrase in normalized for phrase in male_phrases):
+            gender = "male"
+            message = "Готово. Установил мужской голос JARVIS."
+        elif any(phrase in normalized for phrase in female_phrases):
+            gender = "female"
+            message = "Готово. Установил женский голос JARVIS."
+        else:
+            return False
+        self.settings["tts_gender"] = gender
+        os.environ["JARVIS_TTS_GENDER"] = gender
+        tts.set_gender(gender)
+        self._save_settings()
+        self.events.put(("reply", message))
+        return True
+
     def send(self, text=None):
         if text is None:
             text = self.input.get()
@@ -343,6 +365,8 @@ class JarvisDesktop(tk.Tk):
             return
         self.input.delete(0, "end")
         self._append("ВЫ", text)
+        if self._handle_voice_setting_command(text):
+            return
         self.busy = True
         self.send_button.config(state="disabled")
         self.status.config(text="● PROCESSING", fg=CYAN)
@@ -494,41 +518,27 @@ class JarvisDesktop(tk.Tk):
         ttk.Checkbutton(win, text="Озвучивать ответы JARVIS через TTS", variable=tts_var).grid(row=5, column=1, sticky="w", padx=20, pady=8)
         tk.Label(win, text="Модули управления находятся в отдельном окне «Модули». Изменения применяются после пересборки ядра.",
                  bg=PANEL, fg=MUTED, wraplength=700, justify="left").grid(row=6, column=0, columnspan=2, padx=20, pady=14)
-
-        def apply():
-            provider = entries["provider"].get().strip() or DEFAULT_PROVIDER
-            url = entries["url"].get().strip() or DEFAULT_URL
-            model = entries["model"].get().strip()
-            api_key = entries["api_key"].get().strip()
-            self.settings.update({"provider": provider, "url": url, "model": model, "api_key": api_key,
-                                  "voice_enabled": voice_var.get(), "tts_enabled": tts_var.get()})
+        def save():
+            for name, entry in entries.items():
+                self.settings[name] = entry.get().strip()
+            self.settings["voice_enabled"] = bool(voice_var.get())
+            self.settings["tts_enabled"] = bool(tts_var.get())
             self._apply_saved_settings()
             self._save_settings()
-            if not self.settings["voice_enabled"]:
-                self._stop_voice()
-            if not self.settings["tts_enabled"]:
-                tts.stop()
             win.destroy()
             self._reload_agent()
-
-        ttk.Button(win, text="СОХРАНИТЬ И ПЕРЕЗАПУСТИТЬ", style="Accent.TButton",
-                   command=apply).grid(row=7, column=0, columnspan=2, pady=18, ipadx=12)
+        ttk.Button(win, text="СОХРАНИТЬ И ПЕРЕЗАПУСТИТЬ", style="Accent.TButton", command=save).grid(row=7, column=1, sticky="e", padx=20, pady=10)
 
     def _reload_agent(self):
-        self.status.config(text="● RESTARTING", fg=CYAN)
         self.agent = None
-        self.busy = False
-        self.send_button.config(state="normal")
+        self.status.config(text="● RESTARTING", fg=YELLOW)
         self._start_agent()
 
     def _close(self):
         self._voice_loop_running = False
         tts.stop()
         if self._orb_after:
-            try:
-                self.after_cancel(self._orb_after)
-            except tk.TclError:
-                pass
+            self.after_cancel(self._orb_after)
         self.destroy()
 
 
