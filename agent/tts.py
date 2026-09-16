@@ -112,17 +112,28 @@ def _run_windows_sapi(text: str, out_path: Path) -> Path:
     if sys.platform != "win32":
         raise RuntimeError("SAPI доступен только на Windows")
     voice_name = os.environ.get("JARVIS_SAPI_VOICE", "").strip()
+    gender = os.environ.get("JARVIS_TTS_GENDER", "male").strip().lower()
+    if gender not in {"male", "female", "any"}:
+        gender = "male"
     ps = r'''
 Add-Type -AssemblyName System.Speech
 $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
 $target = $env:JARVIS_SAPI_TARGET
 $text = $env:JARVIS_SAPI_TEXT
 $wanted = $env:JARVIS_SAPI_VOICE
+$wantedGender = $env:JARVIS_TTS_GENDER
 $voices = @($s.GetInstalledVoices())
 $selected = $null
 if ($wanted) {
   foreach ($v in $voices) {
     if ($v.VoiceInfo.Name -like "*$wanted*") { $selected = $v.VoiceInfo.Name; break }
+  }
+}
+if (-not $selected -and $wantedGender -ne "any") {
+  foreach ($v in $voices) {
+    if ($v.VoiceInfo.Culture.Name -eq "ru-RU" -and $v.VoiceInfo.Gender.ToString().ToLower() -eq $wantedGender) {
+      $selected = $v.VoiceInfo.Name; break
+    }
   }
 }
 if (-not $selected) {
@@ -141,6 +152,7 @@ $s.Dispose()
     env["JARVIS_SAPI_TARGET"] = str(out_path)
     env["JARVIS_SAPI_TEXT"] = text[:1000]
     env["JARVIS_SAPI_VOICE"] = voice_name
+    env["JARVIS_TTS_GENDER"] = gender
     subprocess.run(
         ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
         check=True,
@@ -172,6 +184,19 @@ def current_engine() -> str:
     if mode == "off":
         return "off"
     return mode
+
+
+def set_gender(gender: str) -> str:
+    """Set the preferred SAPI voice gender and return the normalized value."""
+    value = str(gender).strip().lower()
+    aliases = {"мужской": "male", "муж": "male", "male": "male",
+               "женский": "female", "жен": "female", "female": "female",
+               "любой": "any", "любой голос": "any", "any": "any"}
+    value = aliases.get(value, value)
+    if value not in {"male", "female", "any"}:
+        raise ValueError("Допустимые варианты: мужской, женский или любой")
+    os.environ["JARVIS_TTS_GENDER"] = value
+    return value
 
 
 def speak(text: str) -> Path:
