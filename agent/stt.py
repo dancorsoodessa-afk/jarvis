@@ -5,11 +5,21 @@ Priority:
 2. faster-whisper when installed (local CPU, int8).
 3. Voice module may use its lightweight network fallback when no local engine
    exists. STT itself never performs network requests.
+
+The faster-whisper model is cached for the lifetime of the process. Creating a
+WhisperModel for every utterance makes voice interaction painfully slow.
 """
+
+from __future__ import annotations
 
 import os
 import subprocess
+import threading
 from pathlib import Path
+
+_FASTER_MODEL = None
+_FASTER_MODEL_KEY = None
+_FASTER_MODEL_LOCK = threading.Lock()
 
 
 def available_engines() -> list[str]:
@@ -56,13 +66,23 @@ def _run_whisper_cpp(wav_path: Path) -> str:
     return text
 
 
+def _get_faster_model(model_size: str):
+    global _FASTER_MODEL, _FASTER_MODEL_KEY
+    key = model_size.strip() or "tiny"
+    with _FASTER_MODEL_LOCK:
+        if _FASTER_MODEL is None or _FASTER_MODEL_KEY != key:
+            try:
+                from faster_whisper import WhisperModel
+            except ImportError as exc:
+                raise RuntimeError("faster-whisper не установлен") from exc
+            _FASTER_MODEL = WhisperModel(key, device="cpu", compute_type="int8")
+            _FASTER_MODEL_KEY = key
+    return _FASTER_MODEL
+
+
 def _run_faster_whisper(wav_path: Path) -> str:
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError as exc:
-        raise RuntimeError("faster-whisper не установлен") from exc
     model_size = os.environ.get("JARVIS_STT_MODEL_SIZE", "tiny").strip() or "tiny"
-    model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    model = _get_faster_model(model_size)
     segments, _info = model.transcribe(
         str(wav_path),
         language="ru",
