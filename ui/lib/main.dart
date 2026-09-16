@@ -37,12 +37,6 @@ class _Msg {
   final bool isUser;
 }
 
-class JarvisHomePage extends StatefulWidget {
-  const JarvisHomePage({super.key});
-  @override
-  State<JarvisHomePage> createState() => _JarvisHomePageState();
-}
-
 class _JarvisHomePageState extends State<JarvisHomePage> {
   JarvisIpc? _jarvis;
   final _input = TextEditingController();
@@ -61,6 +55,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   bool _voiceRunning = false;
   bool _ttsSpeaking = false;
   bool _voiceStarting = false;
+  bool _wakeArmed = false;
   String _status = 'Запуск JARVIS…';
   String _streamText = '';
   String _heardText = '';
@@ -142,7 +137,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       );
       _voiceRunning = true;
       if (mounted) {
-        setState(() => _status = _heardText.isEmpty ? 'Слушаю · жду «Джарвис»' : 'Слушаю…');
+        setState(() => _status = _wakeArmed ? 'Слушаю команду…' : 'Слушаю · жду «Джарвис»');
         _setVisual(JarvisVisualState.listening);
       }
     } catch (e) {
@@ -170,27 +165,38 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     return command.isEmpty ? '' : command;
   }
 
-  void _onSpeechResult(stt.SpeechRecognitionResult result) {
-    final text = result.recognizedWords.trim();
+  Future<void> _onSpeechResult(dynamic result) async {
+    final text = result.recognizedWords?.toString().trim() ?? '';
+    final isFinal = result.finalResult == true;
     if (text.isEmpty || !mounted) return;
     setState(() {
       _heardText = text;
-      _status = 'Слышу: $text';
+      _status = _wakeArmed ? 'Слышу команду: $text' : 'Слышу: $text';
     });
     _setVisual(JarvisVisualState.listening);
-    final command = _extractWakeCommand(text);
-    if (command == null) return;
+    if (!isFinal) return;
+
+    final wakeCommand = _extractWakeCommand(text);
     _voiceRestartTimer?.cancel();
-    if (command.isEmpty) {
-      _ttsSpeaking = true;
-      _speech.stop();
-      _tts.speak('Да, слушаю.');
-      _ttsSpeaking = false;
-      _scheduleVoiceRestart(const Duration(seconds: 1));
+
+    if (wakeCommand != null) {
+      if (wakeCommand.isEmpty) {
+        _wakeArmed = true;
+        await _speech.stop();
+        await _speak('Да, слушаю.');
+        return;
+      }
+      _wakeArmed = false;
+      await _speech.stop();
+      await _send(wakeCommand, speakReply: true);
       return;
     }
-    _speech.stop();
-    _send(command, speakReply: true);
+
+    if (_wakeArmed) {
+      _wakeArmed = false;
+      await _speech.stop();
+      await _send(text, speakReply: true);
+    }
   }
 
   Future<void> _speak(String text) async {
@@ -258,10 +264,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
     try {
       await _saveSettings();
-      if (mounted) setState(() => _status = 'Подключение к OpenRouter…');
+      if (mounted) setState(() => _status = 'Проверяю OpenRouter и API key…');
       _setVisual(JarvisVisualState.thinking);
       await _jarvis?.dispose();
       _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model);
+      await _jarvis!.checkConnection();
       await _finishConnect();
     } catch (e) {
       if (mounted) setState(() => _status = 'Ошибка AI: $e');
@@ -307,6 +314,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     if (!_android) return;
     await _speech.stop();
     _voiceRunning = false;
+    _wakeArmed = false;
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -316,7 +324,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: kFreeModel)),
           Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => setState(() => _model.text = kFreeModel), icon: const Icon(Icons.auto_awesome), label: const Text('Выбрать бесплатную модель'))),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API key', hintText: 'sk-or-v1-...')),
-          const Text('Голос: автоматическое ожидание команды «Джарвис», распознавание русского и ответ голосом.', style: TextStyle(fontSize: 12)),
+          const Text('Голос: автоматическое ожидание «Джарвис». Можно сказать «Джарвис» отдельно, затем команду.', style: TextStyle(fontSize: 12)),
         ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
@@ -326,6 +334,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     );
     if (mounted && _jarvis != null && _voiceReady) {
       _voiceRunning = true;
+      _wakeArmed = false;
       _startVoiceLoop();
     }
   }
@@ -357,7 +366,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         final errorText = 'Ошибка: $e';
         setState(() => _messages.add(_Msg(errorText, isUser: false)));
         _setVisual(JarvisVisualState.error);
-        setState(() => _status = 'Ошибка AI');
+        setState(() => _status = 'Ошибка AI: $e');
       }
       if (speakReply) await _speak('Произошла ошибка. Проверьте подключение к OpenRouter.');
     } finally {
@@ -414,4 +423,10 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       ]),
     );
   }
+}
+
+class JarvisHomePage extends StatefulWidget {
+  const JarvisHomePage({super.key});
+  @override
+  State<JarvisHomePage> createState() => _JarvisHomePageState();
 }
