@@ -35,18 +35,25 @@ jobs:
           PY
           test ! -e test/widget_test.dart
 
-      - name: Allow internet access for standalone AI providers
+      - name: Configure Android permissions for AI and voice
         working-directory: ui
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('android/app/src/main/AndroidManifest.xml')
           text = p.read_text(encoding='utf-8')
-          permission = '    <uses-permission android:name="android.permission.INTERNET" />\n'
-          if 'android.permission.INTERNET' not in text:
-              pos = text.find('>') + 1
-              text = text[:pos] + '\n' + permission + text[pos:]
-              p.write_text(text, encoding='utf-8')
+          marker = '<manifest'
+          additions = [
+              '    <uses-permission android:name="android.permission.INTERNET" />',
+              '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
+          ]
+          for permission in additions:
+              if permission not in text:
+                  pos = text.find('>') + 1
+                  text = text[:pos] + '\n' + permission + text[pos:]
+          if 'android.intent.action.TTS_SERVICE' not in text:
+              text = text.replace('<application', '    <queries>\n      <intent>\n        <action android:name="android.intent.action.TTS_SERVICE" />\n      </intent>\n    </queries>\n\n    <application', 1)
+          p.write_text(text, encoding='utf-8')
           PY
 
       - name: Get dependencies
