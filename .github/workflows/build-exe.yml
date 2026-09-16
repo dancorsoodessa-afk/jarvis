@@ -25,3 +25,5 @@ jobs:
           name: JARVIS-Windows-x64
           path: JARVIS-Windows-x64.zip
           if-no-files-found: error
+
+      # Windows x64 release build trigger/verification.
