@@ -59,8 +59,6 @@ def _recognize(frames, samplerate: int) -> str:
             if text:
                 return text
 
-        # Compatibility fallback. It is used only when no local STT engine is
-        # installed, so a normal installation remains lightweight.
         try:
             import speech_recognition as sr
         except ImportError as exc:
@@ -93,7 +91,6 @@ def _calibrate(stream, blocks: int, block_size: int) -> float:
     if not levels:
         return 0.008
     levels.sort()
-    # Ignore occasional clicks/fan noise at the top of the sample.
     baseline = levels[max(0, int(len(levels) * 0.75) - 1)]
     return max(0.003, baseline)
 
@@ -166,8 +163,6 @@ def listen_for_phrase(
 
 
 def _is_clap(level: float, noise: float) -> bool:
-    # A clap is a short high-energy transient. The adaptive floor prevents
-    # normal speech from being treated as the activation signal.
     return level >= max(CLAP_THRESHOLD_FLOOR, noise * 6.0)
 
 
@@ -175,13 +170,14 @@ def listen_for_double_clap_and_command(
     on_speech_start=None,
     samplerate: int = SAMPLE_RATE,
 ) -> str:
-    """Wait indefinitely for two claps, then capture a speech command."""
+    """Wait for two claps, close the standby stream, then capture speech."""
     import sounddevice as sd
 
     block_size = max(160, int(samplerate * CLAP_BLOCK_MS / 1000))
     last_clap = 0.0
     ambient = []
     last_level = 0.0
+    triggered = False
 
     try:
         with sd.InputStream(
@@ -190,8 +186,6 @@ def listen_for_double_clap_and_command(
             dtype="int16",
             blocksize=block_size,
         ) as stream:
-            # Calibrate every time the standby listener starts. This is cheap
-            # and fixes microphones with different gain/noise characteristics.
             noise = _calibrate(stream, 18, block_size)
             while True:
                 data, overflow = stream.read(block_size)
@@ -209,20 +203,27 @@ def listen_for_double_clap_and_command(
                 rising = level > last_level * 1.35
                 if _is_clap(level, noise) and (rising or level > 0.09):
                     if now - last_clap <= CLAP_GAP_SECONDS:
-                        last_clap = 0.0
-                        return listen_for_phrase(
-                            samplerate=samplerate,
-                            silence_seconds=0.70,
-                            max_seconds=10.0,
-                            start_timeout=5.0,
-                            on_speech_start=on_speech_start,
-                        )
+                        triggered = True
+                        break
                     last_clap = now
                 elif last_clap and now - last_clap > CLAP_GAP_SECONDS:
                     last_clap = 0.0
                 last_level = level
     except Exception as exc:
         raise RuntimeError(f"Не удалось открыть микрофон: {exc}") from exc
+
+    # Important on Windows/WASAPI: do not open a second InputStream while the
+    # standby stream still owns the microphone. The previous implementation
+    # did exactly that and could make the agent stop hearing after activation.
+    if triggered:
+        return listen_for_phrase(
+            samplerate=samplerate,
+            silence_seconds=0.70,
+            max_seconds=10.0,
+            start_timeout=5.0,
+            on_speech_start=on_speech_start,
+        )
+    return ""
 
 
 def listen_for_wake_and_command(on_speech_start=None, samplerate: int = SAMPLE_RATE):
