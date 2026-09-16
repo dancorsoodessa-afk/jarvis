@@ -2,6 +2,16 @@ name: Build JARVIS для Windows
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - jarvis-overhaul
+    paths:
+      - "agent/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "poetry.lock"
+      - "scripts/**"
+      - ".github/workflows/build-exe.yml"
   pull_request:
     branches:
       - foundation
