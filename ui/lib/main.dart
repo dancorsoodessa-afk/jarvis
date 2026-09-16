@@ -53,6 +53,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   bool _voiceReady = false;
   bool _voiceListening = false;
   bool _voicePaused = false;
+  bool _voiceInitStarted = false;
   String _status = 'Инициализация…';
   String _streamText = '';
   JarvisVisualState _visualState = JarvisVisualState.idle;
@@ -63,19 +64,17 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     super.initState();
     if (_android) {
       _status = 'Настройте AI-провайдера';
-      _initVoice();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _initVoice();
+      });
     } else {
       _connectDesktop();
     }
   }
 
   Future<void> _initVoice() async {
-    try {
-      await _tts.setLanguage('ru-RU');
-      await _tts.setSpeechRate(0.48);
-      await _tts.setVolume(1.0);
-      await _tts.setPitch(1.0);
-    } catch (_) {}
+    if (_voiceInitStarted || !mounted || !_android) return;
+    _voiceInitStarted = true;
     try {
       final available = await _speech.initialize(
         onStatus: (status) {
@@ -90,26 +89,27 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           _scheduleVoiceRestart(const Duration(milliseconds: 1200));
         },
       );
+      if (!mounted) return;
       if (!available) {
-        if (mounted) setState(() => _status = 'Микрофон/распознавание речи недоступно');
+        setState(() => _status = 'Микрофон/распознавание речи недоступно');
         return;
       }
       _voiceReady = true;
-      if (mounted) setState(() => _status = 'JARVIS ждёт: скажите «Джарвис»');
-      _startVoiceListening();
+      setState(() => _status = 'JARVIS ждёт: скажите «Джарвис»');
+      await _startVoiceListening();
     } catch (e) {
       if (mounted) setState(() => _status = 'Ошибка голоса: $e');
     }
   }
 
   void _scheduleVoiceRestart([Duration delay = const Duration(milliseconds: 500)]) {
-    if (!_android || !_voiceReady || _voicePaused || _busy) return;
+    if (!_android || !_voiceReady || _voicePaused || _busy || !mounted) return;
     _voiceRestartTimer?.cancel();
     _voiceRestartTimer = Timer(delay, _startVoiceListening);
   }
 
   Future<void> _startVoiceListening() async {
-    if (!_android || !_voiceReady || _voicePaused || _voiceListening || _busy) return;
+    if (!_android || !_voiceReady || _voicePaused || _voiceListening || _busy || !mounted) return;
     try {
       _voiceListening = true;
       await _speech.listen(
@@ -126,17 +126,19 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Future<void> _onVoiceResult(SpeechRecognitionResult result) async {
+    if (!result.finalResult) return;
     final phrase = result.recognizedWords.trim();
-    if (phrase.isEmpty) return;
+    if (phrase.isEmpty || !_android || _voicePaused || _busy) return;
     final lower = phrase.toLowerCase();
     final wake = lower.contains('джарвис') || lower.contains('jarvis') || lower.contains('джарвисе');
     if (!wake) return;
     _voicePaused = true;
-    await _speech.stop();
+    _voiceRestartTimer?.cancel();
+    try { await _speech.stop(); } catch (_) {}
     _voiceListening = false;
     var command = phrase
-        .replaceFirst(RegExp(r'(?i)джарвис(?:е)?'), '')
-        .replaceFirst(RegExp(r'(?i)jarvis'), '')
+        .replaceFirst(RegExp(r'джарвис(?:е)?', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'jarvis', caseSensitive: false), '')
         .trim();
     if (command.isEmpty) {
       _setVisual(JarvisVisualState.listening);
@@ -152,8 +154,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Future<void> _speak(String text) async {
-    if (!_android || text.trim().isEmpty) return;
+    if (!_android || text.trim().isEmpty || !mounted) return;
     try {
+      await _tts.setLanguage('ru-RU');
+      await _tts.setSpeechRate(0.48);
+      await _tts.setVolume(1.0);
+      await _tts.setPitch(1.0);
       _setVisual(JarvisVisualState.speaking);
       await _tts.stop();
       await _tts.speak(text.trim());
@@ -199,7 +205,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     setState(() => _status = model.isEmpty ? 'Поиск модели и подключение…' : 'Подключение к AI…');
     _setVisual(JarvisVisualState.thinking);
     try {
-      await _jarvis?.dispose();
+      await _partialSub?.cancel();
+      _partialSub = null;
+      final old = _jarvis;
+      _jarvis = null;
+      await old?.dispose();
       _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: _apiKey.text.trim(), model: model);
       await _finishConnect();
       _voicePaused = false;
@@ -216,7 +226,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     setState(() => _status = _android ? 'JARVIS готов · скажите «Джарвис»' : 'JARVIS подключён · инструментов: ${tools.length}');
     _setVisual(JarvisVisualState.confirmation);
     _returnToIdle(const Duration(milliseconds: 1100));
-    _partialSub?.cancel();
+    await _partialSub?.cancel();
     _partialSub = _jarvis!.partials().listen((text) {
       if (mounted) {
         setState(() {
@@ -230,7 +240,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _settings() async {
     if (!_android) return;
     _voicePaused = true;
-    await _speech.stop();
+    try { await _speech.stop(); } catch (_) {}
     _voiceListening = false;
     _endpoint.text = _endpoint.text.isEmpty ? const String.fromEnvironment('JARVIS_API_URL', defaultValue: '') : _endpoint.text;
     _model.text = _model.text.isEmpty ? const String.fromEnvironment('JARVIS_MODEL', defaultValue: '') : _model.text;
@@ -262,7 +272,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     if (text.isEmpty || _jarvis == null || _busy) return;
     if (_android && !fromVoice) {
       _voicePaused = true;
-      await _speech.stop();
+      try { await _speech.stop(); } catch (_) {}
       _voiceListening = false;
     }
     _input.clear();
