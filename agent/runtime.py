@@ -8,7 +8,7 @@ from .providers.local_vulkan import LocalVulkanProvider
 from .providers.openai_chat import OpenAIChatProvider
 from .providers.airllm import AirLLMProvider
 from .reminders import ReminderService
-from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint
+from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint, commands
 from .tools.registry import ToolRegistry
 from . import stt, tts
 from .skills import NoteStore, calculate, now
@@ -53,6 +53,7 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("screenshot",screenshot.capture,description="Сделать скриншот и вернуть путь к файлу.")
     tools.register("ps",lambda *f:"\n".join(f"{p['pid']:>7}  {p['name']}" for p in processes.list_processes(*f)) or "Не найдено",description="Список запущенных процессов.",parameters={"name":"фильтр по имени (необязательный)"})
     tools.register("kill",processes.kill_process,confirm=True,description="Завершить процесс. ОПАСНО: требует подтверждения.",parameters={"pid":"PID процесса"})
+    tools.register("command",commands.run,confirm=True,description="Выполнить разрешённую системную Windows-команду без shell. Всегда требует подтверждения.",parameters={"command":"системная команда","timeout":"тайм-аут в секундах"})
     tools.register("clip_get",lambda:clipboard.get(),description="Прочитать буфер обмена.")
     tools.register("clip_set",clipboard.set,description="Записать текст в буфер обмена.",parameters={"text":"текст"})
     tools.register("remind",reminders.add,description="Поставить напоминание.",parameters={"when":"время","text":"текст напоминания"})
