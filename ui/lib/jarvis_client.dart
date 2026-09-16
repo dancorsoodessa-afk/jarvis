@@ -42,7 +42,7 @@ class JarvisIpc {
 
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15)
-      ..idleTimeout = const Duration(seconds: 30);
+      ..idleTimeout = const Duration(seconds: 60);
     return JarvisIpc._(httpClient: client, apiUrl: normalized, apiKey: normalizedKey, model: model.trim());
   }
 
@@ -67,10 +67,45 @@ class JarvisIpc {
     final key = _apiKey?.trim() ?? '';
     if (key.isEmpty) throw StateError('API key отсутствует. Откройте Настройки AI и вставьте ключ OpenRouter.');
     return <String, String>{
-      HttpHeaders.authorizationHeader: 'Bearer $key',
+      'Authorization': 'Bearer $key',
       HttpHeaders.acceptHeader: 'application/json',
       HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
+      'HTTP-Referer': 'https://github.com/dancorsoodessa-afk/jarvis',
+      'X-Title': 'JARVIS Android',
     };
+  }
+
+  String _httpError(int statusCode, String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final error = decoded['error'];
+        if (error is Map) {
+          final message = error['message']?.toString().trim();
+          if (message != null && message.isNotEmpty) return 'HTTP $statusCode: $message';
+        }
+        final message = decoded['message']?.toString().trim();
+        if (message != null && message.isNotEmpty) return 'HTTP $statusCode: $message';
+      }
+    } catch (_) {}
+    return 'HTTP $statusCode: ${body.trim().isEmpty ? 'пустой ответ сервера' : body.trim()}';
+  }
+
+  Future<void> checkConnection() async {
+    if (!_standalone) return;
+    final uri = Uri.parse('$_apiUrl/models');
+    final request = await _httpClient!.getUrl(uri);
+    final headers = _aiHeaders();
+    headers.remove(HttpHeaders.contentTypeHeader);
+    headers.forEach(request.headers.set);
+    final response = await request.close();
+    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 401) {
+        throw StateError('OpenRouter отклонил API key (HTTP 401). Проверьте, что вставлен действующий ключ sk-or-v1-…');
+      }
+      throw StateError(_httpError(response.statusCode, body));
+    }
   }
 
   void _ensureListening() {
@@ -121,9 +156,8 @@ class JarvisIpc {
     final body = await utf8.decoder.bind(response).join();
     final decoded = body.isEmpty ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      final error = decoded['error'];
-      final message = error is Map ? error['message']?.toString() : decoded['message']?.toString();
-      throw StateError(message == null || message.isEmpty ? 'Не удалось получить список AI-моделей: HTTP ${response.statusCode}' : message);
+      if (response.statusCode == 401) throw StateError('OpenRouter отклонил API key (HTTP 401). Проверьте ключ sk-or-v1-…');
+      throw StateError(_httpError(response.statusCode, body));
     }
     final data = decoded['data'];
     if (data is List) {
@@ -150,8 +184,6 @@ class JarvisIpc {
       'messages': historyForRequest,
       'stream': false,
     });
-    // Send explicit UTF-8 bytes. This avoids Android/Dart HTTP handling
-    // treating a Unicode JSON string as an invalid native string argument.
     final payloadBytes = utf8.encode(payload);
     request.contentLength = payloadBytes.length;
     request.add(payloadBytes);
@@ -159,9 +191,8 @@ class JarvisIpc {
     final body = await utf8.decoder.bind(response).join();
     final decoded = body.isEmpty ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      final error = decoded['error'];
-      final message = error is Map ? error['message']?.toString() : decoded['message']?.toString();
-      throw StateError(message == null || message.isEmpty ? 'AI HTTP ${response.statusCode}' : message);
+      if (response.statusCode == 401) throw StateError('OpenRouter отклонил API key (HTTP 401). Проверьте ключ sk-or-v1-…');
+      throw StateError(_httpError(response.statusCode, body));
     }
     final choices = decoded['choices'];
     if (choices is! List || choices.isEmpty) throw StateError('AI не вернул ответ');
