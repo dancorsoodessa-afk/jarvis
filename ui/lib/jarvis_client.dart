@@ -31,10 +31,22 @@ class JarvisIpc {
       normalized = normalized.substring(0, normalized.length - '/chat/completions'.length);
     }
     if (normalized.isEmpty) throw ArgumentError('AI endpoint не указан');
+
+    var normalizedKey = apiKey.trim();
+    if (normalizedKey.toLowerCase().startsWith('bearer ')) {
+      normalizedKey = normalizedKey.substring(7).trim();
+    }
+    if (normalizedKey.toLowerCase().startsWith('authorization:')) {
+      normalizedKey = normalizedKey.substring('authorization:'.length).trim();
+      if (normalizedKey.toLowerCase().startsWith('bearer ')) {
+        normalizedKey = normalizedKey.substring(7).trim();
+      }
+    }
+
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15)
       ..idleTimeout = const Duration(seconds: 30);
-    return JarvisIpc._(httpClient: client, apiUrl: normalized, apiKey: apiKey.trim(), model: model.trim());
+    return JarvisIpc._(httpClient: client, apiUrl: normalized, apiKey: normalizedKey, model: model.trim());
   }
 
   final Process? _process;
@@ -91,15 +103,23 @@ class JarvisIpc {
     return completer.future;
   }
 
+  void _setAuth(HttpClientRequest request) {
+    if (_apiKey != null && _apiKey!.isNotEmpty) {
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${_apiKey!}');
+    }
+  }
+
   Future<String> _resolveModel() async {
     if (_model != null && _model!.isNotEmpty) return _model!;
     final uri = Uri.parse('$_apiUrl/models');
     final request = await _httpClient!.getUrl(uri);
     request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-    if (_apiKey != null && _apiKey!.isNotEmpty) request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_apiKey');
+    _setAuth(request);
     final response = await request.close();
     final body = await utf8.decoder.bind(response).join();
-    if (response.statusCode < 200 || response.statusCode >= 300) throw StateError('Не удалось получить список AI-моделей: HTTP ${response.statusCode}');
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError('Не удалось получить список AI-моделей: HTTP ${response.statusCode}');
+    }
     final decoded = body.isEmpty ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
     final data = decoded['data'];
     if (data is List) {
@@ -120,7 +140,7 @@ class JarvisIpc {
     final uri = Uri.parse('$_apiUrl/chat/completions');
     final request = await _httpClient!.postUrl(uri);
     request.headers.contentType = ContentType.json;
-    if (_apiKey != null && _apiKey!.isNotEmpty) request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_apiKey');
+    _setAuth(request);
     request.headers.set('Accept', 'application/json');
     request.write(jsonEncode({'model': model, 'messages': historyForRequest, 'stream': false}));
     final response = await request.close();
