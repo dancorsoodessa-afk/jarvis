@@ -1,8 +1,27 @@
 name: Build JARVIS для Windows
 
-# Windows packaging is kept available manually, but Android is the active build target.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - jarvis-overhaul
+    paths:
+      - "agent/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "poetry.lock"
+      - "scripts/**"
+      - ".github/workflows/build-exe.yml"
+  pull_request:
+    branches:
+      - foundation
+    paths:
+      - "agent/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "poetry.lock"
+      - "scripts/**"
+      - ".github/workflows/build-exe.yml"
 
 jobs:
   build:

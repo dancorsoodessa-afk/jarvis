@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "jarvis-agent"
-version = "0.1.0"
-description = "Personal AI agent / desktop assistant for Windows x64 (free OpenAI-compatible + local llama.cpp/Vulkan providers)"
+version = "0.2.0"
+description = "Personal AI agent / desktop assistant for Windows x64 with local AI providers"
 authors = ["Jarvis Developer"]
 license = "MIT"
 readme = "README.md"
@@ -9,19 +9,18 @@ packages = [{ include = "agent" }]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.15"
-# Screenshot support on all platforms
 Pillow = { version = ">=10.0", optional = true }
-# Volume control on Windows (COM Audio API)
 pycaw = { version = ">=20240210", optional = true, markers = "sys_platform == 'win32'" }
-# Desktop microphone recording and speech recognition
 sounddevice = { version = ">=0.5.0", optional = true }
 numpy = { version = ">=1.24", optional = true }
 SpeechRecognition = { version = ">=3.10.0", optional = true }
+airllm = { version = ">=4.0.0,<5.0.0", optional = true }
 
 [tool.poetry.extras]
 screenshot = ["Pillow"]
 windows-audio = ["pycaw"]
 voice = ["sounddevice", "numpy", "SpeechRecognition"]
+airllm = ["airllm"]
 all = ["Pillow", "pycaw", "sounddevice", "numpy", "SpeechRecognition"]
 
 [tool.poetry.scripts]

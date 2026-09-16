@@ -1,5 +1,6 @@
 """Entry points:
   python -m agent            interactive CLI
+  python -m agent --doctor   preflight checks without starting the model
   python -m agent --ipc      JSON-lines over stdin/stdout (desktop UI)
   python -m agent --ipc-tcp [port] [host]  JSON-lines over TCP (Android/remote UI)
 """
@@ -11,8 +12,16 @@ from . import ipc
 
 
 def main():
-    agent = build_agent()
     args = sys.argv[1:]
+
+    if "--doctor" in args:
+        from .config import Settings
+        from .doctor import run
+        ok, lines = run(Settings.from_env().provider)
+        print("\n".join(lines))
+        raise SystemExit(0 if ok else 1)
+
+    agent = build_agent()
 
     if "--ipc" in args:
         ipc.serve_stdio(agent)

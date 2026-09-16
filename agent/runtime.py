@@ -6,8 +6,9 @@ from .logging_setup import get as get_log
 from .memory import KnowledgeGraph, MemoryStore, SessionMemory, relevant_notes
 from .providers.local_vulkan import LocalVulkanProvider
 from .providers.openai_chat import OpenAIChatProvider
+from .providers.airllm import AirLLMProvider
 from .reminders import ReminderService
-from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint
+from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint, commands
 from .tools.registry import ToolRegistry
 from . import stt, tts
 from .skills import NoteStore, calculate, now
@@ -28,16 +29,17 @@ def _send_email(to: str, subject: str, body: str) -> str:
 
 def build_agent(settings: Settings | None = None) -> JarvisAgent:
     settings=settings or Settings.from_env(); log=get_log("runtime"); log.info("Старт агента (provider=%s)",settings.provider); memory=MemoryStore(settings.memory_path)
+    session = None
     if settings.provider == "local-vulkan":
-        provider=LocalVulkanProvider(settings.llama_cli,settings.model,ctx=settings.ctx,threads=settings.threads); session=None
+        provider=LocalVulkanProvider(settings.llama_cli,settings.model,ctx=settings.ctx,threads=settings.threads)
+    elif settings.provider == "airllm":
+        provider=AirLLMProvider(settings.airllm_model, max_length=settings.airllm_max_length, max_new_tokens=settings.airllm_max_new_tokens)
     elif settings.provider == "openai-compatible":
         session=SessionMemory(memory)
-        # Не требуем работающий backend на этапе сборки агента. Это важно для IPC,
-        # slash-команд и тестов: подключение к Dragon/другому backend выполняется
-        # лениво при первом AI-запросе.
         chat_url = settings.chat_url.strip()
         provider=OpenAIChatProvider(url=chat_url,api_key=settings.chat_key,model=settings.chat_model,history=session.load_history())
-    else: raise RuntimeError(f"Неизвестный провайдер: {settings.provider}. Доступны: openai-compatible, local-vulkan")
+    else:
+        raise RuntimeError(f"Неизвестный провайдер: {settings.provider}. Доступны: openai-compatible, local-vulkan, airllm")
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
     tools=ToolRegistry()
     tools.register("status",system.status,description="Показать статус системы (ОС, CPU, RAM, диски). Не принимает аргументов.")
@@ -51,6 +53,7 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("screenshot",screenshot.capture,description="Сделать скриншот и вернуть путь к файлу.")
     tools.register("ps",lambda *f:"\n".join(f"{p['pid']:>7}  {p['name']}" for p in processes.list_processes(*f)) or "Не найдено",description="Список запущенных процессов.",parameters={"name":"фильтр по имени (необязательный)"})
     tools.register("kill",processes.kill_process,confirm=True,description="Завершить процесс. ОПАСНО: требует подтверждения.",parameters={"pid":"PID процесса"})
+    tools.register("command",commands.run,confirm=True,description="Выполнить разрешённую системную Windows-команду без shell. Всегда требует подтверждения.",parameters={"command":"системная команда","timeout":"тайм-аут в секундах"})
     tools.register("clip_get",lambda:clipboard.get(),description="Прочитать буфер обмена.")
     tools.register("clip_set",clipboard.set,description="Записать текст в буфер обмена.",parameters={"text":"текст"})
     tools.register("remind",reminders.add,description="Поставить напоминание.",parameters={"when":"время","text":"текст напоминания"})
