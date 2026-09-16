@@ -21,7 +21,7 @@ screenshot = ["Pillow"]
 windows-audio = ["pycaw"]
 voice = ["sounddevice", "numpy", "SpeechRecognition"]
 airllm = ["airllm"]
-all = ["Pillow", "pycaw", "sounddevice", "numpy", "SpeechRecognition", "airllm"]
+all = ["Pillow", "pycaw", "sounddevice", "numpy", "SpeechRecognition"]
 
 [tool.poetry.scripts]
 jarvis = "agent.__main__:main"
