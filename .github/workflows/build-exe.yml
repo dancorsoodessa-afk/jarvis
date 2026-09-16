@@ -1,10 +1,7 @@
 name: Build JARVIS для Windows
 
+# Windows packaging is kept available manually, but Android is the active build target.
 on:
-  push:
-    branches: [foundation, standalone-pc-android]
-  pull_request:
-    branches: [foundation]
   workflow_dispatch:
 
 jobs:
