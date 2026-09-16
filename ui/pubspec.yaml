@@ -1,5 +1,5 @@
 name: jarvis_ui
-description: Jarvis desktop assistant UI (reactor HUD + chat over IPC)
+description: JARVIS assistant UI with reactor HUD, standalone Android AI, voice input and speech output
 publish_to: "none"
 version: 0.1.0
 
@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  speech_to_text: ^7.5.0
+  flutter_tts: ^4.2.5
 
 dev_dependencies:
   flutter_test:
