@@ -144,7 +144,23 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
       await _startNativeListening();
       return;
     }
-    if (value == '__END__' || value == '__ERROR__') {
+    if (value == '__LISTENING__') {
+      _listening = true;
+      if (mounted) setState(() => _status = 'Слушаю…');
+      return;
+    }
+    if (value.startsWith('__ERROR__:')) {
+      _listening = false;
+      final reason = value.substring('__ERROR__:'.length);
+      if (mounted) setState(() => _status = 'Ошибка голоса: $reason');
+      if (_voiceEnabled && !_busy) {
+        Future<void>.delayed(const Duration(milliseconds: 700), () {
+          if (mounted) _startNativeListening();
+        });
+      }
+      return;
+    }
+    if (value == '__END__') {
       _listening = false;
       if (_voiceEnabled && !_busy) {
         Future<void>.delayed(const Duration(milliseconds: 450), () {
@@ -205,9 +221,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     if (!_android || !mounted || text.trim().isEmpty) return;
     try {
       await _voice.invokeMethod('speak', {'text': text.trim()});
-    } catch (_) {
-      // Native voice output must never terminate the application.
-    }
+    } catch (_) {}
   }
 
   Future<void> _connectDesktop() async {
@@ -371,14 +385,16 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
             : (_android ? 'Ожидаю слово «Буся»' : 'Готов');
       });
       _scrollToBottom();
-      if (fromVoice) await _speak(reply.text);
+      // Буся отвечает голосом на любой выполненный запрос, а не только на
+      // запросы, которые были введены голосом.
+      if (_android) await _speak(reply.text);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _messages.add(_Msg('Ошибка: $e', isUser: false));
         _status = 'Ошибка';
       });
-      if (fromVoice) await _speak('Произошла ошибка');
+      if (_android) await _speak('Произошла ошибка');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
