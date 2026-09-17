@@ -12,12 +12,15 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONArray
 import java.util.Locale
 
 class MainActivity : FlutterActivity(), RecognitionListener {
     private val voiceChannel = "busya.voice"
     private val eventsChannel = "busya.voice.events"
     private val recordAudioRequest = 4101
+    private val memoryPrefs = "busya_memory"
+    private val memoryKey = "lessons"
     private var methodChannel: MethodChannel? = null
     private var eventSink: EventChannel.EventSink? = null
     private var recognizer: SpeechRecognizer? = null
@@ -36,6 +39,13 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                 "start" -> { startListening(); result.success(null) }
                 "stop" -> { stopListening(); result.success(null) }
                 "speak" -> { speak(call.argument<String>("text") ?: ""); result.success(null) }
+                "load_learning" -> result.success(loadLearning())
+                "save_learning" -> {
+                    val items = call.argument<List<*>>("items")?.mapNotNull { it?.toString() } ?: emptyList()
+                    saveLearning(items)
+                    result.success(null)
+                }
+                "clear_learning" -> { clearLearning(); result.success(null) }
                 "dispose" -> { releaseVoice(); result.success(null) }
                 else -> result.notImplemented()
             }
@@ -50,7 +60,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private fun initializeVoice(): Boolean {
         if (disposed) return false
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            eventSink?.success("__ERROR__:recognition_unavailable")
+            eventSink?.success("__ERROR__")
             return false
         }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -72,11 +82,11 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         if (tts != null || disposed) return
         tts = TextToSpeech(this) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
-            if (!ttsReady) { eventSink?.success("__TTS_ERROR__:init"); return@TextToSpeech }
+            if (!ttsReady) { eventSink?.success("__ERROR__"); return@TextToSpeech }
             val languageResult = tts?.setLanguage(Locale("ru", "RU"))
             tts?.setSpeechRate(0.48f)
             if (languageResult == TextToSpeech.LANG_MISSING_DATA || languageResult == TextToSpeech.LANG_NOT_SUPPORTED) {
-                eventSink?.success("__TTS_ERROR__:ru-RU")
+                eventSink?.success("__ERROR__")
             } else {
                 eventSink?.success("__TTS_READY__")
                 val queued = pendingSpeech
@@ -105,7 +115,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         try { listening = true; recognizer?.startListening(intent) }
         catch (exception: Exception) {
             listening = false
-            eventSink?.success("__ERROR__:start:${exception.message ?: "unknown"}")
+            eventSink?.success("__ERROR__")
         }
     }
 
@@ -120,7 +130,26 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         ensureTts()
         if (!ttsReady) { pendingSpeech = clean; return }
         try { tts?.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "busya_reply") }
-        catch (exception: Exception) { eventSink?.success("__TTS_ERROR__:speak:${exception.message ?: "unknown"}") }
+        catch (_: Exception) { eventSink?.success("__ERROR__") }
+    }
+
+    private fun loadLearning(): List<String> {
+        val raw = getSharedPreferences(memoryPrefs, MODE_PRIVATE).getString(memoryKey, "[]") ?: "[]"
+        return try {
+            val json = JSONArray(raw)
+            (0 until json.length()).mapNotNull { index -> json.optString(index, null) }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    private fun saveLearning(items: List<String>) {
+        val bounded = items.map { it.trim() }.filter { it.isNotEmpty() }.takeLast(100)
+        val json = JSONArray()
+        bounded.forEach { json.put(it.take(1000)) }
+        getSharedPreferences(memoryPrefs, MODE_PRIVATE).edit().putString(memoryKey, json.toString()).apply()
+    }
+
+    private fun clearLearning() {
+        getSharedPreferences(memoryPrefs, MODE_PRIVATE).edit().remove(memoryKey).apply()
     }
 
     private fun releaseVoice() {
@@ -140,7 +169,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         if (requestCode == recordAudioRequest) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 ensureRecognizer(); ensureTts(); eventSink?.success("__READY__")
-            } else eventSink?.success("__ERROR__:microphone_permission_denied")
+            } else eventSink?.success("__ERROR__")
         }
     }
 
@@ -149,7 +178,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() { listening = false; eventSink?.success("__END__") }
-    override fun onError(error: Int) { listening = false; eventSink?.success("__ERROR__:$error") }
+    override fun onError(error: Int) { listening = false; eventSink?.success("__ERROR__") }
     override fun onResults(results: Bundle?) {
         listening = false
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
