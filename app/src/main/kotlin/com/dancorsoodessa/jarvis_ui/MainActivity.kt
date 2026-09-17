@@ -60,7 +60,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private fun initializeVoice(): Boolean {
         if (disposed) return false
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            eventSink?.success("__ERROR__")
+            eventSink?.success("__ERROR__:recognition_unavailable")
             return false
         }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -82,11 +82,14 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         if (tts != null || disposed) return
         tts = TextToSpeech(this) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
-            if (!ttsReady) { eventSink?.success("__ERROR__"); return@TextToSpeech }
+            if (!ttsReady) {
+                eventSink?.success("__ERROR__:tts_init")
+                return@TextToSpeech
+            }
             val languageResult = tts?.setLanguage(Locale("ru", "RU"))
             tts?.setSpeechRate(0.48f)
             if (languageResult == TextToSpeech.LANG_MISSING_DATA || languageResult == TextToSpeech.LANG_NOT_SUPPORTED) {
-                eventSink?.success("__ERROR__")
+                eventSink?.success("__ERROR__:tts_ru_missing")
             } else {
                 eventSink?.success("__TTS_READY__")
                 val queued = pendingSpeech
@@ -112,10 +115,12 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 250L)
         }
-        try { listening = true; recognizer?.startListening(intent) }
-        catch (exception: Exception) {
+        try {
+            listening = true
+            recognizer?.startListening(intent)
+        } catch (exception: Exception) {
             listening = false
-            eventSink?.success("__ERROR__")
+            eventSink?.success("__ERROR__:start_listening")
         }
     }
 
@@ -128,9 +133,15 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         val clean = text.trim()
         if (clean.isEmpty() || disposed) return
         ensureTts()
-        if (!ttsReady) { pendingSpeech = clean; return }
-        try { tts?.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "busya_reply") }
-        catch (_: Exception) { eventSink?.success("__ERROR__") }
+        if (!ttsReady) {
+            pendingSpeech = clean
+            return
+        }
+        try {
+            tts?.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "busya_reply")
+        } catch (_: Exception) {
+            eventSink?.success("__ERROR__:tts_speak")
+        }
     }
 
     private fun loadLearning(): List<String> {
@@ -169,16 +180,16 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         if (requestCode == recordAudioRequest) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 ensureRecognizer(); ensureTts(); eventSink?.success("__READY__")
-            } else eventSink?.success("__ERROR__")
+            } else eventSink?.success("__ERROR__:record_audio_denied")
         }
     }
 
-    override fun onReadyForSpeech(params: Bundle?) = Unit
+    override fun onReadyForSpeech(params: Bundle?) { eventSink?.success("__LISTENING__") }
     override fun onBeginningOfSpeech() = Unit
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() { listening = false; eventSink?.success("__END__") }
-    override fun onError(error: Int) { listening = false; eventSink?.success("__ERROR__") }
+    override fun onError(error: Int) { listening = false; eventSink?.success("__ERROR__:speech_$error") }
     override fun onResults(results: Bundle?) {
         listening = false
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
