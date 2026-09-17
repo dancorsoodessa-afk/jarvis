@@ -35,6 +35,234 @@ jobs:
           PY
           test ! -e test/widget_test.dart
 
+      - name: Install stable native Android voice layer
+        working-directory: ui
+        run: |
+          mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
+          cat > android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt <<'KOTLIN'
+          package com.dancorsoodessa.jarvis_ui
+
+          import android.Manifest
+          import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.os.Bundle
+          import android.os.Handler
+          import android.os.Looper
+          import android.speech.RecognitionListener
+          import android.speech.RecognizerIntent
+          import android.speech.SpeechRecognizer
+          import android.speech.tts.TextToSpeech
+          import android.speech.tts.UtteranceProgressListener
+          import androidx.core.app.ActivityCompat
+          import androidx.core.content.ContextCompat
+          import io.flutter.embedding.android.FlutterActivity
+          import io.flutter.embedding.engine.FlutterEngine
+          import io.flutter.plugin.common.EventChannel
+          import io.flutter.plugin.common.MethodCall
+          import io.flutter.plugin.common.MethodChannel
+          import java.util.Locale
+
+          class MainActivity : FlutterActivity(), RecognitionListener {
+              companion object {
+                  private const val VOICE_CHANNEL = "busya.voice"
+                  private const val EVENTS_CHANNEL = "busya.voice.events"
+                  private const val REQUEST_RECORD_AUDIO = 701
+              }
+
+              private val handler = Handler(Looper.getMainLooper())
+              private var recognizer: SpeechRecognizer? = null
+              private var eventSink: EventChannel.EventSink? = null
+              private var voiceActive = false
+              private var tts: TextToSpeech? = null
+              private var ttsReady = false
+
+              override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+                  super.configureFlutterEngine(flutterEngine)
+
+                  MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VOICE_CHANNEL)
+                      .setMethodCallHandler { call: MethodCall, result: MethodChannel.Result ->
+                          when (call.method) {
+                              "initialize" -> result.success(initializeVoice())
+                              "start" -> {
+                                  startRecognition()
+                                  result.success(true)
+                              }
+                              "stop" -> {
+                                  stopRecognition()
+                                  result.success(true)
+                              }
+                              "speak" -> {
+                                  val text = call.argument<String>("text").orEmpty()
+                                  speak(text)
+                                  result.success(true)
+                              }
+                              "dispose" -> {
+                                  releaseVoice()
+                                  result.success(true)
+                              }
+                              else -> result.notImplemented()
+                          }
+                      }
+
+                  EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENTS_CHANNEL)
+                      .setStreamHandler(object : EventChannel.StreamHandler {
+                          override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                              eventSink = events
+                          }
+
+                          override fun onCancel(arguments: Any?) {
+                              eventSink = null
+                          }
+                      })
+              }
+
+              private fun initializeVoice(): Boolean {
+                  if (!SpeechRecognizer.isRecognitionAvailable(this)) return false
+
+                  if (tts == null) {
+                      tts = TextToSpeech(this) { status ->
+                          ttsReady = status == TextToSpeech.SUCCESS
+                          if (ttsReady) {
+                              tts?.language = Locale("ru", "RU")
+                              tts?.setSpeechRate(0.48f)
+                          }
+                      }
+                      tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                          override fun onStart(utteranceId: String?) {}
+                          override fun onDone(utteranceId: String?) {}
+                          override fun onError(utteranceId: String?) {}
+                      })
+                  }
+
+                  eventSink?.success("__READY__")
+                  return true
+              }
+
+              private fun startRecognition() {
+                  if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                      eventSink?.success("__ERROR__")
+                      return
+                  }
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                      != PackageManager.PERMISSION_GRANTED) {
+                      voiceActive = true
+                      ActivityCompat.requestPermissions(
+                          this,
+                          arrayOf(Manifest.permission.RECORD_AUDIO),
+                          REQUEST_RECORD_AUDIO
+                      )
+                      return
+                  }
+
+                  voiceActive = true
+                  handler.removeCallbacksAndMessages(null)
+                  destroyRecognizer()
+
+                  recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+                  recognizer?.setRecognitionListener(this)
+
+                  val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                      putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                      putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+                      putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
+                      putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                      putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                      putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+                  }
+
+                  try {
+                      recognizer?.startListening(intent)
+                  } catch (_: RuntimeException) {
+                      eventSink?.success("__ERROR__")
+                      scheduleRestart(1000)
+                  }
+              }
+
+              private fun stopRecognition() {
+                  voiceActive = false
+                  handler.removeCallbacksAndMessages(null)
+                  try { recognizer?.cancel() } catch (_: Exception) {}
+                  destroyRecognizer()
+                  eventSink?.success("__END__")
+              }
+
+              private fun scheduleRestart(delayMs: Long) {
+                  if (!voiceActive) return
+                  handler.removeCallbacksAndMessages(null)
+                  handler.postDelayed({ startRecognition() }, delayMs)
+              }
+
+              private fun destroyRecognizer() {
+                  val current = recognizer ?: return
+                  try { current.cancel() } catch (_: Exception) {}
+                  try { current.destroy() } catch (_: Exception) {}
+                  recognizer = null
+              }
+
+              private fun releaseVoice() {
+                  voiceActive = false
+                  handler.removeCallbacksAndMessages(null)
+                  destroyRecognizer()
+                  try { tts?.stop() } catch (_: Exception) {}
+                  try { tts?.shutdown() } catch (_: Exception) {}
+                  tts = null
+                  ttsReady = false
+              }
+
+              private fun speak(text: String) {
+                  if (!ttsReady || text.isBlank()) return
+                  try {
+                      tts?.stop()
+                      tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "busya_reply")
+                  } catch (_: Exception) {}
+              }
+
+              override fun onRequestPermissionsResult(
+                  requestCode: Int,
+                  permissions: Array<out String>,
+                  grantResults: IntArray
+              ) {
+                  super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+                  if (requestCode == REQUEST_RECORD_AUDIO) {
+                      if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                          scheduleRestart(250)
+                      } else {
+                          voiceActive = false
+                          eventSink?.success("__ERROR__")
+                      }
+                  }
+              }
+
+              override fun onReadyForSpeech(params: Bundle?) {}
+              override fun onBeginningOfSpeech() {}
+              override fun onRmsChanged(rmsdB: Float) {}
+              override fun onBufferReceived(buffer: ByteArray?) {}
+              override fun onEndOfSpeech() {}
+              override fun onPartialResults(partialResults: Bundle?) {}
+              override fun onEvent(eventType: Int, params: Bundle?) {}
+
+              override fun onResults(results: Bundle?) {
+                  val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                  val text = matches?.firstOrNull()?.trim().orEmpty()
+                  if (text.isNotEmpty()) eventSink?.success(text)
+                  else eventSink?.success("__END__")
+                  destroyRecognizer()
+                  scheduleRestart(250)
+              }
+
+              override fun onError(error: Int) {
+                  destroyRecognizer()
+                  eventSink?.success("__ERROR__")
+                  if (voiceActive) scheduleRestart(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1500 else 600)
+              }
+
+              override fun onDestroy() {
+                  releaseVoice()
+                  super.onDestroy()
+              }
+          }
+          KOTLIN
+
       - name: Configure Android permissions for AI and voice
         working-directory: ui
         run: |
@@ -45,9 +273,6 @@ jobs:
           permissions = [
               '    <uses-permission android:name="android.permission.INTERNET" />',
               '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
-              '    <uses-permission android:name="android.permission.BLUETOOTH" />',
-              '    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />',
-              '    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />',
           ]
           pos = text.find('>') + 1
           for permission in permissions:
@@ -57,8 +282,6 @@ jobs:
           if 'android.speech.RecognitionService' not in text:
               query = '''\n    <queries>\n      <intent>\n        <action android:name="android.speech.RecognitionService" />\n      </intent>\n      <intent>\n        <action android:name="android.intent.action.TTS_SERVICE" />\n      </intent>\n    </queries>\n'''
               text = text.replace('<application', query + '\n    <application', 1)
-          elif 'android.intent.action.TTS_SERVICE' not in text:
-              text = text.replace('</queries>', '''      <intent>\n        <action android:name="android.intent.action.TTS_SERVICE" />\n      </intent>\n    </queries>''', 1)
           p.write_text(text, encoding='utf-8')
           PY
 
