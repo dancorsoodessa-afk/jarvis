@@ -7,43 +7,55 @@
 import sys
 
 from .runtime import build_agent
+from .config import Settings
+from .multi_agent import ThreeAgentProvider
+from .providers.openai_chat import OpenAIChatProvider
 from . import ipc
 from .tools import self_modify
 
 
 def _attach_self_improvement_tools(agent) -> None:
     """Expose controlled source-edit/test tools to the local agent runtime."""
-    agent.tools.register(
-        "read_source",
-        self_modify.read_source,
-        description="Прочитать исходный/config файл проекта Буси. Путь только внутри проекта.",
-        parameters={"path": "путь относительно корня проекта"},
-    )
-    agent.tools.register(
-        "write_source",
-        self_modify.write_source,
-        description="Изменить исходный/config файл проекта Буси. Перед записью создаётся резервная копия.",
-        parameters={"path": "путь относительно корня проекта", "content": "полное новое содержимое файла"},
-    )
-    agent.tools.register(
-        "run_tests",
-        self_modify.run_tests,
-        description="Запустить полный набор Python-тестов проекта после изменения кода.",
-    )
-    agent.tools.register(
-        "git_status",
-        self_modify.git_status,
-        description="Показать текущую ветку и незакоммиченные изменения проекта.",
-    )
-    agent.tools.register(
-        "rollback_last_change",
-        self_modify.rollback_last_backup,
-        description="Откатить последнюю резервную копию, созданную инструментом write_source.",
-    )
+    agent.tools.register("read_source", self_modify.read_source,
+                         description="Прочитать исходный/config файл проекта Буси. Путь только внутри проекта.",
+                         parameters={"path": "путь относительно корня проекта"})
+    agent.tools.register("write_source", self_modify.write_source,
+                         description="Изменить исходный/config файл проекта Буси. Перед записью создаётся резервная копия.",
+                         parameters={"path": "путь относительно корня проекта", "content": "полное новое содержимое файла"})
+    agent.tools.register("run_tests", self_modify.run_tests,
+                         description="Запустить полный набор Python-тестов проекта после изменения кода.")
+    agent.tools.register("git_status", self_modify.git_status,
+                         description="Показать текущую ветку и незакоммиченные изменения проекта.")
+    agent.tools.register("rollback_last_change", self_modify.rollback_last_backup,
+                         description="Откатить последнюю резервную копию, созданную инструментом write_source.")
+
+
+def _attach_free_secondary_agents(agent, settings: Settings) -> None:
+    """Enable DeepSeek/GLM only when explicitly configured as free/local endpoints."""
+    if settings.provider != "openai-compatible":
+        return
+    deepseek = None
+    glm = None
+    if settings.deepseek_model:
+        deepseek = OpenAIChatProvider(
+            url=settings.deepseek_url or settings.chat_url,
+            api_key=settings.deepseek_key or settings.chat_key,
+            model=settings.deepseek_model,
+        )
+    if settings.glm_model:
+        glm = OpenAIChatProvider(
+            url=settings.glm_url or settings.chat_url,
+            api_key=settings.glm_key or settings.chat_key,
+            model=settings.glm_model,
+        )
+    if deepseek is not None or glm is not None:
+        agent.provider = ThreeAgentProvider(agent.provider, deepseek, glm)
 
 
 def main():
-    agent = build_agent()
+    settings = Settings.from_env()
+    agent = build_agent(settings)
+    _attach_free_secondary_agents(agent, settings)
     _attach_self_improvement_tools(agent)
     args = sys.argv[1:]
 
@@ -66,8 +78,7 @@ def main():
     if "--memory-clear" in args:
         from .memory import SessionMemory
         from .memory.store import MemoryStore
-        from .config import Settings
-        store = MemoryStore(Settings.from_env().memory_path)
+        store = MemoryStore(settings.memory_path)
         print(SessionMemory(store).clear())
         return
 
