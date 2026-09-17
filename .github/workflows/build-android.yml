@@ -35,23 +35,29 @@ jobs:
           PY
           test ! -e test/widget_test.dart
 
-      - name: Install stable native Android voice layer
+      - name: Install native Android agent layer
         working-directory: ui
         run: |
           mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
           cp android_main_activity.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
+          cp -R android_tools/. android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/
 
-      - name: Configure Android permissions for AI and voice
+      - name: Configure Android permissions
         working-directory: ui
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('android/app/src/main/AndroidManifest.xml')
           text = p.read_text(encoding='utf-8')
-          if 'android.permission.INTERNET' not in text:
-              text = text.replace('>', '>\n    <uses-permission android:name="android.permission.INTERNET" />', 1)
-          if 'android.permission.RECORD_AUDIO' not in text:
-              text = text.replace('>', '>\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />', 1)
+          marker = '<manifest '
+          end = text.find('>', text.find(marker))
+          if end < 0:
+              raise SystemExit('AndroidManifest.xml: <manifest> not found')
+          head, tail = text[:end+1], text[end+1:]
+          perms = []
+          if 'android.permission.INTERNET' not in text: perms.append('    <uses-permission android:name="android.permission.INTERNET" />')
+          if 'android.permission.RECORD_AUDIO' not in text: perms.append('    <uses-permission android:name="android.permission.RECORD_AUDIO" />')
+          if perms: text = head + '\n' + '\n'.join(perms) + tail
           p.write_text(text, encoding='utf-8')
           PY
 
@@ -67,9 +73,18 @@ jobs:
         working-directory: ui
         run: flutter build apk --release
 
+      - name: Verify APK exists and hash it
+        working-directory: ui
+        run: |
+          test -s build/app/outputs/flutter-apk/app-release.apk
+          sha256sum build/app/outputs/flutter-apk/app-release.apk | tee apk.sha256
+          stat -c '%n %s bytes' build/app/outputs/flutter-apk/app-release.apk
+
       - name: Upload JARVIS APK
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-android-apk
-          path: ui/build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            ui/build/app/outputs/flutter-apk/app-release.apk
+            ui/apk.sha256
           if-no-files-found: error
