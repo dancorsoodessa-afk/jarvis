@@ -2,118 +2,66 @@
 
 Personal AI Agent / Desktop Assistant for Windows x64.
 
-Target hardware:
-- AMD Ryzen 5 2600 (6 cores / 12 threads)
-- 16 GB RAM
-- Radeon RX 570 4 GB
-- Windows 10 x64
+## Architecture
 
-AI strategy:
-- **Free OpenAI-compatible provider: primary**
-- **Local provider: llama.cpp + Vulkan**
-- Paid/cloud provider integration is removed
-- Ollama is optional when exposed through its OpenAI-compatible API
-- Model is replaceable; Jarvis is not tied to one runtime
-- If `JARVIS_CHAT_MODEL` is empty, the OpenAI-compatible provider discovers the first model exposed by `/v1/models`
+JARVIS uses one application core and one versioned client protocol. Windows Desktop, CLI, and Android are clients; transport is the only platform-specific layer.
 
-## Build jarvis.exe (Windows x64)
+```text
+                 JARVIS CORE
+                     |
+        +------------+------------+
+        |            |            |
+      Windows      Android       CLI
+        |            |            |
+        +------------+------------+
+                     |
+              Protocol v1 (JSON)
+                     |
+          +----------+----------+
+          |          |          |
+        State       Tools     Memory
+       Machine
+```
 
-On your Windows PC, from the project root:
+The single state machine exposes: `idle`, `listening`, `thinking`, `executing`, `speaking`, `confirmation`, `error`, `exiting`. The 3D Reactor consumes these states and is therefore a live representation of the core rather than an unrelated animation.
+
+## AI providers
+
+- Free OpenAI-compatible provider — primary.
+- Local llama.cpp + Vulkan provider.
+- Ollama can be used through its OpenAI-compatible API.
+- No paid provider is required.
+
+## Windows
+
+`JARVIS Desktop.exe` is the normal GUI package and is built without a console window. `JARVIS.exe` remains the core/CLI executable for development and IPC.
+
+## Voice
+
+Windows/desktop voice activation is **two claps -> speech -> JARVIS -> TTS -> standby**. The same voice engine owns microphone capture, VAD, STT and TTS interruption. Android keeps its separate device-native activation by saying **«Джарвис»**, then captures the command.
+
+## Android / remote core
+
+Android may connect directly to an OpenAI-compatible AI endpoint as a standalone mode, or to the real JARVIS core using the same Protocol v1 over TCP:
+
+`tcp://WINDOWS_HOST:8765`
+
+The Windows core can be started with:
+
+```powershell
+python -m agent --ipc-tcp 8765 0.0.0.0
+```
+
+Protocol messages are JSON lines with `protocol`, `id`, `type` and payload. Requests include `message`, `tool`, `tools`, `state`, `clear_memory`, and `ping`; asynchronous events include `state` and `delta`.
+
+## Memory
+
+Short-term conversation history is persisted and restored. Long-term notes, knowledge graph and RAG remain part of the core.
+
+## Build
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 ```
 
-The build script installs the project with all Windows extras, runs the full unittest suite, and then creates `dist\jarvis.exe`.
-
-Result: `dist\jarvis.exe` — single console exe, with the optional Windows audio and screenshot dependencies bundled.
-
-GitHub Actions also builds the Windows executables on pushes and pull requests targeting `foundation`; the resulting package is uploaded as a workflow artifact.
-
-## AI providers
-
-JARVIS does not require a paid/cloud provider. The supported paths are:
-
-### 1. OpenAI-compatible provider — default
-
-Use any **free/local** service that exposes an OpenAI-compatible `/v1/chat/completions` endpoint. No paid API is required by JARVIS.
-
-```powershell
-$env:JARVIS_PROVIDER  = "openai-compatible"
-$env:JARVIS_CHAT_URL  = "http://127.0.0.1:11434/v1/chat/completions"
-$env:JARVIS_CHAT_KEY  = ""
-$env:JARVIS_CHAT_MODEL = "your-local-model"
-.\dist\jarvis.exe
-```
-
-`JARVIS_CHAT_MODEL` may be left empty when the local server exposes `/v1/models`; JARVIS will discover the first available model. The URL and model are configurable, so the same provider can work with compatible local runtimes such as Ollama, llama.cpp server, or LM Studio.
-
-### 2. llama.cpp + Vulkan — direct local provider
-
-```powershell
-$env:JARVIS_PROVIDER = "local-vulkan"
-$env:JARVIS_LLAMA_CLI = "llama-cli"
-$env:JARVIS_MODEL = "model.gguf"
-.\dist\jarvis.exe
-```
-
-This path runs the model locally and does not require an API key.
-
-## Flutter UI (ui/)
-
-```powershell
-cd ui
-flutter pub get
-flutter run -d windows        # or: flutter build windows
-```
-
-The Flutter UI can spawn the agent through IPC. The native Windows desktop UI is `jarvis_desktop.py` and is packaged as `JARVIS-Desktop.exe` by CI.
-Preview of the reactor animation without Flutter: open `ui/jarvis_reactor.html`.
-
-## Android
-
-The Android workflow generates the Flutter Android platform during CI and builds a standalone APK from `ui/`. The Android client connects directly to the configured OpenAI-compatible API; it is independent from the Windows process and does not use the Windows IPC channel.
-
-## Release checklist
-
-Before publishing a release, verify:
-1. `git pull origin foundation`
-2. `powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1`
-3. `dist\jarvis.exe` starts and `/status`, `/calc`, `/now`, `/volume`, `/exit` work.
-4. Verify the selected free/local AI provider and model through environment variables.
-5. Run the Flutter UI smoke test if the UI is part of the release.
-6. Test the double-clap voice activation and TTS interruption on a real Windows microphone.
-
-Never put API keys, memory files, reminders, or runtime logs into Git.
-
-## Память диалогов
-
-- **Краткосрочная**: история сообщений (`chat_history`) сохраняется в `jarvis_memory.json`
-  и восстанавливается при перезапуске. Ограничение — 40 обменов.
-- **Долгосрочная**: заметки (`remember/recall`) и граф знаний (`kg_*`) — через инструменты.
-- **RAG**: перед каждым вопросом в системный промпт автоматически подмешиваются
-  релевантные заметки — модель «знает» факты без явного `/recall`.
-- Очистка истории: `python -m agent --memory-clear`, кнопка очистки в UI,
-  IPC-запрос `{"type": "clear_memory"}`.
-
-## Голосовой режим
-
-Основной режим активации JARVIS на desktop/CLI:
-
-```powershell
-poetry install --extras voice
-$env:JARVIS_STT = "faster-whisper"
-$env:JARVIS_TTS = "auto"
-python -m agent --voice                # jarvis.exe --voice
-```
-
-Цикл: ожидание → **два хлопка** → запись команды → STT → ответ агента → TTS → снова ожидание двух хлопков. Запись ограничена 10 секундами с детекцией тишины. Во время ответа начало речи останавливает воспроизведение TTS, чтобы JARVIS не перебивал пользователя.
-
-`voice_loop.py` сохраняет поддержку старого wake-word API для совместимости тестов и интеграций, но основной runtime голосового режима использует двойной хлопок.
-
-## Windows-полировка
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install_autostart.ps1
-powershell -ExecutionPolicy Bypass -File scripts\install_autostart.ps1 -Remove
-```
+The Windows build runs tests first and aborts before packaging when tests fail.

@@ -1,7 +1,7 @@
 name: jarvis_ui
-description: JARVIS assistant UI with reactor HUD, standalone Android AI, voice input and speech output
+description: JARVIS assistant UI with reactor HUD, standalone Android AI, native Android voice and speech output
 publish_to: "none"
-version: 0.1.0
+version: 0.2.0
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -9,7 +9,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  speech_to_text: ^7.5.0
   flutter_tts: ^4.2.5
 
 dev_dependencies:

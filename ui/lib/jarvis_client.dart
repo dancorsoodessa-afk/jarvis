@@ -1,214 +1,24 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-
-class JarvisReply {
-  JarvisReply(this.text, this.provider, this.toolUsed, this.needsConfirmation);
-  factory JarvisReply.fromJson(Map<String, dynamic> json) => JarvisReply(
-        json['text'] as String,
-        json['provider'] as String? ?? 'unknown',
-        json['tool_used'] as String?,
-        json['needs_confirmation'] as bool? ?? false,
-      );
-  final String text;
-  final String provider;
-  final String? toolUsed;
-  final bool needsConfirmation;
-}
-
-class JarvisIpc {
-  JarvisIpc._({Process? process, HttpClient? httpClient, String? apiUrl, String? apiKey, String? model})
-      : _process = process,
-        _httpClient = httpClient,
-        _apiUrl = apiUrl,
-        _apiKey = apiKey,
-        _model = model;
-
-  static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async {
-    final process = await Process.start(executable, args);
-    return JarvisIpc._(process: process);
-  }
-
-  static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = ''}) async {
-    var normalized = apiUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    for (final suffix in ['/chat/completions', '/models']) {
-      if (normalized.endsWith(suffix)) {
-        normalized = normalized.substring(0, normalized.length - suffix.length);
-        break;
-      }
-    }
-    if (normalized.isEmpty) throw ArgumentError('AI endpoint не указан');
-
-    var normalizedKey = apiKey.trim();
-    final authPrefix = RegExp(r'^(?:authorization\s*:\s*)?bearer\s+', caseSensitive: false);
-    normalizedKey = normalizedKey.replaceFirst(authPrefix, '').trim();
-
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 15)
-      ..idleTimeout = const Duration(seconds: 45);
-    return JarvisIpc._(
-      httpClient: client,
-      apiUrl: normalized,
-      apiKey: normalizedKey,
-      model: model.trim(),
-    );
-  }
-
-  final Process? _process;
-  final HttpClient? _httpClient;
-  final String? _apiUrl;
-  final String? _apiKey;
-  final String? _model;
-  int _nextId = 0;
-  int? _activeId;
-  bool _listening = false;
-  final Map<int, Completer<Map<String, dynamic>>> _pending = {};
-  final _deltaController = StreamController<Map<int, String>>.broadcast();
-  final List<Map<String, String>> _history = [];
-  bool get _standalone => _httpClient != null;
-  Stream<Map<int, String>> get deltas => _deltaController.stream;
-  int? get activeId => _activeId;
-  Stream<String> partials() => deltas.map((m) => m[activeId]).where((value) => value != null).cast<String>();
-
-  void _ensureListening() {
-    if (_standalone || _listening) return;
-    _listening = true;
-    final accumulated = <int, String>{};
-    _process!.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
-      if (line.trim().isEmpty) return;
-      final msg = jsonDecode(line) as Map<String, dynamic>;
-      final id = msg['id'] is int ? msg['id'] as int : null;
-      if (msg['type'] == 'delta' && id != null) {
-        accumulated[id] = (accumulated[id] ?? '') + (msg['text'] as String);
-        _deltaController.add({id: accumulated[id]!});
-        return;
-      }
-      final completer = id == null ? null : _pending.remove(id);
-      completer?.complete(msg);
-    }, onError: (Object error) {
-      for (final c in _pending.values) {
-        if (!c.isCompleted) c.completeError(error);
-      }
-      _pending.clear();
-    });
-  }
-
-  void _write(Map<String, dynamic> body) {
-    _process!.stdin.writeln(jsonEncode(body));
-  }
-
-  Future<Map<String, dynamic>> _request(Map<String, dynamic> body) {
-    _ensureListening();
-    final id = _nextId++;
-    _activeId = id;
-    final completer = Completer<Map<String, dynamic>>();
-    _pending[id] = completer;
-    _write({...body, 'id': id});
-    return completer.future;
-  }
-
-  void _setAuth(HttpClientRequest request) {
-    final key = _apiKey?.trim() ?? '';
-    if (key.isEmpty) return;
-    // OrcaRouter and other OpenAI-compatible gateways use Bearer auth.
-    // X-API-Key is also sent for gateways that expose the same API under that convention.
-    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
-    request.headers.set('X-API-Key', key);
-  }
-
-  Future<Map<String, dynamic>> _jsonResponse(HttpClientResponse response) async {
-    final body = await utf8.decoder.bind(response).join();
-    Map<String, dynamic> decoded = <String, dynamic>{};
-    if (body.trim().isNotEmpty) {
-      try {
-        final value = jsonDecode(body);
-        if (value is Map<String, dynamic>) decoded = value;
-      } catch (_) {
-        decoded = {'message': body.trim()};
-      }
-    }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final error = decoded['error'];
-      final message = error is Map ? error['message']?.toString() : decoded['message']?.toString();
-      final detail = message == null || message.isEmpty ? 'HTTP ${response.statusCode}' : message;
-      throw StateError('AI ${response.statusCode}: $detail');
-    }
-    return decoded;
-  }
-
-  Future<String> _resolveModel() async {
-    if (_model != null && _model!.isNotEmpty) return _model!;
-    final request = await _httpClient!.getUrl(Uri.parse('$_apiUrl/models'));
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-    _setAuth(request);
-    final decoded = await _jsonResponse(await request.close());
-    final data = decoded['data'];
-    if (data is List) {
-      for (final item in data) {
-        if (item is Map && item['id'] is String && (item['id'] as String).trim().isNotEmpty) {
-          return (item['id'] as String).trim();
-        }
-      }
-    }
-    throw StateError('AI-сервер не сообщил доступных моделей. Укажите модель вручную.');
-  }
-
-  Future<JarvisReply> _sendStandalone(String text) async {
-    final model = await _resolveModel();
-    final historyForRequest = <Map<String, String>>[
-      {
-        'role': 'system',
-        'content': 'Ты JARVIS — самостоятельный AI-помощник. Отвечай на языке пользователя. Будь точным, кратким и полезным. Не утверждай, что выполнял действия на устройстве, если у тебя нет соответствующего инструмента.',
-      },
-      ..._history,
-      {'role': 'user', 'content': text},
-    ];
-    final request = await _httpClient!.postUrl(Uri.parse('$_apiUrl/chat/completions'));
-    request.headers.contentType = ContentType.json;
-    _setAuth(request);
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-    request.write(jsonEncode({'model': model, 'messages': historyForRequest, 'stream': false}));
-    final decoded = await _jsonResponse(await request.close());
-    final choices = decoded['choices'];
-    if (choices is! List || choices.isEmpty) throw StateError('AI не вернул ответ');
-    final message = choices.first['message'];
-    final content = message is Map ? message['content'] : null;
-    if (content is! String || content.trim().isEmpty) throw StateError('AI вернул пустой ответ');
-    _history
-      ..add({'role': 'user', 'content': text})
-      ..add({'role': 'assistant', 'content': content});
-    if (_history.length > 40) _history.removeRange(0, _history.length - 40);
-    return JarvisReply(content, 'standalone-ai', null, false);
-  }
-
-  Future<JarvisReply> sendMessage(String text) async {
-    final normalized = text.trim();
-    if (normalized.isEmpty) throw ArgumentError('Пустое сообщение');
-    if (_standalone) return _sendStandalone(normalized);
-    final resp = await _request({'type': 'message', 'text': normalized});
-    if (resp['type'] == 'error') throw StateError(resp['message'] as String);
-    return JarvisReply.fromJson(resp);
-  }
-
-  Future<void> clearMemory() async {
-    if (_standalone) {
-      _history.clear();
-      return;
-    }
-    final resp = await _request({'type': 'clear_memory'});
-    if (resp['type'] == 'error') throw StateError(resp['message'] as String);
-  }
-
-  Future<List<String>> listTools() async {
-    if (_standalone) return const [];
-    final resp = await _request({'type': 'tools'});
-    if (resp['type'] == 'error') throw StateError(resp['message'] as String);
-    return (resp['tools'] as List).cast<String>();
-  }
-
-  Future<void> dispose() async {
-    await _deltaController.close();
-    _process?.kill();
-    _httpClient?.close(force: true);
-  }
+const int jarvisProtocolVersion=1;
+class JarvisReply{JarvisReply(this.text,this.provider,this.toolUsed,this.needsConfirmation,this.state);factory JarvisReply.fromJson(Map<String,dynamic>j)=>JarvisReply(j['text']?.toString()??'',j['provider']?.toString()??'unknown',j['tool_used']?.toString(),j['needs_confirmation']==true,j['state']?.toString()??'idle');final String text,provider,state;final String?toolUsed;final bool needsConfirmation;}
+class JarvisIpc{
+ JarvisIpc._({Process?process,HttpClient?httpClient,String?apiUrl,String?apiKey,String?model,Socket?socket}):_process=process,_httpClient=httpClient,_apiUrl=apiUrl,_apiKey=apiKey,_model=model,_socket=socket;
+ final Process?_process;final HttpClient?_httpClient;final String?_apiUrl,_apiKey,_model;final Socket?_socket;int _nextId=0;int?_activeId;bool _listening=false;
+ final Map<int,Completer<Map<String,dynamic>>>_pending={};final _delta=StreamController<Map<int,String>>.broadcast();final _state=StreamController<String>.broadcast();final List<Map<String,String>>_history=[];
+ bool get _standalone=>_httpClient!=null;bool get _tcp=>_socket!=null;Stream<String>states()=>_state.stream;Stream<Map<int,String>>get deltas=>_delta.stream;Stream<String>partials()=>deltas.map((m)=>m[_activeId]).where((v)=>v!=null).cast<String>();
+ static Future<JarvisIpc>spawn(String executable,[List<String>args=const['--ipc']])async=>JarvisIpc._(process:await Process.start(executable,args));
+ static Future<JarvisIpc>connectTcp(String host,int port)async=>JarvisIpc._(socket:await Socket.connect(host,port,timeout:const Duration(seconds:10)));
+ static Future<JarvisIpc>connectAi(String apiUrl,{String model='',String apiKey=''})async{final raw=apiUrl.trim();final tcp=RegExp(r'^tcp://([^:/]+)(?::(\d+))?$',caseSensitive:false).firstMatch(raw);if(tcp!=null)return connectTcp(tcp.group(1)!,int.tryParse(tcp.group(2)??'8765')??8765);var normalized=raw.replaceFirst(RegExp(r'/+$'),'');for(final suffix in['/chat/completions','/models'])if(normalized.endsWith(suffix)){normalized=normalized.substring(0,normalized.length-suffix.length);break;}if(normalized.isEmpty)throw ArgumentError('AI endpoint не указан');final key=apiKey.trim().replaceFirst(RegExp(r'^(?:authorization\s*:\s*)?bearer\s+',caseSensitive:false),'').trim();return JarvisIpc._(httpClient:HttpClient()..connectionTimeout=const Duration(seconds:15)..idleTimeout=const Duration(seconds:45),apiUrl:normalized,apiKey:key,model:model.trim());}
+ void _ensureListening(){if(_standalone||_listening)return;_listening=true;final input=_tcp?_socket!:_process!.stdout;final accumulated=<int,String>{};input.transform(utf8.decoder).transform(const LineSplitter()).listen((line){if(line.trim().isEmpty)return;final msg=jsonDecode(line)as Map<String,dynamic>;final type=msg['type']?.toString();if(type=='state'){_state.add(msg['state']?.toString()??'idle');return;}if(type=='delta'){final id=msg['request_id'] is int?msg['request_id']as int:(msg['id'] is int?msg['id']as int:null);if(id!=null){accumulated[id]=(accumulated[id]??'')+(msg['text']?.toString()??'');_delta.add({id:accumulated[id]!});}return;}final id=msg['id'];if(id is int)_pending.remove(id)?.complete(msg);},onError:(Object e){for(final c in _pending.values){if(!c.isCompleted)c.completeError(e);}_pending.clear();});}
+ Future<Map<String,dynamic>>_request(String type,Map<String,dynamic>payload){_ensureListening();final id=_nextId++;_activeId=id;final c=Completer<Map<String,dynamic>>();_pending[id]=c;final line=jsonEncode({'protocol':jarvisProtocolVersion,'id':id,'type':type,...payload})+'\n';if(_tcp)_socket!.write(line);else _process!.stdin.write(line);return c.future;}
+ void _auth(HttpClientRequest r){final k=_apiKey??'';if(k.isNotEmpty){r.headers.set(HttpHeaders.authorizationHeader,'Bearer $k');r.headers.set('X-API-Key',k);}}
+ Future<Map<String,dynamic>>_http(HttpClientResponse r)async{final body=await utf8.decoder.bind(r).join();Map<String,dynamic>d={};if(body.trim().isNotEmpty){try{final v=jsonDecode(body);if(v is Map<String,dynamic>)d=v;}catch(_){d={'message':body.trim()};}}if(r.statusCode<200||r.statusCode>=300)throw StateError(d['message']?.toString()??'HTTP ${r.statusCode}');return d;}
+ Future<String>_resolveModel()async{if((_model??'').isNotEmpty)return _model!;final r=await _httpClient!.getUrl(Uri.parse('$_apiUrl/models'));_auth(r);final d=await _http(await r.close());final data=d['data'];if(data is List)for(final x in data)if(x is Map&&x['id'] is String&&x['id'].toString().isNotEmpty)return x['id'].toString();throw StateError('AI-сервер не сообщил модель');}
+ Future<JarvisReply>_sendAi(String text)async{final model=await _resolveModel();final r=await _httpClient!.postUrl(Uri.parse('$_apiUrl/chat/completions'));r.headers.contentType=ContentType.json;_auth(r);r.write(jsonEncode({'model':model,'messages':[{'role':'system','content':'Ты JARVIS. Отвечай на языке пользователя.'},..._history,{'role':'user','content':text}],'stream':false}));final d=await _http(await r.close());final c=d['choices'];if(c is! List||c.isEmpty)throw StateError('AI не вернул ответ');final m=c.first['message'];final content=m is Map?m['content']:null;if(content is! String||content.trim().isEmpty)throw StateError('AI вернул пустой ответ');_history..add({'role':'user','content':text})..add({'role':'assistant','content':content});if(_history.length>40)_history.removeRange(0,_history.length-40);return JarvisReply(content,'standalone-ai',null,false,'idle');}
+ Future<JarvisReply>sendMessage(String text)async{final t=text.trim();if(t.isEmpty)throw ArgumentError('Пустое сообщение');if(_standalone)return _sendAi(t);final r=await _request('message',{'text':t});if(r['type']=='error')throw StateError(r['message']?.toString()??'JARVIS error');return JarvisReply.fromJson(r);}
+ Future<void>clearMemory()async{if(_standalone){_history.clear();return;}final r=await _request('clear_memory',{});if(r['type']=='error')throw StateError(r['message']?.toString()??'JARVIS error');}
+ Future<List<String>>listTools()async{if(_standalone)return const[];final r=await _request('tools',{});if(r['type']=='error')throw StateError(r['message']?.toString()??'JARVIS error');return(r['tools']as List).cast<String>();}
+ Future<void>dispose()async{await _delta.close();await _state.close();_process?.kill();_httpClient?.close(force:true);_socket?.destroy();}
 }

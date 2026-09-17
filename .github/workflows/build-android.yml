@@ -2,10 +2,13 @@ name: Build JARVIS Android APK
 
 on:
   push:
-    branches: [foundation, standalone-pc-android]
+    branches: [foundation, standalone-pc-android, architecture-unification]
   pull_request:
     branches: [foundation, standalone-pc-android]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-android:
@@ -24,7 +27,8 @@ jobs:
         working-directory: ui
         run: |
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
-          rm -rf test
+          rm -f test/widget_test.dart
+          rm -f android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
           python3 - <<'PY'
           from pathlib import Path
           p = Path('pubspec.yaml')
@@ -33,7 +37,13 @@ jobs:
               text = text.replace('dev_dependencies:\n', 'dev_dependencies:\n  flutter_lints: ^6.0.0\n')
               p.write_text(text, encoding='utf-8')
           PY
-          test ! -e test/widget_test.dart
+
+      - name: Install JARVIS Android host layer
+        working-directory: ui
+        run: |
+          test -f android_native/MainActivity.java
+          mkdir -p android/app/src/main/java/com/dancorsoodessa/jarvis_ui
+          cp android_native/MainActivity.java android/app/src/main/java/com/dancorsoodessa/jarvis_ui/MainActivity.java
 
       - name: Configure Android permissions for AI and voice
         working-directory: ui
@@ -57,8 +67,6 @@ jobs:
           if 'android.speech.RecognitionService' not in text:
               query = '''\n    <queries>\n      <intent>\n        <action android:name="android.speech.RecognitionService" />\n      </intent>\n      <intent>\n        <action android:name="android.intent.action.TTS_SERVICE" />\n      </intent>\n    </queries>\n'''
               text = text.replace('<application', query + '\n    <application', 1)
-          elif 'android.intent.action.TTS_SERVICE' not in text:
-              text = text.replace('</queries>', '''      <intent>\n        <action android:name="android.intent.action.TTS_SERVICE" />\n      </intent>\n    </queries>''', 1)
           p.write_text(text, encoding='utf-8')
           PY
 
@@ -66,9 +74,21 @@ jobs:
         working-directory: ui
         run: flutter pub get
 
+      - name: Verify Android architecture boundaries
+        working-directory: ui
+        run: |
+          test -f android/app/src/main/java/com/dancorsoodessa/jarvis_ui/MainActivity.java
+          ! test -f android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
+          ! grep -R "speech_to_text" -n lib pubspec.yaml
+          ! grep -R "Process.start" -n lib/main.dart
+
       - name: Analyze Dart code
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Flutter smoke tests
+        working-directory: ui
+        run: flutter test
 
       - name: Build release APK
         working-directory: ui
@@ -80,3 +100,15 @@ jobs:
           name: jarvis-android-apk
           path: ui/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+
+      - name: Publish APK to GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/architecture-unification'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="android-build-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" ui/build/app/outputs/flutter-apk/app-release.apk \
+            --target "$GITHUB_SHA" \
+            --title "JARVIS Android Build ${GITHUB_RUN_NUMBER}" \
+            --notes "Android APK built from ${GITHUB_SHA}." \
+            --prerelease
