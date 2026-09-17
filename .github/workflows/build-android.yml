@@ -28,6 +28,7 @@ jobs:
         run: |
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
           rm -f test/widget_test.dart
+          rm -f android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
           python3 - <<'PY'
           from pathlib import Path
           p = Path('pubspec.yaml')
@@ -77,6 +78,7 @@ jobs:
         working-directory: ui
         run: |
           test -f android/app/src/main/java/com/dancorsoodessa/jarvis_ui/MainActivity.java
+          ! test -f android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
           ! grep -R "speech_to_text" -n lib pubspec.yaml
           ! grep -R "Process.start" -n lib/main.dart
 
