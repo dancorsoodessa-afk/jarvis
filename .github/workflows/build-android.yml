@@ -27,7 +27,6 @@ jobs:
         working-directory: ui
         run: |
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
-          rm -rf test
           python3 - <<'PY'
           from pathlib import Path
           p = Path('pubspec.yaml')
@@ -36,7 +35,6 @@ jobs:
               text = text.replace('dev_dependencies:\n', 'dev_dependencies:\n  flutter_lints: ^6.0.0\n')
               p.write_text(text, encoding='utf-8')
           PY
-          test ! -e test/widget_test.dart
 
       - name: Install JARVIS Android host layer
         working-directory: ui
@@ -44,13 +42,6 @@ jobs:
           test -f android_native/MainActivity.java
           mkdir -p android/app/src/main/java/com/dancorsoodessa/jarvis_ui
           cp android_native/MainActivity.java android/app/src/main/java/com/dancorsoodessa/jarvis_ui/MainActivity.java
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('android/app/src/main/AndroidManifest.xml')
-          text = p.read_text(encoding='utf-8')
-          text = text.replace('android:name=".MainActivity"', 'android:name=".MainActivity"')
-          p.write_text(text, encoding='utf-8')
-          PY
 
       - name: Configure Android permissions for AI and voice
         working-directory: ui
@@ -86,7 +77,7 @@ jobs:
         run: |
           test -f android/app/src/main/java/com/dancorsoodessa/jarvis_ui/MainActivity.java
           ! grep -R "speech_to_text" -n lib pubspec.yaml
-          ! grep -R "Process.start" -n lib/main.dart lib/jarvis_client.dart || true
+          ! grep -R "Process.start" -n lib/main.dart
 
       - name: Analyze Dart code
         working-directory: ui
