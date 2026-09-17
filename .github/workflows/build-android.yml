@@ -48,19 +48,10 @@ jobs:
           from pathlib import Path
           p = Path('android/app/src/main/AndroidManifest.xml')
           text = p.read_text(encoding='utf-8')
-          permissions = [
-              '    <uses-permission android:name="android.permission.INTERNET" />',
-              '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
-          ]
-          pos = text.find('>') + 1
-          for permission in permissions:
-              if permission not in text:
-                  text = text[:pos] + '\n' + permission + text[pos:]
-                  pos += len(permission) + 1
-          if 'android.speech.RecognitionService' not in text:
-              query = '''\n    <queries>\n      <intent>\n        <action android:name="android.speech.RecognitionService" />\n      </intent>\n      <intent>\n        <action android.intent.action.TTS_SERVICE" />\n      </intent>\n    </queries>\n'''
-              query = query.replace('android.intent.action.TTS_SERVICE"', 'android.intent.action.TTS_SERVICE"')
-              text = text.replace('<application', query + '\n    <application', 1)
+          if 'android.permission.INTERNET' not in text:
+              text = text.replace('>', '>\n    <uses-permission android:name="android.permission.INTERNET" />', 1)
+          if 'android.permission.RECORD_AUDIO' not in text:
+              text = text.replace('>', '>\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />', 1)
           p.write_text(text, encoding='utf-8')
           PY
 
