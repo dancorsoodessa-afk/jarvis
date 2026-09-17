@@ -1,21 +1,28 @@
-"""Lightweight text-to-speech for Windows JARVIS.
+"""Text-to-speech for JARVIS/BUSYA.
 
-Windows SAPI is the default because it adds no large ML model to the EXE.
-Silero and Piper remain optional for users who explicitly configure them.
+Engines: APIHOST (preferred when JARVIS_APIHOST_KEY is configured),
+Windows SAPI, Silero and Piper.
 """
 
+import json
 import os
 import subprocess
 import sys
 import tempfile
 import threading
+import time
+import urllib.request
 from pathlib import Path
 
 SILERO_MODEL_URL = "https://models.silero.ai/models/tts/ru/v5_ru.pt"
 DEFAULT_SILERO_VOICE = "eugene"
 DEFAULT_SAPI_LANGUAGE = "ru-RU"
+APIHOST_BASE = "https://apihost.ru/api/v1"
+APIHOST_VOICE_NAME = "Леда"
 _PLAYBACK_LOCK = threading.Lock()
 _PLAYBACK_PROCESS = None
+_APIHOST_SPEAKER_ID = None
+_APIHOST_LOCK = threading.Lock()
 
 
 def _voice_dir() -> Path:
@@ -49,20 +56,11 @@ def is_playing() -> bool:
 
 def _run_piper(text: str, out_path: Path) -> Path:
     piper = os.environ.get("JARVIS_PIPER", "piper")
-    voice = os.environ.get(
-        "JARVIS_PIPER_VOICE",
-        str(_piper_dir() / "ru_RU-dmitri-medium.onnx"),
-    )
+    voice = os.environ.get("JARVIS_PIPER_VOICE", str(_piper_dir() / "ru_RU-dmitri-medium.onnx"))
     if not Path(voice).exists():
         raise RuntimeError(f"Голос piper не найден: {voice}")
     with open(out_path, "wb") as wav:
-        subprocess.run(
-            [piper, "-m", voice, "-f", "-"],
-            input=text.encode("utf-8"),
-            stdout=wav,
-            check=True,
-            timeout=60,
-        )
+        subprocess.run([piper, "-m", voice, "-f", "-"], input=text.encode("utf-8"), stdout=wav, check=True, timeout=60)
     return out_path
 
 
@@ -101,11 +99,62 @@ def _run_silero(text: str, out_path: Path) -> Path:
     audio = audio.detach().cpu().clamp(-1, 1)
     pcm = (audio * 32767).short().numpy().tobytes()
     with wave.open(str(out_path), "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(48000)
-        wav.writeframes(pcm)
+        wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(48000); wav.writeframes(pcm)
     return out_path
+
+
+def _api_json(path: str, payload: dict) -> dict:
+    key = os.environ.get("JARVIS_APIHOST_KEY", "").strip()
+    if not key:
+        raise RuntimeError("Для голоса Леда нужен JARVIS_APIHOST_KEY")
+    request = urllib.request.Request(
+        APIHOST_BASE + path,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _apihost_speaker_id() -> str:
+    global _APIHOST_SPEAKER_ID
+    if _APIHOST_SPEAKER_ID:
+        return _APIHOST_SPEAKER_ID
+    with _APIHOST_LOCK:
+        if _APIHOST_SPEAKER_ID:
+            return _APIHOST_SPEAKER_ID
+        data = _api_json("/speaker", {"server": 0})
+        speakers = data.get("speaker", [])
+        for item in speakers:
+            if str(item.get("speaker", "")).strip().casefold() == APIHOST_VOICE_NAME.casefold() and str(item.get("lang", "")) == "ru-RU":
+                _APIHOST_SPEAKER_ID = str(item["id"])
+                return _APIHOST_SPEAKER_ID
+        raise RuntimeError("APIHOST: голос Леда не найден в каталоге")
+
+
+def _run_apihost(text: str, out_path: Path) -> Path:
+    speaker = _apihost_speaker_id()
+    data = _api_json("/synthesize", {"data": [{
+        "lang": "ru-RU", "speaker": speaker, "emotion": os.environ.get("JARVIS_APIHOST_EMOTION", "neutral"),
+        "text": text, "rate_hertz": "48000", "rate": os.environ.get("JARVIS_APIHOST_RATE", "1.0"),
+        "pitch": os.environ.get("JARVIS_APIHOST_PITCH", "1.0"), "type": "wav", "pause": "0"
+    }]})
+    process = str(data.get("process", ""))
+    if not process:
+        raise RuntimeError(f"APIHOST synthesize: {data}")
+    key = os.environ.get("JARVIS_APIHOST_KEY", "").strip()
+    deadline = time.time() + 90
+    while time.time() < deadline:
+        result = _api_json("/process", {"process": process})
+        if result.get("status") == 200 and result.get("message"):
+            with urllib.request.urlopen(str(result["message"]), timeout=30) as response:
+                out_path.write_bytes(response.read())
+            return out_path
+        if result.get("status") not in (205, None):
+            raise RuntimeError(f"APIHOST process: {result}")
+        time.sleep(2)
+    raise TimeoutError("APIHOST: синтез голоса Леда не завершился за 90 секунд")
 
 
 def _run_windows_sapi(text: str, out_path: Path) -> Path:
@@ -113,8 +162,7 @@ def _run_windows_sapi(text: str, out_path: Path) -> Path:
         raise RuntimeError("SAPI доступен только на Windows")
     voice_name = os.environ.get("JARVIS_SAPI_VOICE", "").strip()
     gender = os.environ.get("JARVIS_TTS_GENDER", "male").strip().lower()
-    if gender not in {"male", "female", "any"}:
-        gender = "male"
+    if gender not in {"male", "female", "any"}: gender = "male"
     ps = r'''
 Add-Type -AssemblyName System.Speech
 $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
@@ -124,93 +172,57 @@ $wanted = $env:JARVIS_SAPI_VOICE
 $wantedGender = $env:JARVIS_TTS_GENDER
 $voices = @($s.GetInstalledVoices())
 $selected = $null
-if ($wanted) {
-  foreach ($v in $voices) {
-    if ($v.VoiceInfo.Name -like "*$wanted*") { $selected = $v.VoiceInfo.Name; break }
-  }
-}
-if (-not $selected -and $wantedGender -ne "any") {
-  foreach ($v in $voices) {
-    if ($v.VoiceInfo.Culture.Name -eq "ru-RU" -and $v.VoiceInfo.Gender.ToString().ToLower() -eq $wantedGender) {
-      $selected = $v.VoiceInfo.Name; break
-    }
-  }
-}
-if (-not $selected) {
-  foreach ($v in $voices) {
-    if ($v.VoiceInfo.Culture.Name -eq "ru-RU") { $selected = $v.VoiceInfo.Name; break }
-  }
-}
+if ($wanted) { foreach ($v in $voices) { if ($v.VoiceInfo.Name -like "*$wanted*") { $selected = $v.VoiceInfo.Name; break } } }
+if (-not $selected -and $wantedGender -ne "any") { foreach ($v in $voices) { if ($v.VoiceInfo.Culture.Name -eq "ru-RU" -and $v.VoiceInfo.Gender.ToString().ToLower() -eq $wantedGender) { $selected = $v.VoiceInfo.Name; break } } }
+if (-not $selected) { foreach ($v in $voices) { if ($v.VoiceInfo.Culture.Name -eq "ru-RU") { $selected = $v.VoiceInfo.Name; break } } }
 if ($selected) { $s.SelectVoice($selected) }
-$s.Rate = 0
-$s.Volume = 100
-$s.SetOutputToWaveFile($target)
-$s.Speak($text)
-$s.Dispose()
+$s.Rate = 0; $s.Volume = 100; $s.SetOutputToWaveFile($target); $s.Speak($text); $s.Dispose()
 '''
-    env = os.environ.copy()
-    env["JARVIS_SAPI_TARGET"] = str(out_path)
-    env["JARVIS_SAPI_TEXT"] = text[:1000]
-    env["JARVIS_SAPI_VOICE"] = voice_name
-    env["JARVIS_TTS_GENDER"] = gender
-    subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-        check=True,
-        timeout=60,
-        capture_output=True,
-        env=env,
-    )
+    env = os.environ.copy(); env["JARVIS_SAPI_TARGET"] = str(out_path); env["JARVIS_SAPI_TEXT"] = text[:1000]; env["JARVIS_SAPI_VOICE"] = voice_name; env["JARVIS_TTS_GENDER"] = gender
+    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], check=True, timeout=60, capture_output=True, env=env)
     return out_path
 
 
 def available_engines() -> list[str]:
     engines = []
-    if sys.platform == "win32":
-        engines.append("sapi")
+    if os.environ.get("JARVIS_APIHOST_KEY", "").strip(): engines.append("apihost")
+    if sys.platform == "win32": engines.append("sapi")
     try:
         import torch  # noqa: F401
         engines.append("silero")
     except Exception:
         pass
-    if os.environ.get("JARVIS_PIPER") or _piper_dir().joinpath("ru_RU-dmitri-medium.onnx").exists():
-        engines.append("piper")
+    if os.environ.get("JARVIS_PIPER") or _piper_dir().joinpath("ru_RU-dmitri-medium.onnx").exists(): engines.append("piper")
     return engines
 
 
 def current_engine() -> str:
-    mode = os.environ.get("JARVIS_TTS", "sapi").strip().lower()
+    mode = os.environ.get("JARVIS_TTS", "auto").strip().lower()
     if mode == "auto":
+        if os.environ.get("JARVIS_APIHOST_KEY", "").strip(): return "apihost"
         return "sapi" if sys.platform == "win32" else (available_engines()[0] if available_engines() else "off")
-    if mode == "off":
-        return "off"
+    if mode == "off": return "off"
     return mode
 
 
 def set_gender(gender: str) -> str:
-    """Set the preferred SAPI voice gender and return the normalized value."""
     value = str(gender).strip().lower()
-    aliases = {"мужской": "male", "муж": "male", "male": "male",
-               "женский": "female", "жен": "female", "female": "female",
-               "любой": "any", "любой голос": "any", "any": "any"}
+    aliases = {"мужской": "male", "муж": "male", "male": "male", "женский": "female", "жен": "female", "female": "female", "любой": "any", "любой голос": "any", "any": "any"}
     value = aliases.get(value, value)
-    if value not in {"male", "female", "any"}:
-        raise ValueError("Допустимые варианты: мужской, женский или любой")
+    if value not in {"male", "female", "any"}: raise ValueError("Допустимые варианты: мужской, женский или любой")
     os.environ["JARVIS_TTS_GENDER"] = value
     return value
 
 
 def speak(text: str) -> Path:
     engine = current_engine()
-    if engine == "off":
-        raise RuntimeError("TTS отключён (JARVIS_TTS=off)")
+    if engine == "off": raise RuntimeError("TTS отключён (JARVIS_TTS=off)")
     text = " ".join(text.split())[:1000]
     out = Path(tempfile.gettempdir()) / "jarvis_tts.wav"
-    if engine == "sapi":
-        return _run_windows_sapi(text, out)
-    if engine == "silero":
-        return _run_silero(text, out)
-    if engine == "piper":
-        return _run_piper(text, out)
+    if engine == "apihost": return _run_apihost(text, out)
+    if engine == "sapi": return _run_windows_sapi(text, out)
+    if engine == "silero": return _run_silero(text, out)
+    if engine == "piper": return _run_piper(text, out)
     raise RuntimeError(f"Неизвестный TTS-движок: {engine}")
 
 
@@ -219,17 +231,10 @@ def speak_and_play(text: str) -> Path:
     path = speak(text)
     if sys.platform == "win32":
         ps = "(New-Object Media.SoundPlayer '%s').PlaySync();" % str(path).replace("'", "''")
-        process = subprocess.Popen(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-        with _PLAYBACK_LOCK:
-            _PLAYBACK_PROCESS = process
-        try:
-            process.wait(timeout=120)
+        process = subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        with _PLAYBACK_LOCK: _PLAYBACK_PROCESS = process
+        try: process.wait(timeout=120)
         finally:
             with _PLAYBACK_LOCK:
-                if _PLAYBACK_PROCESS is process:
-                    _PLAYBACK_PROCESS = None
+                if _PLAYBACK_PROCESS is process: _PLAYBACK_PROCESS = None
     return path
