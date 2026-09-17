@@ -2,9 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_tts/flutter_tts.dart';
-import 'package:speech_to_text/speech_recognition_result.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:flutter/services.dart';
 
 import 'jarvis_client.dart';
 
@@ -49,6 +47,9 @@ class BusyaHomePage extends StatefulWidget {
 }
 
 class _BusyaHomePageState extends State<BusyaHomePage> {
+  static const _voice = MethodChannel('busya.voice');
+  static const _voiceEvents = EventChannel('busya.voice.events');
+
   JarvisIpc? _client;
   final _input = TextEditingController();
   final _endpoint = TextEditingController();
@@ -57,18 +58,14 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
 
-  stt.SpeechToText? _speech;
-  FlutterTts? _tts;
+  StreamSubscription<dynamic>? _voiceSub;
   StreamSubscription<String>? _partialSub;
-  Timer? _restartTimer;
-  Timer? _initRetryTimer;
 
   bool _voiceReady = false;
   bool _listening = false;
   bool _voiceEnabled = true;
   bool _awaitingCommand = false;
   bool _busy = false;
-  bool _initializingVoice = false;
 
   String _status = 'БУСЯ запускается…';
   String _streamText = '';
@@ -80,9 +77,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     super.initState();
     if (_android) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future<void>.delayed(const Duration(milliseconds: 1200), () {
-          if (mounted) _initVoice();
-        });
+        _initNativeVoice();
       });
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -91,156 +86,127 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     }
   }
 
-  Future<void> _initVoice() async {
-    if (!_android || !mounted || _initializingVoice || _voiceReady) return;
-    _initializingVoice = true;
-
+  Future<void> _initNativeVoice() async {
+    if (!_android || !mounted) return;
     try {
-      final speech = stt.SpeechToText();
-      _speech = speech;
-      final available = await speech.initialize(
-        onStatus: (status) {
-          if (!_android || !_voiceEnabled || !mounted) return;
-          if (status == 'done' || status == 'notListening') {
-            _listening = false;
-            _scheduleRestart();
-          }
-        },
-        onError: (_) {
-          _listening = false;
-          _scheduleRestart(const Duration(seconds: 1));
+      await _voiceSub?.cancel();
+      _voiceSub = _voiceEvents.receiveBroadcastStream().listen(
+        (event) => _onNativeVoiceEvent(event),
+        onError: (Object error) {
+          if (mounted) setState(() => _status = 'Ошибка голоса: $error');
         },
       );
-
+      final available = await _voice.invokeMethod<bool>('initialize') ?? false;
       if (!mounted) return;
-
       if (!available) {
-        _voiceReady = false;
-        _status = 'Микрофон/распознавание речи недоступно';
-        setState(() {});
-        _scheduleInitRetry();
+        setState(() => _status = 'Распознавание речи недоступно');
         return;
       }
-
       _voiceReady = true;
       _voiceEnabled = true;
       setState(() => _status = 'Ожидаю слово «Буся»');
-      await _startListening();
+      await _startNativeListening();
     } catch (e) {
-      _voiceReady = false;
       if (mounted) setState(() => _status = 'Ошибка голоса: $e');
-      _scheduleInitRetry();
-    } finally {
-      _initializingVoice = false;
     }
   }
 
-  void _scheduleInitRetry() {
-    if (!_android || !mounted || _voiceReady) return;
-    _initRetryTimer?.cancel();
-    _initRetryTimer = Timer(const Duration(seconds: 8), () {
-      if (mounted) _initVoice();
-    });
-  }
-
-  void _scheduleRestart([
-    Duration delay = const Duration(milliseconds: 500),
-  ]) {
-    if (!_android || !_voiceReady || !_voiceEnabled || _busy || !mounted) {
+  Future<void> _startNativeListening() async {
+    if (!_android || !_voiceReady || !_voiceEnabled || _busy || _listening) {
       return;
     }
-    _restartTimer?.cancel();
-    _restartTimer = Timer(delay, _startListening);
-  }
-
-  Future<void> _startListening() async {
-    final speech = _speech;
-    if (!_android ||
-        speech == null ||
-        !_voiceReady ||
-        !_voiceEnabled ||
-        _listening ||
-        _busy ||
-        !mounted) {
-      return;
-    }
-
     try {
       _listening = true;
-      await speech.listen(
-        onResult: _onSpeechResult,
-        listenFor: const Duration(seconds: 20),
-        pauseFor: const Duration(seconds: 3),
-        partialResults: true,
-        listenMode: stt.ListenMode.confirmation,
-      );
-    } catch (_) {
+      await _voice.invokeMethod('start');
+    } catch (e) {
       _listening = false;
-      _scheduleRestart(const Duration(seconds: 1));
+      if (mounted) setState(() => _status = 'Ошибка микрофона: $e');
     }
   }
 
-  String _commandAfterWakeWord(String phrase) {
-    final lower = phrase.toLowerCase();
-    final index = lower.indexOf(_wakeWord);
-    if (index < 0) return '';
-    return phrase.substring(index + _wakeWord.length).trim();
+  Future<void> _stopNativeListening() async {
+    if (!_android) return;
+    try {
+      await _voice.invokeMethod('stop');
+    } catch (_) {}
+    _listening = false;
   }
 
-  bool _containsWakeWord(String phrase) =>
-      phrase.toLowerCase().contains(_wakeWord);
+  Future<void> _onNativeVoiceEvent(dynamic event) async {
+    if (!_android || !_voiceEnabled || !mounted) return;
+    final value = event?.toString().trim() ?? '';
+    if (value.isEmpty) return;
 
-  Future<void> _onSpeechResult(SpeechRecognitionResult result) async {
-    if (!result.finalResult || !_android || !_voiceEnabled || _busy) return;
-
-    final phrase = result.recognizedWords.trim();
-    if (phrase.isEmpty) return;
-
-    if (!_awaitingCommand && !_containsWakeWord(phrase)) {
+    if (value == '__READY__') {
+      _voiceReady = true;
+      _listening = false;
+      if (mounted) setState(() => _status = 'Ожидаю слово «Буся»');
+      await _startNativeListening();
+      return;
+    }
+    if (value == '__END__' || value == '__ERROR__') {
+      _listening = false;
+      if (_voiceEnabled && !_busy) {
+        Future<void>.delayed(const Duration(milliseconds: 450), () {
+          if (mounted) _startNativeListening();
+        });
+      }
       return;
     }
 
-    _restartTimer?.cancel();
     _listening = false;
-    try {
-      await _speech?.stop();
-    } catch (_) {}
+    await _stopNativeListening();
+
+    final phrase = value.trim();
+    final lower = phrase.toLowerCase();
+    final index = lower.indexOf(_wakeWord);
+
+    if (!_awaitingCommand && index < 0) {
+      if (_voiceEnabled && !_busy) {
+        Future<void>.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) _startNativeListening();
+        });
+      }
+      return;
+    }
 
     final command = _awaitingCommand
         ? phrase
-        : _commandAfterWakeWord(phrase);
+        : phrase.substring(index + _wakeWord.length).trim();
 
     if (!_awaitingCommand && command.isEmpty) {
       _awaitingCommand = true;
       if (mounted) setState(() => _status = 'Слушаю команду…');
       await _speak('Слушаю');
-      _scheduleRestart(const Duration(milliseconds: 700));
+      Future<void>.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) _startNativeListening();
+      });
       return;
     }
 
     _awaitingCommand = false;
     if (command.isEmpty) {
-      _scheduleRestart();
+      Future<void>.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) _startNativeListening();
+      });
       return;
     }
 
     if (mounted) setState(() => _status = 'Команда: $command');
     await _send(command, fromVoice: true);
-    _scheduleRestart(const Duration(milliseconds: 800));
+    if (_voiceEnabled && mounted) {
+      Future<void>.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _startNativeListening();
+      });
+    }
   }
 
   Future<void> _speak(String text) async {
     if (!_android || !mounted || text.trim().isEmpty) return;
     try {
-      final tts = _tts ??= FlutterTts();
-      await tts.setLanguage('ru-RU');
-      await tts.setSpeechRate(0.48);
-      await tts.setVolume(1.0);
-      await tts.setPitch(1.0);
-      await tts.stop();
-      await tts.speak(text.trim());
+      await _voice.invokeMethod('speak', {'text': text.trim()});
     } catch (_) {
-      // Voice output must never terminate the application.
+      // Native voice output must never terminate the application.
     }
   }
 
@@ -293,7 +259,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
           : 'Агент подключён · инструментов: ${tools.length}');
     }
     if (_android && _voiceReady && _voiceEnabled) {
-      _scheduleRestart();
+      _startNativeListening();
     }
   }
 
@@ -301,11 +267,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     if (!_android) return;
     _voiceEnabled = false;
     _awaitingCommand = false;
-    _restartTimer?.cancel();
-    try {
-      await _speech?.stop();
-    } catch (_) {}
-    _listening = false;
+    await _stopNativeListening();
 
     await showDialog<void>(
       context: context,
@@ -358,32 +320,27 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     if (mounted && _voiceReady) {
       _voiceEnabled = true;
       setState(() => _status = 'Ожидаю слово «Буся»');
-      _scheduleRestart();
+      _startNativeListening();
     }
   }
 
   Future<void> _toggleVoice() async {
     if (!_android) return;
     if (!_voiceReady) {
-      await _initVoice();
+      await _initNativeVoice();
       return;
     }
 
     _voiceEnabled = !_voiceEnabled;
     _awaitingCommand = false;
-    _restartTimer?.cancel();
-
     if (!_voiceEnabled) {
-      try {
-        await _speech?.stop();
-      } catch (_) {}
-      _listening = false;
+      await _stopNativeListening();
       if (mounted) setState(() => _status = 'Голос выключен');
       return;
     }
 
     if (mounted) setState(() => _status = 'Ожидаю слово «Буся»');
-    await _startListening();
+    await _startNativeListening();
   }
 
   Future<void> _send(String text, {bool fromVoice = false}) async {
@@ -441,11 +398,12 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
 
   @override
   void dispose() {
-    _restartTimer?.cancel();
-    _initRetryTimer?.cancel();
+    _voiceSub?.cancel();
     _partialSub?.cancel();
-    _speech?.stop();
-    _tts?.stop();
+    if (_android) {
+      _voice.invokeMethod('stop');
+      _voice.invokeMethod('dispose');
+    }
     _client?.dispose();
     _input.dispose();
     _endpoint.dispose();
