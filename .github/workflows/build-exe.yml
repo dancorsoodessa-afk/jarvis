@@ -3,27 +3,39 @@ name: Build JARVIS для Windows
 on:
   workflow_dispatch:
   push:
-    branches: [foundation]
+    branches: [foundation, architecture-unification]
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Собрать и проверить Windows-пакет
+      - name: Установить зависимости
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[all]"
+          python -m pip install --upgrade pyinstaller pytest
+      - name: Проверка Python
+        shell: pwsh
+        run: |
+          python -m compileall agent -q
+          pytest tests/ -q
+      - name: Собрать Windows-пакеты
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
-
+      - name: Проверить артефакты
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\jarvis.exe")) { throw "dist\jarvis.exe missing" }
+          if (-not (Test-Path "dist\jarvis_desktop.exe")) { throw "dist\jarvis_desktop.exe missing" }
+          if (-not (Test-Path "JARVIS-Windows-x64.zip")) { throw "JARVIS-Windows-x64.zip missing" }
       - name: Загрузить готовый Windows-пакет
         uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Windows-x64
           path: JARVIS-Windows-x64.zip
           if-no-files-found: error
-
-      # Windows x64 release build trigger/verification.

@@ -1,157 +1,35 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-enum JarvisVisualState { idle, listening, thinking, speaking, confirmation, error, exiting }
+enum JarvisVisualState { idle, listening, thinking, speaking, confirmation, error, executing, exiting }
 
 class JarvisReactor extends StatefulWidget {
-  const JarvisReactor({super.key, this.color = const Color(0xFF37D5EE), this.state = JarvisVisualState.idle});
-  final Color color;
-  final JarvisVisualState state;
-  @override
-  State<JarvisReactor> createState() => _JarvisReactorState();
+  const JarvisReactor({super.key,this.color=const Color(0xFF37D5EE),this.state=JarvisVisualState.idle});
+  final Color color; final JarvisVisualState state;
+  @override State<JarvisReactor> createState()=>_JarvisReactorState();
 }
-
-class _JarvisReactorState extends State<JarvisReactor> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
-  @override
-  void dispose() { _controller.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) => RepaintBoundary(
-    child: CustomPaint(painter: _ReactorPainter(_controller, widget.color, widget.state)),
-  );
+class _JarvisReactorState extends State<JarvisReactor> with SingleTickerProviderStateMixin{
+  late final AnimationController _controller=AnimationController(vsync:this,duration:const Duration(seconds:14))..repeat();
+  @override void dispose(){_controller.dispose();super.dispose();}
+  @override Widget build(BuildContext context)=>RepaintBoundary(child:CustomPaint(painter:_ReactorPainter(_controller,widget.color,widget.state),size:Size.infinite));
 }
-
-class _ReactorPainter extends CustomPainter {
-  _ReactorPainter(this.time, this.color, this.state) : super(repaint: time);
-  final Animation<double> time;
-  final Color color;
-  final JarvisVisualState state;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final radius = size.shortestSide / 2;
-    final t = time.value * math.pi * 2;
-    final intensity = switch (state) {
-      JarvisVisualState.idle => 0.72,
-      JarvisVisualState.listening => 1.05,
-      JarvisVisualState.thinking => 1.18,
-      JarvisVisualState.speaking => 1.35,
-      JarvisVisualState.confirmation => 1.55,
-      JarvisVisualState.error => 1.25,
-      JarvisVisualState.exiting => 0.35,
-    };
-    final speed = switch (state) {
-      JarvisVisualState.idle => 0.55,
-      JarvisVisualState.listening => 1.15,
-      JarvisVisualState.thinking => 1.8,
-      JarvisVisualState.speaking => 1.45,
-      JarvisVisualState.confirmation => 2.4,
-      JarvisVisualState.error => 1.9,
-      JarvisVisualState.exiting => 0.35,
-    };
-
-    final glow = Paint()..shader = RadialGradient(colors: [
-      color.withValues(alpha: 0.22 * intensity),
-      color.withValues(alpha: 0.06 * intensity),
-      Colors.transparent,
-    ]).createShader(Rect.fromCircle(center: center, radius: radius));
-    canvas.drawCircle(center, radius, glow);
-
-    final grid = Paint()..style = PaintingStyle.stroke..strokeWidth = 0.7..color = color.withValues(alpha: 0.10 * intensity);
-    for (var i = 1; i <= 4; i++) canvas.drawCircle(center, radius * i / 4, grid);
-
-    final orbit = Paint()..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
-    final rings = [(0.94, 1.2, 0.18, 0.15, 1.0), (0.82, 2.2, 0.38, -0.45, -1.0), (0.69, 1.0, 0.30, 0.65, 1.0)];
-    for (final ring in rings) {
-      final rect = Rect.fromCenter(center: center, width: radius * 2 * ring.$1, height: radius * 0.62 * ring.$1);
-      canvas.save();
-      canvas.translate(center.dx, center.dy);
-      canvas.rotate(ring.$4 + t * 0.08 * speed * ring.$5);
-      canvas.translate(-center.dx, -center.dy);
-      orbit..strokeWidth = ring.$2..color = color.withValues(alpha: ring.$3 * intensity);
-      canvas.drawOval(rect, orbit);
-      canvas.restore();
-    }
-
-    final breathing = math.sin(t * 0.65) * radius * 0.018;
-    final headCenter = Offset(center.dx + math.sin(t * 0.37) * radius * 0.035, center.dy - radius * 0.10 + breathing);
-    final headR = radius * 0.31;
-    final talking = state == JarvisVisualState.speaking ? (0.5 + 0.5 * math.sin(t * 5.0)).clamp(0.0, 1.0) : 0.0;
-    final listening = state == JarvisVisualState.listening ? (0.5 + 0.5 * math.sin(t * 3.2)).clamp(0.0, 1.0) : 0.0;
-    final thinking = state == JarvisVisualState.thinking ? (0.5 + 0.5 * math.sin(t * 1.6)).clamp(0.0, 1.0) : 0.0;
-
-    final silhouette = Paint()..shader = RadialGradient(
-      center: const Alignment(-0.28, -0.32),
-      colors: [Colors.white.withValues(alpha: 0.34 * intensity), color.withValues(alpha: 0.24 * intensity), color.withValues(alpha: 0.025)],
-      stops: const [0.0, 0.42, 1.0],
-    ).createShader(Rect.fromCircle(center: headCenter, radius: headR * 1.25));
-    canvas.drawCircle(headCenter, headR * 1.25, silhouette);
-
-    final outline = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.5..color = color.withValues(alpha: 0.85 * intensity);
-    canvas.drawCircle(headCenter, headR, outline);
-
-    final body = Path()
-      ..moveTo(center.dx - radius * 0.42, center.dy + radius * 0.53)
-      ..quadraticBezierTo(center.dx - radius * 0.27, center.dy + radius * 0.18, center.dx, center.dy + radius * 0.14)
-      ..quadraticBezierTo(center.dx + radius * 0.27, center.dy + radius * 0.18, center.dx + radius * 0.42, center.dy + radius * 0.53);
-    final bodyPaint = Paint()..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [
-      color.withValues(alpha: 0.30 * intensity), color.withValues(alpha: 0.035),
-    ]).createShader(Rect.fromCenter(center: center.translate(0, radius * 0.34), width: radius, height: radius));
-    canvas.drawPath(body, bodyPaint);
-    canvas.drawPath(body, outline);
-
-    final face = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.0..color = color.withValues(alpha: 0.30 * intensity);
-    canvas.drawArc(Rect.fromCircle(center: headCenter.translate(0, headR * 0.02), radius: headR * 0.76), math.pi * 0.12, math.pi * 0.76, false, face);
-
-    final eyeY = headCenter.dy - headR * 0.10;
-    final eyeGap = headR * 0.42;
-    final gaze = state == JarvisVisualState.thinking ? math.sin(t * 0.55) * headR * 0.13 : math.sin(t * 0.32) * headR * 0.035;
-    final blink = math.sin(t * 0.82) > 0.985 ? 0.12 : 1.0;
-    final eyePaint = Paint()..style = PaintingStyle.stroke..strokeWidth = 2.2..strokeCap = StrokeCap.round..color = color.withValues(alpha: 0.95 * intensity);
-    for (final dx in [-eyeGap, eyeGap]) {
-      final eye = Path()..moveTo(headCenter.dx + dx - headR * 0.14, eyeY)..quadraticBezierTo(headCenter.dx + dx, eyeY - headR * 0.07 * blink, headCenter.dx + dx + headR * 0.14, eyeY);
-      canvas.drawPath(eye, eyePaint);
-      canvas.drawCircle(Offset(headCenter.dx + dx + gaze, eyeY), headR * 0.025 + listening * headR * 0.025, Paint()..color = Colors.white.withValues(alpha: 0.95));
-    }
-
-    final nose = Path()..moveTo(headCenter.dx, eyeY + headR * 0.07)..lineTo(headCenter.dx - headR * 0.035, eyeY + headR * 0.27)..lineTo(headCenter.dx + headR * 0.055, eyeY + headR * 0.27);
-    canvas.drawPath(nose, face);
-    final mouthY = headCenter.dy + headR * 0.38;
-    final mouth = Path()..moveTo(headCenter.dx - headR * 0.22, mouthY)..quadraticBezierTo(headCenter.dx, mouthY + talking * headR * 0.075, headCenter.dx + headR * 0.22, mouthY);
-    canvas.drawPath(mouth, eyePaint);
-
-    if (thinking > 0.05) {
-      final p = Paint()..color = color.withValues(alpha: 0.45 + thinking * 0.35);
-      for (var i = 0; i < 3; i++) {
-        final a = t * 0.9 + i * math.pi * 2 / 3;
-        canvas.drawCircle(Offset(headCenter.dx + math.cos(a) * headR * 1.32, headCenter.dy + math.sin(a) * headR * 1.32), 2.2 + thinking * 2, p);
-      }
-    }
-    if (listening > 0.05) {
-      final wave = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.4..color = color.withValues(alpha: 0.35 + listening * 0.4);
-      canvas.drawArc(Rect.fromCircle(center: headCenter, radius: headR * (1.35 + listening * 0.08)), -math.pi * 0.32, math.pi * 0.64, false, wave);
-    }
-
-    final accent = Paint()..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
-    switch (state) {
-      case JarvisVisualState.confirmation:
-        accent..strokeWidth = 3..color = color.withValues(alpha: 0.9);
-        final p = Path()..moveTo(center.dx - radius * 0.20, center.dy + radius * 0.62)..lineTo(center.dx - radius * 0.05, center.dy + radius * 0.75)..lineTo(center.dx + radius * 0.27, center.dy + radius * 0.43);
-        canvas.drawPath(p, accent);
-        break;
-      case JarvisVisualState.error:
-        accent..strokeWidth = 2.4..color = Colors.redAccent.withValues(alpha: 0.85);
-        canvas.drawLine(center.translate(-radius * 0.12, radius * 0.60), center.translate(radius * 0.12, radius * 0.82), accent);
-        canvas.drawLine(center.translate(radius * 0.12, radius * 0.60), center.translate(-radius * 0.12, radius * 0.82), accent);
-        break;
-      default:
-        final pulse = 1 + 0.06 * math.sin(t * 0.8);
-        accent..strokeWidth = 1.1..color = color.withValues(alpha: 0.25 * intensity);
-        canvas.drawCircle(center, radius * 0.88 * pulse, accent);
-    }
+class _Node{_Node(this.x,this.y,this.z,this.phase);double x,y,z,phase;}
+class _ReactorPainter extends CustomPainter{
+  _ReactorPainter(this.time,this.color,this.state):super(repaint:time);final Animation<double> time;final Color color;final JarvisVisualState state;
+  static final List<_Node> nodes=List.generate(150,(i){final g=math.pi*(3-math.sqrt(5));final y=1-2*(i+0.5)/150;final r=math.sqrt(math.max(0,1-y*y));final a=g*i;return _Node(math.cos(a)*r, y, math.sin(a)*r, i*0.73);});
+  double _intensity(){switch(state){case JarvisVisualState.idle:return .72;case JarvisVisualState.listening:return 1.05;case JarvisVisualState.thinking:return 1.22;case JarvisVisualState.speaking:return 1.42;case JarvisVisualState.confirmation:return 1.6;case JarvisVisualState.error:return 1.2;case JarvisVisualState.executing:return 1.35;case JarvisVisualState.exiting:return .3;}}
+  @override void paint(Canvas c,Size s){final center=s.center(Offset.zero);final r=s.shortestSide*.43;final t=time.value*math.pi*2;final intensity=_intensity();final speed=state==JarvisVisualState.thinking?1.8:state==JarvisVisualState.speaking?1.35:state==JarvisVisualState.listening?1.1:.6;
+    c.drawCircle(center,r*1.18,Paint()..shader=RadialGradient(colors:[color.withValues(alpha:.20*intensity),color.withValues(alpha:.05),Colors.transparent]).createShader(Rect.fromCircle(center:center,radius:r*1.18)));
+    final rot=t*speed*.32; final projected=<Offset>[]; final depth=<double>[];
+    for(final n in nodes){final x=n.x*math.cos(rot)-n.z*math.sin(rot);final z=n.x*math.sin(rot)+n.z*math.cos(rot);final y=n.y*math.cos(rot*.55)-z*math.sin(rot*.55);final zz=n.y*math.sin(rot*.55)+z*math.cos(rot*.55);final persp=1/(1.55-zz*.38);projected.add(Offset(center.dx+x*r*persp,center.dy-y*r*persp));depth.add(zz);}
+    final edge=Paint()..style=PaintingStyle.stroke..strokeWidth=.55..color=color.withValues(alpha:.10*intensity);
+    for(var i=0;i<nodes.length;i++){for(var j=i+1;j<nodes.length;j++){final dx=projected[i].dx-projected[j].dx,dy=projected[i].dy-projected[j].dy;if(dx*dx+dy*dy<(r*.19)*(r*.19)&&((depth[i]+depth[j])/2)>-.55)c.drawLine(projected[i],projected[j],edge);}}
+    final order=List.generate(nodes.length,(i)=>i)..sort((a,b)=>depth[a].compareTo(depth[b]));
+    for(final i in order){final pulse=.5+.5*math.sin(t*(state==JarvisVisualState.speaking?5:2)+nodes[i].phase);final size=(1.1+2.1*math.max(0,depth[i]+.25))*(.8+.35*pulse)*intensity;c.drawCircle(projected[i],size,Paint()..color=color.withValues(alpha:(.35+.55*math.max(0,depth[i]+.3))*intensity.clamp(0,1)));}
+    final corePulse=1+.055*math.sin(t*1.6);c.drawCircle(center,r*.16*corePulse,Paint()..shader=RadialGradient(colors:[Colors.white.withValues(alpha:.95),color.withValues(alpha:.8),color.withValues(alpha:.08),Colors.transparent],stops:const[0,.2,.62,1]).createShader(Rect.fromCircle(center:center,radius:r*.18)));
+    final ring=Paint()..style=PaintingStyle.stroke..strokeWidth=1.2..color=color.withValues(alpha:.22*intensity);c.drawOval(Rect.fromCenter(center:center,width:r*2.15,height:r*.72),ring);c.save();c.translate(center.dx,center.dy);c.rotate(-rot*.8);c.translate(-center.dx,-center.dy);c.drawOval(Rect.fromCenter(center:center,width:r*1.55,height:r*.52),ring);c.restore();
+    if(state==JarvisVisualState.listening){final p=.5+.5*math.sin(t*3);c.drawCircle(center,r*(.9+.08*p),Paint()..style=PaintingStyle.stroke..strokeWidth=2..color=color.withValues(alpha:.35+.35*p));}
+    if(state==JarvisVisualState.error){final x=Paint()..color=Colors.redAccent.withValues(alpha:.9)..strokeWidth=3;c.drawLine(center.translate(-r*.12,-r*.12),center.translate(r*.12,r*.12),x);c.drawLine(center.translate(r*.12,-r*.12),center.translate(-r*.12,r*.12),x);}
   }
-
-  @override
-  bool shouldRepaint(_ReactorPainter oldDelegate) => oldDelegate.color != color || oldDelegate.state != state;
+  @override bool shouldRepaint(_ReactorPainter old)=>old.color!=color||old.state!=state;
 }
