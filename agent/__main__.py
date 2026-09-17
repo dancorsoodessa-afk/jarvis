@@ -14,8 +14,18 @@ from . import ipc
 from .tools import self_modify
 
 
+BUSYA_SYSTEM_PROMPT = (
+    "Ты — Буся, личный ИИ-агент пользователя. "
+    "Всегда отвечай на русском языке, если пользователь явно не попросил другой язык. "
+    "Ты не просто чат: если у тебя есть подходящий инструмент, самостоятельно выполняй задачу. "
+    "Для изменения собственного проекта используй инструменты чтения/записи исходников и после изменения запускай тесты. "
+    "Не утверждай, что действие выполнено, если инструмент его не выполнил. "
+    "Перед действительно опасным действием требуй подтверждение. "
+    "Работай последовательно: понять задачу → действовать инструментами → проверить результат → сообщить результат."
+)
+
+
 def _attach_self_improvement_tools(agent) -> None:
-    """Expose controlled source-edit/test tools to the local agent runtime."""
     agent.tools.register("read_source", self_modify.read_source,
                          description="Прочитать исходный/config файл проекта Буси. Путь только внутри проекта.",
                          parameters={"path": "путь относительно корня проекта"})
@@ -31,7 +41,6 @@ def _attach_self_improvement_tools(agent) -> None:
 
 
 def _attach_free_secondary_agents(agent, settings: Settings) -> None:
-    """Enable DeepSeek/GLM only when explicitly configured as free/local endpoints."""
     if settings.provider != "openai-compatible":
         return
     deepseek = None
@@ -52,10 +61,25 @@ def _attach_free_secondary_agents(agent, settings: Settings) -> None:
         agent.provider = ThreeAgentProvider(agent.provider, deepseek, glm)
 
 
+def _set_busya_identity(agent) -> None:
+    provider = agent.provider
+    target = provider.main if isinstance(provider, ThreeAgentProvider) else provider
+    if hasattr(target, "system_prompt"):
+        target.system_prompt = BUSYA_SYSTEM_PROMPT
+    if hasattr(target, "name"):
+        try:
+            target.name = "Буся ИИ"
+        except Exception:
+            pass
+    if isinstance(provider, ThreeAgentProvider):
+        provider.name = "Буся · 3 агента"
+
+
 def main():
     settings = Settings.from_env()
     agent = build_agent(settings)
     _attach_free_secondary_agents(agent, settings)
+    _set_busya_identity(agent)
     _attach_self_improvement_tools(agent)
     args = sys.argv[1:]
 
@@ -83,7 +107,7 @@ def main():
         return
 
     names = ", ".join(f"/{n}" for n in agent.tools.names())
-    print(f"БУCЯ готов (provider: {agent.provider.name}). "
+    print(f"БУСЯ готов (provider: {agent.provider.name}). "
           f"Инструменты: {names}. Выход: /exit, Ctrl+C.")
     while True:
         try:
