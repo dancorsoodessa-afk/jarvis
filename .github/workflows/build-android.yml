@@ -27,6 +27,7 @@ jobs:
         working-directory: ui
         run: |
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
+          rm -f test/widget_test.dart
           python3 - <<'PY'
           from pathlib import Path
           p = Path('pubspec.yaml')
