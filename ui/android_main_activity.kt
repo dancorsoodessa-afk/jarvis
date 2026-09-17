@@ -38,6 +38,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     }
 
     private val handler = Handler(Looper.getMainLooper())
+    private lateinit var tools: AndroidToolRouter
     private var recognizer: SpeechRecognizer? = null
     private var eventSink: EventChannel.EventSink? = null
     private var voiceActive = false
@@ -47,16 +48,26 @@ class MainActivity : FlutterActivity(), RecognitionListener {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        tools = AndroidToolRouter(this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VOICE_CHANNEL)
             .setMethodCallHandler { call: MethodCall, result: MethodChannel.Result ->
                 when (call.method) {
                     "initialize" -> result.success(initializeVoice())
                     "start" -> { startRecognition(); result.success(true) }
                     "stop" -> { stopRecognition(); result.success(true) }
-                    "speak" -> {
-                        val text = call.argument<String>("text").orEmpty()
-                        speak(text, result)
+                    "speak" -> speak(call.argument<String>("text").orEmpty(), result)
+                    "android_tool" -> {
+                        try {
+                            val name = call.argument<String>("name").orEmpty()
+                            val args = JSONObject(call.argument<String>("args") ?: "{}")
+                            result.success(tools.execute(name, args))
+                        } catch (e: Exception) { result.error("TOOL_ERROR", e.message, null) }
                     }
+                    "self_feedback" -> {
+                        try { result.success(tools.feedback(call.argument<String>("user") ?: "", call.argument<String>("assistant") ?: "")) }
+                        catch (e: Exception) { result.error("LEARNING_ERROR", e.message, null) }
+                    }
+                    "self_behavior" -> result.success(tools.behavior())
                     "dispose" -> { releaseVoice(); result.success(true) }
                     else -> result.notImplemented()
                 }
@@ -70,7 +81,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
 
     private fun initializeVoice(): Boolean {
         if (disposed || !SpeechRecognizer.isRecognitionAvailable(this)) {
-            eventSink?.success("__ERROR__")
+            eventSink?.success("__ERROR__:recognition_unavailable")
             return false
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -101,9 +112,12 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 300)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1400)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900)
         }
-        try { voiceActive = true; recognizer?.startListening(intent) }
-        catch (_: Exception) { voiceActive = false; eventSink?.success("__ERROR__") }
+        try { voiceActive = true; eventSink?.success("__LISTENING__"); recognizer?.startListening(intent) }
+        catch (_: Exception) { voiceActive = false; eventSink?.success("__ERROR__:start_failed") }
     }
 
     private fun stopRecognition() {
@@ -115,11 +129,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         if (text.isBlank() || disposed) { result.success(false); return }
         stopRecognition()
         val key = getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_APIHOST, "").orEmpty().trim()
-        if (key.isEmpty()) {
-            showApiHostKeyDialog(text, result)
-        } else {
-            synthesizeApiHost(text, key, result)
-        }
+        if (key.isEmpty()) showApiHostKeyDialog(text, result) else synthesizeApiHost(text, key, result)
     }
 
     private fun showApiHostKeyDialog(text: String, result: MethodChannel.Result) {
@@ -153,26 +163,23 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                 val speaker = findLedaSpeaker(key)
                 val payload = JSONObject().apply {
                     put("data", JSONArray().put(JSONObject().apply {
-                        put("lang", "ru-RU")
-                        put("speaker", speaker)
-                        put("emotion", "neutral")
-                        put("text", text.take(10000))
-                        put("rate_hertz", "48000")
-                        put("rate", "1.0")
-                        put("pitch", "1.0")
-                        put("type", "mp3")
-                        put("pause", "0")
+                        put("lang", "ru-RU"); put("speaker", speaker); put("emotion", "neutral")
+                        put("text", text.take(10000)); put("rate_hertz", "48000"); put("rate", "1.0")
+                        put("pitch", "1.0"); put("type", "mp3"); put("pause", "0")
                     }))
                 }
                 val start = postJson("/synthesize", key, payload)
                 val process = start.optString("process")
                 if (process.isBlank()) throw IllegalStateException("APIHOST не вернул process: $start")
                 var audioUrl = ""
-                repeat(18) {
+                for (attempt in 0 until 18) {
                     Thread.sleep(5000)
                     val status = postJson("/process", key, JSONObject().put("process", process))
-                    if (status.optInt("status") == 200) { audioUrl = status.optString("message"); return@repeat }
-                    if (status.optInt("status") != 205) throw IllegalStateException("APIHOST process: $status")
+                    when (status.optInt("status")) {
+                        200 -> { audioUrl = status.optString("message"); break }
+                        205 -> Unit
+                        else -> throw IllegalStateException("APIHOST process: $status")
+                    }
                 }
                 if (audioUrl.isBlank()) throw IllegalStateException("APIHOST: синтез не завершён за 90 секунд")
                 runOnUiThread { playAudio(audioUrl, result) }
@@ -222,26 +229,18 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                 setDataSource(url)
                 setOnPreparedListener { it.start() }
                 setOnCompletionListener {
-                    it.release(); player = null
-                    result.success(true)
-                    restartRecognitionLater()
+                    it.release(); player = null; result.success(true); restartRecognitionLater()
                 }
                 setOnErrorListener { mp, _, _ ->
-                    mp.release(); player = null
-                    result.success(false)
-                    restartRecognitionLater()
-                    true
+                    mp.release(); player = null; result.success(false); restartRecognitionLater(); true
                 }
                 prepareAsync()
             }
-        } catch (e: Exception) {
-            result.success(false)
-            restartRecognitionLater()
-        }
+        } catch (_: Exception) { result.success(false); restartRecognitionLater() }
     }
 
     private fun restartRecognitionLater() {
-        if (!voiceActive && !disposed) handler.postDelayed({ startRecognition() }, 500)
+        if (!voiceActive && !disposed) handler.postDelayed({ startRecognition() }, 700)
     }
 
     private fun releaseVoice() {
@@ -260,7 +259,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         if (requestCode == REQUEST_RECORD_AUDIO) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 eventSink?.success("__READY__"); startRecognition()
-            } else eventSink?.success("__ERROR__")
+            } else eventSink?.success("__ERROR__:microphone_permission_denied")
         }
     }
 
@@ -269,7 +268,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() { voiceActive = false; eventSink?.success("__END__") }
-    override fun onError(error: Int) { voiceActive = false; eventSink?.success("__ERROR__") }
+    override fun onError(error: Int) { voiceActive = false; eventSink?.success("__ERROR__:speech_$error") }
     override fun onResults(results: Bundle?) {
         voiceActive = false
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
