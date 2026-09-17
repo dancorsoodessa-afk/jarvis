@@ -8,6 +8,8 @@ const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
 const _wakeWord = 'буся';
+const _defaultAiEndpoint = 'https://openrouter.ai/api/v1';
+const _defaultAiModel = 'openrouter/free';
 
 void main() => runApp(const BusyaApp());
 
@@ -33,7 +35,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   static const _voice = MethodChannel('busya.voice');
   static const _voiceEvents = EventChannel('busya.voice.events');
   JarvisIpc? _client;
-  final _input = TextEditingController(), _endpoint = TextEditingController(), _apiKey = TextEditingController(), _model = TextEditingController();
+  final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint), _apiKey = TextEditingController(), _model = TextEditingController(text: _defaultAiModel);
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
   StreamSubscription<dynamic>? _voiceSub;
@@ -156,7 +158,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenAI-compatible endpoint')),
         TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель')),
         TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API key')),
-        const SizedBox(height: 12), const Text('Активация голосом: только одно слово «Буся».', style: TextStyle(fontSize: 12)),
+        const SizedBox(height: 12), const Text('Бесплатный провайдер по умолчанию: OpenRouter. Активация голосом: только одно слово «Буся».', style: TextStyle(fontSize: 12)),
       ])),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')), FilledButton(onPressed: () { Navigator.pop(ctx); _connectAndroid(); }, child: const Text('Подключить'))],
     ));
@@ -181,7 +183,6 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
       if (!mounted) return;
       setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'Ожидаю слово «Буся»' : 'Готов'); });
       _scrollToBottom();
-      // Голосом отвечаем только на голосовую команду. Текстовые ответы остаются без TTS.
       if (_android && fromVoice) await _speak(reply.text);
     } catch (e) {
       if (!mounted) return;
