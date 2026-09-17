@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
 class JarvisReply {
   JarvisReply(this.text, this.provider, this.toolUsed, this.needsConfirmation);
   factory JarvisReply.fromJson(Map<String, dynamic> json) => JarvisReply(
@@ -23,6 +25,8 @@ class JarvisIpc {
         _apiUrl = apiUrl,
         _apiKey = apiKey,
         _model = model;
+
+  static const _memoryChannel = MethodChannel('busya.voice');
 
   static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async {
     final process = await Process.start(executable, args);
@@ -65,6 +69,7 @@ class JarvisIpc {
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
   final _deltaController = StreamController<Map<int, String>>.broadcast();
   final List<Map<String, String>> _history = [];
+  List<String>? _learning;
   bool get _standalone => _httpClient != null;
   Stream<Map<int, String>> get deltas => _deltaController.stream;
   int? get activeId => _activeId;
@@ -110,8 +115,6 @@ class JarvisIpc {
   void _setAuth(HttpClientRequest request) {
     final key = _apiKey?.trim() ?? '';
     if (key.isEmpty) return;
-    // OrcaRouter and other OpenAI-compatible gateways use Bearer auth.
-    // X-API-Key is also sent for gateways that expose the same API under that convention.
     request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
     request.headers.set('X-API-Key', key);
   }
@@ -153,12 +156,80 @@ class JarvisIpc {
     throw StateError('AI-сервер не сообщил доступных моделей. Укажите модель вручную.');
   }
 
+  Future<List<String>> _loadLearning() async {
+    if (_learning != null) return List<String>.from(_learning!);
+    if (!Platform.isAndroid) {
+      _learning = <String>[];
+      return <String>[];
+    }
+    try {
+      final raw = await _memoryChannel.invokeMethod<dynamic>('load_learning');
+      if (raw is List) {
+        _learning = raw.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList();
+      } else {
+        _learning = <String>[];
+      }
+    } catch (_) {
+      _learning = <String>[];
+    }
+    return List<String>.from(_learning!);
+  }
+
+  Future<void> _saveLearning() async {
+    if (!Platform.isAndroid || _learning == null) return;
+    try {
+      await _memoryChannel.invokeMethod('save_learning', {'items': _learning});
+    } catch (_) {}
+  }
+
+  Future<JarvisReply> _learningCommand(String text) async {
+    final lower = text.trim().toLowerCase();
+    final items = await _loadLearning();
+
+    const rememberPrefixes = ['запомни ', 'запомни:', 'научись:'];
+    for (final prefix in rememberPrefixes) {
+      if (lower.startsWith(prefix)) {
+        final lesson = text.trim().substring(prefix.length).trim();
+        if (lesson.isEmpty) return JarvisReply('Нечего запоминать.', 'local-learning', null, false);
+        if (!items.any((x) => x.toLowerCase() == lesson.toLowerCase())) items.add(lesson);
+        _learning = items.takeLast(100).toList();
+        await _saveLearning();
+        return JarvisReply('Запомнила. Сохранено: ${_learning!.length}.', 'local-learning', null, false);
+      }
+    }
+
+    if (lower == 'что ты запомнила' || lower == 'что ты помнишь' || lower == 'чему ты научилась' || lower == 'покажи память') {
+      if (items.isEmpty) return JarvisReply('Пока ничего не сохранено.', 'local-learning', null, false);
+      return JarvisReply('Я запомнила:\n${items.asMap().entries.map((e) => '${e.key + 1}. ${e.value}').join('\n')}', 'local-learning', null, false);
+    }
+
+    const forgetPrefixes = ['забудь ', 'забудь:'];
+    for (final prefix in forgetPrefixes) {
+      if (lower.startsWith(prefix)) {
+        final target = text.trim().substring(prefix.length).trim().toLowerCase();
+        final before = items.length;
+        items.removeWhere((x) => x.toLowerCase().contains(target));
+        _learning = items;
+        await _saveLearning();
+        return JarvisReply(before == items.length ? 'Такого правила в памяти не было.' : 'Забыла указанное правило.', 'local-learning', null, false);
+      }
+    }
+    return JarvisReply('', 'none', null, false);
+  }
+
   Future<JarvisReply> _sendStandalone(String text) async {
+    final local = await _learningCommand(text);
+    if (local.text.isNotEmpty) return local;
+
     final model = await _resolveModel();
+    final learning = await _loadLearning();
+    final memoryBlock = learning.isEmpty
+        ? 'Сохранённых пользовательских правил нет.'
+        : 'Сохранённые пользовательские правила:\n${learning.map((x) => '- $x').join('\n')}';
     final historyForRequest = <Map<String, String>>[
       {
         'role': 'system',
-        'content': 'Ты JARVIS — самостоятельный AI-помощник. Отвечай на языке пользователя. Будь точным, кратким и полезным. Не утверждай, что выполнял действия на устройстве, если у тебя нет соответствующего инструмента.',
+        'content': 'Ты БУСЯ — самостоятельный AI-помощник. Отвечай на языке пользователя. Будь точной, краткой и полезной. Не утверждай, что выполняла действия на устройстве, если у тебя нет соответствующего инструмента. $memoryBlock\nСамоулучшение означает только сохранение и использование пользовательских правил и предложений. Не заявляй, что изменяла веса модели или исходный код.',
       },
       ..._history,
       {'role': 'user', 'content': text},
@@ -193,6 +264,8 @@ class JarvisIpc {
   Future<void> clearMemory() async {
     if (_standalone) {
       _history.clear();
+      _learning = <String>[];
+      await _saveLearning();
       return;
     }
     final resp = await _request({'type': 'clear_memory'});
@@ -211,4 +284,8 @@ class JarvisIpc {
     _process?.kill();
     _httpClient?.close(force: true);
   }
+}
+
+extension _TakeLast<T> on List<T> {
+  List<T> takeLast(int count) => length <= count ? List<T>.from(this) : sublist(length - count);
 }
