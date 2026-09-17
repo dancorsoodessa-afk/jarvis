@@ -2,10 +2,13 @@ name: Build JARVIS Android APK
 
 on:
   push:
-    branches: [foundation, standalone-pc-android]
+    branches: [foundation, standalone-pc-android, architecture-unification]
   pull_request:
     branches: [foundation, standalone-pc-android]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-android:
@@ -80,3 +83,15 @@ jobs:
           name: jarvis-android-apk
           path: ui/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+
+      - name: Publish APK to GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/architecture-unification'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="android-build-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" ui/build/app/outputs/flutter-apk/app-release.apk \
+            --target "$GITHUB_SHA" \
+            --title "JARVIS Android Build ${GITHUB_RUN_NUMBER}" \
+            --notes "Android APK built from ${GITHUB_SHA}." \
+            --prerelease
