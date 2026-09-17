@@ -31,14 +31,14 @@ class Settings:
     provider: str = "openai-compatible"
     chat_url: str = ""
     chat_key: str = ""
-    chat_model: str = ""
-    # Optional secondary free agents. Empty model means that slot is disabled.
+    chat_model: str = "openrouter/free"
+    # Current free OpenRouter variants; these can also be overridden for local models.
     deepseek_url: str = ""
     deepseek_key: str = ""
-    deepseek_model: str = ""
+    deepseek_model: str = "deepseek/deepseek-chat:free"
     glm_url: str = ""
     glm_key: str = ""
-    glm_model: str = ""
+    glm_model: str = "z-ai/glm-5.2:free"
     llama_cli: str = "llama-cli"
     model: str = "model.gguf"
     ctx: int = 2048
@@ -70,13 +70,13 @@ class Settings:
             provider=provider,
             chat_url=os.environ.get("JARVIS_CHAT_URL", "").strip(),
             chat_key=os.environ.get("JARVIS_CHAT_KEY", ""),
-            chat_model=os.environ.get("JARVIS_CHAT_MODEL", "").strip(),
+            chat_model=os.environ.get("JARVIS_CHAT_MODEL", "openrouter/free").strip() or "openrouter/free",
             deepseek_url=os.environ.get("JARVIS_DEEPSEEK_URL", "").strip(),
             deepseek_key=os.environ.get("JARVIS_DEEPSEEK_KEY", ""),
-            deepseek_model=os.environ.get("JARVIS_DEEPSEEK_MODEL", "").strip(),
+            deepseek_model=os.environ.get("JARVIS_DEEPSEEK_MODEL", "deepseek/deepseek-chat:free").strip(),
             glm_url=os.environ.get("JARVIS_GLM_URL", "").strip(),
             glm_key=os.environ.get("JARVIS_GLM_KEY", ""),
-            glm_model=os.environ.get("JARVIS_GLM_MODEL", "").strip(),
+            glm_model=os.environ.get("JARVIS_GLM_MODEL", "z-ai/glm-5.2:free").strip(),
             llama_cli=os.environ.get("JARVIS_LLAMA_CLI", "llama-cli").strip(),
             model=os.environ.get("JARVIS_MODEL", "model.gguf").strip(),
             ctx=ctx,
