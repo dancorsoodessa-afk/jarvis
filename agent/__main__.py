@@ -8,10 +8,43 @@ import sys
 
 from .runtime import build_agent
 from . import ipc
+from .tools import self_modify
+
+
+def _attach_self_improvement_tools(agent) -> None:
+    """Expose controlled source-edit/test tools to the local agent runtime."""
+    agent.tools.register(
+        "read_source",
+        self_modify.read_source,
+        description="Прочитать исходный/config файл проекта Буси. Путь только внутри проекта.",
+        parameters={"path": "путь относительно корня проекта"},
+    )
+    agent.tools.register(
+        "write_source",
+        self_modify.write_source,
+        description="Изменить исходный/config файл проекта Буси. Перед записью создаётся резервная копия.",
+        parameters={"path": "путь относительно корня проекта", "content": "полное новое содержимое файла"},
+    )
+    agent.tools.register(
+        "run_tests",
+        self_modify.run_tests,
+        description="Запустить полный набор Python-тестов проекта после изменения кода.",
+    )
+    agent.tools.register(
+        "git_status",
+        self_modify.git_status,
+        description="Показать текущую ветку и незакоммиченные изменения проекта.",
+    )
+    agent.tools.register(
+        "rollback_last_change",
+        self_modify.rollback_last_backup,
+        description="Откатить последнюю резервную копию, созданную инструментом write_source.",
+    )
 
 
 def main():
     agent = build_agent()
+    _attach_self_improvement_tools(agent)
     args = sys.argv[1:]
 
     if "--ipc" in args:
@@ -39,7 +72,7 @@ def main():
         return
 
     names = ", ".join(f"/{n}" for n in agent.tools.names())
-    print(f"JARVIS готов (provider: {agent.provider.name}). "
+    print(f"БУCЯ готов (provider: {agent.provider.name}). "
           f"Инструменты: {names}. Выход: /exit, Ctrl+C.")
     while True:
         try:
