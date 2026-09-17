@@ -29,10 +29,16 @@ class Settings:
     """Runtime settings for free/local AI providers only."""
 
     provider: str = "openai-compatible"
-    # Empty means: discover a healthy local OpenAI-compatible backend.
     chat_url: str = ""
     chat_key: str = ""
     chat_model: str = ""
+    # Optional secondary free agents. Empty model means that slot is disabled.
+    deepseek_url: str = ""
+    deepseek_key: str = ""
+    deepseek_model: str = ""
+    glm_url: str = ""
+    glm_key: str = ""
+    glm_model: str = ""
     llama_cli: str = "llama-cli"
     model: str = "model.gguf"
     ctx: int = 2048
@@ -65,6 +71,12 @@ class Settings:
             chat_url=os.environ.get("JARVIS_CHAT_URL", "").strip(),
             chat_key=os.environ.get("JARVIS_CHAT_KEY", ""),
             chat_model=os.environ.get("JARVIS_CHAT_MODEL", "").strip(),
+            deepseek_url=os.environ.get("JARVIS_DEEPSEEK_URL", "").strip(),
+            deepseek_key=os.environ.get("JARVIS_DEEPSEEK_KEY", ""),
+            deepseek_model=os.environ.get("JARVIS_DEEPSEEK_MODEL", "").strip(),
+            glm_url=os.environ.get("JARVIS_GLM_URL", "").strip(),
+            glm_key=os.environ.get("JARVIS_GLM_KEY", ""),
+            glm_model=os.environ.get("JARVIS_GLM_MODEL", "").strip(),
             llama_cli=os.environ.get("JARVIS_LLAMA_CLI", "llama-cli").strip(),
             model=os.environ.get("JARVIS_MODEL", "model.gguf").strip(),
             ctx=ctx,
