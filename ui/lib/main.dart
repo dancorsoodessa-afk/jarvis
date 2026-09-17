@@ -7,20 +7,20 @@ import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import 'jarvis_client.dart';
-import 'jarvis_reactor.dart';
 
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
+const _wakeWord = 'буся';
 
-void main() => runApp(const JarvisApp());
+void main() => runApp(const BusyaApp());
 
-class JarvisApp extends StatelessWidget {
-  const JarvisApp({super.key});
+class BusyaApp extends StatelessWidget {
+  const BusyaApp({super.key});
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'JARVIS',
+        title: 'БУСЯ',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           brightness: Brightness.dark,
@@ -31,7 +31,7 @@ class JarvisApp extends StatelessWidget {
           ),
           useMaterial3: true,
         ),
-        home: const JarvisHomePage(),
+        home: const BusyaHomePage(),
       );
 }
 
@@ -41,15 +41,15 @@ class _Msg {
   final bool isUser;
 }
 
-class JarvisHomePage extends StatefulWidget {
-  const JarvisHomePage({super.key});
+class BusyaHomePage extends StatefulWidget {
+  const BusyaHomePage({super.key});
 
   @override
-  State<JarvisHomePage> createState() => _JarvisHomePageState();
+  State<BusyaHomePage> createState() => _BusyaHomePageState();
 }
 
-class _JarvisHomePageState extends State<JarvisHomePage> {
-  JarvisIpc? _jarvis;
+class _BusyaHomePageState extends State<BusyaHomePage> {
+  JarvisIpc? _client;
   final _input = TextEditingController();
   final _endpoint = TextEditingController();
   final _apiKey = TextEditingController();
@@ -60,31 +60,27 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   stt.SpeechToText? _speech;
   FlutterTts? _tts;
   StreamSubscription<String>? _partialSub;
-  Timer? _visualTimer;
-  Timer? _voiceRestartTimer;
-  Timer? _voiceInitRetryTimer;
+  Timer? _restartTimer;
+  Timer? _initRetryTimer;
 
-  bool _busy = false;
   bool _voiceReady = false;
-  bool _voiceListening = false;
-  bool _voicePaused = true;
-  bool _voiceInitStarted = false;
+  bool _listening = false;
+  bool _voiceEnabled = true;
   bool _awaitingCommand = false;
+  bool _busy = false;
+  bool _initializingVoice = false;
 
-  String _status = 'JARVIS запускается…';
+  String _status = 'БУСЯ запускается…';
   String _streamText = '';
-  JarvisVisualState _visualState = JarvisVisualState.idle;
 
   bool get _android => Platform.isAndroid;
 
   @override
   void initState() {
     super.initState();
-
     if (_android) {
-      _status = 'JARVIS запускается. Голос активируется автоматически.';
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Timer(const Duration(milliseconds: 1500), () {
+        Future<void>.delayed(const Duration(milliseconds: 1200), () {
           if (mounted) _initVoice();
         });
       });
@@ -96,24 +92,23 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Future<void> _initVoice() async {
-    if (_voiceInitStarted || !mounted || !_android) return;
-    _voiceInitStarted = true;
+    if (!_android || !mounted || _initializingVoice || _voiceReady) return;
+    _initializingVoice = true;
 
     try {
       final speech = stt.SpeechToText();
       _speech = speech;
-
       final available = await speech.initialize(
         onStatus: (status) {
-          if (!_android || _voicePaused || !mounted) return;
+          if (!_android || !_voiceEnabled || !mounted) return;
           if (status == 'done' || status == 'notListening') {
-            _voiceListening = false;
-            _scheduleVoiceRestart();
+            _listening = false;
+            _scheduleRestart();
           }
         },
         onError: (_) {
-          _voiceListening = false;
-          _scheduleVoiceRestart(const Duration(milliseconds: 1500));
+          _listening = false;
+          _scheduleRestart(const Duration(seconds: 1));
         },
       );
 
@@ -121,285 +116,196 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
       if (!available) {
         _voiceReady = false;
-        _voicePaused = true;
-        setState(() => _status = 'Распознавание речи недоступно');
-        _scheduleVoiceInitRetry();
+        _status = 'Микрофон/распознавание речи недоступно';
+        setState(() {});
+        _scheduleInitRetry();
         return;
       }
 
       _voiceReady = true;
-      _voicePaused = false;
-      if (mounted) {
-        setState(() => _status = 'Голос включён. Ожидаю «Джарвис».');
-      }
-      await _startVoiceListening();
+      _voiceEnabled = true;
+      setState(() => _status = 'Ожидаю слово «Буся»');
+      await _startListening();
     } catch (e) {
       _voiceReady = false;
-      _voicePaused = true;
-      if (mounted) setState(() => _status = 'Голос недоступен: $e');
-      _scheduleVoiceInitRetry();
+      if (mounted) setState(() => _status = 'Ошибка голоса: $e');
+      _scheduleInitRetry();
+    } finally {
+      _initializingVoice = false;
     }
   }
 
-  void _scheduleVoiceInitRetry() {
+  void _scheduleInitRetry() {
     if (!_android || !mounted || _voiceReady) return;
-    _voiceInitRetryTimer?.cancel();
-    _voiceInitRetryTimer = Timer(const Duration(seconds: 8), () {
-      if (!mounted) return;
-      _voiceInitStarted = false;
-      _initVoice();
+    _initRetryTimer?.cancel();
+    _initRetryTimer = Timer(const Duration(seconds: 8), () {
+      if (mounted) _initVoice();
     });
   }
 
-  void _scheduleVoiceRestart([
+  void _scheduleRestart([
     Duration delay = const Duration(milliseconds: 500),
   ]) {
-    if (!_android ||
-        !_voiceReady ||
-        _voicePaused ||
-        _busy ||
-        !mounted) {
+    if (!_android || !_voiceReady || !_voiceEnabled || _busy || !mounted) {
       return;
     }
-    _voiceRestartTimer?.cancel();
-    _voiceRestartTimer = Timer(delay, _startVoiceListening);
+    _restartTimer?.cancel();
+    _restartTimer = Timer(delay, _startListening);
   }
 
-  Future<void> _startVoiceListening() async {
+  Future<void> _startListening() async {
     final speech = _speech;
     if (!_android ||
         speech == null ||
         !_voiceReady ||
-        _voicePaused ||
-        _voiceListening ||
+        !_voiceEnabled ||
+        _listening ||
         _busy ||
         !mounted) {
       return;
     }
 
     try {
-      _voiceListening = true;
+      _listening = true;
       await speech.listen(
-        onResult: _onVoiceResult,
+        onResult: _onSpeechResult,
         listenFor: const Duration(seconds: 20),
         pauseFor: const Duration(seconds: 3),
         partialResults: true,
         listenMode: stt.ListenMode.confirmation,
       );
     } catch (_) {
-      _voiceListening = false;
-      _scheduleVoiceRestart(const Duration(seconds: 1));
+      _listening = false;
+      _scheduleRestart(const Duration(seconds: 1));
     }
   }
 
-  String _removeWakeWord(String phrase) {
-    return phrase
-        .replaceFirst(
-          RegExp(r'\bджарвис(?:е)?\b', caseSensitive: false),
-          '',
-        )
-        .replaceFirst(
-          RegExp(r'\bjarvis\b', caseSensitive: false),
-          '',
-        )
-        .trim();
+  String _commandAfterWakeWord(String phrase) {
+    final lower = phrase.toLowerCase();
+    final index = lower.indexOf(_wakeWord);
+    if (index < 0) return '';
+    return phrase.substring(index + _wakeWord.length).trim();
   }
 
-  Future<void> _onVoiceResult(SpeechRecognitionResult result) async {
-    if (!result.finalResult || !_android || _voicePaused || _busy) {
-      return;
-    }
+  bool _containsWakeWord(String phrase) =>
+      phrase.toLowerCase().contains(_wakeWord);
+
+  Future<void> _onSpeechResult(SpeechRecognitionResult result) async {
+    if (!result.finalResult || !_android || !_voiceEnabled || _busy) return;
 
     final phrase = result.recognizedWords.trim();
     if (phrase.isEmpty) return;
 
-    final lower = phrase.toLowerCase();
-    final wake = lower.contains('джарвис') || lower.contains('jarvis');
-
-    // Two-stage voice control:
-    // 1) "Jarvis" wakes JARVIS.
-    // 2) The next phrase is the command, without requiring "Jarvis" again.
-    if (!_awaitingCommand && !wake) {
+    if (!_awaitingCommand && !_containsWakeWord(phrase)) {
       return;
     }
 
-    _voiceRestartTimer?.cancel();
+    _restartTimer?.cancel();
+    _listening = false;
     try {
       await _speech?.stop();
     } catch (_) {}
-    _voiceListening = false;
 
-    final command = _removeWakeWord(phrase);
+    final command = _awaitingCommand
+        ? phrase
+        : _commandAfterWakeWord(phrase);
 
-    if (wake && command.isEmpty) {
+    if (!_awaitingCommand && command.isEmpty) {
       _awaitingCommand = true;
-      _voicePaused = true;
-      _setVisual(JarvisVisualState.listening);
       if (mounted) setState(() => _status = 'Слушаю команду…');
       await _speak('Слушаю');
-      _voicePaused = false;
-      _scheduleVoiceRestart(const Duration(milliseconds: 900));
+      _scheduleRestart(const Duration(milliseconds: 700));
       return;
     }
 
     _awaitingCommand = false;
-    _voicePaused = true;
-
     if (command.isEmpty) {
-      _voicePaused = false;
-      _scheduleVoiceRestart();
+      _scheduleRestart();
       return;
     }
 
     if (mounted) setState(() => _status = 'Команда: $command');
     await _send(command, fromVoice: true);
-
-    _voicePaused = false;
-    _scheduleVoiceRestart(const Duration(milliseconds: 700));
+    _scheduleRestart(const Duration(milliseconds: 800));
   }
 
   Future<void> _speak(String text) async {
-    if (!_android || text.trim().isEmpty || !mounted) return;
-
+    if (!_android || !mounted || text.trim().isEmpty) return;
     try {
       final tts = _tts ??= FlutterTts();
       await tts.setLanguage('ru-RU');
       await tts.setSpeechRate(0.48);
       await tts.setVolume(1.0);
       await tts.setPitch(1.0);
-      _setVisual(JarvisVisualState.speaking);
       await tts.stop();
       await tts.speak(text.trim());
     } catch (_) {
-      // TTS must never be allowed to crash the application.
+      // Voice output must never terminate the application.
     }
-  }
-
-  void _setVisual(JarvisVisualState state) {
-    _visualTimer?.cancel();
-    if (mounted) setState(() => _visualState = state);
-  }
-
-  void _returnToIdle([
-    Duration delay = const Duration(milliseconds: 900),
-  ]) {
-    _visualTimer?.cancel();
-    _visualTimer = Timer(delay, () {
-      if (mounted && !_busy) {
-        setState(() => _visualState = JarvisVisualState.idle);
-      }
-    });
   }
 
   Future<void> _connectDesktop() async {
     try {
       final dir = File(Platform.resolvedExecutable).parent.path;
       final exe = '$dir${Platform.pathSeparator}jarvis.exe';
-
-      _jarvis = await (File(exe).existsSync()
+      _client = await (File(exe).existsSync()
           ? JarvisIpc.spawn(exe)
           : JarvisIpc.spawn('python', ['-m', 'agent', '--ipc']));
-
       await _finishConnect();
     } catch (e) {
-      if (mounted) {
-        setState(() => _status = 'Агент не запущен: $e');
-        _setVisual(JarvisVisualState.error);
-      }
+      if (mounted) setState(() => _status = 'Агент не запущен: $e');
     }
   }
 
   Future<void> _connectAndroid() async {
     final endpoint = _endpoint.text.trim();
-    final model = _model.text.trim();
-
     if (endpoint.isEmpty) {
-      if (mounted) setState(() => _status = 'Укажите endpoint AI');
-      _setVisual(JarvisVisualState.error);
+      if (mounted) setState(() => _status = 'Укажите endpoint AI в настройках');
       return;
     }
 
-    setState(() => _status = model.isEmpty
-        ? 'Подключение. Модель будет определена автоматически…'
-        : 'Подключение к AI…');
-    _setVisual(JarvisVisualState.thinking);
-
     try {
-      await _partialSub?.cancel();
-      _partialSub = null;
-
-      final old = _jarvis;
-      _jarvis = null;
+      final old = _client;
+      _client = null;
       await old?.dispose();
-
-      _jarvis = await JarvisIpc.connectAi(
+      _client = await JarvisIpc.connectAi(
         endpoint,
         apiKey: _apiKey.text.trim(),
-        model: model,
+        model: _model.text.trim(),
       );
-
       await _finishConnect();
-
-      if (_voiceReady) {
-        _voicePaused = false;
-        _scheduleVoiceRestart();
-      }
     } catch (e) {
-      if (mounted) setState(() => _status = 'Ошибка AI: $e');
-      _setVisual(JarvisVisualState.error);
+      if (mounted) setState(() => _status = 'Ошибка подключения AI: $e');
     }
   }
 
   Future<void> _finishConnect() async {
-    final tools = await _jarvis!.listTools();
-
-    if (!mounted) return;
-
-    setState(() {
-      _status = _android
-          ? 'JARVIS подключён · ожидаю «Джарвис»'
-          : 'JARVIS подключён · инструментов: ${tools.length}';
-    });
-
-    _setVisual(JarvisVisualState.confirmation);
-    _returnToIdle(const Duration(milliseconds: 1100));
-
+    final client = _client;
+    if (client == null) return;
+    final tools = await client.listTools();
     await _partialSub?.cancel();
-    _partialSub = _jarvis!.partials().listen((text) {
-      if (mounted) {
-        setState(() {
-          _streamText = text;
-          if (text.isNotEmpty) {
-            _visualState = JarvisVisualState.speaking;
-          }
-        });
-      }
+    _partialSub = client.partials().listen((text) {
+      if (mounted) setState(() => _streamText = text);
     });
+    if (mounted) {
+      setState(() => _status = _android
+          ? 'AI подключён · ожидаю «Буся»'
+          : 'Агент подключён · инструментов: ${tools.length}');
+    }
+    if (_android && _voiceReady && _voiceEnabled) {
+      _scheduleRestart();
+    }
   }
 
   Future<void> _settings() async {
     if (!_android) return;
-
-    _voicePaused = true;
+    _voiceEnabled = false;
     _awaitingCommand = false;
+    _restartTimer?.cancel();
     try {
       await _speech?.stop();
     } catch (_) {}
-    _voiceListening = false;
-
-    _endpoint.text = _endpoint.text.isEmpty
-        ? const String.fromEnvironment(
-            'JARVIS_API_URL',
-            defaultValue: '',
-          )
-        : _endpoint.text;
-
-    _model.text = _model.text.isEmpty
-        ? const String.fromEnvironment(
-            'JARVIS_MODEL',
-            defaultValue: '',
-          )
-        : _model.text;
+    _listening = false;
 
     await showDialog<void>(
       context: context,
@@ -414,27 +320,20 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 keyboardType: TextInputType.url,
                 decoration: const InputDecoration(
                   labelText: 'OpenAI-compatible endpoint',
-                  hintText: 'https://example.com/v1',
                 ),
               ),
               TextField(
                 controller: _model,
-                decoration: const InputDecoration(
-                  labelText: 'Модель',
-                  hintText: 'необязательно — JARVIS попробует найти её',
-                ),
+                decoration: const InputDecoration(labelText: 'Модель'),
               ),
               TextField(
                 controller: _apiKey,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'API key',
-                ),
+                decoration: const InputDecoration(labelText: 'API key'),
               ),
               const SizedBox(height: 12),
               const Text(
-                'После запуска JARVIS сам слушает слово «Джарвис». '
-                'Кнопка микрофона нужна только для временного включения/выключения голоса.',
+                'Активация голосом: только одно слово «Буся».',
                 style: TextStyle(fontSize: 12),
               ),
             ],
@@ -457,51 +356,44 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     );
 
     if (mounted && _voiceReady) {
-      _voicePaused = false;
-      _scheduleVoiceRestart();
+      _voiceEnabled = true;
+      setState(() => _status = 'Ожидаю слово «Буся»');
+      _scheduleRestart();
     }
   }
 
   Future<void> _toggleVoice() async {
     if (!_android) return;
-
-    if (!_voiceInitStarted) {
+    if (!_voiceReady) {
       await _initVoice();
+      return;
     }
-    if (!_voiceReady) return;
 
-    _voicePaused = !_voicePaused;
+    _voiceEnabled = !_voiceEnabled;
+    _awaitingCommand = false;
+    _restartTimer?.cancel();
 
-    if (_voicePaused) {
-      _awaitingCommand = false;
-      _voiceRestartTimer?.cancel();
+    if (!_voiceEnabled) {
       try {
         await _speech?.stop();
       } catch (_) {}
-      _voiceListening = false;
+      _listening = false;
       if (mounted) setState(() => _status = 'Голос выключен');
-    } else {
-      if (mounted) {
-        setState(() => _status = 'Слушаю. Скажите «Джарвис»');
-      }
-      await _startVoiceListening();
+      return;
     }
+
+    if (mounted) setState(() => _status = 'Ожидаю слово «Буся»');
+    await _startListening();
   }
 
   Future<void> _send(String text, {bool fromVoice = false}) async {
     final clean = text.trim();
+    final client = _client;
     if (clean.isEmpty || _busy) return;
 
-    final client = _jarvis;
     if (client == null) {
-      if (mounted) {
-        setState(
-          () => _status = 'Сначала подключите AI в настройках',
-        );
-      }
-      if (fromVoice) {
-        await _speak('Сначала подключите AI в настройках');
-      }
+      if (mounted) setState(() => _status = 'Сначала подключите AI в настройках');
+      if (fromVoice) await _speak('Сначала подключите AI в настройках');
       return;
     }
 
@@ -509,47 +401,29 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _busy = true;
       _streamText = '';
       _messages.add(_Msg(clean, isUser: true));
-      _visualState = JarvisVisualState.thinking;
     });
     _scrollToBottom();
 
     try {
       final reply = await client.sendMessage(clean);
-
       if (!mounted) return;
-
       setState(() {
         _messages.add(_Msg(reply.text, isUser: false));
         _status = reply.needsConfirmation
             ? 'Требуется подтверждение'
-            : 'Готов';
-        _visualState = reply.needsConfirmation
-            ? JarvisVisualState.confirmation
-            : JarvisVisualState.speaking;
+            : (_android ? 'Ожидаю слово «Буся»' : 'Готов');
       });
-
       _scrollToBottom();
-
-      if (fromVoice) {
-        await _speak(reply.text);
-      }
+      if (fromVoice) await _speak(reply.text);
     } catch (e) {
       if (!mounted) return;
-
       setState(() {
         _messages.add(_Msg('Ошибка: $e', isUser: false));
         _status = 'Ошибка';
-        _visualState = JarvisVisualState.error;
       });
-
-      if (fromVoice) {
-        await _speak('Произошла ошибка');
-      }
+      if (fromVoice) await _speak('Произошла ошибка');
     } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-        _returnToIdle();
-      }
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -567,13 +441,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   @override
   void dispose() {
-    _voiceRestartTimer?.cancel();
-    _voiceInitRetryTimer?.cancel();
-    _visualTimer?.cancel();
+    _restartTimer?.cancel();
+    _initRetryTimer?.cancel();
     _partialSub?.cancel();
     _speech?.stop();
     _tts?.stop();
-    _jarvis?.dispose();
+    _client?.dispose();
     _input.dispose();
     _endpoint.dispose();
     _apiKey.dispose();
@@ -583,99 +456,89 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('JARVIS'),
-        actions: [
-          if (_android)
-            IconButton(
-              icon: Icon(_voicePaused ? Icons.mic_off : Icons.mic),
-              tooltip: 'Голос',
-              onPressed: _toggleVoice,
-            ),
-          if (_android)
-            IconButton(
-              icon: const Icon(Icons.settings),
-              tooltip: 'AI',
-              onPressed: _settings,
-            ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scroll,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, i) {
-                final m = _messages[i];
-                return Align(
-                  alignment: m.isUser
-                      ? Alignment.centerRight
-                      : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: m.isUser
-                          ? kPanel
-                          : const Color(0xFF111D2B),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(m.text),
-                  ),
-                );
-              },
-            ),
-          ),
-          if (_streamText.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 6,
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+          title: const Text('БУСЯ'),
+          actions: [
+            if (_android)
+              IconButton(
+                icon: Icon(_voiceEnabled ? Icons.mic : Icons.mic_off),
+                tooltip: 'Голос',
+                onPressed: _toggleVoice,
               ),
-              child: Text(_streamText),
+            if (_android)
+              IconButton(
+                icon: const Icon(Icons.settings),
+                tooltip: 'AI',
+                onPressed: _settings,
+              ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                controller: _scroll,
+                padding: const EdgeInsets.all(16),
+                itemCount: _messages.length,
+                itemBuilder: (_, i) {
+                  final m = _messages[i];
+                  return Align(
+                    alignment: m.isUser
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: m.isUser ? kPanel : const Color(0xFF111D2B),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(m.text),
+                    ),
+                  );
+                },
+              ),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _input,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: _send,
-                    decoration: const InputDecoration(
-                      hintText: 'Команда JARVIS',
-                      border: OutlineInputBorder(),
+            if (_streamText.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: Text(_streamText),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _input,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: _send,
+                      decoration: const InputDecoration(
+                        hintText: 'Команда БУСЕ',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: _busy
-                      ? null
-                      : () {
-                          final t = _input.text;
-                          _input.clear();
-                          _send(t);
-                        },
-                  icon: const Icon(Icons.send),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: _busy
+                        ? null
+                        : () {
+                            final text = _input.text;
+                            _input.clear();
+                            _send(text);
+                          },
+                    icon: const Icon(Icons.send),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Text(
-              _status,
-              style: const TextStyle(fontSize: 12),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(_status, style: const TextStyle(fontSize: 12)),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
 }
