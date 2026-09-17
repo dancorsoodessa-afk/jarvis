@@ -1,39 +1,26 @@
-"""Free-only three-agent coordinator for Буся.
+"""Free-only multi-agent coordinator for Буся.
 
-Agents:
-  - main: the primary local/free model and final answerer;
-  - deepseek: optional local/free DeepSeek model;
-  - glm: optional local/free GLM model.
-
-No paid provider or API is hard-coded. All agents use an OpenAI-compatible
-local endpoint (normally Ollama/llama.cpp/LM Studio) and models are discovered
-from /models when their model variable is empty.
+The main agent is the final answerer. DeepSeek and GLM are independent
+consultants when explicitly configured with free/local OpenAI-compatible
+endpoints and model names. No paid provider is hard-coded.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Callable, Optional
 
 from .providers.openai_chat import OpenAIChatProvider
 
 
-@dataclass
-class AgentSlot:
-    name: str
-    provider: OpenAIChatProvider
-    role: str
-
-
 class ThreeAgentProvider:
-    """Run a main model plus DeepSeek and GLM when locally available."""
+    """Run a main model plus optional DeepSeek and GLM consultants."""
 
     name = "three-agent-free"
 
     def __init__(
         self,
         main: OpenAIChatProvider,
-        deepseek: OpenAIChatProvider,
-        glm: OpenAIChatProvider,
+        deepseek: OpenAIChatProvider | None = None,
+        glm: OpenAIChatProvider | None = None,
     ) -> None:
         self.main = main
         self.deepseek = deepseek
@@ -42,40 +29,42 @@ class ThreeAgentProvider:
         self.on_delta = None
 
     @staticmethod
-    def _safe_generate(provider: OpenAIChatProvider, prompt: str) -> str:
+    def _safe_generate(provider: OpenAIChatProvider | None, prompt: str) -> str | None:
+        if provider is None:
+            return None
         try:
             return provider.generate(prompt)
         except (RuntimeError, OSError, ValueError) as exc:
             return f"АГЕНТ НЕДОСТУПЕН: {exc}"
 
     def generate(self, prompt: str, tools: Optional[list] = None, max_steps: int = 4) -> str:
-        # Main is always the final decision/answer model. Secondary agents are
-        # consultants; their failure never prevents the main local agent from answering.
         self.main.tool_executor = self.tool_executor
         self.main.on_delta = self.on_delta
 
-        deepseek_prompt = (
+        deepseek = self._safe_generate(
+            self.deepseek,
             "Ты дополнительный агент DeepSeek для Буси. "
-            "Дай короткий технический/логический разбор запроса. "
-            "Не выполняй опасных действий и не выдумывай факты.\n\nЗапрос:\n" + prompt
+            "Дай короткий технический и логический разбор запроса. "
+            "Не выдумывай факты.\n\nЗапрос:\n" + prompt,
         )
-        glm_prompt = (
+        glm = self._safe_generate(
+            self.glm,
             "Ты дополнительный агент GLM для Буси. "
-            "Дай независимую проверку запроса, фактов и возможных ошибок. "
-            "Не выдумывай факты.\n\nЗапрос:\n" + prompt
+            "Проверь запрос, факты и возможные ошибки независимо от основного агента. "
+            "Не выдумывай факты.\n\nЗапрос:\n" + prompt,
         )
-        deepseek = self._safe_generate(self.deepseek, deepseek_prompt)
-        glm = self._safe_generate(self.glm, glm_prompt)
 
-        synthesis = (
-            "Запрос пользователя:\n"
-            + prompt
-            + "\n\nМнение дополнительного агента DeepSeek:\n"
-            + deepseek
-            + "\n\nМнение дополнительного агента GLM:\n"
-            + glm
-            + "\n\nТы — основной агент Буся. Сформируй один точный ответ пользователю. "
-              "Проверяй противоречия между агентами. Не упоминай внутреннюю кухню, "
-              "если это не нужно для ответа. Отвечай по-русски."
-        )
+        consultants: list[str] = []
+        if deepseek is not None:
+            consultants.append("Мнение DeepSeek:\n" + deepseek)
+        if glm is not None:
+            consultants.append("Мнение GLM:\n" + glm)
+        if consultants:
+            synthesis = (
+                "Запрос пользователя:\n" + prompt + "\n\n" + "\n\n".join(consultants)
+                + "\n\nТы — основной агент Буся. Сформируй один точный ответ пользователю. "
+                  "Проверяй противоречия между агентами. Отвечай по-русски."
+            )
+        else:
+            synthesis = prompt
         return self.main.generate(synthesis, tools=tools, max_steps=max_steps)
