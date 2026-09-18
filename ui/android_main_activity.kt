@@ -307,10 +307,10 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) = Unit
                     override fun onDone(utteranceId: String?) {
-                        if (utteranceId == "busya_reply") restartRecognitionLater(450)
+                        if (utteranceId == "busya_reply") { stopWakeService(); restartRecognitionLater(350) }
                     }
                     override fun onError(utteranceId: String?) {
-                        if (utteranceId == "busya_reply") restartRecognitionLater(1200)
+                        if (utteranceId == "busya_reply") { stopWakeService(); restartRecognitionLater(900) }
                     }
                 })
                 tts?.language = Locale("ru", "RU")
