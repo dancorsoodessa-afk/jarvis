@@ -1,21 +1,18 @@
-"""Reliable desktop microphone activation for JARVIS.
+"""Fast, simple continuous microphone control for JARVIS.
 
-Activation is two short claps followed by speech. The microphone threshold is
-calibrated from ambient noise instead of using one fixed value, which makes the
-same build work with different Windows microphones and input levels.
+The microphone stays ready for ordinary speech. Adaptive noise calibration and
+voice activity detection start/stop each utterance automatically. No claps and
+no mandatory wake word are required.
 """
 from __future__ import annotations
 
 import os
 import tempfile
-import time
 import wave
 from pathlib import Path
 
 SAMPLE_RATE = 16_000
-CLAP_BLOCK_MS = 40
-CLAP_GAP_SECONDS = 0.9
-CLAP_THRESHOLD_FLOOR = 0.055
+BLOCK_SECONDS = 0.04
 SPEECH_MIN_SECONDS = 0.16
 
 
@@ -77,25 +74,25 @@ def _calibrate(stream, blocks: int, block_size: int) -> float:
     if not levels:
         return 0.008
     levels.sort()
-    baseline = levels[max(0, int(len(levels) * 0.75) - 1)]
-    return max(0.003, baseline)
+    return max(0.003, levels[max(0, int(len(levels) * 0.75) - 1)])
 
 
 def listen_for_phrase(
     samplerate: int = SAMPLE_RATE,
-    silence_seconds: float = 0.45,
-    max_seconds: float = 8.0,
-    start_timeout: float = 1.5,
+    silence_seconds: float = 0.70,
+    max_seconds: float = 10.0,
+    start_timeout: float = 5.0,
     on_speech_start=None,
 ) -> str:
-    """Record one utterance using adaptive voice activity detection."""
+    """Wait for normal speech, capture one utterance, then transcribe it."""
     import numpy as np
     import sounddevice as sd
 
-    block_size = max(160, int(samplerate * 0.04))
-    silence_blocks = max(1, int(silence_seconds / 0.04))
-    timeout_blocks = max(1, int(start_timeout / 0.04))
-    max_blocks = max(1, int(max_seconds / 0.04))
+    block_size = max(160, int(samplerate * BLOCK_SECONDS))
+    silence_blocks = max(1, int(silence_seconds / BLOCK_SECONDS))
+    timeout_blocks = max(1, int(start_timeout / BLOCK_SECONDS))
+    max_blocks = max(1, int(max_seconds / BLOCK_SECONDS))
+
     chunks = []
     started = False
     silent = 0
@@ -108,9 +105,9 @@ def listen_for_phrase(
             dtype="int16",
             blocksize=block_size,
         ) as stream:
-            noise = _calibrate(stream, 4, block_size)
-            speech_threshold = max(0.012, noise * 2.4)
-            end_threshold = max(0.009, noise * 1.5)
+            noise = _calibrate(stream, 8, block_size)
+            speech_threshold = max(0.010, noise * 2.2)
+            end_threshold = max(0.007, noise * 1.35)
 
             for i in range(timeout_blocks + max_blocks):
                 data, overflow = stream.read(block_size)
@@ -136,89 +133,44 @@ def listen_for_phrase(
                 chunks.append(block)
                 spoken_blocks += 1
                 silent = silent + 1 if level < end_threshold else 0
-                if spoken_blocks >= int(SPEECH_MIN_SECONDS / 0.04) and silent >= silence_blocks:
+
+                if spoken_blocks >= int(SPEECH_MIN_SECONDS / BLOCK_SECONDS) and silent >= silence_blocks:
                     break
                 if spoken_blocks >= max_blocks:
                     break
     except Exception as exc:
         raise RuntimeError(f"Не удалось открыть микрофон: {exc}") from exc
 
-    if not started or len(chunks) < int(SPEECH_MIN_SECONDS / 0.04):
+    if not started or len(chunks) < int(SPEECH_MIN_SECONDS / BLOCK_SECONDS):
         return ""
     return _recognize(chunks, samplerate)
 
 
-def _is_clap(level: float, noise: float) -> bool:
-    return level >= max(CLAP_THRESHOLD_FLOOR, noise * 6.0)
-
-
-def listen_for_double_clap_and_command(
-    on_speech_start=None,
-    samplerate: int = SAMPLE_RATE,
-) -> str:
-    """Wait for two claps, close the standby stream, then capture speech."""
-    import sounddevice as sd
-
-    block_size = max(160, int(samplerate * CLAP_BLOCK_MS / 1000))
-    last_clap = 0.0
-    ambient = []
-    last_level = 0.0
-    triggered = False
-
-    try:
-        with sd.InputStream(
-            samplerate=samplerate,
-            channels=1,
-            dtype="int16",
-            blocksize=block_size,
-        ) as stream:
-            noise = _calibrate(stream, 18, block_size)
-            while True:
-                data, overflow = stream.read(block_size)
-                if overflow:
-                    continue
-                level = _rms(data[:, 0])
-                ambient.append(level)
-                if len(ambient) > 60:
-                    ambient.pop(0)
-                if len(ambient) >= 20:
-                    sorted_levels = sorted(ambient)
-                    noise = max(0.003, sorted_levels[int(len(sorted_levels) * 0.65)])
-
-                now = time.monotonic()
-                rising = level > last_level * 1.35
-                if _is_clap(level, noise) and (rising or level > 0.09):
-                    if now - last_clap <= CLAP_GAP_SECONDS:
-                        triggered = True
-                        break
-                    last_clap = now
-                elif last_clap and now - last_clap > CLAP_GAP_SECONDS:
-                    last_clap = 0.0
-                last_level = level
-    except Exception as exc:
-        raise RuntimeError(f"Не удалось открыть микрофон: {exc}") from exc
-
-    # Important on Windows/WASAPI: do not open a second InputStream while the
-    # standby stream still owns the microphone. The previous implementation
-    # did exactly that and could make the agent stop hearing after activation.
-    if triggered:
-        return listen_for_phrase(
-            samplerate=samplerate,
-            silence_seconds=0.45,
-            max_seconds=8.0,
-            start_timeout=1.5,
-            on_speech_start=on_speech_start,
-        )
-    return ""
+# Compatibility aliases for older integrations. They now use the simple
+# continuous voice detector instead of clap activation.
+def listen_for_double_clap_and_command(on_speech_start=None, samplerate: int = SAMPLE_RATE) -> str:
+    return listen_for_phrase(
+        samplerate=samplerate,
+        silence_seconds=0.70,
+        max_seconds=10.0,
+        start_timeout=5.0,
+        on_speech_start=on_speech_start,
+    )
 
 
 def listen_for_wake_and_command(on_speech_start=None, samplerate: int = SAMPLE_RATE):
-    return listen_for_double_clap_and_command(on_speech_start, samplerate)
+    return listen_for_phrase(
+        samplerate=samplerate,
+        silence_seconds=0.70,
+        max_seconds=10.0,
+        start_timeout=5.0,
+        on_speech_start=on_speech_start,
+    )
 
 
 def record_and_transcribe(seconds=10, samplerate: int = SAMPLE_RATE):
     return listen_for_phrase(
         samplerate=samplerate,
-        max_seconds=min(float(seconds), 8.0),
-        start_timeout=1.5,
+        max_seconds=min(float(seconds), 10.0),
+        start_timeout=5.0,
     )
