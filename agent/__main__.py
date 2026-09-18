@@ -24,6 +24,9 @@ JARVIS_SYSTEM_PROMPT = (
     "Работай последовательно: понять задачу → действовать инструментами → проверить результат → сообщить результат."
 )
 
+# Backward-compatible identity alias.
+BUSYA_SYSTEM_PROMPT = JARVIS_SYSTEM_PROMPT
+
 
 def _attach_self_improvement_tools(agent) -> None:
     agent.tools.register("read_source", self_modify.read_source,
