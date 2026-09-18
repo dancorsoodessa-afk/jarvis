@@ -100,9 +100,10 @@ jobs:
           text = p.read_text(encoding='utf-8')
           dep = 'implementation(files("libs/sherpa-onnx-1.13.8.aar"))'
           if dep not in text:
-              if 'dependencies {' not in text:
-                  raise SystemExit('app/build.gradle.kts: dependencies block not found')
-              text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
+              if 'dependencies {' in text:
+                  text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
+              else:
+                  text = text.rstrip() + '\n\ndependencies {\n    ' + dep + '\n}\n'
           p.write_text(text, encoding='utf-8')
           PY
           grep -n "sherpa-onnx\|jitpack" android/app/build.gradle.kts android/settings.gradle.kts
