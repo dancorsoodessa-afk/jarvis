@@ -39,12 +39,17 @@ jobs:
         working-directory: ui
         run: |
           set -e
-          mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
-          cp android_main_activity.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
-          cp android_tools/AndroidToolRouter.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/AndroidToolRouter.kt
-          rm -rf android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/sherpa
-          # Sherpa-ONNX 1.13.8 is supplied by the Maven AAR dependency.
-          # Do not copy Kotlin API source files: they duplicate classes inside the AAR.
+          root=android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
+          mkdir -p "$root"
+          cp android_main_activity.kt "$root/MainActivity.kt"
+          cp android_tools/AndroidToolRouter.kt "$root/AndroidToolRouter.kt"
+          mkdir -p "$root/database" "$root/files" "$root/internet" "$root/other" "$root/selfimprovement"
+          cp android_tools/database/DatabaseTools.kt "$root/database/DatabaseTools.kt"
+          cp android_tools/files/FileTools.kt "$root/files/FileTools.kt"
+          cp android_tools/internet/InternetTools.kt "$root/internet/InternetTools.kt"
+          cp android_tools/other/OtherTools.kt "$root/other/OtherTools.kt"
+          cp android_tools/selfimprovement/SelfImprovementEngine.kt "$root/selfimprovement/SelfImprovementEngine.kt"
+          rm -rf "$root/sherpa"
           mkdir -p android/app/src/main/assets
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16.tar.bz2 -o /tmp/ru-asr.tar.bz2
           tar -xjf /tmp/ru-asr.tar.bz2 -C android/app/src/main/assets
@@ -82,16 +87,21 @@ jobs:
           from pathlib import Path
           p = Path('android/app/build.gradle.kts')
           text = p.read_text(encoding='utf-8')
-          dep = 'implementation("com.k2fsa:sherpa-onnx:1.13.8")'
+          dep = 'implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")'
+          text = text.replace('implementation("com.k2fsa:sherpa-onnx:1.13.8")', dep)
           if dep not in text:
               text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
-              p.write_text(text, encoding='utf-8')
+          p.write_text(text, encoding='utf-8')
           p = Path('android/settings.gradle.kts')
           text = p.read_text(encoding='utf-8')
-          marker = 'dependencyResolutionManagement {'
-          if 'mavenCentral()' not in text:
-              text = text.replace(marker, marker + '\n    repositories { mavenCentral() }', 1)
-              p.write_text(text, encoding='utf-8')
+          if 'maven { url = uri("https://jitpack.io") }' not in text:
+              marker = 'dependencyResolutionManagement {'
+              if marker in text:
+                  if 'repositories {' in text:
+                      text = text.replace('repositories {', 'repositories {\n        maven { url = uri("https://jitpack.io") }', 1)
+                  else:
+                      text = text.replace(marker, marker + '\n    repositories {\n        google()\n        mavenCentral()\n        maven { url = uri("https://jitpack.io") }\n    }', 1)
+          p.write_text(text, encoding='utf-8')
           PY
 
       - name: Get dependencies
@@ -121,4 +131,3 @@ jobs:
             ui/build/app/outputs/flutter-apk/app-release.apk
             ui/apk.sha256
           if-no-files-found: error
-
