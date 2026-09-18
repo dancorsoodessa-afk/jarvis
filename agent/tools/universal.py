@@ -123,6 +123,10 @@ def edit_file(path: str, old: str, new: str, count: int = 1) -> str:
     occurrences = text.count(old)
     if occurrences == 0:
         raise ValueError("Искомый фрагмент не найден")
+    try:
+        count = int(count)
+    except (TypeError, ValueError):
+        raise ValueError("count должен быть целым числом")
     if count == 0:
         raise ValueError("count должен быть не равен 0")
     if count < 0:
@@ -135,7 +139,7 @@ def edit_file(path: str, old: str, new: str, count: int = 1) -> str:
 
 
 def project_check(path: str = ".") -> str:
-    """Run safe, read-only project diagnostics and return actionable output."""
+    """Run safe project diagnostics and return actionable output without changing source files."""
     root = _path(path)
     if not root.exists():
         raise ValueError(f"Путь не найден: {root}")
@@ -158,7 +162,7 @@ def project_check(path: str = ".") -> str:
         py_files = list(root.rglob("*.py"))[:500]
         bad = []
         for p in py_files:
-            code, out = run([sys.executable, "-m", "py_compile", str(p)])
+            code, out = run([sys.executable, "-c", "import ast, pathlib; ast.parse(pathlib.Path(r\'%s\').read_text(encoding=\'utf-8\'))" % str(p)])
             if code not in (0, None):
                 bad.append(f"{p}: {out}")
         checks.append(("Python syntax", bad))
