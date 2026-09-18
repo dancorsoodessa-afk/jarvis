@@ -43,11 +43,8 @@ jobs:
           cp android_main_activity.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
           cp -R android_tools/. android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/
           rm -f android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/WakeClapService.kt
-          mkdir -p android/app/src/main/kotlin/com/k2fsa/sherpa/onnx
-          for f in FeatureConfig.kt HomophoneReplacerConfig.kt OnlineRecognizer.kt OnlineStream.kt; do
-            curl -L --fail --retry 3 "https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/master/sherpa-onnx/kotlin-api/$f" -o "android/app/src/main/kotlin/com/k2fsa/sherpa/onnx/$f"
-          done
-          curl -L --fail --retry 3 "https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/master/android/SherpaOnnxTts/app/src/main/java/com/k2fsa/sherpa/onnx/Tts.kt" -o android/app/src/main/kotlin/com/k2fsa/sherpa/onnx/Tts.kt
+          # Sherpa-ONNX 1.13.8 is supplied by the Maven AAR dependency.
+          # Do not copy Kotlin API source files: they duplicate classes inside the AAR.
           mkdir -p android/app/src/main/assets
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16.tar.bz2 -o /tmp/ru-asr.tar.bz2
           tar -xjf /tmp/ru-asr.tar.bz2 -C android/app/src/main/assets
