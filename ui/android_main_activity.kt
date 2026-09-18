@@ -18,6 +18,7 @@ import android.speech.RecognitionService
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.text.InputType
 import android.widget.EditText
 import androidx.core.app.ActivityCompat
@@ -253,7 +254,6 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         if (key.isEmpty()) {
             speakWithSystemTts(text)
             result.success(true)
-            restartRecognitionLater(500)
         } else {
             synthesizeApiHost(text, key, result)
         }
@@ -264,6 +264,15 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         tts = TextToSpeech(this) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
             if (ttsReady) {
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) = Unit
+                    override fun onDone(utteranceId: String?) {
+                        if (utteranceId == "busya_reply") restartRecognitionLater(450)
+                    }
+                    override fun onError(utteranceId: String?) {
+                        if (utteranceId == "busya_reply") restartRecognitionLater(1200)
+                    }
+                })
                 tts?.language = Locale("ru", "RU")
                 eventSink?.success("__TTS_READY__")
                 tts?.setSpeechRate(0.48f)
@@ -487,10 +496,9 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     override fun onError(error: Int) {
         voiceActive = false
         eventSink?.success("__ERROR__:speech_" + error)
-        // Do not immediately restart on recognition errors. On several Android 10
-        // speech services ERROR_NO_MATCH is emitted after a short silence, and
-        // restarting here created the one-second on/off loop. A new session is
-        // started only by explicit start or after a successful speech/TTS cycle.
+        // Retry slowly after a recognition-service error. This avoids the old
+        // one-second restart loop while keeping voice control alive.
+        if (voiceLoopEnabled && !disposed) restartRecognitionLater(if (error == SpeechRecognizer.ERROR_NO_MATCH) 1200 else 1800)
     }
     override fun onResults(results: Bundle?) {
         voiceActive = false
