@@ -26,6 +26,9 @@ jobs:
           set -e
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
           rm -rf test
+          mkdir -p android/app/libs
+          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
+          echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
           python3 - <<'PY'
           from pathlib import Path
           p = Path('pubspec.yaml')
@@ -101,8 +104,7 @@ jobs:
 
           p = Path('android/app/build.gradle.kts')
           text = p.read_text(encoding='utf-8')
-          text = text.replace('implementation(files("libs/sherpa-onnx-1.13.8.aar"))', '')
-          dep = 'implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8")'
+          dep = 'implementation(files("libs/sherpa-onnx-1.13.8.aar"))'
           if dep not in text:
               if 'dependencies {' not in text:
                   raise SystemExit('app/build.gradle.kts: dependencies block not found')
