@@ -16,10 +16,11 @@ import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.speech.RecognitionListener
-import android.speech.RecognitionService
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
+import org.vosk.Model
+import org.vosk.Recognizer
+import org.vosk.android.RecognitionListener
+import org.vosk.android.SpeechService
+import org.vosk.android.StorageService
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.text.InputType
@@ -55,8 +56,11 @@ class MainActivity : FlutterActivity(), RecognitionListener {
 
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var tools: AndroidToolRouter
-    private var recognizer: SpeechRecognizer? = null
+    private var recognizer: android.speech.SpeechRecognizer? = null
     private var recognizerComponent: ComponentName? = null
+    private var voskModel: Model? = null
+    private var voskRecognizer: Recognizer? = null
+    private var voskService: SpeechService? = null
     private var eventSink: EventChannel.EventSink? = null
     private var voiceActive = false
     private var voiceLoopEnabled = false
@@ -137,7 +141,6 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                 }
             }
         ensureTts()
-        registerWakeReceiver()
 
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENTS_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
@@ -147,22 +150,40 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     }
 
     private fun initializeVoice(): Boolean {
-        if (disposed || !SpeechRecognizer.isRecognitionAvailable(this)) {
-            eventSink?.success("__ERROR__:recognition_unavailable")
-            return false
-        }
+        if (disposed) return false
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
             ensureTts()
             return true
         }
-        if (!ensureRecognizer()) return false
         ensureTts()
-        eventSink?.success("__READY__")
-        startWakeService()
-        return true
+        if (voskModel != null) {
+            eventSink?.success("__READY__")
+            startRecognition()
+            return true
+        }
+        eventSink?.success("__LOADING_VOICE__")
+        return try {
+            StorageService.unpack(
+                this,
+                "model-ru",
+                "jarvis-vosk-model",
+                { model ->
+                    if (disposed) { try { model.close() } catch (_: Exception) {}; return@unpack }
+                    voskModel = model
+                    eventSink?.success("__READY__")
+                    startRecognition()
+                },
+                { error ->
+                    eventSink?.success("__ERROR__:local_vosk_model_" + (error.message ?: "load_failed"))
+                }
+            )
+            true
+        } catch (e: Exception) {
+            eventSink?.success("__ERROR__:local_vosk_init_" + e.javaClass.simpleName)
+            false
+        }
     }
-
     private fun findSafeRecognitionService(): ComponentName? {
         val query = Intent(RecognitionService.SERVICE_INTERFACE)
         val services = packageManager.queryIntentServices(query, PackageManager.MATCH_ALL)
@@ -215,55 +236,56 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     }
 
     private fun startRecognition() {
-        if (disposed || voiceActive) return
-        stopWakeService()
-        voiceLoopEnabled = true
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
-            return
-        }
-        if (!ensureRecognizer()) return
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500)
-            // Do not stop after ~1 second of silence. This was the source of the
-            // visible listen -> stop -> listen loop on Android.
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3500)
-        }
+        if (disposed || !voiceLoopEnabled) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        val model = voskModel ?: return
         try {
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                voiceActive = false
-                eventSink?.success("__ERROR__:microphone_permission_denied")
-                return
+            if (voskService == null) {
+                voskRecognizer = Recognizer(model, 16000.0f)
+                voskService = SpeechService(voskRecognizer, 16000.0f)
             }
             voiceActive = true
             eventSink?.success("__LISTENING__")
-            recognizer?.startListening(intent)
-        } catch (e: SecurityException) {
-            voiceActive = false
-            eventSink?.success("__ERROR__:start_failed_security")
-            try { recognizer?.destroy() } catch (_: Exception) {}
-            recognizer = null
-            recognizerComponent = null
+            voskService?.startListening(voskListener)
         } catch (e: Exception) {
             voiceActive = false
-            eventSink?.success("__ERROR__:start_failed_" + e.javaClass.simpleName)
-            try { recognizer?.destroy() } catch (_: Exception) {}
-            recognizer = null
-            recognizerComponent = null
+            eventSink?.success("__ERROR__:local_vosk_start_" + e.javaClass.simpleName)
+        }
+    }
+
+    private val voskListener = object : org.vosk.android.RecognitionListener {
+        override fun onPartialResult(hypothesis: String) {
+            val partial = try { JSONObject(hypothesis).optString("partial").trim() } catch (_: Exception) { "" }
+            if (partial.isNotEmpty()) eventSink?.success("__PARTIAL__:" + partial)
+        }
+
+        override fun onResult(hypothesis: String) {
+            val text = try { JSONObject(hypothesis).optString("text").trim() } catch (_: Exception) { "" }
+            if (text.isNotEmpty()) eventSink?.success(text)
+        }
+
+        override fun onFinalResult(hypothesis: String) {
+            val text = try { JSONObject(hypothesis).optString("text").trim() } catch (_: Exception) { "" }
+            if (text.isNotEmpty()) eventSink?.success(text)
+            voiceActive = false
+            if (voiceLoopEnabled && !disposed) restartRecognitionLater(250)
+        }
+
+        override fun onError(exception: Exception) {
+            voiceActive = false
+            eventSink?.success("__ERROR__:local_vosk_" + (exception.message ?: exception.javaClass.simpleName))
+            if (voiceLoopEnabled && !disposed) restartRecognitionLater(700)
+        }
+
+        override fun onTimeout() {
+            voiceActive = false
+            if (voiceLoopEnabled && !disposed) restartRecognitionLater(250)
         }
     }
 
     private fun stopRecognition() {
-        voiceLoopEnabled = false
         voiceActive = false
-        try { recognizer?.cancel() } catch (_: Exception) {}
+        try { voskService?.stop() } catch (_: Exception) {}
         stopWakeService()
     }
 
@@ -307,10 +329,10 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) = Unit
                     override fun onDone(utteranceId: String?) {
-                        if (utteranceId == "busya_reply") { stopWakeService(); restartRecognitionLater(350) }
+                        if (utteranceId == "busya_reply") { restartRecognitionLater(350) }
                     }
                     override fun onError(utteranceId: String?) {
-                        if (utteranceId == "busya_reply") { stopWakeService(); restartRecognitionLater(900) }
+                        if (utteranceId == "busya_reply") { restartRecognitionLater(900) }
                     }
                 })
                 tts?.language = Locale("ru", "RU")
@@ -349,8 +371,8 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             return
         }
         try {
+            stopRecognition()
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "busya_reply")
-            startWakeService()
         } catch (e: Exception) {
             pendingTts = null
             eventSink?.success("__TTS_ERROR__")
@@ -503,6 +525,12 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         voiceActive = false
         handler.removeCallbacksAndMessages(null)
         stopWakeService()
+        try { voskService?.stop(); voskService?.shutdown() } catch (_: Exception) {}
+        try { voskRecognizer?.close() } catch (_: Exception) {}
+        try { voskModel?.close() } catch (_: Exception) {}
+        voskService = null
+        voskRecognizer = null
+        voskModel = null
         if (wakeReceiverRegistered) {
             try { unregisterReceiver(wakeReceiver) } catch (_: Exception) {}
             wakeReceiverRegistered = false
@@ -524,7 +552,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 eventSink?.success("__READY__")
                 voiceLoopEnabled = true
-                startWakeService()
+                startRecognition()
             } else eventSink?.success("__ERROR__:microphone_permission_denied")
         }
     }
