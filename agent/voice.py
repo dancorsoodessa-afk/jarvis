@@ -16,7 +16,7 @@ SAMPLE_RATE = 16_000
 CLAP_BLOCK_MS = 40
 CLAP_GAP_SECONDS = 0.9
 CLAP_THRESHOLD_FLOOR = 0.055
-SPEECH_MIN_SECONDS = 0.20
+SPEECH_MIN_SECONDS = 0.16
 
 
 def available() -> bool:
@@ -54,27 +54,13 @@ def _recognize(frames, samplerate: int) -> str:
     path = _write_wav(frames, samplerate)
     try:
         from . import stt
-        if stt.current_engine() != "off":
-            text = stt.transcribe(str(path)).strip()
-            if text:
-                return text
-
-        try:
-            import speech_recognition as sr
-        except ImportError as exc:
+        engine = stt.current_engine()
+        if engine == "off":
             raise RuntimeError(
-                "Распознавание речи не установлено. Установите faster-whisper "
-                "или SpeechRecognition."
-            ) from exc
-        recognizer = sr.Recognizer()
-        with sr.AudioFile(str(path)) as source:
-            audio = recognizer.record(source)
-        try:
-            return recognizer.recognize_google(audio, language="ru-RU").strip()
-        except sr.UnknownValueError:
-            return ""
-        except sr.RequestError as exc:
-            raise RuntimeError(f"Сервис распознавания речи недоступен: {exc}") from exc
+                "Локальное распознавание речи не установлено. "
+                "Установите faster-whisper или настройте whisper.cpp."
+            )
+        return stt.transcribe(str(path)).strip()
     finally:
         try:
             path.unlink()
@@ -97,9 +83,9 @@ def _calibrate(stream, blocks: int, block_size: int) -> float:
 
 def listen_for_phrase(
     samplerate: int = SAMPLE_RATE,
-    silence_seconds: float = 0.70,
-    max_seconds: float = 10.0,
-    start_timeout: float = 5.0,
+    silence_seconds: float = 0.45,
+    max_seconds: float = 8.0,
+    start_timeout: float = 1.5,
     on_speech_start=None,
 ) -> str:
     """Record one utterance using adaptive voice activity detection."""
@@ -122,9 +108,9 @@ def listen_for_phrase(
             dtype="int16",
             blocksize=block_size,
         ) as stream:
-            noise = _calibrate(stream, 12, block_size)
-            speech_threshold = max(0.018, noise * 2.8)
-            end_threshold = max(0.012, noise * 1.8)
+            noise = _calibrate(stream, 4, block_size)
+            speech_threshold = max(0.012, noise * 2.4)
+            end_threshold = max(0.009, noise * 1.5)
 
             for i in range(timeout_blocks + max_blocks):
                 data, overflow = stream.read(block_size)
@@ -218,9 +204,9 @@ def listen_for_double_clap_and_command(
     if triggered:
         return listen_for_phrase(
             samplerate=samplerate,
-            silence_seconds=0.70,
-            max_seconds=10.0,
-            start_timeout=5.0,
+            silence_seconds=0.45,
+            max_seconds=8.0,
+            start_timeout=1.5,
             on_speech_start=on_speech_start,
         )
     return ""
@@ -233,6 +219,6 @@ def listen_for_wake_and_command(on_speech_start=None, samplerate: int = SAMPLE_R
 def record_and_transcribe(seconds=10, samplerate: int = SAMPLE_RATE):
     return listen_for_phrase(
         samplerate=samplerate,
-        max_seconds=min(float(seconds), 10.0),
-        start_timeout=5.0,
+        max_seconds=min(float(seconds), 8.0),
+        start_timeout=1.5,
     )
