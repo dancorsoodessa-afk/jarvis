@@ -30,6 +30,9 @@ def _voice_dir() -> Path:
 
 
 def _piper_dir() -> Path:
+    # In the packaged Windows build Piper is shipped next to the EXE.
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "piper"
     return Path(os.environ.get("JARVIS_HOME", ".")) / "voice"
 
 
@@ -55,12 +58,24 @@ def is_playing() -> bool:
 
 
 def _run_piper(text: str, out_path: Path) -> Path:
-    piper = os.environ.get("JARVIS_PIPER", "piper")
+    piper = os.environ.get("JARVIS_PIPER", "").strip()
+    if not piper:
+        bundled = _piper_dir() / "piper.exe"
+        piper = str(bundled) if bundled.exists() else "piper"
     voice = os.environ.get("JARVIS_PIPER_VOICE", str(_piper_dir() / "ru_RU-dmitri-medium.onnx"))
     if not Path(voice).exists():
         raise RuntimeError(f"Голос piper не найден: {voice}")
     with open(out_path, "wb") as wav:
-        subprocess.run([piper, "-m", voice, "-f", "-"], input=text.encode("utf-8"), stdout=wav, check=True, timeout=60)
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.run(
+            [piper, "--model", voice, "--output_file", str(out_path)],
+            input=text.encode("utf-8"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+            timeout=60,
+            creationflags=flags,
+        )
     return out_path
 
 
@@ -179,7 +194,11 @@ if ($selected) { $s.SelectVoice($selected) }
 $s.Rate = 0; $s.Volume = 100; $s.SetOutputToWaveFile($target); $s.Speak($text); $s.Dispose()
 '''
     env = os.environ.copy(); env["JARVIS_SAPI_TARGET"] = str(out_path); env["JARVIS_SAPI_TEXT"] = text[:1000]; env["JARVIS_SAPI_VOICE"] = voice_name; env["JARVIS_TTS_GENDER"] = gender
-    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], check=True, timeout=60, capture_output=True, env=env)
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+        check=True, timeout=60, capture_output=True, env=env, creationflags=flags,
+    )
     return out_path
 
 
@@ -192,7 +211,9 @@ def available_engines() -> list[str]:
         engines.append("silero")
     except Exception:
         pass
-    if os.environ.get("JARVIS_PIPER") or _piper_dir().joinpath("ru_RU-dmitri-medium.onnx").exists(): engines.append("piper")
+    if (os.environ.get("JARVIS_PIPER") and Path(os.environ["JARVIS_PIPER"]).exists()) or (
+        _piper_dir().joinpath("piper.exe").exists() and _piper_dir().joinpath("ru_RU-dmitri-medium.onnx").exists()
+    ): engines.append("piper")
     return engines
 
 
@@ -200,6 +221,9 @@ def current_engine() -> str:
     mode = os.environ.get("JARVIS_TTS", "auto").strip().lower()
     if mode == "auto":
         if os.environ.get("JARVIS_APIHOST_KEY", "").strip(): return "apihost"
+        # Prefer the bundled neural male voice on Windows.
+        if os.environ.get("JARVIS_TTS_GENDER", "male").strip().lower() == "male" and "piper" in available_engines():
+            return "piper"
         return "sapi" if sys.platform == "win32" else (available_engines()[0] if available_engines() else "off")
     if mode == "off": return "off"
     return mode
@@ -230,11 +254,7 @@ def speak_and_play(text: str) -> Path:
     global _PLAYBACK_PROCESS
     path = speak(text)
     if sys.platform == "win32":
-        ps = "(New-Object Media.SoundPlayer '%s').PlaySync();" % str(path).replace("'", "''")
-        process = subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        with _PLAYBACK_LOCK: _PLAYBACK_PROCESS = process
-        try: process.wait(timeout=120)
-        finally:
-            with _PLAYBACK_LOCK:
-                if _PLAYBACK_PROCESS is process: _PLAYBACK_PROCESS = None
+        # Play WAV directly through Windows audio API; do not open a PowerShell/shell window.
+        import winsound
+        winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_SYNC)
     return path
