@@ -10,9 +10,12 @@ import 'package:record/record.dart';
 import 'package:whisper_ggml/whisper_ggml.dart';
 import 'jarvis_client.dart';
 
-const kCyan = Color(0xFF37D5EE);
-const kBg = Color(0xFF05080F);
-const kPanel = Color(0xFF0D1622);
+const kCyan = Color(0xFF32E6D0);
+const kGreen = Color(0xFF35F58A);
+const kRed = Color(0xFFFF5268);
+const kBg = Color(0xFF020607);
+const kPanel = Color(0xFF071012);
+const kLine = Color(0xFF17463F);
 const _defaultAiEndpoint = 'https://openrouter.ai/api/v1';
 const _defaultAiModel = 'openrouter/free';
 
@@ -24,7 +27,8 @@ class BusyaApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
     title: 'БУСЯ', debugShowCheckedModeBanner: false,
     theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: kBg,
-      colorScheme: ColorScheme.fromSeed(seedColor: kCyan, brightness: Brightness.dark), useMaterial3: true),
+      colorScheme: ColorScheme.fromSeed(seedColor: kCyan, brightness: Brightness.dark), useMaterial3: true, fontFamily: 'monospace',
+      inputDecorationTheme: const InputDecorationTheme(filled: true, fillColor: Color(0xFF050B0C), border: OutlineInputBorder(borderSide: BorderSide(color: kLine)), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: kLine)), focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: kCyan))) ),
     home: const BusyaHomePage(),
   );
 }
@@ -398,21 +402,81 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('БУСЯ'), actions: [
-      if (_android) IconButton(icon: Icon(_voiceEnabled ? Icons.mic : Icons.mic_off), tooltip: 'Голос', onPressed: _toggleVoice),
-      if (_android) IconButton(icon: const Icon(Icons.settings), tooltip: 'AI', onPressed: _settings),
-    ]),
-    body: Column(children: [
-      Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length, itemBuilder: (_, i) { final m = _messages[i]; return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: m.isUser ? kPanel : const Color(0xFF111D2B), borderRadius: BorderRadius.circular(14)), child: Text(m.text))); })),
-      if (_streamText.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text(_streamText)),
-      if (_attachment != null) Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 0), child: Row(children: [Expanded(child: Text('📎 ${_attachment!.name}', maxLines: 1, overflow: TextOverflow.ellipsis)), IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _attachment = null))])),
-      Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
-        IconButton(tooltip: 'Прикрепить файл', onPressed: _busy ? null : _pickFile, icon: const Icon(Icons.attach_file)),
-        Expanded(child: TextField(controller: _input, textInputAction: TextInputAction.send, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Команда БУСЕ', border: OutlineInputBorder()))),
-        const SizedBox(width: 8), IconButton.filled(onPressed: _busy ? null : () { final text = _input.text; _input.clear(); _send(text); }, icon: const Icon(Icons.send)),
+  Widget _terminalLine(String text, {Color color = kGreen, bool dim = false}) {
+    return Padding(padding: const EdgeInsets.only(bottom: 3), child: Text(text, maxLines: 8, overflow: TextOverflow.ellipsis,
+      style: TextStyle(color: dim ? color.withOpacity(.55) : color, fontSize: 12, height: 1.18, fontFamily: 'monospace')));
+  }
+
+  Widget _gauge(String value, String label, {Color color = kCyan}) {
+    return Container(width: 76, height: 76, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: color.withOpacity(.65), width: 1.5)),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
+        Text(label, style: TextStyle(color: color.withOpacity(.65), fontSize: 8)),
+      ]));
+  }
+
+  Widget _commandChip(String text) => InkWell(
+    onTap: () => _input.text = text,
+    child: Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(color: kPanel, border: Border.all(color: kLine), borderRadius: BorderRadius.circular(3)),
+      child: Text(text, style: const TextStyle(color: kCyan, fontSize: 10, fontFamily: 'monospace'))));
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(backgroundColor: kBg, body: SafeArea(child: Column(children: [
+      Container(padding: const EdgeInsets.fromLTRB(12, 8, 8, 7),
+        decoration: const BoxDecoration(color: Color(0xFF03090A), border: Border(bottom: BorderSide(color: kLine))),
+        child: Row(children: [
+          const Expanded(child: Text('JARVIS://BUSYA', style: TextStyle(color: kCyan, fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 1.2))),
+          if (_android) IconButton(visualDensity: VisualDensity.compact, icon: Icon(_voiceEnabled ? Icons.mic_none : Icons.mic_off, color: _voiceEnabled ? kGreen : kRed), onPressed: _toggleVoice),
+          if (_android) IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.tune, color: kCyan), onPressed: _settings),
+        ])),
+      Container(padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+        decoration: const BoxDecoration(color: Color(0xFF03090A), border: Border(bottom: BorderSide(color: kLine))),
+        child: StreamBuilder<DateTime>(
+          stream: Stream.periodic(const Duration(seconds: 1), (_) => DateTime.now()), initialData: DateTime.now(),
+          builder: (context, snap) {
+            final now = snap.data ?? DateTime.now();
+            final hh = now.hour.toString().padLeft(2, '0'), mm = now.minute.toString().padLeft(2, '0'), ss = now.second.toString().padLeft(2, '0');
+            final date = '${{now.day.toString().padLeft(2, '0')}.${{now.month.toString().padLeft(2, '0')}.${{now.year}';
+            return Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+              _gauge('${{hh}:${{mm}', 'TIME'), _gauge(ss, 'SEC', color: kGreen),
+              _gauge(_voiceReady ? 'ON' : '---', 'VOICE', color: _voiceReady ? kGreen : kRed),
+              _gauge(_busy ? 'BUSY' : 'READY', 'AI', color: _busy ? kRed : kCyan),
+              Text(date, style: const TextStyle(color: Colors.white54, fontSize: 9)),
+            ]);
+          })),
+      Expanded(child: Container(margin: const EdgeInsets.fromLTRB(8, 8, 8, 4), padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: const Color(0xFF020506), border: Border.all(color: kLine), borderRadius: BorderRadius.circular(3)),
+        child: ListView(controller: _scroll, padding: EdgeInsets.zero, children: [
+          _terminalLine('> JARVIS CORE / ANDROID', color: kCyan),
+          _terminalLine('> STATUS: $_status', dim: true),
+          _terminalLine('> VOICE: ${_voiceEnabled ? 'ACTIVE' : 'DISABLED'} | LOCAL STT: ${_android ? 'WHISPER' : 'N/A'}', dim: true),
+          _terminalLine('> ----------------------------------------', color: kLine),
+          ..._messages.map((m) => _terminalLine('${m.isUser ? 'YOU>' : 'BUSYA>'} ${m.text}', color: m.isUser ? kCyan : kGreen)),
+          if (_streamText.isNotEmpty) _terminalLine('BUSYA* > $_streamText', color: kCyan),
+          if (_attachment != null) Row(children: [
+            Expanded(child: _terminalLine('ATTACH> ${_attachment!.name}', color: kCyan)),
+            IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 16, color: kRed), onPressed: () => setState(() => _attachment = null)),
+          ]),
+          if (_messages.isEmpty && _streamText.isEmpty) _terminalLine('> READY. ENTER COMMAND OR SPEAK TO BUSYA.', dim: true),
+        ]))),
+      SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Row(children: [
+          _commandChip('help'), const SizedBox(width: 5), _commandChip('status'), const SizedBox(width: 5),
+          _commandChip('voice'), const SizedBox(width: 5), _commandChip('settings'), const SizedBox(width: 5), _commandChip('clear'),
+        ])),
+      Padding(padding: const EdgeInsets.fromLTRB(8, 3, 8, 9), child: Row(children: [
+        IconButton(visualDensity: VisualDensity.compact, onPressed: _busy ? null : _pickFile, icon: const Icon(Icons.attach_file, color: kCyan)),
+        Expanded(child: TextField(controller: _input, textInputAction: TextInputAction.send,
+          onSubmitted: (value) { _input.clear(); _send(value); }, style: const TextStyle(color: kGreen, fontSize: 13, fontFamily: 'monospace'), cursorColor: kGreen,
+          decoration: const InputDecoration(prefixText: '> ', prefixStyle: TextStyle(color: kCyan), hintText: 'ENTER COMMAND...', hintStyle: TextStyle(color: Colors.white30, fontFamily: 'monospace'),
+            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10)))),
+        const SizedBox(width: 5),
+        IconButton.filled(style: IconButton.styleFrom(backgroundColor: const Color(0xFF0A2724), foregroundColor: kGreen, side: const BorderSide(color: kLine)),
+          onPressed: _busy ? null : () { final text = _input.text; _input.clear(); _send(text); }, icon: const Icon(Icons.arrow_upward)),
       ])),
-      Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(_status, style: const TextStyle(fontSize: 12))),
-    ]),
-  );
+    ])));
+  }
+
 }
