@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agent.tools import apps, audio, files
+from agent.tools import apps, audio, files, universal
 
 
 class TestFiles(unittest.TestCase):
@@ -29,6 +29,21 @@ class TestFiles(unittest.TestCase):
     def test_search_rejects_bad_root(self):
         with self.assertRaises(ValueError):
             files.search("*.txt", "/no/such/dir/xyz")
+
+
+    def test_universal_edit_file_creates_backup(self):
+        target = Path(self.dir.name) / "edit.txt"
+        target.write_text("hello world", encoding="utf-8")
+        result = universal.edit_file(str(target), "world", "jarvis")
+        self.assertIn("Резервная копия", result)
+        self.assertEqual(target.read_text(encoding="utf-8"), "hello jarvis")
+        self.assertTrue(Path(str(target) + ".jarvis.bak").exists())
+
+    def test_universal_project_check_python(self):
+        target = Path(self.dir.name) / "good.py"
+        target.write_text("print('ok')\n", encoding="utf-8")
+        result = universal.project_check(str(target))
+        self.assertIn("Python syntax", result)
 
     def test_delete_removes_file(self):
         target = Path(self.dir.name) / "notes.txt"
