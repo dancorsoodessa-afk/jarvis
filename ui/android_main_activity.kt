@@ -184,57 +184,6 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             false
         }
     }
-    private fun findSafeRecognitionService(): ComponentName? {
-        val query = Intent(RecognitionService.SERVICE_INTERFACE)
-        val services = packageManager.queryIntentServices(query, PackageManager.MATCH_ALL)
-        if (services.isEmpty()) return null
-
-        val candidates = services.mapNotNull { info ->
-            val serviceInfo = info.serviceInfo ?: return@mapNotNull null
-            ComponentName(serviceInfo.packageName, serviceInfo.name)
-        }
-
-        val safe = candidates.filterNot { it.packageName == "com.huawei.vassistant" }
-        return safe.firstOrNull { it.packageName == "com.google.android.googlequicksearchbox" }
-            ?: safe.firstOrNull()
-    }
-
-    private fun ensureRecognizer(): Boolean {
-        if (disposed) return false
-        if (recognizer != null) return true
-        return try {
-            // Android 10 (API 29) does not support the ComponentName overload.
-            // Use the platform/default recognizer there; use the selected service
-            // only on Android versions that expose that API.
-            recognizer = if (android.os.Build.VERSION.SDK_INT >= 31) {
-                val component = try { findSafeRecognitionService() } catch (_: Exception) { null }
-                if (component != null) {
-                    recognizerComponent = component
-                    SpeechRecognizer.createSpeechRecognizer(this, component)
-                } else {
-                    recognizerComponent = null
-                    SpeechRecognizer.createSpeechRecognizer(this)
-                }
-            } else {
-                recognizerComponent = null
-                SpeechRecognizer.createSpeechRecognizer(this)
-            }.also {
-                it.setRecognitionListener(this)
-            }
-            true
-        } catch (e: SecurityException) {
-            recognizer = null
-            recognizerComponent = null
-            eventSink?.success("__ERROR__:recognition_service_security")
-            false
-        } catch (e: Exception) {
-            recognizer = null
-            recognizerComponent = null
-            eventSink?.success("__ERROR__:recognition_service_init")
-            false
-        }
-    }
-
     private fun startRecognition() {
         if (disposed || !voiceLoopEnabled) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
@@ -557,39 +506,5 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         }
     }
 
-    override fun onReadyForSpeech(params: Bundle?) {
-        eventSink?.success("__LISTENING__")
-    }
-    override fun onBeginningOfSpeech() {
-        eventSink?.success("__SPEECH_BEGIN__")
-    }
-    override fun onRmsChanged(rmsdB: Float) = Unit
-    override fun onBufferReceived(buffer: ByteArray?) = Unit
-    override fun onEndOfSpeech() {
-        // Wait for onResults/onError. Restarting here can overlap the recognition
-        // result callback and makes Android 10 repeatedly start/stop listening.
-        voiceActive = false
-        eventSink?.success("__END__")
-    }
-    override fun onError(error: Int) {
-        voiceActive = false
-        eventSink?.success("__ERROR__:speech_" + error)
-        // Retry slowly after a recognition-service error. This avoids the old
-        // one-second restart loop while keeping voice control alive.
-        if (voiceLoopEnabled && !disposed) restartWakeLater(if (error == SpeechRecognizer.ERROR_NO_MATCH) 1200 else 1800)
-    }
-    override fun onResults(results: Bundle?) {
-        voiceActive = false
-        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-        val phrase = matches?.firstOrNull()?.trim().orEmpty()
-        if (phrase.isNotEmpty()) {
-            eventSink?.success(phrase)
-        } else {
-            eventSink?.success("__END__")
-            if (voiceLoopEnabled && !disposed) restartWakeLater(700)
-        }
-    }
-    override fun onPartialResults(partialResults: Bundle?) = Unit
-    override fun onEvent(eventType: Int, params: Bundle?) = Unit
     override fun onDestroy() { releaseVoice(); super.onDestroy() }
 }
