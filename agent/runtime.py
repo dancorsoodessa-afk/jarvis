@@ -48,6 +48,7 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("open_url",apps.open_url,description="Открыть веб-страницу в браузере.",parameters={"url":"полный HTTP(S) адрес"})
     tools.register("volume",audio.get_volume,description="Показать текущую громкость.")
     tools.register("set_volume",audio.set_volume,description="Установить громкость (0-100).",parameters={"level":"уровень 0-100"})
+    tools.register("change_volume",audio.change_volume,description="Увеличить или уменьшить громкость относительно текущей. Для «сделай громче» используй +10, для «тише» используй -10.",parameters={"delta":"изменение в процентах, например +10 или -10"})
     tools.register("screenshot",screenshot.capture,description="Сделать скриншот и вернуть путь к файлу.")
     tools.register("ps",lambda *f:"\n".join(f"{p['pid']:>7}  {p['name']}" for p in processes.list_processes(*f)) or "Не найдено",description="Список запущенных процессов.",parameters={"name":"фильтр по имени (необязательный)"})
     tools.register("kill",processes.kill_process,confirm=True,description="Завершить процесс. ОПАСНО: требует подтверждения.",parameters={"pid":"PID процесса"})
