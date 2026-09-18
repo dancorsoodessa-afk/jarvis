@@ -1,7 +1,5 @@
 name: Build JARVIS Android APK
 
-# Android build trigger: push/PR on foundation
-
 on:
   push:
     branches: ["**"]
@@ -25,6 +23,7 @@ jobs:
       - name: Generate Android platform
         working-directory: ui
         run: |
+          set -e
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
           rm -rf test
           python3 - <<'PY'
@@ -51,62 +50,66 @@ jobs:
           cp android_tools/internet/InternetTools.kt "$root/internet/InternetTools.kt"
           cp android_tools/other/OtherTools.kt "$root/other/OtherTools.kt"
           cp android_tools/selfimprovement/SelfImprovementEngine.kt "$root/selfimprovement/SelfImprovementEngine.kt"
-          rm -rf "$root/sherpa"
-          mkdir -p android/app/src/main/assets android/app/libs
-          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
-          echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
+          mkdir -p android/app/src/main/assets
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16.tar.bz2 -o /tmp/ru-asr.tar.bz2
           tar -xjf /tmp/ru-asr.tar.bz2 -C android/app/src/main/assets
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-ru_RU-irina-medium.tar.bz2 -o /tmp/ru-tts.tar.bz2
           tar -xjf /tmp/ru-tts.tar.bz2 -C android/app/src/main/assets
           rm -f /tmp/ru-asr.tar.bz2 /tmp/ru-tts.tar.bz2
 
-      - name: Configure Android permissions
+      - name: Configure Android permissions and sherpa-onnx
         working-directory: ui
         run: |
+          set -e
           python3 - <<'PY'
           from pathlib import Path
+
           p = Path('android/app/src/main/AndroidManifest.xml')
           text = p.read_text(encoding='utf-8')
-          marker = '<manifest '
-          end = text.find('>', text.find(marker))
+          end = text.find('>', text.find('<manifest '))
           if end < 0:
               raise SystemExit('AndroidManifest.xml: <manifest> not found')
           head, tail = text[:end+1], text[end+1:]
-          perms = []
-          if 'android.permission.INTERNET' not in text: perms.append('    <uses-permission android:name="android.permission.INTERNET" />')
-          if 'android.permission.RECORD_AUDIO' not in text: perms.append('    <uses-permission android:name="android.permission.RECORD_AUDIO" />')
-          if 'android.permission.MODIFY_AUDIO_SETTINGS' not in text: perms.append('    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />')
-          if 'android.permission.FOREGROUND_SERVICE' not in text: perms.append('    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />')
-          if 'android.permission.FOREGROUND_SERVICE_MICROPHONE' not in text: perms.append('    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />')
-          if 'android.permission.POST_NOTIFICATIONS' not in text: perms.append('    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />')
-          if perms: text = head + '\n' + '\n'.join(perms) + tail
+          perms = [
+              'android.permission.INTERNET',
+              'android.permission.RECORD_AUDIO',
+              'android.permission.MODIFY_AUDIO_SETTINGS',
+              'android.permission.FOREGROUND_SERVICE',
+              'android.permission.FOREGROUND_SERVICE_MICROPHONE',
+              'android.permission.POST_NOTIFICATIONS',
+          ]
+          for name in perms:
+              line = f'    <uses-permission android:name="{name}" />'
+              if name not in text:
+                  text = head + '\n' + line + tail
+                  end = text.find('>', text.find('<manifest '))
+                  head, tail = text[:end+1], text[end+1:]
           p.write_text(text, encoding='utf-8')
-          PY
 
-      - name: Configure sherpa-onnx
-        working-directory: ui
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('android/app/build.gradle.kts')
-          text = p.read_text(encoding='utf-8')
-          dep = 'implementation(files("libs/sherpa-onnx-1.13.8.aar"))'
-          text = text.replace('implementation(files("libs/sherpa-onnx-1.13.8.aar"))', dep)
-          if dep not in text:
-              text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
-          p.write_text(text, encoding='utf-8')
           p = Path('android/settings.gradle.kts')
           text = p.read_text(encoding='utf-8')
-          if 'maven { url = uri("https://jitpack.io") }' not in text:
+          if 'https://jitpack.io' not in text:
               marker = 'dependencyResolutionManagement {'
-              if marker in text:
-                  if 'repositories {' in text:
-                      text = text.replace('repositories {', 'repositories {\n        maven { url = uri("https://jitpack.io") }', 1)
-                  else:
-                      text = text.replace(marker, marker + '\n    repositories {\n        google()\n        mavenCentral()\n        maven { url = uri("https://jitpack.io") }\n    }', 1)
+              if marker not in text:
+                  raise SystemExit('settings.gradle.kts: dependencyResolutionManagement not found')
+              text = text.replace(marker, marker + '\n    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)', 1)
+              if 'repositories {' in text:
+                  text = text.replace('repositories {', 'repositories {\n        maven { url = uri("https://jitpack.io") }', 1)
+              else:
+                  text = text.replace(marker, marker + '\n    repositories {\n        google()\n        mavenCentral()\n        maven { url = uri("https://jitpack.io") }\n    }', 1)
+          p.write_text(text, encoding='utf-8')
+
+          p = Path('android/app/build.gradle.kts')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace('implementation(files("libs/sherpa-onnx-1.13.8.aar"))', '')
+          dep = 'implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8")'
+          if dep not in text:
+              if 'dependencies {' not in text:
+                  raise SystemExit('app/build.gradle.kts: dependencies block not found')
+              text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
           p.write_text(text, encoding='utf-8')
           PY
+          grep -n "sherpa-onnx\|jitpack" android/app/build.gradle.kts android/settings.gradle.kts
 
       - name: Get dependencies
         working-directory: ui
@@ -123,6 +126,7 @@ jobs:
       - name: Verify APK exists and hash it
         working-directory: ui
         run: |
+          set -e
           test -s build/app/outputs/flutter-apk/app-release.apk
           sha256sum build/app/outputs/flutter-apk/app-release.apk | tee apk.sha256
           stat -c '%n %s bytes' build/app/outputs/flutter-apk/app-release.apk
