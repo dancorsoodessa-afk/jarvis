@@ -165,8 +165,9 @@ class MainActivity : FlutterActivity() {
                         dataDir = dataDir
                     )
                 ),
-                numThreads = 2,
-                provider = "cpu"
+                    numThreads = 2,
+                    provider = "cpu"
+                )
             )
         )
         eventSink?.success("__TTS_READY__")
