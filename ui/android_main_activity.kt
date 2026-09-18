@@ -101,6 +101,8 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                     else -> result.notImplemented()
                 }
             }
+        ensureTts()
+
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENTS_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) { eventSink = events }
@@ -145,8 +147,17 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1400)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900)
         }
-        try { voiceActive = true; eventSink?.success("__LISTENING__"); recognizer?.startListening(intent) }
-        catch (_: Exception) { voiceActive = false; eventSink?.success("__ERROR__:start_failed") }
+        try {
+            voiceActive = true
+            eventSink?.success("__LISTENING__")
+            recognizer?.startListening(intent)
+        } catch (e: Exception) {
+            voiceActive = false
+            eventSink?.success("__ERROR__:start_failed_" + e.javaClass.simpleName)
+            try { recognizer?.destroy() } catch (_: Exception) {}
+            recognizer = null
+            ensureRecognizer()
+        }
     }
 
     private fun stopRecognition() {
@@ -157,32 +168,46 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private fun speak(text: String, result: MethodChannel.Result) {
         if (text.isBlank() || disposed) { result.success(false); return }
         stopRecognition()
-        val key = getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_APIHOST, "").orEmpty().trim()
-        if (key.isEmpty()) showApiHostKeyDialog(text, result) else synthesizeApiHost(text, key, result)
+
+        val key = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_APIHOST, "").orEmpty().trim()
+
+        if (key.isEmpty()) {
+            speakWithSystemTts(text)
+            result.success(true)
+            restartRecognitionLater(500)
+        } else {
+            synthesizeApiHost(text, key, result)
+        }
     }
 
-    private fun showApiHostKeyDialog(text: String, result: MethodChannel.Result) {
-        runOnUiThread {
-            val input = EditText(this).apply {
-                hint = "APIHOST Api_key"
-                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-                setSingleLine(true)
-            }
-            AlertDialog.Builder(this)
-                .setTitle("Голос Леда")
-                .setMessage("Вставь APIHOST Api_key один раз. Ключ сохранится только на этом телефоне.")
-                .setView(input)
-                .setNegativeButton("Отмена") { _, _ -> result.success(false); restartRecognitionLater() }
-                .setPositiveButton("Сохранить") { _, _ ->
-                    val key = input.text.toString().trim()
-                    if (key.isEmpty()) { result.success(false); restartRecognitionLater() }
-                    else {
-                        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_APIHOST, key).apply()
-                        synthesizeApiHost(text, key, result)
-                    }
+    private fun ensureTts() {
+        if (tts != null || disposed) return
+        tts = TextToSpeech(this) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (ttsReady) {
+                tts?.language = Locale("ru", "RU")
+                tts?.setSpeechRate(0.48f)
+                pendingTts?.let {
+                    val queued = it
+                    pendingTts = null
+                    speakWithSystemTts(queued)
                 }
-                .setOnCancelListener { result.success(false); restartRecognitionLater() }
-                .show()
+            }
+        }
+    }
+
+    private fun speakWithSystemTts(text: String) {
+        if (text.isBlank() || disposed) return
+        if (!ttsReady) {
+            pendingTts = text
+            ensureTts()
+            return
+        }
+        try {
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "busya_reply")
+        } catch (_: Exception) {
+            pendingTts = null
         }
     }
 
@@ -214,9 +239,10 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                 runOnUiThread { playAudio(audioUrl, result) }
             } catch (e: Exception) {
                 runOnUiThread {
-                    eventSink?.success("__TTS_ERROR__ ${e.message ?: "APIHOST"}")
-                    result.success(false)
-                    restartRecognitionLater()
+                    eventSink?.success("__TTS_ERROR__ " + (e.message ?: "APIHOST"))
+                    speakWithSystemTts(text)
+                    result.success(true)
+                    restartRecognitionLater(900)
                 }
             }
         }.start()
@@ -268,8 +294,8 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         } catch (_: Exception) { result.success(false); restartRecognitionLater() }
     }
 
-    private fun restartRecognitionLater() {
-        if (!voiceActive && !disposed) handler.postDelayed({ startRecognition() }, 700)
+    private fun restartRecognitionLater(delayMs: Long = 700) {
+        if (!voiceActive && !disposed) handler.postDelayed({ startRecognition() }, delayMs)
     }
 
     private fun releaseVoice() {
@@ -281,6 +307,10 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         recognizer = null
         try { player?.stop(); player?.release() } catch (_: Exception) {}
         player = null
+        try { tts?.stop(); tts?.shutdown() } catch (_: Exception) {}
+        tts = null
+        ttsReady = false
+        pendingTts = null
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -292,12 +322,20 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         }
     }
 
-    override fun onReadyForSpeech(params: Bundle?) = Unit
-    override fun onBeginningOfSpeech() = Unit
+    override fun onReadyForSpeech(params: Bundle?) {
+        eventSink?.success("__LISTENING__")
+    }
+    override fun onBeginningOfSpeech() {
+        eventSink?.success("__SPEECH_BEGIN__")
+    }
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() { voiceActive = false; eventSink?.success("__END__") }
-    override fun onError(error: Int) { voiceActive = false; eventSink?.success("__ERROR__:speech_$error") }
+    override fun onError(error: Int) {
+        voiceActive = false
+        eventSink?.success("__ERROR__:speech_" + error)
+        if (!disposed) restartRecognitionLater(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 900 else 500)
+    }
     override fun onResults(results: Bundle?) {
         voiceActive = false
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
