@@ -455,6 +455,34 @@ class JarvisDesktop(tk.Tk):
         canvas.create_oval(cx-5, cy-6, cx+1, cy, fill="#eaffff", outline="")
         canvas.create_text(cx, 62, text=str(seed), fill=c1, font=("Segoe UI", 6, "bold"))
 
+    def _open_module_details(self, name, title, desc, enabled):
+        items = []
+        if name == "osint":
+            items = [(n, d) for n, t, d, k in TOOLS if k == "intel"]
+        elif name == "ps":
+            try:
+                import csv, subprocess
+                out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8).stdout
+                items = [(r[0], "PID " + r[1]) for r in csv.reader(out.splitlines()) if len(r) >= 2]
+            except Exception:
+                items = []
+        elif name == "launch":
+            try:
+                import subprocess
+                out = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-StartApps | Sort-Object Name | ForEach-Object { \"$($_.Name)|$($_.AppID)\" }"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8).stdout
+                items = [(a.strip(), b.strip()) for line in out.splitlines() if "|" in line for a, b in [line.split("|", 1)] if a.strip()]
+            except Exception:
+                items = []
+        if not items: items = [(name, desc)]
+        win = tk.Toplevel(self); win.title("JARVIS — " + title); win.configure(bg=BG); win.geometry("820x650")
+        tk.Label(win, text=title, bg=BG, fg=CYAN, font=("Segoe UI", 18, "bold")).pack(anchor="w", padx=20, pady=(18, 4))
+        tk.Label(win, text=("● АКТИВЕН" if enabled else "● ВЫКЛЮЧЕН"), bg=BG, fg=GREEN if enabled else RED, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20)
+        tk.Label(win, text="Полный перечень: " + str(len(items)), bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=8)
+        text = tk.Text(win, bg=PANEL, fg=TEXT, relief="flat", wrap="word", font=("Segoe UI", 10))
+        text.pack(fill="both", expand=True, padx=20, pady=10)
+        for item, detail in items: text.insert("end", item + "  —  " + detail + "\n")
+        text.configure(state="disabled")
+        ttk.Button(win, text="ЗАКРЫТЬ", command=win.destroy).pack(anchor="e", padx=20, pady=(0, 14))
     def show_tools(self):
         win = tk.Toplevel(self)
         win.title("JARVIS — Управление модулями")
@@ -497,9 +525,9 @@ class JarvisDesktop(tk.Tk):
             row = (index - 1) // 2
             col = (index - 1) % 2
             inner.grid_columnconfigure(col, weight=1)
-            card = tk.Frame(inner, bg=PANEL2, highlightbackground=LINE, highlightthickness=1)
+            card = tk.Frame(inner, bg=PANEL2, highlightbackground=LINE, highlightthickness=1, cursor="hand2")
             card.grid(row=row, column=col, sticky="ew", padx=8, pady=7)
-            icon = tk.Canvas(card, width=70, height=70, bg=PANEL2, highlightthickness=0)
+            icon = tk.Canvas(card, width=70, height=70, bg=PANEL2, highlightthickness=0, cursor="hand2")
             icon.pack(side="left", padx=10, pady=10)
             self._draw_tool_avatar(icon, kind, index)
             body = tk.Frame(card, bg=PANEL2)
@@ -510,7 +538,11 @@ class JarvisDesktop(tk.Tk):
                      anchor="w").pack(fill="x", pady=(2, 2))
             tk.Label(body, text=desc, bg=PANEL2, fg=MUTED, font=("Segoe UI", 8),
                      wraplength=310, justify="left", anchor="w").pack(fill="x")
-            ttk.Checkbutton(body, text="АКТИВЕН", variable=enabled_var).pack(anchor="w", pady=(5, 0))
+            state_label = tk.Label(body, text=("● АКТИВЕН" if enabled_var.get() else "● ВЫКЛЮЧЕН"), bg=PANEL2, fg=GREEN if enabled_var.get() else RED, font=("Segoe UI", 8, "bold"), cursor="hand2")
+            state_label.pack(anchor="w", pady=(5, 0))
+            state_label.bind("<Button-1>", lambda e, v=enabled_var, l=state_label: (v.set(not v.get()), l.config(text=("● АКТИВЕН" if v.get() else "● ВЫКЛЮЧЕН"), fg=GREEN if v.get() else RED)))
+            card.bind("<Button-1>", lambda e, n=name, t=title, d=desc, v=enabled_var: self._open_module_details(n, t, d, v.get()))
+            icon.bind("<Button-1>", lambda e, n=name, t=title, d=desc, v=enabled_var: self._open_module_details(n, t, d, v.get()))
 
         def save_modules():
             new_disabled = [name for name, var in switches.items() if not var.get()]
