@@ -174,7 +174,7 @@ class MainActivity : FlutterActivity() {
 
     private fun copyAssetTreeAndReturnRoot(path: String): String {
         copyAssetTree(path)
-        return File(getExternalFilesDir(null), "").absolutePath
+        return File(getExternalFilesDir(null), path).absolutePath
     }
 
     private fun copyAssetTree(path: String) {
