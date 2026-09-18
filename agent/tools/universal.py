@@ -221,7 +221,8 @@ def run_command(command: str) -> str:
         proc=subprocess.run(["cmd","/c",command],capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=120)
     else:
         proc=subprocess.run(command,shell=True,capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=120)
-    return f"Код возврата: {proc.returncode}\n{(proc.stdout+'\n'+proc.stderr).strip()[-MAX_TEXT:]}"
+    output = (proc.stdout + "\n" + proc.stderr).strip()[-MAX_TEXT:]
+    return f"Код возврата: {proc.returncode}\n{output}"
 
 def shutdown(action: str = "shutdown") -> str:
     if sys.platform!="win32": raise RuntimeError("Управление питанием этой функцией реализовано для Windows.")
