@@ -159,7 +159,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     try {
       _listening = false;
       await _voice.invokeMethod('start');
-      if (mounted) setState(() => _status = 'Голосовой режим: двойной хлопок');
+      if (mounted) setState(() => _status = 'Постоянное голосовое слушание');
     } catch (e) {
       if (mounted) setState(() => _status = 'Ошибка пробуждения: $e');
     }
@@ -176,7 +176,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     final value = event?.toString().trim() ?? '';
     if (value.isEmpty) return;
     if (value == '__READY__') { _voiceReady = true; _listening = false; setState(() => _status = 'Голосовой режим: двойной хлопок'); await _armNativeWake(); return; }
-    if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Голос готов · двойной хлопок'); return; }
+    if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Локальный голос готов'); return; }
+    if (value == '__LOADING_VOICE__') { if (mounted) setState(() => _status = 'Загрузка локальной модели речи…'); return; }
+    if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
     if (value == '__TTS_ERROR__') { if (mounted) setState(() => _status = 'TTS недоступен: проверьте голосовой движок Android'); return; }
     if (value == '__WAKE__') { _listening = true; if (mounted) setState(() => _status = 'Пробуждение… слушаю'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
@@ -231,7 +233,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     final tools = await client.listTools();
     await _partialSub?.cancel();
     _partialSub = client.partials().listen((text) { if (mounted) setState(() => _streamText = text); });
-    if (mounted) setState(() => _status = _android ? 'AI подключён · ожидаю двойной хлопок' : 'Агент подключён · инструментов: ${tools.length}');
+    if (mounted) setState(() => _status = _android ? 'AI подключён · постоянно слушаю' : 'Агент подключён · инструментов: ${tools.length}');
     if (_android && _voiceReady && _voiceEnabled) _armNativeWake();
   }
 
@@ -245,7 +247,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель')),
         TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'AI API key')),
         TextField(controller: _apiHostKey, obscureText: true, decoration: const InputDecoration(labelText: 'APIHOST key для голоса Леда')),
-        const SizedBox(height: 12), const Text('Режим разговора: двойной хлопок запускает разговор. После ответа БУСЯ автоматически слушает следующую реплику. Двойной хлопок во время ответа сразу прерывает голос. Распознавание и озвучивание выполняются локально на телефоне.', style: TextStyle(fontSize: 12)),
+        const SizedBox(height: 12), const Text('Режим разговора: микрофон можно оставить включённым постоянно. БУСЯ слушает без двойного хлопка и без Google Speech; распознавание речи выполняется локально на телефоне. Во время озвучивания микрофон временно освобождается, затем БУСЯ продолжает слушать.', style: TextStyle(fontSize: 12)),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('open_tts_settings'), icon: const Icon(Icons.record_voice_over), label: const Text('Настройки голоса'))),
@@ -274,7 +276,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     try {
       final reply = await client.sendMessage(clean, attachment: attachment == null ? null : {'name': attachment.name, 'mime': attachment.mime, 'data': attachment.data});
       if (!mounted) return;
-      setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'Голосовой режим: отвечаю голосом' : 'Готов'); });
+      setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'Локальное голосовое общение' : 'Готов'); });
       _scrollToBottom();
       if (_android && fromVoice) await _speak(reply.text);
     } catch (e) {
@@ -341,7 +343,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         child: ListView(controller: _scroll, padding: EdgeInsets.zero, children: [
           _terminalLine('> JARVIS CORE / ANDROID', color: kCyan),
           _terminalLine('> STATUS: $_status', dim: true),
-          _terminalLine('> VOICE: ${_voiceEnabled ? 'ACTIVE' : 'DISABLED'} | LOCAL STT: ${_android ? 'WHISPER' : 'N/A'}', dim: true),
+          _terminalLine('> VOICE: ${_voiceEnabled ? 'ACTIVE' : 'DISABLED'} | LOCAL STT: ${_android ? 'VOSK' : 'N/A'}', dim: true),
           _terminalLine('> ----------------------------------------', color: kLine),
           ..._messages.map((m) => _terminalLine('${m.isUser ? 'YOU>' : 'BUSYA>'} ${m.text}', color: m.isUser ? kCyan : kGreen)),
           if (_streamText.isNotEmpty) _terminalLine('BUSYA* > $_streamText', color: kCyan),
