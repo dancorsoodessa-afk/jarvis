@@ -145,6 +145,7 @@ class JarvisIpc {
     _fn('self_forget', 'Забыть правило', {'text': {'type': 'string'}}, ['text']),
     _fn('self_memory', 'Полная память самоулучшения', {}, []),
     _fn('self_behavior', 'Активный поведенческий слой', {}, []),
+    _fn('self_clear', 'Полностью очистить память самоулучшения', {}, []),
   ];
 
   Future<String> _tool(String name, Map<String, dynamic> args) async {
