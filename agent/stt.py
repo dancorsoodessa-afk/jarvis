@@ -75,7 +75,7 @@ def _get_faster_model(model_size: str):
                 from faster_whisper import WhisperModel
             except ImportError as exc:
                 raise RuntimeError("faster-whisper не установлен") from exc
-            _FASTER_MODEL = WhisperModel(key, device="cpu", compute_type="int8")
+            _FASTER_MODEL = WhisperModel(key, device="cpu", compute_type="int8", cpu_threads=max(1, int(os.environ.get("JARVIS_STT_THREADS", "0") or 0)))
             _FASTER_MODEL_KEY = key
     return _FASTER_MODEL
 
@@ -87,7 +87,10 @@ def _run_faster_whisper(wav_path: Path) -> str:
         str(wav_path),
         language="ru",
         beam_size=1,
+        best_of=1,
+        temperature=0.0,
         vad_filter=True,
+        vad_parameters={"min_silence_duration_ms": 250, "speech_pad_ms": 80},
     )
     return " ".join(seg.text.strip() for seg in segments).strip()
 
