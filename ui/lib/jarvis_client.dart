@@ -184,13 +184,78 @@ class JarvisIpc {
 
   String _version(String raw) { try { return (jsonDecode(raw) as Map)['version']?.toString() ?? '?'; } catch (_) { return '?'; } }
 
-  Future<JarvisReply> _standaloneSend(String text) async {
-    final local = await _local(text);
+  Future<String> _transcribeAttachment(Map<String, dynamic> attachment) async {
+    final mime = (attachment['mime']?.toString() ?? '').toLowerCase();
+    final data = attachment['data']?.toString() ?? '';
+    if (data.isEmpty) throw StateError('Пустой аудиофайл');
+    String format = 'wav';
+    if (mime.contains('mpeg') || mime.endsWith('/mp3')) format = 'mp3';
+    else if (mime.contains('m4a')) format = 'm4a';
+    else if (mime.contains('ogg')) format = 'ogg';
+    else if (mime.contains('webm')) format = 'webm';
+    else if (mime.contains('aac')) format = 'aac';
+    final req = await _httpClient!.postUrl(Uri.parse('$_apiUrl/audio/transcriptions'));
+    req.headers.contentType = ContentType.json;
+    _auth(req);
+    req.write(jsonEncode({
+      'model': 'openai/whisper-1',
+      'input_audio': {'data': data, 'format': format},
+      'language': 'ru',
+    }));
+    final decoded = await _json(await req.close());
+    final text = decoded['text']?.toString().trim() ?? '';
+    if (text.isEmpty) throw StateError('STT не вернул текст');
+    return text;
+  }
+
+  List<Map<String, dynamic>> _attachmentParts(Map<String, dynamic> a, String prompt) {
+    final name = a['name']?.toString() ?? 'file';
+    final mime = (a['mime']?.toString() ?? 'application/octet-stream').toLowerCase();
+    final data = a['data']?.toString() ?? '';
+    if (mime.startsWith('image/')) {
+      return [
+        {'type': 'text', 'text': prompt},
+        {'type': 'image_url', 'image_url': {'url': 'data:$mime;base64,$data'}},
+      ];
+    }
+    if (mime.startsWith('video/')) {
+      return [
+        {'type': 'text', 'text': prompt},
+        {'type': 'video_url', 'video_url': {'url': 'data:$mime;base64,$data'}},
+      ];
+    }
+    if (mime == 'application/pdf') {
+      return [
+        {'type': 'text', 'text': prompt},
+        {'type': 'file', 'file': {'filename': name, 'file_data': 'data:$mime;base64,$data'}},
+      ];
+    }
+    if (mime.startsWith('text/') || mime.contains('json') || mime.contains('csv') || mime.contains('xml') || mime.contains('markdown')) {
+      try {
+        final decoded = utf8.decode(base64Decode(data));
+        return [{'type': 'text', 'text': '$prompt\n\nФайл $name:\n$decoded'}];
+      } catch (_) {}
+    }
+    return [
+      {'type': 'text', 'text': '$prompt\n\nПрикреплён файл: $name ($mime).'},
+    ];
+  }
+
+  Future<JarvisReply> _standaloneSend(String text, {Map<String, dynamic>? attachment}) async {
+    var userText = text;
+    Map<String, dynamic>? activeAttachment = attachment;
+    if (attachment != null && (attachment['mime']?.toString() ?? '').toLowerCase().startsWith('audio/')) {
+      userText = '$text\n\nРасшифровка прикреплённого аудио: ${await _transcribeAttachment(attachment)}';
+      activeAttachment = null;
+    }
+    final local = await _local(userText);
     if (local.text.isNotEmpty) return local;
-    final model = await _modelId();
+    final defaultModel = await _modelId();
+    final attachmentMime = (activeAttachment?['mime']?.toString() ?? '').toLowerCase();
+    final model = activeAttachment != null ? 'google/gemma-4-26b-a4b-it:free' : defaultModel;
     final behavior = Platform.isAndroid ? await _tool('self_behavior', {}) : '';
     final system = 'Ты БУСЯ — автономный AI-агент. Отвечай на языке пользователя. Используй инструменты для реальных действий и не выдумывай результат. Отделы: internet (Google.com, HTTP, download, weather), files, database (SQLite), other, self-improvement. Самоулучшение — изменение постоянного поведенческого слоя: правила, навыки, предпочтения, исправления, успешные шаблоны и политики инструментов. Когда пользователь просит улучшить себя — используй self_improve или self_learn. Не заявляй об изменении весов модели или подписанного APK. Активный слой:\n$behavior';
-    final messages = <Map<String, dynamic>>[{'role': 'system', 'content': system}, ..._history, {'role': 'user', 'content': text}];
+    final messages = <Map<String, dynamic>>[{'role': 'system', 'content': system}, ..._history, {'role': 'user', 'content': activeAttachment == null ? userText : _attachmentParts(activeAttachment, userText)}];
     String answer = '';
     String? lastTool;
     for (var round = 0; round < 8; round++) {
@@ -222,7 +287,7 @@ class JarvisIpc {
       }
     }
     answer = answer.trim().isEmpty ? 'Готово.' : answer.trim();
-    _history.add({'role': 'user', 'content': text});
+    _history.add({'role': 'user', 'content': userText});
     _history.add({'role': 'assistant', 'content': answer});
     while (_history.length > 24) _history.removeAt(0);
     if (Platform.isAndroid) {
@@ -231,8 +296,8 @@ class JarvisIpc {
     return JarvisReply(answer, model, lastTool, false);
   }
 
-  Future<JarvisReply> sendMessage(String text) async {
-    if (_standalone) return await _standaloneSend(text);
+  Future<JarvisReply> sendMessage(String text, {Map<String, dynamic>? attachment}) async {
+    if (_standalone) return await _standaloneSend(text, attachment: attachment);
     final response = await _ipc({'type': 'chat', 'text': text});
     return JarvisReply.fromJson(response);
   }
