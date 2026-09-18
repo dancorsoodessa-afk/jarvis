@@ -7,13 +7,18 @@ hiddenimports = [
     "comtypes",
     "sounddevice",
     "speech_recognition",
+    "faster_whisper",
+    "ctranslate2",
+    "av",
+    "tokenizers",
+    "huggingface_hub",
 ]
 
 a = Analysis(
     ["jarvis_desktop.py"],
     pathex=["."],
     binaries=[],
-    datas=[("docs", "docs")],
+    datas=[("docs", "docs"), ("vendor/stt_model", "stt_model")],
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
