@@ -46,7 +46,43 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
 
   @override void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _android ? _initNativeVoice() : _connectDesktop());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (_android) {
+        await _loadSettings();
+        await _initNativeVoice();
+      } else {
+        await _connectDesktop();
+      }
+    });
+  }
+
+  Future<void> _loadSettings() async {
+    if (!_android) return;
+    try {
+      final raw = await _voice.invokeMethod<dynamic>('load_settings');
+      if (raw is Map) {
+        final endpoint = raw['endpoint']?.toString().trim() ?? '';
+        final model = raw['model']?.toString().trim() ?? '';
+        final apiKey = raw['apiKey']?.toString() ?? '';
+        final voiceEnabled = raw['voiceEnabled'];
+        if (endpoint.isNotEmpty) _endpoint.text = endpoint;
+        if (model.isNotEmpty) _model.text = model;
+        _apiKey.text = apiKey;
+        if (voiceEnabled is bool) _voiceEnabled = voiceEnabled;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveSettings() async {
+    if (!_android) return;
+    try {
+      await _voice.invokeMethod('save_settings', {
+        'endpoint': _endpoint.text.trim(),
+        'model': _model.text.trim(),
+        'apiKey': _apiKey.text.trim(),
+        'voiceEnabled': _voiceEnabled,
+      });
+    } catch (_) {}
   }
 
   Future<void> _initNativeVoice() async {
@@ -131,6 +167,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   }
 
   Future<void> _connectAndroid() async {
+    await _saveSettings();
     final endpoint = _endpoint.text.trim();
     if (endpoint.isEmpty) { if (mounted) setState(() => _status = 'Укажите endpoint AI в настройках'); return; }
     try {
@@ -168,7 +205,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   Future<void> _toggleVoice() async {
     if (!_android) return;
     if (!_voiceReady) { await _initNativeVoice(); return; }
-    _voiceEnabled = !_voiceEnabled; _awaitingCommand = false;
+    _voiceEnabled = !_voiceEnabled; _awaitingCommand = false; await _saveSettings();
     if (!_voiceEnabled) { await _stopNativeListening(); if (mounted) setState(() => _status = 'Голос выключен'); return; }
     if (mounted) setState(() => _status = 'Ожидаю слово «Буся»'); await _startNativeListening();
   }
