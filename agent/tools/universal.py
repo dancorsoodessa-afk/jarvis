@@ -143,18 +143,14 @@ def project_check(path: str = ".") -> str:
     root = _path(path)
     if not root.exists():
         raise ValueError(f"Путь не найден: {root}")
-    if root.is_file():
-        if root.suffix.lower() == ".py":
-            code, out = run([sys.executable, "-c", "import ast, pathlib; ast.parse(pathlib.Path(r'%s').read_text(encoding='utf-8'))" % str(root)])
-            if code == 0:
-                return f"Проект: {root.parent}\n\nOK: Python syntax\n\nПроверка проекта завершена: критических ошибок в выполненной проверке не найдено."
-            return f"Проект: {root.parent}\n\nНАЙДЕНЫ ПРОБЛЕМЫ:\n[Python syntax]\n{out}"
-        root = root.parent
-    results = [f"Проект: {root}"]
-    def run(args, cwd=root, timeout=180):
+
+    def run(args, cwd=None, timeout=180):
+        workdir = cwd or (root if root.is_dir() else root.parent)
         try:
-            r = subprocess.run(args, cwd=str(cwd), capture_output=True, text=True,
-                               encoding="utf-8", errors="replace", timeout=timeout)
+            r = subprocess.run(
+                args, cwd=str(workdir), capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=timeout
+            )
             out = (r.stdout + "\n" + r.stderr).strip()
             return r.returncode, out[-MAX_TEXT:]
         except FileNotFoundError:
@@ -162,35 +158,56 @@ def project_check(path: str = ".") -> str:
         except subprocess.TimeoutExpired:
             return None, f"Тайм-аут: {' '.join(args)}"
 
+    if root.is_file():
+        if root.suffix.lower() == ".py":
+            code, out = run([
+                sys.executable, "-c",
+                "import ast, pathlib; ast.parse(pathlib.Path(r'%s').read_text(encoding='utf-8'))" % str(root)
+            ], cwd=root.parent)
+            if code == 0:
+                return f"Проект: {root.parent}\n\nOK: Python syntax\n\nПроверка проекта завершена: критических ошибок в выполненной проверке не найдено."
+            return f"Проект: {root.parent}\n\nНАЙДЕНЫ ПРОБЛЕМЫ:\n[Python syntax]\n{out}"
+        root = root.parent
+
+    results = [f"Проект: {root}"]
     checks = []
+
     if (root / "pyproject.toml").exists() or (root / "requirements.txt").exists():
         py_files = list(root.rglob("*.py"))[:500]
         bad = []
         for p in py_files:
-            code, out = run([sys.executable, "-c", "import ast, pathlib; ast.parse(pathlib.Path(r\'%s\').read_text(encoding=\'utf-8\'))" % str(p)])
+            code, out = run([
+                sys.executable, "-c",
+                "import ast, pathlib; ast.parse(pathlib.Path(r'%s').read_text(encoding='utf-8'))" % str(p)
+            ])
             if code not in (0, None):
                 bad.append(f"{p}: {out}")
         checks.append(("Python syntax", bad))
         if (root / "pyproject.toml").exists():
             code, out = run([sys.executable, "-m", "pip", "check"], timeout=120)
             checks.append(("pip check", [] if code == 0 else [out]))
+
     if (root / "package.json").exists():
         code, out = run(["npm", "test", "--", "--runInBand"], timeout=180)
         checks.append(("npm test", [] if code == 0 else [out]))
         if code != 0:
             code2, out2 = run(["npm", "run", "build"], timeout=180)
             checks.append(("npm build", [] if code2 == 0 else [out2]))
+
     if (root / "pubspec.yaml").exists():
         code, out = run(["flutter", "analyze"], timeout=180)
         checks.append(("flutter analyze", [] if code == 0 else [out]))
+
     if not checks:
         checks.append(("project type", ["Не распознан поддерживаемый Python/Node/Flutter проект."]))
+
     failed = []
     for name, errors in checks:
         if errors:
             failed.append(f"[{name}]\n" + "\n".join(errors))
         else:
             results.append(f"OK: {name}")
+
     if failed:
         results.append("НАЙДЕНЫ ПРОБЛЕМЫ:\n" + "\n\n".join(failed))
     else:
