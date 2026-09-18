@@ -5,6 +5,9 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.Base64
 import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Handler
@@ -33,6 +36,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         private const val VOICE_CHANNEL = "busya.voice"
         private const val EVENTS_CHANNEL = "busya.voice.events"
         private const val REQUEST_RECORD_AUDIO = 701
+        private const val REQUEST_PICK_FILE = 702
         private const val APIHOST_BASE = "https://apihost.ru/api/v1"
         private const val PREFS = "busya_voice"
         private const val KEY_APIHOST = "apihost_key"
@@ -53,6 +57,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var pendingTts: String? = null
+    private var pendingFileResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -67,6 +72,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                             "endpoint" to prefs.getString(KEY_ENDPOINT, "https://openrouter.ai/api/v1"),
                             "model" to prefs.getString(KEY_MODEL, "openrouter/free"),
                             "apiKey" to prefs.getString(KEY_AI_API_KEY, ""),
+                            "apiHostKey" to prefs.getString(KEY_APIHOST, ""),
                             "voiceEnabled" to prefs.getBoolean(KEY_VOICE_ENABLED, true)
                         ))
                     }
@@ -74,11 +80,13 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                         val endpoint = call.argument<String>("endpoint").orEmpty().trim()
                         val model = call.argument<String>("model").orEmpty().trim()
                         val apiKey = call.argument<String>("apiKey").orEmpty().trim()
+                        val apiHostKey = call.argument<String>("apiHostKey").orEmpty().trim()
                         val voiceEnabled = call.argument<Boolean>("voiceEnabled") ?: true
                         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                             .putString(KEY_ENDPOINT, endpoint)
                             .putString(KEY_MODEL, model)
                             .putString(KEY_AI_API_KEY, apiKey)
+                            .putString(KEY_APIHOST, apiHostKey)
                             .putBoolean(KEY_VOICE_ENABLED, voiceEnabled)
                             .apply()
                         result.success(true)
@@ -86,6 +94,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                     "start" -> { startRecognition(); result.success(true) }
                     "stop" -> { stopRecognition(); result.success(true) }
                     "speak" -> speak(call.argument<String>("text").orEmpty(), result)
+                    "pick_file" -> pickFile(result)
                     "android_tool" -> {
                         try {
                             val name = call.argument<String>("name").orEmpty()
@@ -118,9 +127,11 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
-            return false
+            ensureTts()
+            return true
         }
         ensureRecognizer()
+        ensureTts()
         eventSink?.success("__READY__")
         return true
     }
@@ -188,6 +199,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             ttsReady = status == TextToSpeech.SUCCESS
             if (ttsReady) {
                 tts?.language = Locale("ru", "RU")
+                eventSink?.success("__TTS_READY__")
                 tts?.setSpeechRate(0.48f)
                 pendingTts?.let {
                     val queued = it
@@ -207,9 +219,51 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         }
         try {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "busya_reply")
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             pendingTts = null
+            eventSink?.success("__TTS_ERROR__")
         }
+    }
+
+    private fun pickFile(result: MethodChannel.Result) {
+        if (pendingFileResult != null) { result.error("BUSY", "Выбор файла уже выполняется", null); return }
+        pendingFileResult = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+        }
+        try { startActivityForResult(intent, REQUEST_PICK_FILE) } catch (e: Exception) {
+            pendingFileResult = null
+            result.error("PICKER_ERROR", e.message, null)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_PICK_FILE) return
+        val result = pendingFileResult; pendingFileResult = null
+        if (result == null) return
+        if (resultCode != RESULT_OK || data?.data == null) { result.success(null); return }
+        try {
+            val uri = data.data!!
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (_: Exception) {}
+        try {
+            val uri = data.data!!
+            val mime = contentResolver.getType(uri) ?: "application/octet-stream"
+            val name = queryDisplayName(uri) ?: "файл"
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
+            if (bytes.size > 15 * 1024 * 1024) throw IllegalArgumentException("Файл больше 15 МБ")
+            result.success(mapOf("name" to name, "mime" to mime, "size" to bytes.size, "data" to Base64.encodeToString(bytes, Base64.NO_WRAP)))
+        } catch (e: Exception) { result.error("FILE_READ_ERROR", e.message, null) }
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) return c.getString(0)
+        }
+        return uri.lastPathSegment
     }
 
     private fun synthesizeApiHost(text: String, key: String, result: MethodChannel.Result) {
