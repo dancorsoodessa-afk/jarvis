@@ -54,6 +54,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private var recognizerComponent: ComponentName? = null
     private var eventSink: EventChannel.EventSink? = null
     private var voiceActive = false
+    private var voiceLoopEnabled = false
     private var disposed = false
     private var player: MediaPlayer? = null
     private var speakerId: String? = null
@@ -149,10 +150,6 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             ComponentName(serviceInfo.packageName, serviceInfo.name)
         }
 
-        // Some Huawei Android 10 builds expose a FakeRecognitionService from
-        // com.huawei.vassistant which throws SecurityException when a third-party
-        // app tries to bind to it. Prefer Google's recognizer when installed and
-        // never select that Huawei fake service.
         val safe = candidates.filterNot { it.packageName == "com.huawei.vassistant" }
         return safe.firstOrNull { it.packageName == "com.google.android.googlequicksearchbox" }
             ?: safe.firstOrNull()
@@ -186,7 +183,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     }
 
     private fun startRecognition() {
-        if (disposed || voiceActive) return
+        if (disposed || voiceActive || !voiceLoopEnabled) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
             return
@@ -198,9 +195,11 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 300)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1400)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500)
+            // Do not stop after ~1 second of silence. This was the source of the
+            // visible listen -> stop -> listen loop on Android.
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3500)
         }
         try {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -223,11 +222,11 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             try { recognizer?.destroy() } catch (_: Exception) {}
             recognizer = null
             recognizerComponent = null
-            handler.postDelayed({ if (!disposed) ensureRecognizer() }, 300)
         }
     }
 
     private fun stopRecognition() {
+        voiceLoopEnabled = false
         voiceActive = false
         try { recognizer?.cancel() } catch (_: Exception) {}
     }
@@ -405,12 +404,20 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     }
 
     private fun restartRecognitionLater(delayMs: Long = 700) {
-        if (!voiceActive && !disposed) handler.postDelayed({ startRecognition() }, delayMs)
+        if (!disposed) {
+            handler.postDelayed({
+                if (!disposed && !voiceActive) {
+                    voiceLoopEnabled = true
+                    startRecognition()
+                }
+            }, delayMs)
+        }
     }
 
     private fun releaseVoice() {
         if (disposed) return
         disposed = true
+        voiceLoopEnabled = false
         voiceActive = false
         handler.removeCallbacksAndMessages(null)
         try { recognizer?.cancel(); recognizer?.destroy() } catch (_: Exception) {}
@@ -428,7 +435,9 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_RECORD_AUDIO) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                eventSink?.success("__READY__"); startRecognition()
+                eventSink?.success("__READY__")
+                voiceLoopEnabled = true
+                startRecognition()
             } else eventSink?.success("__ERROR__:microphone_permission_denied")
         }
     }
@@ -441,11 +450,18 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     }
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
-    override fun onEndOfSpeech() { voiceActive = false; eventSink?.success("__END__") }
+    override fun onEndOfSpeech() {
+        voiceActive = false
+        eventSink?.success("__END__")
+        if (voiceLoopEnabled && !disposed) restartRecognitionLater(300)
+    }
     override fun onError(error: Int) {
         voiceActive = false
         eventSink?.success("__ERROR__:speech_" + error)
-        if (!disposed) restartRecognitionLater(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 900 else 500)
+        // Do not immediately restart on recognition errors. On several Android 10
+        // speech services ERROR_NO_MATCH is emitted after a short silence, and
+        // restarting here created the one-second on/off loop. A new session is
+        // started only by explicit start or after a successful speech/TTS cycle.
     }
     override fun onResults(results: Bundle?) {
         voiceActive = false
