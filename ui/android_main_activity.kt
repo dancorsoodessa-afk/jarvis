@@ -155,18 +155,15 @@ class MainActivity : FlutterActivity() {
         val dataDir = copyAssetTreeAndReturnRoot("$dir/espeak-ng-data")
         tts = OfflineTts(
             assetManager = assets,
-            config = getOfflineTtsConfig(
-                modelDir = dir,
-                modelName = "ru_RU-irina-medium.onnx",
-                acousticModelName = "",
-                vocoder = "",
-                voices = "",
-                lexicon = "",
-                dataDir = dataDir,
-                dictDir = "",
-                ruleFsts = "",
-                ruleFars = "",
-                numThreads = 2
+            config = OfflineTtsConfig(
+                model = OfflineTtsModelConfig(
+                    vits = OfflineTtsVitsModelConfig(
+                        model = "$dir/ru_RU-irina-medium.onnx",
+                        dataDir = dataDir
+                    )
+                ),
+                numThreads = 2,
+                provider = "cpu"
             )
         )
         eventSink?.success("__TTS_READY__")
