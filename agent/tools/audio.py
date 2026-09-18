@@ -22,8 +22,14 @@ def _windows_volume():
             "Windows volume control needs optional deps: pip install jarvis-agent[windows-audio]"
         )
     devices = AudioUtilities.GetSpeakers()
+    endpoint = getattr(devices, "EndpointVolume", None)
+    if endpoint is not None:
+        return endpoint
     interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-    return cast(interface, POINTER(IAudioEndpointVolume))
+    try:
+        return interface.QueryInterface(IAudioEndpointVolume)
+    except AttributeError:
+        return cast(interface, POINTER(IAudioEndpointVolume))
 
 
 def get_volume() -> str:
@@ -41,7 +47,10 @@ def set_volume(percent: str) -> str:
     if not 0 <= level <= 100:
         raise ValueError("Volume must be 0-100")
     if sys.platform == "win32":
-        _windows_volume().SetMasterVolumeLevelScalar(level / 100, None)
+        volume = _windows_volume()
+        if volume.GetMute():
+            volume.SetMute(0, None)
+        volume.SetMasterVolumeLevelScalar(level / 100, None)
     elif shutil.which("amixer"):
         _run(["amixer", "set", "Master", f"{level}%"])
     elif shutil.which("pactl"):
@@ -49,3 +58,18 @@ def set_volume(percent: str) -> str:
     else:
         raise RuntimeError("No supported mixer found (amixer/pactl)")
     return f"Volume set to {level}%"
+
+def change_volume(delta: str) -> str:
+    """Increase/decrease Windows master volume by a relative percentage."""
+    step = int(delta)
+    if step == 0:
+        return get_volume()
+    if sys.platform == "win32":
+        volume = _windows_volume()
+        current = round(float(volume.GetMasterVolumeLevelScalar()) * 100)
+        target = max(0, min(100, current + step))
+        if volume.GetMute() and step > 0:
+            volume.SetMute(0, None)
+        volume.SetMasterVolumeLevelScalar(target / 100, None)
+        return f"Громкость: {target}%"
+    raise RuntimeError("Относительное изменение громкости поддерживается только в Windows")
