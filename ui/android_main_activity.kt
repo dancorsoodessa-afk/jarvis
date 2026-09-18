@@ -12,6 +12,7 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
 import android.text.InputType
 import android.widget.EditText
 import androidx.core.app.ActivityCompat
@@ -47,7 +48,6 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private var eventSink: EventChannel.EventSink? = null
     private var voiceActive = false
     private var disposed = false
-    private lateinit var toolRouter: AndroidToolRouter
     private var player: MediaPlayer? = null
     private var speakerId: String? = null
     private var tts: TextToSpeech? = null
