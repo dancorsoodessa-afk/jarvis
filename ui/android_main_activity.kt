@@ -163,8 +163,7 @@ class MainActivity : FlutterActivity() {
                     vits = OfflineTtsVitsModelConfig(
                         model = "$dir/ru_RU-irina-medium.onnx",
                         dataDir = dataDir
-                    )
-                ),
+                    ),
                     numThreads = 2,
                     provider = "cpu"
                 )
