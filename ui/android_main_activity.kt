@@ -198,6 +198,7 @@ class MainActivity : FlutterActivity() {
             val rec = recognizer ?: run { initRecognizer(); recognizer!! }
             recognitionStream = rec.createStream()
             val min = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            require(min > 0) { "Invalid microphone buffer size: $min" }
             val record = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, min * 2)
             try { AcousticEchoCanceler.create(record.audioSessionId)?.enabled = true } catch (_: Exception) {}
             try { NoiseSuppressor.create(record.audioSessionId)?.enabled = true } catch (_: Exception) {}
