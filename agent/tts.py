@@ -198,7 +198,8 @@ $wantedGender = $env:JARVIS_TTS_GENDER
 $voices = @($s.GetInstalledVoices())
 $selected = $null
 if ($wanted) { foreach ($v in $voices) { if ($v.VoiceInfo.Name -like "*$wanted*") { $selected = $v.VoiceInfo.Name; break } } }
-if (-not $selected -and $wantedGender -ne "any") { foreach ($v in $voices) { if ($v.VoiceInfo.Culture.Name -eq "ru-RU" -and $v.VoiceInfo.Gender.ToString().ToLower() -eq $wantedGender) { $selected = $v.VoiceInfo.Name; break } } }
+if (-not $selected -and $wantedGender -ne "any") { foreach ($v in $voices) { if ($v.VoiceInfo.Gender.ToString().ToLower() -eq $wantedGender -and $v.VoiceInfo.Culture.Name -eq "ru-RU") { $selected = $v.VoiceInfo.Name; break } } }
+if (-not $selected -and $wantedGender -ne "any") { foreach ($v in $voices) { if ($v.VoiceInfo.Gender.ToString().ToLower() -eq $wantedGender) { $selected = $v.VoiceInfo.Name; break } } }
 if (-not $selected) { foreach ($v in $voices) { if ($v.VoiceInfo.Culture.Name -eq "ru-RU") { $selected = $v.VoiceInfo.Name; break } } }
 if ($selected) { $s.SelectVoice($selected) }
 $s.Rate = 0; $s.Volume = 100; $s.SetOutputToWaveFile($target); $s.Speak($text); $s.Dispose()
@@ -230,11 +231,15 @@ def available_engines() -> list[str]:
 def current_engine() -> str:
     mode = os.environ.get("JARVIS_TTS", "auto").strip().lower()
     if mode == "auto":
-        if os.environ.get("JARVIS_APIHOST_KEY", "").strip(): return "apihost"
-        # Prefer the bundled neural male voice on Windows.
-        if os.environ.get("JARVIS_TTS_GENDER", "male").strip().lower() == "male" and "piper" in available_engines():
+        # JARVIS works locally by default: no cloud TTS and no API voice.
+        # Prefer bundled Piper male voice; otherwise use installed Windows SAPI.
+        if sys.platform == "win32" and "piper" in available_engines():
             return "piper"
-        return "sapi" if sys.platform == "win32" else (available_engines()[0] if available_engines() else "off")
+        if sys.platform == "win32" and "sapi" in available_engines():
+            return "sapi"
+        if "silero" in available_engines():
+            return "silero"
+        return available_engines()[0] if available_engines() else "off"
     if mode == "off": return "off"
     return mode
 
