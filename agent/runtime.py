@@ -7,7 +7,7 @@ from .memory import KnowledgeGraph, MemoryStore, SessionMemory, relevant_notes
 from .providers.local_vulkan import LocalVulkanProvider
 from .providers.openai_chat import OpenAIChatProvider
 from .reminders import ReminderService
-from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint
+from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint, universal
 from .tools.registry import ToolRegistry
 from . import stt, tts
 from .skills import NoteStore, calculate, now
@@ -40,10 +40,17 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     else: raise RuntimeError(f"Неизвестный провайдер: {settings.provider}. Доступны: openai-compatible, local-vulkan")
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
     tools=ToolRegistry()
+    tools.register("inspect_file",universal.inspect_file,description="Прочитать и проанализировать локальный файл: TXT, MD, CSV, JSON, XML, Python, PDF, DOCX, XLSX и другие поддерживаемые форматы.",parameters={"path":"путь к файлу или папке"})
+    tools.register("inspect_archive",universal.inspect_archive,description="Прочитать содержимое ZIP, TAR, GZ, 7Z или RAR архива.",parameters={"path":"путь к архиву"})
+    tools.register("extract_archive",universal.extract_archive,confirm=True,description="Распаковать архив. Требует подтверждения.",parameters={"path":"путь к архиву","destination":"папка назначения (необязательно)"})
+    tools.register("find_errors",universal.find_errors,description="Просканировать проект/папку и найти строки ошибок, traceback и типичные ошибки сборки.",parameters={"path":"путь к проекту или файлу"})
+    tools.register("run_command",universal.run_command,confirm=True,description="Выполнить команду Windows для диагностики, сборки или исправления проекта. Требует подтверждения.",parameters={"command":"команда Windows"})
+    tools.register("shutdown",universal.shutdown,confirm=True,description="Выключить, перезагрузить или перевести Windows в сон. Требует подтверждения.",parameters={"action":"shutdown, restart или sleep"})
+    tools.register("open_folder",apps.open_path,description="Открыть папку или файл в Проводнике Windows.",parameters={"path":"путь к папке или файлу"})
     tools.register("status",system.status,description="Показать статус системы (ОС, CPU, RAM, диски). Не принимает аргументов.")
     tools.register("search",files.search,description="Найти файлы по маске в папке.",parameters={"pattern":"маска, например *.txt","folder":"папка для поиска"})
     tools.register("delete",files.delete,confirm=True,description="Удалить файл. ОПАСНО: требует подтверждения.",parameters={"path":"путь к файлу"})
-    tools.register("launch",apps.launch,confirm=True,description="Запустить приложение. Требует подтверждения.",parameters={"name":"имя приложения или путь"})
+    tools.register("launch",apps.launch,confirm=False,description="Запустить приложение. Требует подтверждения.",parameters={"name":"имя приложения или путь"})
     tools.register("open_path",apps.open_path,description="Открыть локальный файл или папку в Windows Explorer.",parameters={"path":"полный локальный путь"})
     tools.register("open_url",apps.open_url,description="Открыть веб-страницу в браузере.",parameters={"url":"полный HTTP(S) адрес"})
     tools.register("volume",audio.get_volume,description="Показать текущую громкость.")

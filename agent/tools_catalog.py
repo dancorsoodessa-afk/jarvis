@@ -1,6 +1,12 @@
 """Human-friendly metadata for the tools exposed by JARVIS."""
 
 TOOLS = [
+    ("inspect_file", "Чтение файла", "Читать TXT, PDF, DOCX, XLSX, JSON и другие документы", "folder"),
+    ("inspect_archive", "Архивы", "Читать содержимое ZIP, TAR, 7Z и RAR", "folder"),
+    ("extract_archive", "Распаковка", "Распаковать архив в папку", "folder"),
+    ("find_errors", "Анализ ошибок", "Искать ошибки и traceback в проекте", "danger"),
+    ("run_command", "Команды Windows", "Выполнить команду Windows для диагностики и исправления", "process"),
+    ("shutdown", "Питание ПК", "Выключение, перезагрузка или сон Windows", "danger"),
     ("status", "Система", "ОС, CPU, RAM и диски", "core"),
     ("search", "Поиск файлов", "Поиск файлов по маске в папке", "folder"),
     ("delete", "Удаление файла", "Удаление файла с подтверждением", "danger"),
