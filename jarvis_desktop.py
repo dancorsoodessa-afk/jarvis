@@ -52,6 +52,8 @@ class JarvisDesktop(tk.Tk):
         self.attachments = []
         self._voice_loop_running = False
         self._orb_phase = 0.0
+        self._visual_state = "IDLE"
+        self._visual_level = 0.0
         self._orb_after = None
         self.settings = _load_saved_settings()
         self._apply_saved_settings()
@@ -192,29 +194,69 @@ class JarvisDesktop(tk.Tk):
                                       justify="left", font=("Segoe UI", 8), padx=16)
         self.enabled_label.pack(anchor="w")
 
+    def _set_visual_state(self, state, level=None):
+        self._visual_state = state
+        if level is not None:
+            self._visual_level = max(0.0, min(1.0, float(level)))
+        labels = {
+            "IDLE": "СИСТЕМА ГОТОВА",
+            "LISTENING": "СЛУШАЮ ВАС",
+            "THINKING": "ОБРАБОТКА",
+            "SPEAKING": "ОТВЕЧАЮ",
+            "ERROR": "ОШИБКА",
+        }
+        self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
+
     def _draw_orb(self):
         self.canvas.delete("all")
         cx, cy = 150, 112
         phase = self._orb_phase
-        for rx, ry, offset in ((104, 104, 0), (82, 48, 0.9), (82, 48, -0.9), (58, 28, 1.8)):
-            a = phase + offset
-            dx = math.cos(a) * rx * 0.82
-            dy = math.sin(a) * ry * 0.82
-            self.canvas.create_oval(cx-rx, cy-ry, cx+rx, cy+ry, outline="#1b6f88", width=1)
-            self.canvas.create_oval(cx+dx-3, cy+dy-3, cx+dx+3, cy+dy+3, fill=CYAN, outline="")
-        for i in range(20):
-            a = phase * 1.7 + i * (math.pi * 2 / 20)
-            z = (math.sin(a) + 1) / 2
-            r = 72 + 24 * z
-            x = cx + math.cos(a) * r
-            y = cy + math.sin(a) * r * 0.55
-            size = 1 + int(3 * z)
-            self.canvas.create_oval(x-size, y-size, x+size, y+size, fill=CYAN, outline="")
-        pulse = 12 + 4 * (math.sin(phase * 2) + 1)
-        self.canvas.create_oval(cx-pulse, cy-pulse, cx+pulse, cy+pulse, fill=CYAN, outline="")
-        self.canvas.create_text(cx, cy+126, text="J·A·R", fill=CYAN, font=("Segoe UI", 16, "bold"))
-        self._orb_phase += 0.055
+        state = self._visual_state
+        level = self._visual_level
+        speed = {"IDLE": 0.025, "LISTENING": 0.075, "THINKING": 0.11, "SPEAKING": 0.085, "ERROR": 0.16}.get(state, 0.05)
+        pulse = 1.0 + 0.18 * math.sin(phase * 3.0)
+        if state == "LISTENING":
+            pulse += level * 0.55
+        elif state == "SPEAKING":
+            pulse += level * 0.45
+        elif state == "THINKING":
+            pulse += 0.18 * math.sin(phase * 7.0)
+        core = RED if state == "ERROR" else (YELLOW if state == "THINKING" else CYAN)
+        ring = "#6b2735" if state == "ERROR" else "#1b6f88"
+
+        # Псевдо-3D сфера: глубина точек меняет размер и яркость.
+        for i in range(72):
+            a = phase * (1.0 if state != "THINKING" else 1.8) + i * (math.pi * 2 / 72)
+            b = math.sin(i * 1.91 + phase * 0.7) * 1.25
+            z = math.sin(a * 1.7 + b)
+            x = cx + math.cos(a) * (58 + 14 * z) * pulse
+            y = cy + math.sin(a) * (58 + 14 * z) * 0.62 * pulse
+            size = 1.2 + (z + 1) * 1.5
+            self.canvas.create_oval(x-size, y-size, x+size, y+size, fill=core if z > 0 else ring, outline="")
+
+        # Орбитальные кольца с перспективой.
+        for rx, ry, offset in ((108, 108, 0), (88, 48, 1.0), (70, 30, -0.7), (118, 34, 2.0)):
+            a = phase * (1.4 if state == "THINKING" else 0.8) + offset
+            self.canvas.create_oval(cx-rx, cy-ry, cx+rx, cy+ry, outline=ring, width=1)
+            dx = math.cos(a) * rx
+            dy = math.sin(a) * ry
+            self.canvas.create_oval(cx+dx-3, cy+dy-3, cx+dx+3, cy+dy+3, fill=core, outline="")
+
+        # Энергетические лучи.
+        for i in range(12):
+            a = phase * 0.6 + i * math.pi / 6
+            length = 68 + 18 * math.sin(phase * 3 + i)
+            x1, y1 = cx + math.cos(a) * 28, cy + math.sin(a) * 18
+            x2, y2 = cx + math.cos(a) * length, cy + math.sin(a) * length * 0.55
+            self.canvas.create_line(x1, y1, x2, y2, fill=ring, width=1)
+
+        core_r = 14 * pulse
+        self.canvas.create_oval(cx-core_r, cy-core_r, cx+core_r, cy+core_r, fill=core, outline="")
+        self.canvas.create_oval(cx-core_r*0.52, cy-core_r*0.52, cx+core_r*0.52, cy+core_r*0.52, fill="#eaffff", outline="")
+        self.canvas.create_text(cx, cy+126, text="J·A·R·V·I·S", fill=core, font=("Segoe UI", 13, "bold"))
+        self._orb_phase += speed
         self._orb_after = self.after(40, self._draw_orb)
+
 
     def _start_agent(self):
         def work():
@@ -300,14 +342,17 @@ class JarvisDesktop(tk.Tk):
                         self._start_voice_loop()
                 elif kind == "reply":
                     reply = event[1]
+                    self._set_visual_state("SPEAKING", 0.65)
                     self._append("JARVIS", reply)
                     self.busy = False
                     self.send_button.config(state="normal")
                     self.attach_button.config(state="normal")
                     self.status.config(text="● ONLINE", fg=GREEN)
+                    self._set_visual_state("IDLE", 0.0)
                     if self.settings.get("tts_enabled", True):
                         threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
                 elif kind == "voice_text":
+                    self._set_visual_state("LISTENING", 0.75)
                     if self.busy:
                         continue
                     self.input.delete(0, "end")
@@ -316,11 +361,13 @@ class JarvisDesktop(tk.Tk):
                 elif kind == "voice_status":
                     self._append("VOICE", event[1])
                 elif kind == "voice_error":
+                    self._set_visual_state("ERROR")
                     self._append("VOICE", "Ошибка: " + event[1])
                 elif kind == "tts_error":
                     self._append("VOICE", "Ошибка TTS: " + event[1])
                     self.metrics["TTS"].config(fg=RED)
                 elif kind == "agent_error":
+                    self._set_visual_state("ERROR")
                     self.status.config(text="● ERROR", fg=RED)
                     self._append("SYSTEM", "Не удалось запустить ядро: " + event[1])
                     self.busy = False
@@ -331,7 +378,9 @@ class JarvisDesktop(tk.Tk):
 
     def _speak_reply(self, text):
         try:
+            self._set_visual_state("SPEAKING", 0.8)
             tts.speak_and_play(text)
+            self._set_visual_state("IDLE", 0.0)
         except Exception as exc:
             self.events.put(("tts_error", str(exc)))
 
