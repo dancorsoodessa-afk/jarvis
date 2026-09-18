@@ -64,11 +64,11 @@ jobs:
           if 'android.permission.POST_NOTIFICATIONS' not in text: perms.append('    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />')
           if perms: text = head + '\n' + '\n'.join(perms) + tail
           service = '''
-        <service
-            android:name=".WakeClapService"
-            android:exported="false"
-            android:foregroundServiceType="microphone" />
-'''
+          <service
+              android:name=".WakeClapService"
+              android:exported="false"
+              android:foregroundServiceType="microphone" />
+          '''
           if 'android:name=".WakeClapService"' not in text:
               text = text.replace('</application>', service + '    </application>')
           p.write_text(text, encoding='utf-8')
