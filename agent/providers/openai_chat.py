@@ -47,10 +47,38 @@ class OpenAIChatProvider:
         if not self.model and models:
             self._discovered_model = models[0]
 
-    def _messages(self, prompt: str) -> list[dict]:
+    def _messages(self, prompt) -> list[dict]:
         messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
-        messages.append({"role": "user", "content": prompt})
+        if isinstance(prompt, dict) and isinstance(prompt.get("attachment"), dict):
+            text = str(prompt.get("text") or "")
+            attachment = prompt["attachment"]
+            name = str(attachment.get("name") or "file")
+            mime = str(attachment.get("mime") or "application/octet-stream").lower()
+            data = str(attachment.get("data") or "")
+            parts = [{"type": "text", "text": text}]
+            if data:
+                if mime.startswith("image/"):
+                    parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}})
+                elif mime.startswith("audio/"):
+                    fmt = mime.split("/")[-1].split(";")[0]
+                    if fmt == "mpeg":
+                        fmt = "mp3"
+                    parts.append({"type": "input_audio", "input_audio": {"data": data, "format": fmt}})
+                elif mime.startswith("text/") or any(x in mime for x in ("json", "csv", "xml", "markdown")):
+                    import base64
+                    try:
+                        decoded = base64.b64decode(data).decode("utf-8", errors="replace")
+                        parts.append({"type": "text", "text": f"Файл {name}:\\n{decoded}"})
+                    except Exception:
+                        parts.append({"type": "text", "text": f"Прикреплён файл: {name} ({mime})."})
+                elif mime == "application/pdf" or any(x in mime for x in ("word", "excel", "spreadsheet", "presentation", "powerpoint")):
+                    parts.append({"type": "file", "file": {"filename": name, "file_data": f"data:{mime};base64,{data}"}})
+                else:
+                    parts.append({"type": "text", "text": f"Прикреплён файл: {name} ({mime})."})
+            messages.append({"role": "user", "content": parts})
+        else:
+            messages.append({"role": "user", "content": prompt})
         return messages
 
     @staticmethod
@@ -179,7 +207,7 @@ class OpenAIChatProvider:
             raise RuntimeError(f"ИИ вернул неожиданный ответ: {body!r}") from exc
         return {"content": msg.get("content") or "", "tool_calls": msg.get("tool_calls") or []}
 
-    def generate(self, prompt: str, tools: Optional[list] = None, max_steps: int = 4) -> str:
+    def generate(self, prompt, tools: Optional[list] = None, max_steps: int = 4) -> str:
         self._ensure_endpoint()
         model = self.discover_model()
         messages = self._messages(prompt)
@@ -218,7 +246,8 @@ class OpenAIChatProvider:
         else:
             result_content = result_content or "Достигнут предел шагов агента."
 
-        self.history.append({"role": "user", "content": prompt})
+        history_prompt = prompt.get("text", "") if isinstance(prompt, dict) else prompt
+        self.history.append({"role": "user", "content": history_prompt})
         self.history.append({"role": "assistant", "content": result_content})
         if len(self.history) > MAX_HISTORY_MESSAGES * 2:
             del self.history[: len(self.history) - MAX_HISTORY_MESSAGES * 2]
