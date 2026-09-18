@@ -57,7 +57,7 @@ class Recorder:
 
 
 class VoiceLoop:
-    """Voice assistant loop with double-clap activation."""
+    """Voice assistant loop with direct speech activation."""
 
     def __init__(self, agent, recorder: Recorder | None = None,
                  wake_words=None, wake_enabled: bool | None = None,
@@ -106,13 +106,17 @@ class VoiceLoop:
         return result.text
 
     def run(self):
-        """Wait for two claps, listen once, answer, then return to standby."""
+        """Continuously listen for speech, answer, then return to standby."""
         if not voice.available():
             raise RuntimeError("Голосовой ввод недоступен: установите sounddevice и numpy")
-        self.log.info("Голосовой режим включён: ожидание двух хлопков")
+        self.log.info("Голосовой режим включён: ожидание речи")
         while True:
             try:
-                heard = voice.listen_for_double_clap_and_command(
+                # Do not require two claps. Listen for normal speech directly.
+                heard = voice.listen_for_phrase(
+                    silence_seconds=0.70,
+                    max_seconds=10.0,
+                    start_timeout=5.0,
                     on_speech_start=tts.stop,
                 )
                 if not heard:
