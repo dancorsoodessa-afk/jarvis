@@ -9,9 +9,9 @@ Target hardware:
 - Windows 10 x64
 
 AI strategy:
-- **Free OpenAI-compatible provider: primary**
-- **Local provider: llama.cpp + Vulkan**
-- Paid/cloud provider integration is removed
+- **JARVIS: главный гибридный мозг** — интернет-ИИ при наличии сети, локальный ИИ без сети
+- **DeepSeek и GLM: дополнительные консультанты**, не главные
+- Облачный ИИ используется только при наличии интернета
 - Ollama is optional when exposed through its OpenAI-compatible API
 - Model is replaceable; Jarvis is not tied to one runtime
 - If `JARVIS_CHAT_MODEL` is empty, the OpenAI-compatible provider discovers the first model exposed by `/v1/models`
@@ -34,9 +34,9 @@ GitHub Actions also builds the Windows executables on pushes and pull requests t
 
 JARVIS does not require a paid/cloud provider. The supported paths are:
 
-### 1. OpenAI-compatible provider — default
+### 1. JARVIS — основной режим (internet-first / offline fallback)
 
-Use any **free/local** service that exposes an OpenAI-compatible `/v1/chat/completions` endpoint. No paid API is required by JARVIS.
+При наличии интернета JARVIS сначала обращается к настроенному OpenAI-compatible ИИ. Если интернет пропал, API недоступен или облачный лимит исчерпан, JARVIS автоматически переключается на встроенный локальный мозг llama.cpp + Qwen 3B. Возврат интернета автоматически возвращает облачный режим.
 
 ```powershell
 $env:JARVIS_PROVIDER  = "openai-compatible"
@@ -107,9 +107,9 @@ $env:JARVIS_TTS = "auto"
 python -m agent --voice                # jarvis.exe --voice
 ```
 
-Цикл: ожидание → **два хлопка** → запись команды → STT → ответ агента → TTS → снова ожидание двух хлопков. Запись ограничена 10 секундами с детекцией тишины. Во время ответа начало речи останавливает воспроизведение TTS, чтобы JARVIS не перебивал пользователя.
+Цикл: ожидание речи → запись команды → STT → ответ JARVIS → TTS → снова ожидание речи. Никаких хлопков или отдельного wake-сигнала не требуется. Запись ограничена 10 секундами с детекцией тишины. Во время ответа начало речи останавливает воспроизведение TTS, чтобы JARVIS не перебивал пользователя.
 
-`voice_loop.py` сохраняет поддержку старого wake-word API для совместимости тестов и интеграций, но основной runtime голосового режима использует двойной хлопок.
+Основной runtime голосового режима постоянно слушает обычную речь; старый wake-word API оставлен только для совместимости.
 
 ## Windows-полировка
 
