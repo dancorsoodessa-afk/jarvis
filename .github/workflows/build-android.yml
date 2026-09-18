@@ -87,7 +87,7 @@ jobs:
           from pathlib import Path
           p = Path('android/app/build.gradle.kts')
           text = p.read_text(encoding='utf-8')
-          dep = 'implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")'
+          dep = 'implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8")'
           text = text.replace('implementation("com.k2fsa:sherpa-onnx:1.13.8")', dep)
           if dep not in text:
               text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
