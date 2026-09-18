@@ -225,8 +225,8 @@ class JarvisDesktop(tk.Tk):
         ring = "#6b2735" if state == "ERROR" else "#1b6f88"
 
         # Псевдо-3D сфера: глубина точек меняет размер и яркость.
-        for i in range(72):
-            a = phase * (1.0 if state != "THINKING" else 1.8) + i * (math.pi * 2 / 72)
+        for i in range(48):
+            a = phase * (1.0 if state != "THINKING" else 1.8) + i * (math.pi * 2 / 48)
             b = math.sin(i * 1.91 + phase * 0.7) * 1.25
             z = math.sin(a * 1.7 + b)
             x = cx + math.cos(a) * (58 + 14 * z) * pulse
@@ -243,8 +243,8 @@ class JarvisDesktop(tk.Tk):
             self.canvas.create_oval(cx+dx-3, cy+dy-3, cx+dx+3, cy+dy+3, fill=core, outline="")
 
         # Энергетические лучи.
-        for i in range(12):
-            a = phase * 0.6 + i * math.pi / 6
+        for i in range(8):
+            a = phase * 0.6 + i * math.pi / 4
             length = 68 + 18 * math.sin(phase * 3 + i)
             x1, y1 = cx + math.cos(a) * 28, cy + math.sin(a) * 18
             x2, y2 = cx + math.cos(a) * length, cy + math.sin(a) * length * 0.55
@@ -255,7 +255,7 @@ class JarvisDesktop(tk.Tk):
         self.canvas.create_oval(cx-core_r*0.52, cy-core_r*0.52, cx+core_r*0.52, cy+core_r*0.52, fill="#eaffff", outline="")
         self.canvas.create_text(cx, cy+126, text="J·A·R·V·I·S", fill=core, font=("Segoe UI", 13, "bold"))
         self._orb_phase += speed
-        self._orb_after = self.after(40, self._draw_orb)
+        self._orb_after = self.after(80, self._draw_orb)
 
 
     def _start_agent(self):
@@ -279,7 +279,12 @@ class JarvisDesktop(tk.Tk):
         def work():
             while self._voice_loop_running and self.settings.get("voice_enabled", True):
                 try:
-                    command = voice.listen_for_wake_and_command(on_speech_start=on_speech_start)
+                    command = voice.listen_for_phrase(
+                        silence_seconds=0.55,
+                        max_seconds=8.0,
+                        start_timeout=2.0,
+                        on_speech_start=on_speech_start,
+                    )
                     if command and self._voice_loop_running:
                         self.events.put(("voice_text", command))
                 except Exception as exc:
