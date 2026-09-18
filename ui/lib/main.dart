@@ -51,6 +51,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   StreamSubscription<dynamic>? _voiceSub;
   StreamSubscription<String>? _partialSub;
   StreamSubscription<Uint8List>? _pcmSub;
+  StreamSubscription<String>? _whisperPartialSub;
   final AudioRecorder _localRecorder = AudioRecorder();
   final WhisperController _whisper = WhisperController();
   WhisperLiveSession? _whisperSession;
@@ -249,8 +250,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     String phrase = '';
     try { phrase = (await _whisperSession?.stop() ?? '').trim(); } catch (_) {}
     _whisperSession = null;
-    await _partialSub?.cancel();
-    _partialSub = null;
+    await _whisperPartialSub?.cancel();
+    _whisperPartialSub = null;
     _streamText = '';
     if (phrase.isEmpty) {
       await _armNativeWake();
@@ -391,7 +392,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   void _scrollToBottom() { WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut); }); }
 
   @override void dispose() {
-    _voiceSub?.cancel(); _partialSub?.cancel(); _pcmSub?.cancel(); _localRecorder.dispose();
+    _voiceSub?.cancel(); _partialSub?.cancel(); _pcmSub?.cancel(); _whisperPartialSub?.cancel(); _localRecorder.dispose(); _whisper.releaseModel();
     if (_android) { _voice.invokeMethod('stop'); _voice.invokeMethod('dispose'); }
     _client?.dispose(); _input.dispose(); _endpoint.dispose(); _apiKey.dispose(); _model.dispose(); _apiHostKey.dispose(); _scroll.dispose(); super.dispose();
   }
