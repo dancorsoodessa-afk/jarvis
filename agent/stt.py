@@ -16,10 +16,20 @@ import os
 import subprocess
 import threading
 from pathlib import Path
+import sys
 
 _FASTER_MODEL = None
 _FASTER_MODEL_KEY = None
 _FASTER_MODEL_LOCK = threading.Lock()
+
+
+def _stt_model_dir() -> Path:
+    override = os.environ.get("JARVIS_STT_MODEL_PATH", "").strip()
+    if override:
+        return Path(override)
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "stt_model"
+    return Path(__file__).resolve().parent.parent / "vendor" / "stt_model"
 
 
 def available_engines() -> list[str]:
@@ -75,7 +85,13 @@ def _get_faster_model(model_size: str):
                 from faster_whisper import WhisperModel
             except ImportError as exc:
                 raise RuntimeError("faster-whisper не установлен") from exc
-            _FASTER_MODEL = WhisperModel(key, device="cpu", compute_type="int8", cpu_threads=max(1, int(os.environ.get("JARVIS_STT_THREADS", "0") or 0)))
+            _FASTER_MODEL = WhisperModel(
+                str(_stt_model_dir()) if _stt_model_dir().exists() else key,
+                device="cpu",
+                compute_type="int8",
+                cpu_threads=max(1, int(os.environ.get("JARVIS_STT_THREADS", "4") or 4)),
+                num_workers=1,
+            )
             _FASTER_MODEL_KEY = key
     return _FASTER_MODEL
 
@@ -99,7 +115,7 @@ def transcribe(audio_path: str) -> str:
     engine = current_engine()
     if engine == "off":
         raise RuntimeError(
-            "Локальный STT не установлен. Используется резервное распознавание."
+            "Локальное распознавание речи не установлено. В этой сборке нужен faster-whisper."
         )
     path = Path(audio_path)
     if not path.exists():
