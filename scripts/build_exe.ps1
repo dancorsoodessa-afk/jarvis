@@ -5,7 +5,14 @@ $ErrorActionPreference = "Stop"
 
 python -m pip install --upgrade pip
 python -m pip install -e ".[all]"
-python -m pip install --upgrade pyinstaller pytest
+python -m pip install --upgrade pyinstaller pytest faster-whisper huggingface-hub
+
+Write-Host "== JARVIS: prepare bundled offline STT (faster-whisper tiny) ==" -ForegroundColor Cyan
+$sttDir = Join-Path $PWD "vendor\stt_model"
+Remove-Item $sttDir -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $sttDir | Out-Null
+python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='Systran/faster-whisper-tiny', local_dir=r'vendor/stt_model', local_dir_use_symlinks=False)"
+if (-not (Test-Path "$sttDir\model.bin")) { throw "Offline faster-whisper model download failed." }
 
 Write-Host "== JARVIS: prepare bundled male voice ==" -ForegroundColor Cyan
 $piperUrl = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip"
