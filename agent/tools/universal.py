@@ -144,6 +144,11 @@ def project_check(path: str = ".") -> str:
     if not root.exists():
         raise ValueError(f"Путь не найден: {root}")
     if root.is_file():
+        if root.suffix.lower() == ".py":
+            code, out = run([sys.executable, "-c", "import ast, pathlib; ast.parse(pathlib.Path(r'%s').read_text(encoding='utf-8'))" % str(root)])
+            if code == 0:
+                return f"Проект: {root.parent}\n\nOK: Python syntax\n\nПроверка проекта завершена: критических ошибок в выполненной проверке не найдено."
+            return f"Проект: {root.parent}\n\nНАЙДЕНЫ ПРОБЛЕМЫ:\n[Python syntax]\n{out}"
         root = root.parent
     results = [f"Проект: {root}"]
     def run(args, cwd=root, timeout=180):
