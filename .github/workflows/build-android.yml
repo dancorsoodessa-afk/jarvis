@@ -60,7 +60,7 @@ jobs:
           tar -xjf /tmp/ru-tts.tar.bz2 -C android/app/src/main/assets
           rm -f /tmp/ru-asr.tar.bz2 /tmp/ru-tts.tar.bz2
 
-      - name: Configure Android permissions, sherpa-onnx and release signing
+      - name: Configure Android permissions and sherpa-onnx
         working-directory: ui
         run: |
           set -e
@@ -103,24 +103,10 @@ jobs:
                   text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
               else:
                   text = text.rstrip() + '\n\ndependencies {\n    ' + dep + '\n}\n'
-
-          # The CI runner has the standard Android debug keystore. Use it to sign
-          # this directly-installable APK so Android will not reject an unsigned release.
-          # A future production/Play release should switch this to a private CI secret.
-          release_marker = 'signingConfig = signingConfigs.getByName("debug")'
-          if release_marker not in text:
-              needle = 'buildTypes {'
-              if needle not in text:
-                  raise SystemExit('android/app/build.gradle.kts: buildTypes block not found')
-              text = text.replace(
-                  needle,
-                  'buildTypes {\n        release {\n            signingConfig = signingConfigs.getByName("debug")\n        }',
-                  1
-              )
-
           p.write_text(text, encoding='utf-8')
           PY
-          grep -n "sherpa-onnx\|signingConfig\|buildTypes" android/app/build.gradle.kts android/settings.gradle.kts
+          grep -n "sherpa-onnx" android/app/build.gradle.kts android/settings.gradle.kts
+          grep -n 'signingConfig = signingConfigs.getByName("debug")' android/app/build.gradle.kts
 
       - name: Get dependencies
         working-directory: ui
