@@ -50,7 +50,9 @@ jobs:
           cp android_tools/other/OtherTools.kt "$root/other/OtherTools.kt"
           cp android_tools/selfimprovement/SelfImprovementEngine.kt "$root/selfimprovement/SelfImprovementEngine.kt"
           rm -rf "$root/sherpa"
-          mkdir -p android/app/src/main/assets
+          mkdir -p android/app/src/main/assets android/app/libs
+          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
+          echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16.tar.bz2 -o /tmp/ru-asr.tar.bz2
@@ -90,7 +92,7 @@ jobs:
           p = Path('android/app/build.gradle.kts')
           text = p.read_text(encoding='utf-8')
           dep = 'implementation(files("libs/sherpa-onnx-1.13.8.aar"))'
-          text = text.replace('implementation("com.k2fsa:sherpa-onnx:1.13.8")', dep)
+          text = text.replace('implementation(files("libs/sherpa-onnx-1.13.8.aar"))', dep)
           if dep not in text:
               text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
           p.write_text(text, encoding='utf-8')
