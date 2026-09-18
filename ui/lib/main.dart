@@ -2,13 +2,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:record/record.dart';
-import 'package:whisper_ggml/whisper_ggml.dart';
 import 'jarvis_client.dart';
 
 const kCyan = Color(0xFF32E6D0);
@@ -55,15 +51,6 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   _Attachment? _attachment;
   StreamSubscription<dynamic>? _voiceSub;
   StreamSubscription<String>? _partialSub;
-  StreamSubscription<Uint8List>? _pcmSub;
-  StreamSubscription<String>? _whisperPartialSub;
-  final AudioRecorder _localRecorder = AudioRecorder();
-  final WhisperController _whisper = WhisperController();
-  WhisperLiveSession? _whisperSession;
-  bool _localWhisperRunning = false;
-  bool _localSpeechStarted = false;
-  int _localSilenceMs = 0;
-  int _localSpeechMs = 0;
   bool _voiceReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
   String _status = 'БУСЯ запускается…', _streamText = '';
   bool get _android => Platform.isAndroid;
@@ -157,126 +144,29 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   }
 
   Future<void> _startNativeListening() async {
-    if (!_android || !_voiceReady || !_voiceEnabled || _busy || _localWhisperRunning) return;
-    await _startLocalWhisper();
+    if (!_android || !_voiceReady || !_voiceEnabled || _busy || _listening) return;
+    try {
+      _listening = true;
+      await _voice.invokeMethod('listen_now');
+    } catch (e) {
+      _listening = false;
+      if (mounted) setState(() => _status = 'Ошибка микрофона: $e');
+    }
   }
 
   Future<void> _armNativeWake() async {
     if (!_android || !_voiceReady || !_voiceEnabled || _busy) return;
-    try { await _voice.invokeMethod('start'); }
-    catch (e) { if (mounted) setState(() => _status = 'Ошибка пробуждения: $e'); }
-  }
-
-  Future<void> _startLocalWhisper() async {
-    if (!_android || !_voiceReady || !_voiceEnabled || _busy || _localWhisperRunning) return;
     try {
-      if (!await _localRecorder.hasPermission()) {
-        if (mounted) setState(() => _status = 'Нет доступа к микрофону');
-        await _armNativeWake();
-        return;
-      }
-      _localWhisperRunning = true;
-      _listening = true;
-      _localSpeechStarted = false;
-      _localSilenceMs = 0;
-      _localSpeechMs = 0;
-      if (mounted) setState(() => _status = 'Слушаю локально…');
-
-      final pcm = await _localRecorder.startStream(const RecordConfig(
-        encoder: AudioEncoder.pcm16bits,
-        sampleRate: 16000,
-        numChannels: 1,
-        autoGain: true,
-        echoCancel: true,
-        noiseSuppress: true,
-      ));
-
-      final session = await _whisper.transcribeLive(
-        model: WhisperModel.tiny,
-        pcm16Stream: pcm,
-        lang: 'ru',
-        suppressNonSpeechTokens: true,
-        keepModelLoaded: true,
-        gateRmsMin: 0.0015,
-        gateVoiceRatio: 2.5,
-        gateNoiseFloorCap: 0.01,
-      );
-      _whisperSession = session;
-
-      await _partialSub?.cancel();
-      _partialSub = session.partials.listen((text) {
-        _streamText = text.trim();
-        if (mounted && _streamText.isNotEmpty) setState(() => _status = 'Распознаю: $_streamText');
-      });
-
-      _pcmSub = pcm.listen((bytes) {
-        if (!_localWhisperRunning || bytes.isEmpty) return;
-        var sum = 0.0;
-        final sampleCount = bytes.length ~/ 2;
-        for (var i = 0; i + 1 < bytes.length; i += 2) {
-          final lo = bytes[i];
-          final hi = bytes[i + 1];
-          var sample = (lo | (hi << 8));
-          if (sample >= 32768) sample -= 65536;
-          sum += sample * sample;
-        }
-        final rms = sampleCount == 0 ? 0.0 : math.sqrt(sum / sampleCount) / 32768.0;
-        final chunkMs = sampleCount <= 0 ? 0 : ((sampleCount * 1000) / 16000).round();
-        if (rms > 0.012) {
-          _localSpeechStarted = true;
-          _localSilenceMs = 0;
-          _localSpeechMs += chunkMs;
-        } else if (_localSpeechStarted) {
-          _localSilenceMs += chunkMs;
-          if (_localSpeechMs >= 250 && _localSilenceMs >= 900) {
-            _finishLocalWhisper();
-          }
-        }
-        if (_localSpeechMs >= 12000) _finishLocalWhisper();
-      }, onError: (_) => _finishLocalWhisper());
-    } catch (e) {
-      _localWhisperRunning = false;
       _listening = false;
-      try { await _localRecorder.cancel(); } catch (_) {}
-      try { await _whisperSession?.stop(); } catch (_) {}
-      _whisperSession = null;
-      if (mounted) setState(() => _status = 'Локальный STT: $e');
-      await _armNativeWake();
+      await _voice.invokeMethod('start');
+      if (mounted) setState(() => _status = 'Голосовой режим: двойной хлопок');
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Ошибка пробуждения: $e');
     }
-  }
-
-  Future<void> _finishLocalWhisper() async {
-    if (!_localWhisperRunning) return;
-    _localWhisperRunning = false;
-    _listening = false;
-    try { await _pcmSub?.cancel(); } catch (_) {}
-    _pcmSub = null;
-    try { await _localRecorder.stop(); } catch (_) {}
-    String phrase = '';
-    try { phrase = (await _whisperSession?.stop() ?? '').trim(); } catch (_) {}
-    _whisperSession = null;
-    await _whisperPartialSub?.cancel();
-    _whisperPartialSub = null;
-    _streamText = '';
-    if (phrase.isEmpty) {
-      await _armNativeWake();
-      return;
-    }
-    _awaitingCommand = false;
-    if (mounted) setState(() => _status = 'Команда: $phrase');
-    await _send(phrase, fromVoice: true);
   }
 
   Future<void> _stopNativeListening() async {
     if (!_android) return;
-    try { await _pcmSub?.cancel(); } catch (_) {}
-    _pcmSub = null;
-    if (_localWhisperRunning) {
-      _localWhisperRunning = false;
-      try { await _localRecorder.stop(); } catch (_) {}
-      try { await _whisperSession?.stop(); } catch (_) {}
-      _whisperSession = null;
-    }
     try { await _voice.invokeMethod('stop'); } catch (_) {}
     _listening = false;
   }
@@ -288,7 +178,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     if (value == '__READY__') { _voiceReady = true; _listening = false; setState(() => _status = 'Голосовой режим: двойной хлопок'); await _armNativeWake(); return; }
     if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Голос готов · слушаю'); return; }
     if (value == '__TTS_ERROR__') { if (mounted) setState(() => _status = 'TTS недоступен: проверьте голосовой движок Android'); return; }
-    if (value == '__WAKE__') { _listening = false; if (mounted) setState(() => _status = 'Пробуждение… слушаю'); await _startLocalWhisper(); return; }
+    if (value == '__WAKE__') { _listening = true; if (mounted) setState(() => _status = 'Пробуждение… слушаю'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
     if (value.startsWith('__ERROR__:')) {
       _listening = false;
@@ -341,8 +231,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     final tools = await client.listTools();
     await _partialSub?.cancel();
     _partialSub = client.partials().listen((text) { if (mounted) setState(() => _streamText = text); });
-    if (mounted) setState(() => _status = _android ? 'AI подключён · ожидаю «Буся»' : 'Агент подключён · инструментов: ${tools.length}');
-    if (_android && _voiceReady && _voiceEnabled) _startNativeListening();
+    if (mounted) setState(() => _status = _android ? 'AI подключён · ожидаю двойной хлопок' : 'Агент подключён · инструментов: ${tools.length}');
+    if (_android && _voiceReady && _voiceEnabled) _armNativeWake();
   }
 
   Future<void> _settings() async {
@@ -373,7 +263,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     if (!_voiceReady) { await _initNativeVoice(); return; }
     _voiceEnabled = !_voiceEnabled; _awaitingCommand = false; await _saveSettings();
     if (!_voiceEnabled) { await _stopNativeListening(); if (mounted) setState(() => _status = 'Голос выключен'); return; }
-    if (mounted) setState(() => _status = 'Голосовой режим: слушаю'); await _startNativeListening();
+    if (mounted) setState(() => _status = 'Голосовой режим: двойной хлопок'); await _armNativeWake();
   }
 
   Future<void> _send(String text, {bool fromVoice = false}) async {
@@ -397,7 +287,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   void _scrollToBottom() { WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut); }); }
 
   @override void dispose() {
-    _voiceSub?.cancel(); _partialSub?.cancel(); _pcmSub?.cancel(); _whisperPartialSub?.cancel(); _localRecorder.dispose(); _whisper.releaseModel();
+    _voiceSub?.cancel(); _partialSub?.cancel();
     if (_android) { _voice.invokeMethod('stop'); _voice.invokeMethod('dispose'); }
     _client?.dispose(); _input.dispose(); _endpoint.dispose(); _apiKey.dispose(); _model.dispose(); _apiHostKey.dispose(); _scroll.dispose(); super.dispose();
   }
