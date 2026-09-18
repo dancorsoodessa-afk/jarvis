@@ -176,7 +176,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     final value = event?.toString().trim() ?? '';
     if (value.isEmpty) return;
     if (value == '__READY__') { _voiceReady = true; _listening = false; setState(() => _status = 'Голосовой режим: двойной хлопок'); await _armNativeWake(); return; }
-    if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Голос готов · слушаю'); return; }
+    if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Голос готов · двойной хлопок'); return; }
     if (value == '__TTS_ERROR__') { if (mounted) setState(() => _status = 'TTS недоступен: проверьте голосовой движок Android'); return; }
     if (value == '__WAKE__') { _listening = true; if (mounted) setState(() => _status = 'Пробуждение… слушаю'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
@@ -245,7 +245,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель')),
         TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'AI API key')),
         TextField(controller: _apiHostKey, obscureText: true, decoration: const InputDecoration(labelText: 'APIHOST key для голоса Леда')),
-        const SizedBox(height: 12), const Text('Голос работает постоянно: произнесите команду — БУСЯ распознает её и ответит голосом. Голос и распознавание используют системные Android-службы.', style: TextStyle(fontSize: 12)),
+        const SizedBox(height: 12), const Text('Режим разговора: двойной хлопок запускает разговор. После ответа БУСЯ автоматически слушает следующую реплику. Двойной хлопок во время ответа сразу прерывает голос. Распознавание и озвучивание выполняются локально на телефоне.', style: TextStyle(fontSize: 12)),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('open_tts_settings'), icon: const Icon(Icons.record_voice_over), label: const Text('Настройки голоса'))),
