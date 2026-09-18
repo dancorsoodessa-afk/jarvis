@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.os.Build
 import android.app.AlertDialog
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -56,8 +55,6 @@ class MainActivity : FlutterActivity(), RecognitionListener {
 
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var tools: AndroidToolRouter
-    private var recognizer: android.speech.SpeechRecognizer? = null
-    private var recognizerComponent: ComponentName? = null
     private var voskModel: Model? = null
     private var voskRecognizer: Recognizer? = null
     private var voskService: SpeechService? = null
@@ -484,9 +481,6 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             try { unregisterReceiver(wakeReceiver) } catch (_: Exception) {}
             wakeReceiverRegistered = false
         }
-        try { recognizer?.cancel(); recognizer?.destroy() } catch (_: Exception) {}
-        recognizer = null
-        recognizerComponent = null
         try { player?.stop(); player?.release() } catch (_: Exception) {}
         player = null
         try { tts?.stop(); tts?.shutdown() } catch (_: Exception) {}
