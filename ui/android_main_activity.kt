@@ -271,7 +271,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         try {
             val filter = IntentFilter(WAKE_ACTION)
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(wakeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            else @Suppress("DEPRECATION") registerReceiver(wakeReceiver, filter)
+            else registerReceiver(wakeReceiver, filter)
             wakeReceiverRegistered = true
         } catch (_: Exception) {}
     }
