@@ -91,6 +91,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _voiceSub = _voiceEvents.receiveBroadcastStream().listen(_onVoiceEvent);
       final ok = await _voice.invokeMethod<bool>('initialize') ?? false;
       if (mounted) setState(() => _voiceReady = ok);
+      if (ok) await _startVoice();
     } on MissingPluginException {
       if (mounted) setState(() => _voiceReady = false);
     } catch (e) {
@@ -126,7 +127,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _say('Слушаю.');
       return;
     }
-    if (lower.startsWith('буся ')) _send(phrase.substring(5).trim());
+    if (lower.startsWith('буся ')) {
+      _send(phrase.substring(5).trim());
+    } else {
+      _startVoice();
+    }
   }
 
   Future<void> _startVoice() async {
