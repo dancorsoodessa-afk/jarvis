@@ -35,17 +35,25 @@ jobs:
           PY
           test ! -e test/widget_test.dart
 
-      - name: Install native Android agent layer
+      - name: Install native Android voice engine
         working-directory: ui
         run: |
+          set -e
           mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
           cp android_main_activity.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
           cp -R android_tools/. android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/
+          rm -f android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/WakeClapService.kt
+          mkdir -p android/app/src/main/kotlin/com/k2fsa/sherpa/onnx
+          for f in FeatureConfig.kt HomophoneReplacerConfig.kt OnlineRecognizer.kt OnlineStream.kt; do
+            curl -L --fail --retry 3 "https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/master/sherpa-onnx/kotlin-api/$f" -o "android/app/src/main/kotlin/com/k2fsa/sherpa/onnx/$f"
+          done
+          curl -L --fail --retry 3 "https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/master/android/SherpaOnnxTts/app/src/main/java/com/k2fsa/sherpa/onnx/Tts.kt" -o android/app/src/main/kotlin/com/k2fsa/sherpa/onnx/Tts.kt
           mkdir -p android/app/src/main/assets
-          curl -L --fail --retry 3 https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip -o /tmp/vosk-ru.zip
-          rm -rf /tmp/vosk-ru android/app/src/main/assets/model-ru
-          unzip -q /tmp/vosk-ru.zip -d /tmp/vosk-ru
-          mv /tmp/vosk-ru/vosk-model-small-ru-0.22 android/app/src/main/assets/model-ru
+          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16.tar.bz2 -o /tmp/ru-asr.tar.bz2
+          tar -xjf /tmp/ru-asr.tar.bz2 -C android/app/src/main/assets
+          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-ru_RU-irina-medium.tar.bz2 -o /tmp/ru-tts.tar.bz2
+          tar -xjf /tmp/ru-tts.tar.bz2 -C android/app/src/main/assets
+          rm -f /tmp/ru-asr.tar.bz2 /tmp/ru-tts.tar.bz2
 
       - name: Configure Android permissions
         working-directory: ui
@@ -70,20 +78,20 @@ jobs:
           p.write_text(text, encoding='utf-8')
           PY
 
-      - name: Configure local Vosk STT
+      - name: Configure sherpa-onnx
         working-directory: ui
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('android/app/build.gradle')
-          if not p.exists():
-              p = Path('android/app/build.gradle.kts')
           text = p.read_text(encoding='utf-8')
-          if 'com.alphacephei:vosk-android' not in text:
-              if p.name.endswith('.kts'):
-                  text = text.replace('dependencies {', 'dependencies {\n    implementation("net.java.dev.jna:jna:5.18.1@aar")\n    implementation("com.alphacephei:vosk-android:0.3.75@aar")', 1)
-              else:
-                  text = text.replace('dependencies {', "dependencies {\n    implementation 'net.java.dev.jna:jna:5.18.1@aar'\n    implementation 'com.alphacephei:vosk-android:0.3.75@aar'", 1)
+          if "com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8" not in text:
+              text = text.replace('dependencies {', "dependencies {\n    implementation 'com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8'", 1)
+              p.write_text(text, encoding='utf-8')
+          p = Path('android/settings.gradle')
+          text = p.read_text(encoding='utf-8')
+          if 'jitpack.io' not in text:
+              text = text.replace('repositories {', "repositories {\n        maven { url 'https://jitpack.io' }", 1)
               p.write_text(text, encoding='utf-8')
           PY
 
