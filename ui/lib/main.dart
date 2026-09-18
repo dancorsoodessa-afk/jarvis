@@ -9,7 +9,6 @@ import 'jarvis_client.dart';
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
-const _wakeWord = 'буся';
 const _defaultAiEndpoint = 'https://openrouter.ai/api/v1';
 const _defaultAiModel = 'openrouter/free';
 
@@ -134,7 +133,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
       if (!mounted) return;
       if (!available) { setState(() => _status = 'Голосовой движок недоступен на Android'); return; }
       _voiceReady = true; _voiceEnabled = true;
-      setState(() => _status = 'Ожидаю слово «Буся»');
+      setState(() => _status = 'Голосовой режим: слушаю');
       await _startNativeListening();
     } catch (e) { if (mounted) setState(() => _status = 'Ошибка голоса: $e'); }
   }
@@ -156,7 +155,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     final value = event?.toString().trim() ?? '';
     if (value.isEmpty) return;
     if (value == '__READY__') { _voiceReady = true; _listening = false; setState(() => _status = 'Ожидаю слово «Буся»'); await _startNativeListening(); return; }
-    if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Голос готов · ожидаю слово «Буся»'); return; }
+    if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Голос готов · слушаю'); return; }
     if (value == '__TTS_ERROR__') { if (mounted) setState(() => _status = 'TTS недоступен: проверьте голосовой движок Android'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
     if (value.startsWith('__ERROR__:')) {
@@ -173,18 +172,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     _listening = false;
     await _stopNativeListening();
     final phrase = value.trim(), lower = phrase.toLowerCase(), index = lower.indexOf(_wakeWord);
-    if (!_awaitingCommand && index < 0) {
-      if (_voiceEnabled && !_busy) Future<void>.delayed(const Duration(milliseconds: 300), () { if (mounted) _startNativeListening(); });
-      return;
-    }
-    final command = _awaitingCommand ? phrase : phrase.substring(index + _wakeWord.length).trim();
-    if (!_awaitingCommand && command.isEmpty) {
-      _awaitingCommand = true;
-      if (mounted) setState(() => _status = 'Слушаю команду…');
-      await _speak('Слушаю');
-      Future<void>.delayed(const Duration(milliseconds: 250), () { if (mounted) _startNativeListening(); });
-      return;
-    }
+        final command = phrase;
     _awaitingCommand = false;
     if (command.isEmpty) { Future<void>.delayed(const Duration(milliseconds: 300), () { if (mounted) _startNativeListening(); }); return; }
     if (mounted) setState(() => _status = 'Команда: $command');
@@ -236,11 +224,17 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель')),
         TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'AI API key')),
         TextField(controller: _apiHostKey, obscureText: true, decoration: const InputDecoration(labelText: 'APIHOST key для голоса Леда')),
-        const SizedBox(height: 12), const Text('Бесплатный провайдер по умолчанию: OpenRouter. Активация голосом: только одно слово «Буся».', style: TextStyle(fontSize: 12)),
+        const SizedBox(height: 12), const Text('Голос работает постоянно: произнесите команду — БУСЯ распознает её и ответит голосом. Голос и распознавание используют системные Android-службы.', style: TextStyle(fontSize: 12)),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('open_tts_settings'), icon: const Icon(Icons.record_voice_over), label: const Text('Настройки голоса'))),
+          const SizedBox(width: 8),
+          Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('install_tts_data'), icon: const Icon(Icons.download), label: const Text('Установить голос'))),
+        ]),
       ])),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')), FilledButton(onPressed: () { Navigator.pop(ctx); _connectAndroid(); }, child: const Text('Подключить'))],
     ));
-    if (mounted && _voiceReady) { _voiceEnabled = true; setState(() => _status = 'Ожидаю слово «Буся»'); _startNativeListening(); }
+    if (mounted && _voiceReady) { _voiceEnabled = true; setState(() => _status = 'Голосовой режим: слушаю'); _startNativeListening(); }
   }
 
   Future<void> _toggleVoice() async {
@@ -265,7 +259,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     } catch (e) {
       if (!mounted) return;
       setState(() { _messages.add(_Msg('Ошибка: $e', isUser: false)); _status = 'Ошибка'; });
-      if (_android && fromVoice) await _speak('Произошла ошибка');
+      if (_android && _voiceEnabled) await _speak('Произошла ошибка');
     } finally { if (mounted) setState(() => _busy = false); }
   }
 
