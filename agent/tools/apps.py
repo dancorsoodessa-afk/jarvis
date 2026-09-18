@@ -6,8 +6,9 @@ import sys
 from pathlib import Path
 
 
-def launch(command: str) -> str:
-    """Start a program without blocking the agent. Requires confirmation."""
+def launch(command: str = "", name: str = "") -> str:
+    """Start a program without blocking the agent."""
+    command = command or name
     command = command.strip()
     if not command:
         raise ValueError("Empty command")
@@ -16,7 +17,7 @@ def launch(command: str) -> str:
         os.startfile(command)  # noqa: S606
     else:
         subprocess.Popen(shlex.split(command))  # noqa: S603
-    return f"Started: {command}"
+    return f"Запущено: {command}"
 
 
 def open_url(url: str) -> str:
