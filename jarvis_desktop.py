@@ -7,7 +7,8 @@ import queue
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
+import mimetypes
 
 from agent.runtime import build_agent
 from agent import tts, voice
@@ -48,6 +49,7 @@ class JarvisDesktop(tk.Tk):
         self.busy = False
         self.events = queue.Queue()
         self.tool_names = []
+        self.attachments = []
         self._voice_loop_running = False
         self._orb_phase = 0.0
         self._orb_after = None
@@ -163,10 +165,14 @@ class JarvisDesktop(tk.Tk):
                               relief="flat", font=("Segoe UI", 11))
         self.input.grid(row=0, column=0, sticky="ew", ipady=12, padx=(0, 8))
         self.input.bind("<Return>", lambda _e: self.send())
+        self.attach_button = ttk.Button(input_frame, text="📎 ФАЙЛЫ", command=self.pick_attachments)
+        self.attach_button.grid(row=0, column=1, padx=(0, 8), ipady=3)
         self.voice_button = ttk.Button(input_frame, text="🎙 ГОЛОС", command=self.start_voice)
-        self.voice_button.grid(row=0, column=1, padx=(0, 8), ipady=3)
+        self.voice_button.grid(row=0, column=2, padx=(0, 8), ipady=3)
         self.send_button = ttk.Button(input_frame, text="SEND", style="Accent.TButton", command=self.send)
-        self.send_button.grid(row=0, column=2, ipadx=10, ipady=3)
+        self.send_button.grid(row=0, column=3, ipadx=10, ipady=3)
+        self.attachment_label = tk.Label(center, text="Вложений нет", bg=BG, fg=MUTED, font=("Segoe UI", 8), anchor="w")
+        self.attachment_label.grid(row=3, column=0, sticky="ew", pady=(4, 0))
 
     def _build_right(self):
         right = tk.Frame(self, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
@@ -297,6 +303,7 @@ class JarvisDesktop(tk.Tk):
                     self._append("JARVIS", reply)
                     self.busy = False
                     self.send_button.config(state="normal")
+                    self.attach_button.config(state="normal")
                     self.status.config(text="● ONLINE", fg=GREEN)
                     if self.settings.get("tts_enabled", True):
                         threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
@@ -357,25 +364,56 @@ class JarvisDesktop(tk.Tk):
         self.events.put(("reply", message))
         return True
 
+    def pick_attachments(self):
+        paths=filedialog.askopenfilenames(parent=self,title="Прикрепить файлы, фото, видео или аудио",
+            filetypes=[("Все файлы","*.*")])
+        if not paths: return
+        self.attachments=[]
+        for raw in paths:
+            p=Path(raw)
+            try: size=p.stat().st_size
+            except OSError: continue
+            if size<=50*1024*1024:
+                self.attachments.append({"path":str(p),"name":p.name,"mime":mimetypes.guess_type(p.name)[0] or "application/octet-stream","size":size})
+        self._refresh_attachment_label()
+
+    def _refresh_attachment_label(self):
+        if not self.attachments:
+            self.attachment_label.config(text="Вложений нет",fg=MUTED); return
+        names=", ".join(x["name"] for x in self.attachments)
+        self.attachment_label.config(text=f"📎 {len(self.attachments)} файл(ов): {names[:140]}",fg=CYAN)
+
+    def _build_attachment_context(self):
+        if not self.attachments: return ""
+        parts=["ВЛОЖЕНИЯ ПОЛЬЗОВАТЕЛЯ:"]
+        for x in self.attachments:
+            p=Path(x["path"]); line=f"- {x['name']} | {x['mime']} | {x['size']} байт | путь: {p}"
+            if p.suffix.lower() in {".txt",".md",".csv",".json",".xml",".log"} and x["size"]<=2*1024*1024:
+                try: line+="\n  Содержимое:\n"+p.read_text(encoding="utf-8",errors="replace")[:120000]
+                except OSError: pass
+            parts.append(line)
+        return "\n".join(parts)
+
+    def _clear_attachments(self):
+        self.attachments=[]; self._refresh_attachment_label()
+
     def send(self, text=None):
-        if text is None:
-            text = self.input.get()
-        text = text.strip()
-        if not text or self.agent is None or self.busy:
-            return
-        self.input.delete(0, "end")
-        self._append("ВЫ", text)
+        if text is None: text=self.input.get()
+        text=text.strip()
+        if not text or self.agent is None or self.busy: return
+        context=self._build_attachment_context()
+        shown=text+("\n📎 "+", ".join(x["name"] for x in self.attachments) if self.attachments else "")
+        self.input.delete(0,"end"); self._append("ВЫ",shown)
         if self._handle_voice_setting_command(text):
-            return
-        self.busy = True
-        self.send_button.config(state="disabled")
-        self.status.config(text="● PROCESSING", fg=CYAN)
+            self._clear_attachments(); return
+        prompt=text+("\n\n"+context if context else "")
+        self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
+        self.status.config(text="● PROCESSING",fg=CYAN)
         def work():
-            try:
-                self.events.put(("reply", self.agent.handle(text).text))
-            except Exception as exc:
-                self.events.put(("reply", "Ошибка: " + str(exc)))
-        threading.Thread(target=work, daemon=True).start()
+            try: self.events.put(("reply",self.agent.handle(prompt).text))
+            except Exception as exc: self.events.put(("reply","Ошибка: "+str(exc)))
+        self._clear_attachments()
+        threading.Thread(target=work,daemon=True).start()
 
     def start_voice(self):
         if not self.settings.get("voice_enabled", True):
