@@ -98,6 +98,8 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                     "start" -> { startRecognition(); result.success(true) }
                     "stop" -> { stopRecognition(); result.success(true) }
                     "speak" -> speak(call.argument<String>("text").orEmpty(), result)
+                    "open_tts_settings" -> { openTtsSettings(); result.success(true) }
+                    "install_tts_data" -> { installTtsData(); result.success(true) }
                     "pick_file" -> pickFile(result)
                     "android_tool" -> {
                         try {
@@ -183,7 +185,8 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     }
 
     private fun startRecognition() {
-        if (disposed || voiceActive || !voiceLoopEnabled) return
+        if (disposed || voiceActive) return
+        voiceLoopEnabled = true
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
             return
@@ -261,6 +264,22 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                     speakWithSystemTts(queued)
                 }
             }
+        }
+    }
+
+    private fun openTtsSettings() {
+        try {
+            startActivity(Intent("com.android.settings.TTS_SETTINGS"))
+        } catch (_: Exception) {
+            try { startActivity(Intent("android.settings.TTS_SETTINGS")) } catch (_: Exception) {}
+        }
+    }
+
+    private fun installTtsData() {
+        try {
+            startActivity(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA))
+        } catch (_: Exception) {
+            openTtsSettings()
         }
     }
 
