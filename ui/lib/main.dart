@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_selector/file_selector.dart';
 import 'jarvis_client.dart';
 
 const kCyan = Color(0xFF37D5EE);
@@ -83,17 +84,28 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   }
 
   Future<void> _pickFile() async {
-    if (!_android) return;
     try {
-      final raw = await _voice.invokeMethod<dynamic>('pick_file');
-      if (raw is Map) {
-        final name = raw['name']?.toString() ?? 'файл';
-        final mime = raw['mime']?.toString() ?? 'application/octet-stream';
-        final data = raw['data']?.toString() ?? '';
-        if (data.isNotEmpty) {
-          setState(() => _attachment = _Attachment(name: name, mime: mime, data: data));
-        }
+      const typeGroup = XTypeGroup(
+        label: 'Файлы',
+        extensions: <String>[
+          'txt', 'md', 'csv', 'json', 'xml', 'log',
+          'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+          'jpg', 'jpeg', 'png', 'webp', 'gif',
+          'mp3', 'wav', 'm4a', 'ogg', 'webm', 'aac',
+        ],
+      );
+      final file = await openFile(acceptedTypeGroups: <XTypeGroup>[typeGroup]);
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) throw StateError('Файл пустой');
+      final mime = file.mimeType ?? 'application/octet-stream';
+      if (bytes.length > 25 * 1024 * 1024) {
+        throw StateError('Файл слишком большой. Максимальный размер — 25 МБ.');
       }
+      if (mounted) setState(() {
+        _attachment = _Attachment(name: file.name, mime: mime, data: base64Encode(bytes));
+        _status = 'Файл прикреплён: ${file.name}';
+      });
     } catch (e) {
       if (mounted) setState(() => _status = 'Ошибка выбора файла: $e');
     }
@@ -276,7 +288,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
       if (_streamText.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text(_streamText)),
       if (_attachment != null) Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 0), child: Row(children: [Expanded(child: Text('📎 ${_attachment!.name}', maxLines: 1, overflow: TextOverflow.ellipsis)), IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _attachment = null))])),
       Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
-        if (_android) IconButton(tooltip: 'Прикрепить файл', onPressed: _busy ? null : _pickFile, icon: const Icon(Icons.attach_file)),
+        IconButton(tooltip: 'Прикрепить файл', onPressed: _busy ? null : _pickFile, icon: const Icon(Icons.attach_file)),
         Expanded(child: TextField(controller: _input, textInputAction: TextInputAction.send, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Команда БУСЕ', border: OutlineInputBorder()))),
         const SizedBox(width: 8), IconButton.filled(onPressed: _busy ? null : () { final text = _input.text; _input.clear(); _send(text); }, icon: const Icon(Icons.send)),
       ])),
