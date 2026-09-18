@@ -21,6 +21,7 @@ APIHOST_BASE = "https://apihost.ru/api/v1"
 APIHOST_VOICE_NAME = "Леда"
 _PLAYBACK_LOCK = threading.Lock()
 _PLAYBACK_PROCESS = None
+_PLAYBACK_ACTIVE = False
 _APIHOST_SPEAKER_ID = None
 _APIHOST_LOCK = threading.Lock()
 
@@ -37,10 +38,17 @@ def _piper_dir() -> Path:
 
 
 def stop() -> None:
-    global _PLAYBACK_PROCESS
+    global _PLAYBACK_PROCESS, _PLAYBACK_ACTIVE
+    if sys.platform == "win32":
+        try:
+            import winsound
+            winsound.PlaySound(None, winsound.SND_PURGE)
+        except Exception:
+            pass
     with _PLAYBACK_LOCK:
         process = _PLAYBACK_PROCESS
         _PLAYBACK_PROCESS = None
+        _PLAYBACK_ACTIVE = False
     if process is not None and process.poll() is None:
         try:
             process.terminate()
@@ -54,6 +62,8 @@ def stop() -> None:
 
 def is_playing() -> bool:
     with _PLAYBACK_LOCK:
+        if _PLAYBACK_ACTIVE:
+            return True
         return _PLAYBACK_PROCESS is not None and _PLAYBACK_PROCESS.poll() is None
 
 
@@ -251,10 +261,16 @@ def speak(text: str) -> Path:
 
 
 def speak_and_play(text: str) -> Path:
-    global _PLAYBACK_PROCESS
+    global _PLAYBACK_PROCESS, _PLAYBACK_ACTIVE
     path = speak(text)
     if sys.platform == "win32":
-        # Play WAV directly through Windows audio API; do not open a PowerShell/shell window.
+        # Play WAV directly through Windows audio API; no PowerShell/console window.
         import winsound
-        winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_SYNC)
+        with _PLAYBACK_LOCK:
+            _PLAYBACK_ACTIVE = True
+        try:
+            winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_SYNC)
+        finally:
+            with _PLAYBACK_LOCK:
+                _PLAYBACK_ACTIVE = False
     return path
