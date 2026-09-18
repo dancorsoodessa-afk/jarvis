@@ -177,7 +177,6 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     if (command.isEmpty) { Future<void>.delayed(const Duration(milliseconds: 300), () { if (mounted) _startNativeListening(); }); return; }
     if (mounted) setState(() => _status = 'Команда: $command');
     await _send(command, fromVoice: true);
-    if (_voiceEnabled && mounted) Future<void>.delayed(const Duration(milliseconds: 500), () { if (mounted) _startNativeListening(); });
   }
 
   Future<void> _speak(String text) async {
@@ -242,7 +241,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     if (!_voiceReady) { await _initNativeVoice(); return; }
     _voiceEnabled = !_voiceEnabled; _awaitingCommand = false; await _saveSettings();
     if (!_voiceEnabled) { await _stopNativeListening(); if (mounted) setState(() => _status = 'Голос выключен'); return; }
-    if (mounted) setState(() => _status = 'Ожидаю слово «Буся»'); await _startNativeListening();
+    if (mounted) setState(() => _status = 'Голосовой режим: слушаю'); await _startNativeListening();
   }
 
   Future<void> _send(String text, {bool fromVoice = false}) async {
@@ -253,7 +252,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     try {
       final reply = await client.sendMessage(clean, attachment: attachment == null ? null : {'name': attachment.name, 'mime': attachment.mime, 'data': attachment.data});
       if (!mounted) return;
-      setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'Ожидаю слово «Буся»' : 'Готов'); });
+      setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'Голосовой режим: отвечаю голосом' : 'Готов'); });
       _scrollToBottom();
       if (_android && fromVoice) await _speak(reply.text);
     } catch (e) {
