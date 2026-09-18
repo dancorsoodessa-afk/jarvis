@@ -56,7 +56,10 @@ def handle_request(agent: JarvisAgent, req: dict) -> dict:
             text = req.get("text")
             if not isinstance(text, str):
                 raise ValueError("'text' must be a string")
-            return {"id": req_id, "type": "message", **_result_payload(agent.handle(text))}
+            attachment = req.get("attachment")
+            if attachment is not None and not isinstance(attachment, dict):
+                raise ValueError("'attachment' must be an object")
+            return {"id": req_id, "type": "message", **_result_payload(agent.handle(text, attachment=attachment))}
         if req_type == "tool":
             name = req.get("tool")
             args = req.get("args", [])
