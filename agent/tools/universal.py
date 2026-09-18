@@ -1,6 +1,6 @@
 """Universal Windows/file tools for JARVIS."""
 from __future__ import annotations
-import json, os, platform, shutil, subprocess, sys, tarfile, zipfile
+import json, os, platform, shutil, subprocess, sys, tarfile, zipfile, tempfile
 from pathlib import Path
 
 MAX_TEXT = 120_000
@@ -111,6 +111,82 @@ def extract_archive(path: str, destination: str = "") -> str:
         r=subprocess.run([seven,"x",str(p),f"-o{dest}","-y"],capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=300)
         if r.returncode!=0: raise RuntimeError(r.stderr.strip() or r.stdout[-1000:])
     return f"Архив распакован: {dest}"
+
+def edit_file(path: str, old: str, new: str, count: int = 1) -> str:
+    """Safely replace text in a local UTF-8 text file, keeping a backup."""
+    p = _path(path)
+    if not p.is_file():
+        raise ValueError(f"Файл не найден: {p}")
+    if not old:
+        raise ValueError("Старый текст для замены не указан")
+    text = p.read_text(encoding="utf-8", errors="replace")
+    occurrences = text.count(old)
+    if occurrences == 0:
+        raise ValueError("Искомый фрагмент не найден")
+    if count == 0:
+        raise ValueError("count должен быть не равен 0")
+    if count < 0:
+        count = occurrences
+    backup = p.with_suffix(p.suffix + ".jarvis.bak")
+    shutil.copy2(p, backup)
+    updated = text.replace(old, new, count)
+    p.write_text(updated, encoding="utf-8")
+    return f"Файл изменён: {p}. Заменено: {min(occurrences, count)}. Резервная копия: {backup}"
+
+
+def project_check(path: str = ".") -> str:
+    """Run safe, read-only project diagnostics and return actionable output."""
+    root = _path(path)
+    if not root.exists():
+        raise ValueError(f"Путь не найден: {root}")
+    if root.is_file():
+        root = root.parent
+    results = [f"Проект: {root}"]
+    def run(args, cwd=root, timeout=180):
+        try:
+            r = subprocess.run(args, cwd=str(cwd), capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=timeout)
+            out = (r.stdout + "\n" + r.stderr).strip()
+            return r.returncode, out[-MAX_TEXT:]
+        except FileNotFoundError:
+            return None, f"Команда не найдена: {args[0]}"
+        except subprocess.TimeoutExpired:
+            return None, f"Тайм-аут: {' '.join(args)}"
+
+    checks = []
+    if (root / "pyproject.toml").exists() or (root / "requirements.txt").exists():
+        py_files = list(root.rglob("*.py"))[:500]
+        bad = []
+        for p in py_files:
+            code, out = run([sys.executable, "-m", "py_compile", str(p)])
+            if code not in (0, None):
+                bad.append(f"{p}: {out}")
+        checks.append(("Python syntax", bad))
+        if (root / "pyproject.toml").exists():
+            code, out = run([sys.executable, "-m", "pip", "check"], timeout=120)
+            checks.append(("pip check", [] if code == 0 else [out]))
+    if (root / "package.json").exists():
+        code, out = run(["npm", "test", "--", "--runInBand"], timeout=180)
+        checks.append(("npm test", [] if code == 0 else [out]))
+        if code != 0:
+            code2, out2 = run(["npm", "run", "build"], timeout=180)
+            checks.append(("npm build", [] if code2 == 0 else [out2]))
+    if (root / "pubspec.yaml").exists():
+        code, out = run(["flutter", "analyze"], timeout=180)
+        checks.append(("flutter analyze", [] if code == 0 else [out]))
+    if not checks:
+        checks.append(("project type", ["Не распознан поддерживаемый Python/Node/Flutter проект."]))
+    failed = []
+    for name, errors in checks:
+        if errors:
+            failed.append(f"[{name}]\n" + "\n".join(errors))
+        else:
+            results.append(f"OK: {name}")
+    if failed:
+        results.append("НАЙДЕНЫ ПРОБЛЕМЫ:\n" + "\n\n".join(failed))
+    else:
+        results.append("Проверка проекта завершена: критических ошибок в выполненных проверках не найдено.")
+    return "\n\n".join(results)[-MAX_TEXT:]
 
 def find_errors(path: str = ".") -> str:
     root=_path(path)
