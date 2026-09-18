@@ -49,6 +49,9 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private var disposed = false
     private var player: MediaPlayer? = null
     private var speakerId: String? = null
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+    private var pendingTts: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
