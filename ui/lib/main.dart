@@ -154,7 +154,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     if (!_android || !_voiceEnabled || !mounted) return;
     final value = event?.toString().trim() ?? '';
     if (value.isEmpty) return;
-    if (value == '__READY__') { _voiceReady = true; _listening = false; setState(() => _status = 'Ожидаю слово «Буся»'); await _startNativeListening(); return; }
+    if (value == '__READY__') { _voiceReady = true; _listening = false; setState(() => _status = 'Голосовой режим: слушаю'); await _startNativeListening(); return; }
     if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Голос готов · слушаю'); return; }
     if (value == '__TTS_ERROR__') { if (mounted) setState(() => _status = 'TTS недоступен: проверьте голосовой движок Android'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
@@ -171,8 +171,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     }
     _listening = false;
     await _stopNativeListening();
-    final phrase = value.trim(), lower = phrase.toLowerCase(), index = lower.indexOf(_wakeWord);
-        final command = phrase;
+    final phrase = value.trim();
+    final command = phrase;
     _awaitingCommand = false;
     if (command.isEmpty) { Future<void>.delayed(const Duration(milliseconds: 300), () { if (mounted) _startNativeListening(); }); return; }
     if (mounted) setState(() => _status = 'Команда: $command');
