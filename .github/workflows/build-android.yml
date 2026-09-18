@@ -51,6 +51,8 @@ jobs:
           cp android_tools/selfimprovement/SelfImprovementEngine.kt "$root/selfimprovement/SelfImprovementEngine.kt"
           rm -rf "$root/sherpa"
           mkdir -p android/app/src/main/assets
+          mkdir -p android/app/libs
+          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16.tar.bz2 -o /tmp/ru-asr.tar.bz2
           tar -xjf /tmp/ru-asr.tar.bz2 -C android/app/src/main/assets
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-ru_RU-irina-medium.tar.bz2 -o /tmp/ru-tts.tar.bz2
@@ -87,7 +89,7 @@ jobs:
           from pathlib import Path
           p = Path('android/app/build.gradle.kts')
           text = p.read_text(encoding='utf-8')
-          dep = 'implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8")'
+          dep = 'implementation(files("libs/sherpa-onnx-1.13.8.aar"))'
           text = text.replace('implementation("com.k2fsa:sherpa-onnx:1.13.8")', dep)
           if dep not in text:
               text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
