@@ -298,7 +298,11 @@ class JarvisIpc {
 
   Future<JarvisReply> sendMessage(String text, {Map<String, dynamic>? attachment}) async {
     if (_standalone) return await _standaloneSend(text, attachment: attachment);
-    final response = await _ipc({'type': 'chat', 'text': text});
+    final response = await _ipc({
+      'type': 'message',
+      'text': text,
+      if (attachment != null) 'attachment': attachment,
+    });
     return JarvisReply.fromJson(response);
   }
 
