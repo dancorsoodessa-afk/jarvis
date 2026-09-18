@@ -2,6 +2,7 @@ package com.dancorsoodessa.jarvis_ui
 
 import android.Manifest
 import android.app.AlertDialog
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -49,6 +50,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var tools: AndroidToolRouter
     private var recognizer: SpeechRecognizer? = null
+    private var recognizerComponent: ComponentName? = null
     private var eventSink: EventChannel.EventSink? = null
     private var voiceActive = false
     private var disposed = false
@@ -130,15 +132,56 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             ensureTts()
             return true
         }
-        ensureRecognizer()
+        if (!ensureRecognizer()) return false
         ensureTts()
         eventSink?.success("__READY__")
         return true
     }
 
-    private fun ensureRecognizer() {
-        if (recognizer != null || disposed) return
-        recognizer = SpeechRecognizer.createSpeechRecognizer(this).also { it.setRecognitionListener(this) }
+    private fun findSafeRecognitionService(): ComponentName? {
+        val query = Intent(RecognitionService.SERVICE_INTERFACE)
+        val services = packageManager.queryIntentServices(query, PackageManager.MATCH_ALL)
+        if (services.isEmpty()) return null
+
+        val candidates = services.mapNotNull { info ->
+            val serviceInfo = info.serviceInfo ?: return@mapNotNull null
+            ComponentName(serviceInfo.packageName, serviceInfo.name)
+        }
+
+        // Some Huawei Android 10 builds expose a FakeRecognitionService from
+        // com.huawei.vassistant which throws SecurityException when a third-party
+        // app tries to bind to it. Prefer Google's recognizer when installed and
+        // never select that Huawei fake service.
+        val safe = candidates.filterNot { it.packageName == "com.huawei.vassistant" }
+        return safe.firstOrNull { it.packageName == "com.google.android.googlequicksearchbox" }
+            ?: safe.firstOrNull()
+    }
+
+    private fun ensureRecognizer(): Boolean {
+        if (disposed) return false
+        if (recognizer != null) return true
+        val component = try { findSafeRecognitionService() } catch (_: Exception) { null }
+        if (component == null) {
+            eventSink?.success("__ERROR__:recognition_service_unavailable")
+            return false
+        }
+        return try {
+            recognizerComponent = component
+            recognizer = SpeechRecognizer.createSpeechRecognizer(this, component).also {
+                it.setRecognitionListener(this)
+            }
+            true
+        } catch (e: SecurityException) {
+            recognizer = null
+            recognizerComponent = null
+            eventSink?.success("__ERROR__:recognition_service_security")
+            false
+        } catch (e: Exception) {
+            recognizer = null
+            recognizerComponent = null
+            eventSink?.success("__ERROR__:recognition_service_init")
+            false
+        }
     }
 
     private fun startRecognition() {
@@ -147,28 +190,39 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
             return
         }
-        ensureRecognizer()
+        if (!ensureRecognizer()) return
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 300)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1400)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900)
         }
         try {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                voiceActive = false
+                eventSink?.success("__ERROR__:microphone_permission_denied")
+                return
+            }
             voiceActive = true
             eventSink?.success("__LISTENING__")
             recognizer?.startListening(intent)
+        } catch (e: SecurityException) {
+            voiceActive = false
+            eventSink?.success("__ERROR__:start_failed_security")
+            try { recognizer?.destroy() } catch (_: Exception) {}
+            recognizer = null
+            recognizerComponent = null
         } catch (e: Exception) {
             voiceActive = false
             eventSink?.success("__ERROR__:start_failed_" + e.javaClass.simpleName)
             try { recognizer?.destroy() } catch (_: Exception) {}
             recognizer = null
-            ensureRecognizer()
+            recognizerComponent = null
+            handler.postDelayed({ if (!disposed) ensureRecognizer() }, 300)
         }
     }
 
@@ -360,6 +414,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         handler.removeCallbacksAndMessages(null)
         try { recognizer?.cancel(); recognizer?.destroy() } catch (_: Exception) {}
         recognizer = null
+        recognizerComponent = null
         try { player?.stop(); player?.release() } catch (_: Exception) {}
         player = null
         try { tts?.stop(); tts?.shutdown() } catch (_: Exception) {}
