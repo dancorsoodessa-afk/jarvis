@@ -437,9 +437,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
           builder: (context, snap) {
             final now = snap.data ?? DateTime.now();
             final hh = now.hour.toString().padLeft(2, '0'), mm = now.minute.toString().padLeft(2, '0'), ss = now.second.toString().padLeft(2, '0');
-            final date = '${{now.day.toString().padLeft(2, '0')}.${{now.month.toString().padLeft(2, '0')}.${{now.year}';
+            final date = '${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year}';
             return Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-              _gauge('${{hh}:${{mm}', 'TIME'), _gauge(ss, 'SEC', color: kGreen),
+              _gauge('${hh}:${mm}', 'TIME'), _gauge(ss, 'SEC', color: kGreen),
               _gauge(_voiceReady ? 'ON' : '---', 'VOICE', color: _voiceReady ? kGreen : kRed),
               _gauge(_busy ? 'BUSY' : 'READY', 'AI', color: _busy ? kRed : kCyan),
               Text(date, style: const TextStyle(color: Colors.white54, fontSize: 9)),
