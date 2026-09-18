@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,6 +26,10 @@ class BusyaApp extends StatelessWidget {
 }
 
 class _Msg { _Msg(this.text, {required this.isUser}); final String text; final bool isUser; }
+class _Attachment {
+  _Attachment({required this.name, required this.mime, required this.data});
+  final String name, mime, data;
+}
 
 class BusyaHomePage extends StatefulWidget {
   const BusyaHomePage({super.key});
@@ -35,9 +40,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   static const _voice = MethodChannel('busya.voice');
   static const _voiceEvents = EventChannel('busya.voice.events');
   JarvisIpc? _client;
-  final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint), _apiKey = TextEditingController(), _model = TextEditingController(text: _defaultAiModel);
+  final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint), _apiKey = TextEditingController(), _model = TextEditingController(text: _defaultAiModel), _apiHostKey = TextEditingController();
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
+  _Attachment? _attachment;
   StreamSubscription<dynamic>? _voiceSub;
   StreamSubscription<String>? _partialSub;
   bool _voiceReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
@@ -50,6 +56,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
       if (_android) {
         await _loadSettings();
         await _initNativeVoice();
+        await _connectAndroid();
       } else {
         await _connectDesktop();
       }
@@ -64,13 +71,32 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         final endpoint = raw['endpoint']?.toString().trim() ?? '';
         final model = raw['model']?.toString().trim() ?? '';
         final apiKey = raw['apiKey']?.toString() ?? '';
+        final apiHostKey = raw['apiHostKey']?.toString() ?? '';
         final voiceEnabled = raw['voiceEnabled'];
         if (endpoint.isNotEmpty) _endpoint.text = endpoint;
         if (model.isNotEmpty) _model.text = model;
         _apiKey.text = apiKey;
+        _apiHostKey.text = apiHostKey;
         if (voiceEnabled is bool) _voiceEnabled = voiceEnabled;
       }
     } catch (_) {}
+  }
+
+  Future<void> _pickFile() async {
+    if (!_android) return;
+    try {
+      final raw = await _voice.invokeMethod<dynamic>('pick_file');
+      if (raw is Map) {
+        final name = raw['name']?.toString() ?? 'файл';
+        final mime = raw['mime']?.toString() ?? 'application/octet-stream';
+        final data = raw['data']?.toString() ?? '';
+        if (data.isNotEmpty) {
+          setState(() => _attachment = _Attachment(name: name, mime: mime, data: data));
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Ошибка выбора файла: $e');
+    }
   }
 
   Future<void> _saveSettings() async {
@@ -80,6 +106,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         'endpoint': _endpoint.text.trim(),
         'model': _model.text.trim(),
         'apiKey': _apiKey.text.trim(),
+        'apiHostKey': _apiHostKey.text.trim(),
         'voiceEnabled': _voiceEnabled,
       });
     } catch (_) {}
@@ -93,7 +120,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         onError: (Object e) { if (mounted) setState(() => _status = 'Ошибка голоса: $e'); });
       final available = await _voice.invokeMethod<bool>('initialize') ?? false;
       if (!mounted) return;
-      if (!available) { setState(() => _status = 'Распознавание речи недоступно'); return; }
+      if (!available) { setState(() => _status = 'Голосовой движок недоступен на Android'); return; }
       _voiceReady = true; _voiceEnabled = true;
       setState(() => _status = 'Ожидаю слово «Буся»');
       await _startNativeListening();
@@ -117,7 +144,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     final value = event?.toString().trim() ?? '';
     if (value.isEmpty) return;
     if (value == '__READY__') { _voiceReady = true; _listening = false; setState(() => _status = 'Ожидаю слово «Буся»'); await _startNativeListening(); return; }
-    if (value == '__TTS_READY__') return;
+    if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Голос готов · ожидаю слово «Буся»'); return; }
+    if (value == '__TTS_ERROR__') { if (mounted) setState(() => _status = 'TTS недоступен: проверьте голосовой движок Android'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
     if (value.startsWith('__ERROR__:')) {
       _listening = false;
@@ -194,7 +222,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenAI-compatible endpoint')),
         TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель')),
-        TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API key')),
+        TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'AI API key')),
+        TextField(controller: _apiHostKey, obscureText: true, decoration: const InputDecoration(labelText: 'APIHOST key для голоса Леда')),
         const SizedBox(height: 12), const Text('Бесплатный провайдер по умолчанию: OpenRouter. Активация голосом: только одно слово «Буся».', style: TextStyle(fontSize: 12)),
       ])),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')), FilledButton(onPressed: () { Navigator.pop(ctx); _connectAndroid(); }, child: const Text('Подключить'))],
@@ -211,12 +240,12 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   }
 
   Future<void> _send(String text, {bool fromVoice = false}) async {
-    final clean = text.trim(); final client = _client;
+    final clean = text.trim(); final client = _client; final attachment = _attachment;
     if (clean.isEmpty || _busy) return;
     if (client == null) { if (mounted) setState(() => _status = 'Сначала подключите AI в настройках'); if (fromVoice) await _speak('Сначала подключите AI в настройках'); return; }
-    setState(() { _busy = true; _streamText = ''; _messages.add(_Msg(clean, isUser: true)); }); _scrollToBottom();
+    setState(() { _busy = true; _streamText = ''; _messages.add(_Msg(attachment == null ? clean : '$clean\n📎 ${attachment.name}', isUser: true)); }); _scrollToBottom();
     try {
-      final reply = await client.sendMessage(clean);
+      final reply = await client.sendMessage(clean, attachment: attachment == null ? null : {'name': attachment.name, 'mime': attachment.mime, 'data': attachment.data});
       if (!mounted) return;
       setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'Ожидаю слово «Буся»' : 'Готов'); });
       _scrollToBottom();
@@ -233,7 +262,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   @override void dispose() {
     _voiceSub?.cancel(); _partialSub?.cancel();
     if (_android) { _voice.invokeMethod('stop'); _voice.invokeMethod('dispose'); }
-    _client?.dispose(); _input.dispose(); _endpoint.dispose(); _apiKey.dispose(); _model.dispose(); _scroll.dispose(); super.dispose();
+    _client?.dispose(); _input.dispose(); _endpoint.dispose(); _apiKey.dispose(); _model.dispose(); _apiHostKey.dispose(); _scroll.dispose(); super.dispose();
   }
 
   @override
@@ -245,7 +274,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     body: Column(children: [
       Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length, itemBuilder: (_, i) { final m = _messages[i]; return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: m.isUser ? kPanel : const Color(0xFF111D2B), borderRadius: BorderRadius.circular(14)), child: Text(m.text))); })),
       if (_streamText.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text(_streamText)),
+      if (_attachment != null) Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 0), child: Row(children: [Expanded(child: Text('📎 ${_attachment!.name}', maxLines: 1, overflow: TextOverflow.ellipsis)), IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _attachment = null))])),
       Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
+        if (_android) IconButton(tooltip: 'Прикрепить файл', onPressed: _busy ? null : _pickFile, icon: const Icon(Icons.attach_file)),
         Expanded(child: TextField(controller: _input, textInputAction: TextInputAction.send, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Команда БУСЕ', border: OutlineInputBorder()))),
         const SizedBox(width: 8), IconButton.filled(onPressed: _busy ? null : () { final text = _input.text; _input.clear(); _send(text); }, icon: const Icon(Icons.send)),
       ])),
