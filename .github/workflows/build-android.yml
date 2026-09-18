@@ -40,8 +40,12 @@ jobs:
         run: |
           mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
           cp android_main_activity.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
-          cp android_tools/WakeClapService.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/WakeClapService.kt
           cp -R android_tools/. android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/
+          mkdir -p android/app/src/main/assets
+          curl -L --fail --retry 3 https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip -o /tmp/vosk-ru.zip
+          rm -rf /tmp/vosk-ru android/app/src/main/assets/model-ru
+          unzip -q /tmp/vosk-ru.zip -d /tmp/vosk-ru
+          mv /tmp/vosk-ru/vosk-model-small-ru-0.22 android/app/src/main/assets/model-ru
 
       - name: Configure Android permissions
         working-directory: ui
@@ -63,15 +67,24 @@ jobs:
           if 'android.permission.FOREGROUND_SERVICE_MICROPHONE' not in text: perms.append('    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />')
           if 'android.permission.POST_NOTIFICATIONS' not in text: perms.append('    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />')
           if perms: text = head + '\n' + '\n'.join(perms) + tail
-          service = '''
-          <service
-              android:name=".WakeClapService"
-              android:exported="false"
-              android:foregroundServiceType="microphone" />
-          '''
-          if 'android:name=".WakeClapService"' not in text:
-              text = text.replace('</application>', service + '    </application>')
           p.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Configure local Vosk STT
+        working-directory: ui
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          if not p.exists():
+              p = Path('android/app/build.gradle.kts')
+          text = p.read_text(encoding='utf-8')
+          if 'com.alphacephei:vosk-android' not in text:
+              if p.name.endswith('.kts'):
+                  text = text.replace('dependencies {', 'dependencies {\n    implementation("net.java.dev.jna:jna:5.18.1@aar")\n    implementation("com.alphacephei:vosk-android:0.3.75@aar")', 1)
+              else:
+                  text = text.replace('dependencies {', "dependencies {\n    implementation 'net.java.dev.jna:jna:5.18.1@aar'\n    implementation 'com.alphacephei:vosk-android:0.3.75@aar'", 1)
+              p.write_text(text, encoding='utf-8')
           PY
 
       - name: Get dependencies
