@@ -134,14 +134,20 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
       if (!available) { setState(() => _status = 'Голосовой движок недоступен на Android'); return; }
       _voiceReady = true; _voiceEnabled = true;
       setState(() => _status = 'Голосовой режим: слушаю');
-      await _startNativeListening();
+      await _armNativeWake();
     } catch (e) { if (mounted) setState(() => _status = 'Ошибка голоса: $e'); }
   }
 
   Future<void> _startNativeListening() async {
     if (!_android || !_voiceReady || !_voiceEnabled || _busy || _listening) return;
-    try { _listening = true; await _voice.invokeMethod('start'); }
+    try { _listening = true; await _voice.invokeMethod('listen_now'); }
     catch (e) { _listening = false; if (mounted) setState(() => _status = 'Ошибка микрофона: $e'); }
+  }
+
+  Future<void> _armNativeWake() async {
+    if (!_android || !_voiceReady || !_voiceEnabled || _busy) return;
+    try { await _voice.invokeMethod('start'); }
+    catch (e) { if (mounted) setState(() => _status = 'Ошибка пробуждения: $e'); }
   }
 
   Future<void> _stopNativeListening() async {
@@ -154,19 +160,20 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     if (!_android || !_voiceEnabled || !mounted) return;
     final value = event?.toString().trim() ?? '';
     if (value.isEmpty) return;
-    if (value == '__READY__') { _voiceReady = true; _listening = false; setState(() => _status = 'Голосовой режим: слушаю'); await _startNativeListening(); return; }
+    if (value == '__READY__') { _voiceReady = true; _listening = false; setState(() => _status = 'Голосовой режим: двойной хлопок'); await _armNativeWake(); return; }
     if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Голос готов · слушаю'); return; }
     if (value == '__TTS_ERROR__') { if (mounted) setState(() => _status = 'TTS недоступен: проверьте голосовой движок Android'); return; }
+    if (value == '__WAKE__') { _listening = true; if (mounted) setState(() => _status = 'Пробуждение… слушаю'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
     if (value.startsWith('__ERROR__:')) {
       _listening = false;
       if (mounted) setState(() => _status = 'Ошибка голоса: ${value.substring(10)}');
-      if (_voiceEnabled && !_busy) Future<void>.delayed(const Duration(milliseconds: 700), () { if (mounted) _startNativeListening(); });
+      if (_voiceEnabled && !_busy) Future<void>.delayed(const Duration(milliseconds: 700), () { if (mounted) _armNativeWake(); });
       return;
     }
     if (value == '__END__') {
       _listening = false;
-      if (_voiceEnabled && !_busy) Future<void>.delayed(const Duration(milliseconds: 450), () { if (mounted) _startNativeListening(); });
+      if (_voiceEnabled && !_busy) Future<void>.delayed(const Duration(milliseconds: 450), () { if (mounted) _armNativeWake(); });
       return;
     }
     _listening = false;
@@ -174,7 +181,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     final phrase = value.trim();
     final command = phrase;
     _awaitingCommand = false;
-    if (command.isEmpty) { Future<void>.delayed(const Duration(milliseconds: 300), () { if (mounted) _startNativeListening(); }); return; }
+    if (command.isEmpty) { Future<void>.delayed(const Duration(milliseconds: 300), () { if (mounted) _armNativeWake(); }); return; }
     if (mounted) setState(() => _status = 'Команда: $command');
     await _send(command, fromVoice: true);
   }
