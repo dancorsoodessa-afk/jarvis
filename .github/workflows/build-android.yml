@@ -41,8 +41,8 @@ jobs:
           set -e
           mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
           cp android_main_activity.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
-          cp -R android_tools/. android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/
-          rm -f android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/WakeClapService.kt
+          cp android_tools/AndroidToolRouter.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/AndroidToolRouter.kt
+          rm -rf android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/sherpa
           # Sherpa-ONNX 1.13.8 is supplied by the Maven AAR dependency.
           # Do not copy Kotlin API source files: they duplicate classes inside the AAR.
           mkdir -p android/app/src/main/assets
