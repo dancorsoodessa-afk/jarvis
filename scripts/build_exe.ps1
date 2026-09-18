@@ -11,7 +11,7 @@ Write-Host "== JARVIS: prepare bundled offline STT (faster-whisper tiny) ==" -Fo
 $sttDir = Join-Path $PWD "vendor\stt_model"
 Remove-Item $sttDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $sttDir | Out-Null
-python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='Systran/faster-whisper-tiny', local_dir=r'vendor/stt_model', local_dir_use_symlinks=False)"
+python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='Systran/faster-whisper-tiny', local_dir=r'vendor/stt_model')"
 if (-not (Test-Path "$sttDir\model.bin")) { throw "Offline faster-whisper model download failed." }
 
 Write-Host "== JARVIS: prepare bundled male voice ==" -ForegroundColor Cyan
