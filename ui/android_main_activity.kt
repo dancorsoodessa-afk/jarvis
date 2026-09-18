@@ -1,6 +1,9 @@
 package com.dancorsoodessa.jarvis_ui
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.os.Build
 import android.app.AlertDialog
 import android.content.ComponentName
 import android.content.Context
@@ -47,6 +50,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         private const val KEY_MODEL = "ai_model"
         private const val KEY_AI_API_KEY = "ai_api_key"
         private const val KEY_VOICE_ENABLED = "voice_enabled"
+        private const val WAKE_ACTION = "com.dancorsoodessa.jarvis_ui.WAKE"
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -63,6 +67,19 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private var ttsReady = false
     private var pendingTts: String? = null
     private var pendingFileResult: MethodChannel.Result? = null
+    private var wakeReceiverRegistered = false
+
+    private val wakeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != WAKE_ACTION || disposed) return
+            stopWakeService()
+            try { tts?.stop() } catch (_: Exception) {}
+            try { player?.stop(); player?.release() } catch (_: Exception) {}
+            player = null
+            eventSink?.success("__WAKE__")
+            startRecognition()
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -119,6 +136,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                 }
             }
         ensureTts()
+        registerWakeReceiver()
 
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENTS_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
@@ -140,6 +158,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         if (!ensureRecognizer()) return false
         ensureTts()
         eventSink?.success("__READY__")
+        startWakeService()
         return true
     }
 
@@ -196,6 +215,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
 
     private fun startRecognition() {
         if (disposed || voiceActive) return
+        stopWakeService()
         voiceLoopEnabled = true
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
@@ -207,6 +227,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500)
             // Do not stop after ~1 second of silence. This was the source of the
@@ -242,21 +263,39 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         voiceLoopEnabled = false
         voiceActive = false
         try { recognizer?.cancel() } catch (_: Exception) {}
+        stopWakeService()
+    }
+
+    private fun registerWakeReceiver() {
+        if (wakeReceiverRegistered) return
+        try {
+            val filter = IntentFilter(WAKE_ACTION)
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(wakeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            else @Suppress("DEPRECATION") registerReceiver(wakeReceiver, filter)
+            wakeReceiverRegistered = true
+        } catch (_: Exception) {}
+    }
+
+    private fun startWakeService() {
+        if (disposed) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        try {
+            val intent = Intent(this, WakeClapService::class.java)
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
+        } catch (e: Exception) {
+            eventSink?.success("__ERROR__:wake_service_" + e.javaClass.simpleName)
+        }
+    }
+
+    private fun stopWakeService() {
+        try { stopService(Intent(this, WakeClapService::class.java)) } catch (_: Exception) {}
     }
 
     private fun speak(text: String, result: MethodChannel.Result) {
         if (text.isBlank() || disposed) { result.success(false); return }
         stopRecognition()
-
-        val key = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_APIHOST, "").orEmpty().trim()
-
-        if (key.isEmpty()) {
-            speakWithSystemTts(text)
-            result.success(true)
-        } else {
-            synthesizeApiHost(text, key, result)
-        }
+        speakWithSystemTts(text)
+        result.success(true)
     }
 
     private fun ensureTts() {
@@ -310,6 +349,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         }
         try {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "busya_reply")
+            startWakeService()
         } catch (e: Exception) {
             pendingTts = null
             eventSink?.success("__TTS_ERROR__")
@@ -451,12 +491,21 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         }
     }
 
+    private fun restartWakeLater(delayMs: Long = 700) {
+        if (!disposed) handler.postDelayed({ if (!disposed && !voiceActive) startWakeService() }, delayMs)
+    }
+
     private fun releaseVoice() {
         if (disposed) return
         disposed = true
         voiceLoopEnabled = false
         voiceActive = false
         handler.removeCallbacksAndMessages(null)
+        stopWakeService()
+        if (wakeReceiverRegistered) {
+            try { unregisterReceiver(wakeReceiver) } catch (_: Exception) {}
+            wakeReceiverRegistered = false
+        }
         try { recognizer?.cancel(); recognizer?.destroy() } catch (_: Exception) {}
         recognizer = null
         recognizerComponent = null
@@ -474,7 +523,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 eventSink?.success("__READY__")
                 voiceLoopEnabled = true
-                startRecognition()
+                startWakeService()
             } else eventSink?.success("__ERROR__:microphone_permission_denied")
         }
     }
@@ -498,7 +547,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         eventSink?.success("__ERROR__:speech_" + error)
         // Retry slowly after a recognition-service error. This avoids the old
         // one-second restart loop while keeping voice control alive.
-        if (voiceLoopEnabled && !disposed) restartRecognitionLater(if (error == SpeechRecognizer.ERROR_NO_MATCH) 1200 else 1800)
+        if (voiceLoopEnabled && !disposed) restartWakeLater(if (error == SpeechRecognizer.ERROR_NO_MATCH) 1200 else 1800)
     }
     override fun onResults(results: Bundle?) {
         voiceActive = false
@@ -508,7 +557,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             eventSink?.success(phrase)
         } else {
             eventSink?.success("__END__")
-            if (voiceLoopEnabled && !disposed) restartRecognitionLater(700)
+            if (voiceLoopEnabled && !disposed) restartWakeLater(700)
         }
     }
     override fun onPartialResults(partialResults: Bundle?) = Unit
