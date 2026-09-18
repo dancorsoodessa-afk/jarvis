@@ -35,6 +35,10 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         private const val APIHOST_BASE = "https://apihost.ru/api/v1"
         private const val PREFS = "busya_voice"
         private const val KEY_APIHOST = "apihost_key"
+        private const val KEY_ENDPOINT = "ai_endpoint"
+        private const val KEY_MODEL = "ai_model"
+        private const val KEY_AI_API_KEY = "ai_api_key"
+        private const val KEY_VOICE_ENABLED = "voice_enabled"
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -53,6 +57,28 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             .setMethodCallHandler { call: MethodCall, result: MethodChannel.Result ->
                 when (call.method) {
                     "initialize" -> result.success(initializeVoice())
+                    "load_settings" -> {
+                        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+                        result.success(mapOf(
+                            "endpoint" to prefs.getString(KEY_ENDPOINT, "https://openrouter.ai/api/v1"),
+                            "model" to prefs.getString(KEY_MODEL, "openrouter/free"),
+                            "apiKey" to prefs.getString(KEY_AI_API_KEY, ""),
+                            "voiceEnabled" to prefs.getBoolean(KEY_VOICE_ENABLED, true)
+                        ))
+                    }
+                    "save_settings" -> {
+                        val endpoint = call.argument<String>("endpoint").orEmpty().trim()
+                        val model = call.argument<String>("model").orEmpty().trim()
+                        val apiKey = call.argument<String>("apiKey").orEmpty().trim()
+                        val voiceEnabled = call.argument<Boolean>("voiceEnabled") ?: true
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                            .putString(KEY_ENDPOINT, endpoint)
+                            .putString(KEY_MODEL, model)
+                            .putString(KEY_AI_API_KEY, apiKey)
+                            .putBoolean(KEY_VOICE_ENABLED, voiceEnabled)
+                            .apply()
+                        result.success(true)
+                    }
                     "start" -> { startRecognition(); result.success(true) }
                     "stop" -> { stopRecognition(); result.success(true) }
                     "speak" -> speak(call.argument<String>("text").orEmpty(), result)
