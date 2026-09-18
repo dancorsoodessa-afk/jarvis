@@ -113,7 +113,8 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                             .apply()
                         result.success(true)
                     }
-                    "start" -> { startRecognition(); result.success(true) }
+                    "start" -> { startWakeService(); result.success(true) }
+                    "listen_now" -> { startRecognition(); result.success(true) }
                     "stop" -> { stopRecognition(); result.success(true) }
                     "speak" -> speak(call.argument<String>("text").orEmpty(), result)
                     "open_tts_settings" -> { openTtsSettings(); result.success(true) }
