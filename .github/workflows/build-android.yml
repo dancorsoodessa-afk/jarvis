@@ -40,6 +40,7 @@ jobs:
         run: |
           mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
           cp android_main_activity.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
+          cp android_tools/WakeClapService.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/WakeClapService.kt
           cp -R android_tools/. android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/
 
       - name: Configure Android permissions
@@ -58,7 +59,18 @@ jobs:
           if 'android.permission.INTERNET' not in text: perms.append('    <uses-permission android:name="android.permission.INTERNET" />')
           if 'android.permission.RECORD_AUDIO' not in text: perms.append('    <uses-permission android:name="android.permission.RECORD_AUDIO" />')
           if 'android.permission.MODIFY_AUDIO_SETTINGS' not in text: perms.append('    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />')
+          if 'android.permission.FOREGROUND_SERVICE' not in text: perms.append('    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />')
+          if 'android.permission.FOREGROUND_SERVICE_MICROPHONE' not in text: perms.append('    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />')
+          if 'android.permission.POST_NOTIFICATIONS' not in text: perms.append('    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />')
           if perms: text = head + '\n' + '\n'.join(perms) + tail
+          service = '''
+        <service
+            android:name=".WakeClapService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+'''
+          if 'android:name=".WakeClapService"' not in text:
+              text = text.replace('</application>', service + '    </application>')
           p.write_text(text, encoding='utf-8')
           PY
 
