@@ -39,12 +39,12 @@ class JarvisAgent:
             except Exception:
                 self.log.warning("on_exchange callback failed", exc_info=True)
 
-    def handle(self, message: str) -> AgentResult:
+    def handle(self, message: str, attachment: dict | None = None) -> AgentResult:
         text = message.strip()
         if not text:
             return AgentResult("Я здесь. Что нужно сделать?", self.provider.name)
         due = self._due_reminders()
-        result = self._dispatch(text)
+        result = self._dispatch(text, attachment=attachment)
         if due:
             result.text = "⏰ " + "\n⏰ ".join(due) + "\n\n" + result.text
         return result
@@ -57,7 +57,7 @@ class JarvisAgent:
         except Exception:
             return []
 
-    def _dispatch(self, text: str) -> AgentResult:
+    def _dispatch(self, text: str, attachment: dict | None = None) -> AgentResult:
         if self._pending_tool:
             if text.lower() not in ("yes", "y", "да", "д"):
                 self._pending_tool = None
@@ -79,9 +79,11 @@ class JarvisAgent:
         try:
             if hasattr(self.provider, "tool_executor"):
                 self.provider.tool_executor = self._execute_for_llm
-                reply = generate(text, tools=self.tools.specs())
+                prompt = {"text": text, "attachment": attachment} if attachment else text
+                reply = generate(prompt, tools=self.tools.specs())
             else:
-                reply = generate(text)
+                prompt = {"text": text, "attachment": attachment} if attachment else text
+                reply = generate(prompt)
         except (ValueError, RuntimeError, OSError) as exc:
             self.log.warning("Ошибка провайдера: %s", exc)
             return AgentResult(f"Ошибка провайдера: {exc}", self.provider.name)
