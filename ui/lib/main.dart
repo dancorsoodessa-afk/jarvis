@@ -148,20 +148,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     try {
       _listening = true;
       await _voice.invokeMethod('listen_now');
+      if (mounted) setState(() => _status = 'Постоянное голосовое слушание');
     } catch (e) {
       _listening = false;
       if (mounted) setState(() => _status = 'Ошибка микрофона: $e');
-    }
-  }
-
-  Future<void> _startNativeListening() async {
-    if (!_android || !_voiceReady || !_voiceEnabled || _busy) return;
-    try {
-      _listening = false;
-      await _voice.invokeMethod('listen_now');
-      if (mounted) setState(() => _status = 'Постоянное голосовое слушание');
-    } catch (e) {
-      if (mounted) setState(() => _status = 'Ошибка пробуждения: $e');
     }
   }
 
@@ -180,7 +170,6 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     if (value == '__LOADING_VOICE__') { if (mounted) setState(() => _status = 'Загрузка локальной модели речи…'); return; }
     if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
     if (value == '__TTS_ERROR__') { if (mounted) setState(() => _status = 'TTS недоступен: проверьте голосовой движок Android'); return; }
-    if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Пробуждение… слушаю'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
     if (value.startsWith('__ERROR__:')) {
       _listening = false;
@@ -343,7 +332,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         child: ListView(controller: _scroll, padding: EdgeInsets.zero, children: [
           _terminalLine('> JARVIS CORE / ANDROID', color: kCyan),
           _terminalLine('> STATUS: $_status', dim: true),
-          _terminalLine('> VOICE: ${_voiceEnabled ? 'ACTIVE' : 'DISABLED'} | LOCAL STT: ${_android ? 'VOSK' : 'N/A'}', dim: true),
+          _terminalLine('> VOICE: ${_voiceEnabled ? 'ACTIVE' : 'DISABLED'} | LOCAL STT: ${_android ? 'SHERPA-ONNX' : 'N/A'}', dim: true),
           _terminalLine('> ----------------------------------------', color: kLine),
           ..._messages.map((m) => _terminalLine('${m.isUser ? 'YOU>' : 'BUSYA>'} ${m.text}', color: m.isUser ? kCyan : kGreen)),
           if (_streamText.isNotEmpty) _terminalLine('BUSYA* > $_streamText', color: kCyan),
