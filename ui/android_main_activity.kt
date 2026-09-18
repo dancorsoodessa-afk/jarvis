@@ -160,14 +160,23 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private fun ensureRecognizer(): Boolean {
         if (disposed) return false
         if (recognizer != null) return true
-        val component = try { findSafeRecognitionService() } catch (_: Exception) { null }
-        if (component == null) {
-            eventSink?.success("__ERROR__:recognition_service_unavailable")
-            return false
-        }
         return try {
-            recognizerComponent = component
-            recognizer = SpeechRecognizer.createSpeechRecognizer(this, component).also {
+            // Android 10 (API 29) does not support the ComponentName overload.
+            // Use the platform/default recognizer there; use the selected service
+            // only on Android versions that expose that API.
+            recognizer = if (android.os.Build.VERSION.SDK_INT >= 31) {
+                val component = try { findSafeRecognitionService() } catch (_: Exception) { null }
+                if (component != null) {
+                    recognizerComponent = component
+                    SpeechRecognizer.createSpeechRecognizer(this, component)
+                } else {
+                    recognizerComponent = null
+                    SpeechRecognizer.createSpeechRecognizer(this)
+                }
+            } else {
+                recognizerComponent = null
+                SpeechRecognizer.createSpeechRecognizer(this)
+            }.also {
                 it.setRecognitionListener(this)
             }
             true
@@ -470,9 +479,10 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() {
+        // Wait for onResults/onError. Restarting here can overlap the recognition
+        // result callback and makes Android 10 repeatedly start/stop listening.
         voiceActive = false
         eventSink?.success("__END__")
-        if (voiceLoopEnabled && !disposed) restartRecognitionLater(300)
     }
     override fun onError(error: Int) {
         voiceActive = false
@@ -486,7 +496,12 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         voiceActive = false
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
         val phrase = matches?.firstOrNull()?.trim().orEmpty()
-        if (phrase.isNotEmpty()) eventSink?.success(phrase) else eventSink?.success("__END__")
+        if (phrase.isNotEmpty()) {
+            eventSink?.success(phrase)
+        } else {
+            eventSink?.success("__END__")
+            if (voiceLoopEnabled && !disposed) restartRecognitionLater(700)
+        }
     }
     override fun onPartialResults(partialResults: Bundle?) = Unit
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
