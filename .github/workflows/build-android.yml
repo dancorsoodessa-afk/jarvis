@@ -91,15 +91,9 @@ jobs:
 
           p = Path('android/settings.gradle.kts')
           text = p.read_text(encoding='utf-8')
-          if 'https://jitpack.io' not in text:
-              marker = 'dependencyResolutionManagement {'
-              if marker not in text:
-                  raise SystemExit('settings.gradle.kts: dependencyResolutionManagement not found')
-              text = text.replace(marker, marker + '\n    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)', 1)
-              if 'repositories {' in text:
-                  text = text.replace('repositories {', 'repositories {\n        maven { url = uri("https://jitpack.io") }', 1)
-              else:
-                  text = text.replace(marker, marker + '\n    repositories {\n        google()\n        mavenCentral()\n        maven { url = uri("https://jitpack.io") }\n    }', 1)
+          # Sherpa is bundled as a verified local AAR, so no JitPack repository is needed.
+          text = text.replace('    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)\\n', '')
+          text = text.replace('        maven { url = uri("https://jitpack.io") }\\n', '')
           p.write_text(text, encoding='utf-8')
 
           p = Path('android/app/build.gradle.kts')
