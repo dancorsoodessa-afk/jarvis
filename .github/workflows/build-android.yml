@@ -88,3 +88,31 @@ jobs:
             ui/build/app/outputs/flutter-apk/app-release.apk
             ui/apk.sha256
           if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build and test Windows package
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
+
+      - name: Verify Windows package
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "JARVIS-Windows-x64.zip")) { throw "JARVIS-Windows-x64.zip not found" }
+          Get-Item "JARVIS-Windows-x64.zip" | Format-List Name,Length,FullName
+
+      - name: Upload JARVIS Windows x64
+        uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-Windows-x64
+          path: JARVIS-Windows-x64.zip
+          if-no-files-found: error
