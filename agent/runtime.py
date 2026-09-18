@@ -29,15 +29,37 @@ def _send_email(to: str, subject: str, body: str) -> str:
 def build_agent(settings: Settings | None = None) -> JarvisAgent:
     settings=settings or Settings.from_env(); log=get_log("runtime"); log.info("Старт агента (provider=%s)",settings.provider); memory=MemoryStore(settings.memory_path)
     if settings.provider == "local-vulkan":
-        provider=LocalVulkanProvider(settings.llama_cli,settings.model,ctx=settings.ctx,threads=settings.threads); session=None
-    elif settings.provider == "openai-compatible":
-        session=SessionMemory(memory)
-        # Не требуем работающий backend на этапе сборки агента. Это важно для IPC,
-        # slash-команд и тестов: подключение к Dragon/другому backend выполняется
-        # лениво при первом AI-запросе.
+        provider = LocalVulkanProvider(
+            settings.llama_cli, settings.model, ctx=settings.ctx, threads=settings.threads
+        )
+        session = None
+    elif settings.provider == "hybrid":
+        session = SessionMemory(memory)
         chat_url = settings.chat_url.strip()
-        provider=OpenAIChatProvider(url=chat_url,api_key=settings.chat_key,model=settings.chat_model,history=session.load_history())
-    else: raise RuntimeError(f"Неизвестный провайдер: {settings.provider}. Доступны: openai-compatible, local-vulkan")
+        cloud = OpenAIChatProvider(
+            url=chat_url,
+            api_key=settings.chat_key,
+            model=settings.chat_model,
+            history=session.load_history(),
+        )
+        local = LocalVulkanProvider(
+            settings.llama_cli, settings.model, ctx=settings.ctx, threads=settings.threads
+        )
+        provider = HybridProvider(cloud, local)
+    elif settings.provider == "openai-compatible":
+        session = SessionMemory(memory)
+        chat_url = settings.chat_url.strip()
+        provider = OpenAIChatProvider(
+            url=chat_url,
+            api_key=settings.chat_key,
+            model=settings.chat_model,
+            history=session.load_history(),
+        )
+    else:
+        raise RuntimeError(
+            f"Неизвестный провайдер: {settings.provider}. "
+            "Доступны: hybrid, openai-compatible, local-vulkan"
+        )
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
     tools=ToolRegistry()
     tools.register("inspect_file",universal.inspect_file,description="Прочитать и проанализировать локальный файл: TXT, MD, CSV, JSON, XML, Python, PDF, DOCX, XLSX и другие поддерживаемые форматы.",parameters={"path":"путь к файлу или папке"})
