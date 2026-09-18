@@ -42,7 +42,7 @@ def stop() -> None:
     if sys.platform == "win32":
         try:
             import winsound
-            winsound.PlaySound(None, winsound.SND_PURGE)
+            winsound.PlaySound(None, 0)
         except Exception:
             pass
     with _PLAYBACK_LOCK:
@@ -269,7 +269,7 @@ def speak_and_play(text: str) -> Path:
         with _PLAYBACK_LOCK:
             _PLAYBACK_ACTIVE = True
         try:
-            winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_SYNC)
+            winsound.PlaySound(str(path), winsound.SND_FILENAME)
         finally:
             with _PLAYBACK_LOCK:
                 _PLAYBACK_ACTIVE = False
