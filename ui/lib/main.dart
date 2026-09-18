@@ -401,7 +401,6 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     _client?.dispose(); _input.dispose(); _endpoint.dispose(); _apiKey.dispose(); _model.dispose(); _apiHostKey.dispose(); _scroll.dispose(); super.dispose();
   }
 
-  @override
   Widget _terminalLine(String text, {Color color = kGreen, bool dim = false}) {
     return Padding(padding: const EdgeInsets.only(bottom: 3), child: Text(text, maxLines: 8, overflow: TextOverflow.ellipsis,
       style: TextStyle(color: dim ? color.withOpacity(.55) : color, fontSize: 12, height: 1.18, fontFamily: 'monospace')));
