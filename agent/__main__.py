@@ -14,8 +14,8 @@ from . import ipc
 from .tools import self_modify
 
 
-BUSYA_SYSTEM_PROMPT = (
-    "Ты — Буся, личный ИИ-агент пользователя. "
+JARVIS_SYSTEM_PROMPT = (
+    "Ты — Джарвис, личный ИИ-агент пользователя. "
     "Всегда отвечай на русском языке, если пользователь явно не попросил другой язык. "
     "Ты не просто чат: если у тебя есть подходящий инструмент, самостоятельно выполняй задачу. "
     "Для изменения собственного проекта используй инструменты чтения/записи исходников и после изменения запускай тесты. "
@@ -27,10 +27,10 @@ BUSYA_SYSTEM_PROMPT = (
 
 def _attach_self_improvement_tools(agent) -> None:
     agent.tools.register("read_source", self_modify.read_source,
-                         description="Прочитать исходный/config файл проекта Буси. Путь только внутри проекта.",
+                         description="Прочитать исходный/config файл проекта JARVIS. Путь только внутри проекта.",
                          parameters={"path": "путь относительно корня проекта"})
     agent.tools.register("write_source", self_modify.write_source,
-                         description="Изменить исходный/config файл проекта Буси. Перед записью создаётся резервная копия.",
+                         description="Изменить исходный/config файл проекта JARVIS. Перед записью создаётся резервная копия.",
                          parameters={"path": "путь относительно корня проекта", "content": "полное новое содержимое файла"})
     agent.tools.register("run_tests", self_modify.run_tests,
                          description="Запустить полный набор Python-тестов проекта после изменения кода.")
@@ -72,7 +72,7 @@ def _set_busya_identity(agent) -> None:
         except Exception:
             pass
     if isinstance(provider, ThreeAgentProvider):
-        provider.name = "Буся · 3 агента"
+        provider.name = "Джарвис · 3 агента"
 
 
 def main():
@@ -107,7 +107,7 @@ def main():
         return
 
     names = ", ".join(f"/{n}" for n in agent.tools.names())
-    print(f"БУСЯ готов (provider: {agent.provider.name}). "
+    print(f"JARVIS готов (provider: {agent.provider.name}). "
           f"Инструменты: {names}. Выход: /exit, Ctrl+C.")
     while True:
         try:
