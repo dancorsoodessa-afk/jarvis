@@ -1,26 +1,15 @@
-// Flutter-side client for the agent's JSON-lines IPC (agent/ipc.py).
-//
-// The UI spawns the agent as a child process and never knows which AI
-// provider is active — matching docs/ARCHITECTURE.md.
-//
-// Usage:
-//   final jarvis = await JarvisIpc.spawn('jarvis.exe');
-//   final reply = await jarvis.sendMessage('привет');
-//   print(reply.text);
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 class JarvisReply {
   JarvisReply(this.text, this.provider, this.toolUsed, this.needsConfirmation);
-
   factory JarvisReply.fromJson(Map<String, dynamic> json) => JarvisReply(
         json['text'] as String,
         json['provider'] as String,
         json['tool_used'] as String?,
         json['needs_confirmation'] as bool? ?? false,
       );
-
   final String text;
   final String provider;
   final String? toolUsed;
@@ -29,8 +18,6 @@ class JarvisReply {
 
 class JarvisIpc {
   JarvisIpc._(this._process);
-
-  /// Spawn the agent (exe or `python -m agent`) in IPC mode.
   static Future<JarvisIpc> spawn(String executable,
       [List<String> args = const ['--ipc']]) async {
     final process = await Process.start(executable, args);
@@ -43,18 +30,13 @@ class JarvisIpc {
   final _deltaController = StreamController<Map<int, String>>.broadcast();
   bool _listening = false;
 
-  /// Streaming deltas: 'id' -> accumulated text so far. The UI can listen
-  /// to show the answer as it is generated.
   Stream<Map<int, String>> get deltas => _deltaController.stream;
 
   void _ensureListening() {
     if (_listening) return;
     _listening = true;
     final accumulated = <int, String>{};
-    _process.stdout
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .listen((line) {
+    _process.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
       if (line.trim().isEmpty) return;
       final msg = jsonDecode(line) as Map<String, dynamic>;
       final id = msg['id'] as int?;
@@ -65,8 +47,6 @@ class JarvisIpc {
       }
       final completer = id != null ? _pending.remove(id) : null;
       completer?.complete(msg);
-      // Messages with id == null (e.g. pushed reminders) can be surfaced
-      // through a broadcast stream if the UI needs them.
     });
   }
 
@@ -81,36 +61,26 @@ class JarvisIpc {
   }
 
   int? _activeId;
-
-  /// Id of the request currently in flight (to match delta events).
   int? get activeId => _activeId;
 
-  /// Stream of accumulated partial answers for the active request.
-  Stream<String> partials() => deltas
-      .map((m) => m[activeId])
-      .where((t) => t != null)
-      .cast<String>();
+  Stream<String> partials() => deltas.map((m) => m[activeId]).where((t) => t != null).cast<String>();
 
-  Future<JarvisReply> sendMessage(String text) async {
-    final resp = await _request({'type': 'message', 'text': text});
-    if (resp['type'] == 'error') {
-      throw StateError(resp['message'] as String);
-    }
+  Future<JarvisReply> sendMessage(String text, {Map<String, dynamic>? attachment}) async {
+    final body = <String, dynamic>{'type': 'message', 'text': text};
+    if (attachment != null) body['attachment'] = attachment;
+    final resp = await _request(body);
+    if (resp['type'] == 'error') throw StateError(resp['message'] as String);
     return JarvisReply.fromJson(resp);
   }
 
   Future<JarvisReply> confirm(String yesOrNo) => sendMessage(yesOrNo);
-
-  /// Clear the persisted dialogue history (short-term memory).
   Future<void> clearMemory() async {
     await _request({'type': 'clear_memory'});
   }
-
   Future<List<String>> listTools() async {
     final resp = await _request({'type': 'tools'});
     return (resp['tools'] as List).cast<String>();
   }
-
   Future<void> dispose() async {
     _process.kill();
     await _process.exitCode;
