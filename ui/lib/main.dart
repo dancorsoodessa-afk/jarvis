@@ -499,7 +499,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
           Icon(icon, color: color, size: 21),
           const SizedBox(width: 9),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(color: Colors.white45, fontSize: 9)),
+            Text(title, style: const TextStyle(color: Colors.white54, fontSize: 9)),
             const SizedBox(height: 2),
             Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
           ])),
@@ -532,7 +532,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
               const SizedBox(width: 11),
               const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
-                Text('БУCЯ · ЛИЧНЫЙ АССИСТЕНТ', style: TextStyle(color: Colors.white45, fontSize: 8, letterSpacing: 1.1)),
+                Text('БУCЯ · ЛИЧНЫЙ АССИСТЕНТ', style: TextStyle(color: Colors.white54, fontSize: 8, letterSpacing: 1.1)),
               ])),
               IconButton(tooltip: 'Микрофон', onPressed: _toggleVoice, icon: Icon(_listening ? Icons.mic_rounded : Icons.mic_none_rounded, color: micColor, size: 27)),
               IconButton(tooltip: 'Центр управления', onPressed: _settings, icon: const Icon(Icons.settings_rounded, color: kCyan, size: 25)),
