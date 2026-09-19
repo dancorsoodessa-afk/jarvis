@@ -14,7 +14,9 @@ const kBg = Color(0xFF020607);
 const kPanel = Color(0xFF071012);
 const kLine = Color(0xFF17463F);
 const _defaultAiEndpoint = 'https://openrouter.ai/api/v1';
-const _defaultAiModel = 'openrouter/free';
+const _defaultModel1 = 'openrouter/free';
+const _defaultModel2 = 'deepseek/deepseek-v4-flash:free';
+const _defaultModel3 = 'z-ai/glm-5.3-flash:free';
 
 void main() => runApp(const BusyaApp());
 
@@ -45,7 +47,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   static const _voice = MethodChannel('busya.voice');
   static const _voiceEvents = EventChannel('busya.voice.events');
   JarvisIpc? _client;
-  final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint), _apiKey = TextEditingController(), _model = TextEditingController(text: _defaultAiModel), _apiHostKey = TextEditingController();
+  final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint),
+      _model1 = TextEditingController(text: _defaultModel1), _model2 = TextEditingController(text: _defaultModel2), _model3 = TextEditingController(text: _defaultModel3),
+      _key1 = TextEditingController(), _key2 = TextEditingController(), _key3 = TextEditingController(), _apiHostKey = TextEditingController();
+  int _activeModel = 0;
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
   _Attachment? _attachment;
@@ -77,11 +82,23 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         final model = raw['model']?.toString().trim() ?? '';
         final apiKey = raw['apiKey']?.toString() ?? '';
         final apiHostKey = raw['apiHostKey']?.toString() ?? '';
+        final model1 = raw['model1']?.toString().trim() ?? '';
+        final model2 = raw['model2']?.toString().trim() ?? '';
+        final model3 = raw['model3']?.toString().trim() ?? '';
+        final key1 = raw['key1']?.toString() ?? '';
+        final key2 = raw['key2']?.toString() ?? '';
+        final key3 = raw['key3']?.toString() ?? '';
+        final activeModel = raw['activeModel'];
         final voiceEnabled = raw['voiceEnabled'];
         if (endpoint.isNotEmpty) _endpoint.text = endpoint;
-        if (model.isNotEmpty) _model.text = model;
-        _apiKey.text = apiKey;
+        if (model1.isNotEmpty) _model1.text = model1; else if (model.isNotEmpty) _model1.text = model;
+        if (model2.isNotEmpty) _model2.text = model2;
+        if (model3.isNotEmpty) _model3.text = model3;
+        _key1.text = key1.isNotEmpty ? key1 : apiKey;
+        _key2.text = key2.isNotEmpty ? key2 : apiKey;
+        _key3.text = key3.isNotEmpty ? key3 : apiKey;
         _apiHostKey.text = apiHostKey;
+        if (activeModel is int && activeModel >= 0 && activeModel <= 2) _activeModel = activeModel;
         if (voiceEnabled is bool) _voiceEnabled = voiceEnabled;
       }
     } catch (_) {}
@@ -120,8 +137,11 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     try {
       await _voice.invokeMethod('save_settings', {
         'endpoint': _endpoint.text.trim(),
-        'model': _model.text.trim(),
-        'apiKey': _apiKey.text.trim(),
+        'model': _activeModel == 0 ? _model1.text.trim() : _activeModel == 1 ? _model2.text.trim() : _model3.text.trim(),
+        'apiKey': _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim(),
+        'model1': _model1.text.trim(), 'model2': _model2.text.trim(), 'model3': _model3.text.trim(),
+        'key1': _key1.text.trim(), 'key2': _key2.text.trim(), 'key3': _key3.text.trim(),
+        'activeModel': _activeModel,
         'apiHostKey': _apiHostKey.text.trim(),
         'voiceEnabled': _voiceEnabled,
       });
@@ -209,10 +229,12 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   Future<void> _connectAndroid() async {
     await _saveSettings();
     final endpoint = _endpoint.text.trim();
+    final model = _activeModel == 0 ? _model1.text.trim() : _activeModel == 1 ? _model2.text.trim() : _model3.text.trim();
+    final key = _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim();
     if (endpoint.isEmpty) { if (mounted) setState(() => _status = 'Укажите endpoint AI в настройках'); return; }
     try {
       final old = _client; _client = null; await old?.dispose();
-      _client = await JarvisIpc.connectAi(endpoint, apiKey: _apiKey.text.trim(), model: _model.text.trim());
+      _client = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model);
       await _finishConnect();
     } catch (e) { if (mounted) setState(() => _status = 'Ошибка подключения AI: $e'); }
   }
@@ -228,25 +250,79 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
 
   Future<void> _settings() async {
     if (!_android) return;
-    _voiceEnabled = false; _awaitingCommand = false; await _stopNativeListening();
-    await showDialog<void>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('AI-провайдер'),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenAI-compatible endpoint')),
-        TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель')),
-        TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'AI API key')),
-        TextField(controller: _apiHostKey, obscureText: true, decoration: const InputDecoration(labelText: 'APIHOST key для голоса Леда')),
-        const SizedBox(height: 12), const Text('Режим разговора: микрофон можно оставить включённым постоянно. БУСЯ слушает без двойного хлопка и без Google Speech. Распознавание и синтез речи выполняются локально на телефоне; БУСЯ может прервать озвучивание голосом и сразу перейти к слушанию.', style: TextStyle(fontSize: 12)),
-        const SizedBox(height: 10),
-        Row(children: [
-          Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('open_tts_settings'), icon: const Icon(Icons.record_voice_over), label: const Text('Локальный русский голос'))),
-          const SizedBox(width: 8),
-          Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('install_tts_data'), icon: const Icon(Icons.download), label: const Text('Голос встроен в приложение'))),
-        ]),
-      ])),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')), FilledButton(onPressed: () { Navigator.pop(ctx); _connectAndroid(); }, child: const Text('Подключить'))],
-    ));
-    if (mounted && _voiceReady) { _voiceEnabled = true; setState(() => _status = 'Постоянный локальный голос'); _startNativeListening(); }
+    _voiceEnabled = false;
+    _awaitingCommand = false;
+    await _stopNativeListening();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Row(children: [Icon(Icons.tune, color: kCyan), SizedBox(width: 8), Text('ЦЕНТР УПРАВЛЕНИЯ')]),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const Text('AI · 3 ПРОФИЛЯ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                for (int i = 0; i < 3; i++) ...[
+                  Card(
+                    color: _activeModel == i ? const Color(0xFF0A2421) : kPanel,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Row(children: [
+                          Expanded(child: Text(i == 0 ? 'МОДЕЛЬ 1 · JARVIS' : i == 1 ? 'МОДЕЛЬ 2 · DEEPSEEK' : 'МОДЕЛЬ 3 · GLM', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
+                          Radio<int>(value: i, groupValue: _activeModel, onChanged: (v) { if (v != null) setDialogState(() => _activeModel = v); }),
+                        ]),
+                        TextField(controller: i == 0 ? _model1 : i == 1 ? _model2 : _model3, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
+                        const SizedBox(height: 6),
+                        TextField(controller: i == 0 ? _key1 : i == 1 ? _key2 : _key3, obscureText: true, decoration: const InputDecoration(labelText: 'OpenRouter API key', isDense: true)),
+                      ]),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                ],
+                TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenRouter endpoint', isDense: true)),
+                const SizedBox(height: 6),
+                TextField(controller: _apiHostKey, obscureText: true, decoration: const InputDecoration(labelText: 'APIHOST key · голос Леда', isDense: true)),
+                const SizedBox(height: 12),
+                const Text('ГОЛОС', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
+                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Без двойного хлопка. Локальный русский STT/TTS.')),
+                Row(children: [
+                  Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('open_tts_settings'), icon: const Icon(Icons.record_voice_over), label: const Text('Проверить TTS'))),
+                  const SizedBox(width: 8),
+                  Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('install_tts_data'), icon: const Icon(Icons.download), label: const Text('Голосовые данные'))),
+                ]),
+                const SizedBox(height: 12),
+                const Text('ИНСТРУМЕНТЫ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
+                Wrap(spacing: 6, runSpacing: 6, children: [
+                  _commandChip('help'), _commandChip('status'), _commandChip('voice'), _commandChip('settings'),
+                  _commandChip('поиск'), _commandChip('погода'), _commandChip('список файлов'), _commandChip('покажи память'),
+                  _commandChip('чему ты научилась'), _commandChip('самоулучшайся'),
+                ]),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть')),
+            FilledButton.icon(
+              onPressed: () async {
+                await _saveSettings();
+                if (ctx.mounted) Navigator.pop(ctx);
+                await _connectAndroid();
+                if (mounted) { _voiceEnabled = true; setState(() => _status = 'Центр управления сохранён · ' + (_activeModel + 1).toString() + '-я модель'); await _startNativeListening(); }
+              },
+              icon: const Icon(Icons.check),
+              label: const Text('Сохранить и подключить'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (mounted && _voiceReady && _voiceEnabled) {
+      setState(() => _status = 'Постоянный локальный голос');
+      await _startNativeListening();
+    }
   }
 
   Future<void> _toggleVoice() async {
@@ -280,7 +356,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   @override void dispose() {
     _voiceSub?.cancel(); _partialSub?.cancel();
     if (_android) { _voice.invokeMethod('stop'); _voice.invokeMethod('dispose'); }
-    _client?.dispose(); _input.dispose(); _endpoint.dispose(); _apiKey.dispose(); _model.dispose(); _apiHostKey.dispose(); _scroll.dispose(); super.dispose();
+    _client?.dispose(); _input.dispose(); _endpoint.dispose(); _model1.dispose(); _model2.dispose(); _model3.dispose(); _key1.dispose(); _key2.dispose(); _key3.dispose(); _apiHostKey.dispose(); _scroll.dispose(); super.dispose();
   }
 
   Widget _terminalLine(String text, {Color color = kGreen, bool dim = false}) {
@@ -309,8 +385,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         decoration: const BoxDecoration(color: Color(0xFF03090A), border: Border(bottom: BorderSide(color: kLine))),
         child: Row(children: [
           const Expanded(child: Text('JARVIS://BUSYA', style: TextStyle(color: kCyan, fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 1.2))),
-          if (_android) IconButton(visualDensity: VisualDensity.compact, icon: Icon(_voiceEnabled ? Icons.mic_none : Icons.mic_off, color: _voiceEnabled ? kGreen : kRed), onPressed: _toggleVoice),
-          if (_android) IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.tune, color: kCyan), onPressed: _settings),
+          if (_android) IconButton.filled(tooltip: _listening ? 'Микрофон: слушаю' : 'Микрофон: включить/выключить', style: IconButton.styleFrom(backgroundColor: _listening ? const Color(0xFF0D3A31) : const Color(0xFF201014), foregroundColor: _listening ? kGreen : kRed), icon: Icon(_listening ? Icons.mic : Icons.mic_off), onPressed: _toggleVoice),
+          if (_android) IconButton.filled(tooltip: 'Центр управления', style: IconButton.styleFrom(backgroundColor: const Color(0xFF071A19), foregroundColor: kCyan), icon: const Icon(Icons.tune), onPressed: _settings),
         ])),
       Container(padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
         decoration: const BoxDecoration(color: Color(0xFF03090A), border: Border(bottom: BorderSide(color: kLine))),
@@ -345,7 +421,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
       SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         child: Row(children: [
           _commandChip('help'), const SizedBox(width: 5), _commandChip('status'), const SizedBox(width: 5),
-          _commandChip('voice'), const SizedBox(width: 5), _commandChip('settings'), const SizedBox(width: 5), _commandChip('clear'),
+          _commandChip('voice'), const SizedBox(width: 5), _commandChip('settings'), const SizedBox(width: 5), _commandChip('поиск'), const SizedBox(width: 5),
+          _commandChip('погода'), const SizedBox(width: 5), _commandChip('список файлов'), const SizedBox(width: 5), _commandChip('покажи память'),
         ])),
       Padding(padding: const EdgeInsets.fromLTRB(8, 3, 8, 9), child: Row(children: [
         IconButton(visualDensity: VisualDensity.compact, onPressed: _busy ? null : _pickFile, icon: const Icon(Icons.attach_file, color: kCyan)),
