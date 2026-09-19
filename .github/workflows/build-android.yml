@@ -98,14 +98,6 @@ jobs:
                   text = head + '\n' + line + tail
                   end = text.find('>', text.find('<manifest '))
                   head, tail = text[:end+1], text[end+1:]
-          text = text.replace('android:label="jarvis_ui"', 'android:label="БУСЯ"')
-          if '<queries>' not in text:
-              text = text.replace('</manifest>', '''  <queries>
-    <intent>
-      <action android:name="android.speech.RecognitionService" />
-    </intent>
-  </queries>
-</manifest>''')
           p.write_text(text, encoding='utf-8')
 
           p = Path('android/settings.gradle.kts')
