@@ -24,7 +24,7 @@ jobs:
         working-directory: ui
         run: |
           set -e
-          flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis .
+          flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
           rm -rf test
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
