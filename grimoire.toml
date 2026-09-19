@@ -1,0 +1,7 @@
+#:schema https://grimoire.rs/schemas/grimoire-config.schema.json
+
+[options]
+clients = ["codex"]
+
+[bundles]
+grim-essentials = "ghcr.io/grimoire-rs/bundles/grim-essentials:0.14.2"
