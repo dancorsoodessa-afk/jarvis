@@ -271,7 +271,7 @@ class MainActivity : FlutterActivity() {
                 try {
                     while (voiceLoopEnabled && voiceActive && !disposed) {
                         val n = try { activeRecord.read(buffer, 0, buffer.size) } catch (t: Throwable) {
-                            runOnUiThread { eventSink?.success("__ERROR__:audio_read_\${t.javaClass.simpleName}:\${t.message ?: ""}") }
+                            runOnUiThread { eventSink?.success("__ERROR__:audio_read_${t.javaClass.simpleName}:${t.message ?: ""}") }
                             break
                         }
                         if (n <= 0) continue
@@ -291,7 +291,7 @@ class MainActivity : FlutterActivity() {
                                 lastPartial = ""
                             }
                         } catch (t: Throwable) {
-                            runOnUiThread { eventSink?.success("__ERROR__:stt_decode_\${t.javaClass.simpleName}:\${t.message ?: ""}") }
+                            runOnUiThread { eventSink?.success("__ERROR__:stt_decode_${t.javaClass.simpleName}:${t.message ?: ""}") }
                             break
                         }
                     }
