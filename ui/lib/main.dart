@@ -66,8 +66,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (_android) {
         await _loadSettings();
-        await _initNativeVoice();
         await _connectAndroid();
+        if (!mounted) return;
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        if (mounted && _voiceEnabled) await _initNativeVoice();
       } else {
         await _connectDesktop();
       }
