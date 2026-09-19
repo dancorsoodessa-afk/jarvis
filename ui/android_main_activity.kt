@@ -107,7 +107,9 @@ class MainActivity : FlutterActivity() {
                 "start", "listen_now" -> { voiceLoopEnabled = true; startRecognition(); result.success(true) }
                 "stop" -> { voiceLoopEnabled = false; stopRecognition(); result.success(true) }
                 "speak" -> { speak(call.argument<String>("text").orEmpty()); result.success(true) }
-                "open_tts_settings", "install_tts_data" -> result.success(false)
+                "open_tts_settings" -> { openTtsSettings(); result.success(true) }
+                "install_tts_data" -> { installTtsData(); result.success(true) }
+                "test_tts" -> { speak("Проверка голоса БУСЯ. Если вы это слышите, синтез речи работает."); result.success(true) }
                 "pick_file" -> pickFile(result)
                 "android_tool" -> try {
                     result.success(tools.execute(call.argument<String>("name").orEmpty(), JSONObject(call.argument<String>("args") ?: "{}")))
@@ -368,6 +370,21 @@ class MainActivity : FlutterActivity() {
 
     private fun scheduleRecognition(delay: Long) {
         if (!disposed && voiceLoopEnabled) handler.postDelayed({ if (!disposed) startRecognition() }, delay)
+    }
+
+    private fun openTtsSettings() {
+        try { startActivity(Intent("android.settings.TTS_SETTINGS")) } catch (_: Exception) {}
+    }
+
+    private fun installTtsData() {
+        try { startActivity(Intent("android.speech.tts.engine.INSTALL_TTS_DATA")) } catch (_: Exception) {}
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!disposed && voiceLoopEnabled && !ttsPlaying) {
+            handler.postDelayed({ if (!disposed && voiceLoopEnabled && !ttsPlaying && !voiceActive) startRecognition() }, 300)
+        }
     }
 
     private fun pickFile(result: MethodChannel.Result) {
