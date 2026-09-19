@@ -156,10 +156,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
         onError: (Object e) { if (mounted) setState(() => _status = 'Ошибка голоса: $e'); });
       final available = await _voice.invokeMethod<bool>('initialize') ?? false;
       if (!mounted) return;
-      if (!available) { setState(() => _status = 'Голосовой движок недоступен на Android'); return; }
-      _voiceReady = true; _voiceEnabled = true;
-      setState(() => _status = 'Голосовой режим: слушаю');
-      await _startNativeListening();
+      if (!available) { setState(() => _status = 'Не удалось запустить голосовой модуль'); return; }
+      setState(() => _status = 'Запрашиваю/запускаю микрофон…');
     } catch (e) { if (mounted) setState(() => _status = 'Ошибка голоса: $e'); }
   }
 
@@ -189,7 +187,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Локальный русский голос готов'); return; }
     if (value == '__LOADING_VOICE__') { if (mounted) setState(() => _status = 'Загрузка локальной модели речи…'); return; }
     if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
-    if (value == '__TTS_ERROR__') { if (mounted) setState(() => _status = 'TTS недоступен: проверьте голосовой движок Android'); return; }
+    if (value.startsWith('__TTS_ERROR__')) { if (mounted) setState(() => _status = 'Ошибка TTS: ${value.substring(12)}'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
     if (value.startsWith('__ERROR__:')) {
       _listening = false;
@@ -289,7 +287,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
                 const Text('ГОЛОС', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Без двойного хлопка. Локальный русский STT/TTS.')),
                 Row(children: [
-                  Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('open_tts_settings'), icon: const Icon(Icons.record_voice_over), label: const Text('Проверить TTS'))),
+                  Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('test_tts'), icon: const Icon(Icons.volume_up), label: const Text('Проверить голос'))),
                   const SizedBox(width: 8),
                   Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('install_tts_data'), icon: const Icon(Icons.download), label: const Text('Голосовые данные'))),
                 ]),
