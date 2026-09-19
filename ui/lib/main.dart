@@ -27,7 +27,7 @@ class BusyaApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
     title: 'БУСЯ', debugShowCheckedModeBanner: false,
     theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: kBg,
-      colorScheme: ColorScheme.fromSeed(seedColor: kCyan, brightness: Brightness.dark), useMaterial3: true, fontFamily: 'monospace',
+      colorScheme: ColorScheme.fromSeed(seedColor: kCyan, brightness: Brightness.dark), useMaterial3: true,
       inputDecorationTheme: const InputDecorationTheme(filled: true, fillColor: Color(0xFF050B0C), border: OutlineInputBorder(borderSide: BorderSide(color: kLine)), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: kLine)), focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: kCyan))) ),
     home: const BusyaHomePage(),
   );
@@ -391,23 +391,79 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
       child: Text(text, style: const TextStyle(color: kCyan, fontSize: 10, fontFamily: 'monospace'))));
 
   Widget _coreVisual() {
-    final active = _voiceReady;
     final listening = _listening;
+    final ready = _voiceReady && _voiceEnabled;
+    final accent = listening ? kGreen : (ready ? kCyan : kRed);
     return Container(
-      height: 230, margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+      height: 250,
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       decoration: BoxDecoration(
-        gradient: const RadialGradient(center: Alignment.center, radius: 0.9, colors: [Color(0xFF0B2926), Color(0xFF061413), Color(0xFF020607)], stops: [0.0, 0.45, 1.0]),
-        border: Border.all(color: listening ? kGreen : kLine, width: 1.2),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [BoxShadow(color: (listening ? kGreen : kCyan).withOpacity(.12), blurRadius: 28, spreadRadius: 2)],
+        gradient: const RadialGradient(
+          center: Alignment.center,
+          radius: 0.95,
+          colors: [Color(0xFF123A35), Color(0xFF071A18), Color(0xFF030809)],
+          stops: [0.0, 0.48, 1.0],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: accent.withOpacity(.42)),
+        boxShadow: [BoxShadow(color: accent.withOpacity(.10), blurRadius: 30, spreadRadius: 1)],
       ),
-      child: Stack(alignment: Alignment.center, children: [
-        for (final size in [190.0, 150.0, 110.0]) Container(width: size, height: size, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: (listening ? kGreen : kCyan).withOpacity(.14), width: 1))),
-        Container(width: 92, height: 92, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: listening ? kGreen : kCyan, width: 2), boxShadow: [BoxShadow(color: (listening ? kGreen : kCyan).withOpacity(.22), blurRadius: 22)]), child: Icon(listening ? Icons.graphic_eq : (active ? Icons.mic : Icons.mic_none), size: 42, color: listening ? kGreen : (active ? kCyan : kRed))),
-        Positioned(top: 12, left: 14, child: Text('JARVIS CORE', style: const TextStyle(color: kCyan, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.8))),
-        Positioned(top: 12, right: 14, child: Text(active ? (listening ? 'LISTENING' : 'READY') : 'VOICE OFFLINE', style: TextStyle(color: listening ? kGreen : (active ? kCyan : kRed), fontSize: 10, fontWeight: FontWeight.bold))),
-        Positioned(bottom: 12, left: 14, right: 14, child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11))),
-      ]),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          for (final size in [210.0, 170.0, 132.0])
+            Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: accent.withOpacity(.10), width: 1),
+              ),
+            ),
+          Container(
+            width: 108,
+            height: 108,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(colors: [accent.withOpacity(.20), const Color(0xFF071311)]),
+              border: Border.all(color: accent, width: 2),
+              boxShadow: [BoxShadow(color: accent.withOpacity(.22), blurRadius: 28)],
+            ),
+            child: Icon(listening ? Icons.graphic_eq_rounded : Icons.auto_awesome, size: 46, color: accent),
+          ),
+          Positioned(
+            top: 16,
+            left: 18,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+              Text('БУCЯ', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              SizedBox(height: 2),
+              Text('JARVIS ASSISTANT', style: TextStyle(color: Colors.white54, fontSize: 9, letterSpacing: 1.8)),
+            ]),
+          ),
+          Positioned(
+            top: 18,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: accent.withOpacity(.10),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: accent.withOpacity(.38)),
+              ),
+              child: Text(
+                listening ? 'СЛУШАЮ' : (ready ? 'ГОТОВА' : 'МИКРОФОН ВЫКЛ'),
+                style: TextStyle(color: accent, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 16,
+            left: 18,
+            right: 18,
+            child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -427,36 +483,150 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     ),
   );
 
+  Widget _statusCard(IconData icon, String title, String value, Color color) {
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: kPanel,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(.18)),
+        ),
+        child: Row(children: [
+          Icon(icon, color: color, size: 21),
+          const SizedBox(width: 9),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(color: Colors.white45, fontSize: 9)),
+            const SizedBox(height: 2),
+            Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+          ])),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(backgroundColor: kBg, body: SafeArea(child: Column(children: [
-      Container(padding: const EdgeInsets.fromLTRB(14, 10, 8, 8), decoration: const BoxDecoration(color: Color(0xFF03090A), border: Border(bottom: BorderSide(color: kLine))), child: Row(children: [
-        const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('JARVIS', style: TextStyle(color: kCyan, fontSize: 21, fontWeight: FontWeight.w800, letterSpacing: 2)), Text('БУCЯ · ANDROID CORE', style: TextStyle(color: Colors.white54, fontSize: 9, letterSpacing: 1.2))])),
-        IconButton(tooltip: 'Микрофон', onPressed: _toggleVoice, icon: Icon(_listening ? Icons.mic : Icons.mic_off, color: _listening ? kGreen : kRed, size: 28)),
-        IconButton(tooltip: 'Центр управления', onPressed: _settings, icon: const Icon(Icons.tune, color: kCyan, size: 27)),
-      ])),
-      _coreVisual(),
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), child: Row(children: [
-        _quickAction(Icons.mic, 'МИКРОФОН', _toggleVoice),
-        _quickAction(Icons.volume_up, 'ТЕСТ TTS', () => _voice.invokeMethod('test_tts')),
-        _quickAction(Icons.tune, 'НАСТРОЙКИ', _settings),
-      ])),
-      Expanded(child: Container(margin: const EdgeInsets.fromLTRB(10, 6, 10, 4), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(0xFF03090A), border: Border.all(color: kLine), borderRadius: BorderRadius.circular(12)), child: ListView(controller: _scroll, children: [
-        Text('AI · ' + (_activeModel + 1).toString() + '/3   |   STT · SHERPA-ONNX   |   TTS · PIPER', style: const TextStyle(color: Colors.white54, fontSize: 9)),
-        const SizedBox(height: 8),
-        ..._messages.map((m) => Container(margin: const EdgeInsets.only(bottom: 7), padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: m.isUser ? const Color(0xFF061A19) : const Color(0xFF08120F), border: Border.all(color: m.isUser ? kLine : const Color(0xFF1C3D35)), borderRadius: BorderRadius.circular(9)), child: Text(m.text, style: TextStyle(color: m.isUser ? kCyan : kGreen, fontSize: 13, height: 1.3)))),
-        if (_streamText.isNotEmpty) Text(_streamText, style: const TextStyle(color: kCyan, fontSize: 13)),
-        if (_messages.isEmpty && _streamText.isEmpty) const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('Скажите команду или введите текст', style: TextStyle(color: Colors.white38, fontSize: 12)))),
-        if (_attachment != null) Row(children: [Expanded(child: Text('📎 ' + _attachment!.name, style: const TextStyle(color: kCyan, fontSize: 11))), IconButton(icon: const Icon(Icons.close, color: kRed, size: 18), onPressed: () => setState(() => _attachment = null))]),
-      ]))),
-      SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), child: Row(children: [_commandChip('help'), const SizedBox(width: 5), _commandChip('status'), const SizedBox(width: 5), _commandChip('поиск'), const SizedBox(width: 5), _commandChip('погода'), const SizedBox(width: 5), _commandChip('список файлов')])),
-      Padding(padding: const EdgeInsets.fromLTRB(9, 4, 9, 10), child: Row(children: [
-        IconButton(onPressed: _busy ? null : _pickFile, icon: const Icon(Icons.attach_file, color: kCyan)),
-        Expanded(child: TextField(controller: _input, textInputAction: TextInputAction.send, onSubmitted: (value) { _input.clear(); _send(value); }, style: const TextStyle(color: kGreen, fontSize: 13), cursorColor: kGreen, decoration: InputDecoration(prefixText: '> ', prefixStyle: const TextStyle(color: kCyan), hintText: 'Напишите команду…', hintStyle: const TextStyle(color: Colors.white30), filled: true, fillColor: const Color(0xFF050B0C), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kLine)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kLine))))),
-        const SizedBox(width: 5),
-        IconButton.filled(onPressed: _busy ? null : () { final text = _input.text; _input.clear(); _send(text); }, style: IconButton.styleFrom(backgroundColor: const Color(0xFF0A2724), foregroundColor: kGreen), icon: const Icon(Icons.send)),
-      ])),
-    ])));
+    final micColor = _listening ? kGreen : (_voiceReady && _voiceEnabled ? kCyan : kRed);
+    final modelLabel = (_activeModel + 1).toString() + '/3';
+    return Scaffold(
+      backgroundColor: kBg,
+      body: SafeArea(
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 10, 4),
+            child: Row(children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const RadialGradient(colors: [Color(0xFF17463F), Color(0xFF07110F)]),
+                  border: Border.all(color: kCyan.withOpacity(.45)),
+                ),
+                child: const Icon(Icons.auto_awesome, color: kCyan, size: 23),
+              ),
+              const SizedBox(width: 11),
+              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+                Text('БУCЯ · ЛИЧНЫЙ АССИСТЕНТ', style: TextStyle(color: Colors.white45, fontSize: 8, letterSpacing: 1.1)),
+              ])),
+              IconButton(tooltip: 'Микрофон', onPressed: _toggleVoice, icon: Icon(_listening ? Icons.mic_rounded : Icons.mic_none_rounded, color: micColor, size: 27)),
+              IconButton(tooltip: 'Центр управления', onPressed: _settings, icon: const Icon(Icons.settings_rounded, color: kCyan, size: 25)),
+            ]),
+          ),
+          _coreVisual(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            child: Row(children: [
+              _statusCard(Icons.memory_rounded, 'МОДЕЛЬ', modelLabel, kCyan),
+              _statusCard(Icons.mic_rounded, 'STT', _voiceReady ? 'SHERPA · RU' : 'OFFLINE', kGreen),
+              _statusCard(Icons.volume_up_rounded, 'TTS', _voiceReady ? 'PIPER · RU' : 'OFFLINE', kAmber),
+            ]),
+          ),
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+              decoration: BoxDecoration(color: const Color(0xFF050C0C), borderRadius: BorderRadius.circular(20), border: Border.all(color: kLine.withOpacity(.8))),
+              child: ListView(
+                controller: _scroll,
+                children: [
+                  Row(children: [
+                    const Expanded(child: Text('ДИАЛОГ', style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1))),
+                    if (_busy) const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: kCyan)),
+                  ]),
+                  const SizedBox(height: 8),
+                  ..._messages.map((m) => Align(
+                    alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 330),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: m.isUser ? const Color(0xFF0B2926) : const Color(0xFF0A1514),
+                        borderRadius: BorderRadius.only(
+                          topLeft: const Radius.circular(15),
+                          topRight: const Radius.circular(15),
+                          bottomLeft: Radius.circular(m.isUser ? 15 : 4),
+                          bottomRight: Radius.circular(m.isUser ? 4 : 15),
+                        ),
+                        border: Border.all(color: (m.isUser ? kCyan : kGreen).withOpacity(.16)),
+                      ),
+                      child: Text(m.text, style: TextStyle(color: m.isUser ? Colors.white : Colors.white70, fontSize: 13, height: 1.3)),
+                    ),
+                  )),
+                  if (_streamText.isNotEmpty) Text(_streamText, style: const TextStyle(color: kCyan, fontSize: 13)),
+                  if (_messages.isEmpty && _streamText.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 34),
+                      child: Center(child: Text('Готова к работе. Говорите или напишите команду.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12))),
+                    ),
+                  if (_attachment != null) Row(children: [
+                    const Icon(Icons.attach_file_rounded, color: kCyan, size: 17),
+                    const SizedBox(width: 5),
+                    Expanded(child: Text(_attachment!.name, style: const TextStyle(color: kCyan, fontSize: 11))),
+                    IconButton(icon: const Icon(Icons.close, color: kRed, size: 18), onPressed: () => setState(() => _attachment = null)),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 9),
+            child: Row(children: [
+              IconButton(onPressed: _busy ? null : _pickFile, icon: const Icon(Icons.attach_file_rounded, color: kCyan)),
+              Expanded(
+                child: TextField(
+                  controller: _input,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (value) { _input.clear(); _send(value); },
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  cursorColor: kCyan,
+                  decoration: InputDecoration(
+                    hintText: 'Сообщение Бусе…',
+                    hintStyle: const TextStyle(color: Colors.white30),
+                    filled: true,
+                    fillColor: kPanel,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide(color: kLine.withOpacity(.8))),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide(color: kLine.withOpacity(.8))),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: kCyan)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton.filled(
+                onPressed: _busy ? null : () { final text = _input.text; _input.clear(); _send(text); },
+                style: IconButton.styleFrom(backgroundColor: const Color(0xFF0A2724), foregroundColor: kGreen),
+                icon: const Icon(Icons.arrow_upward_rounded),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
   }
 
 }
