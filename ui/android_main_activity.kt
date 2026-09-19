@@ -62,6 +62,7 @@ class MainActivity : FlutterActivity() {
     private var voiceActive = false
     private var ttsPlaying = false
     private var disposed = false
+    private var permissionPending = false
     private var pendingTts: String? = null
     private var pendingFileResult: MethodChannel.Result? = null
 
@@ -131,6 +132,7 @@ class MainActivity : FlutterActivity() {
     private fun initializeVoice(): Boolean {
         if (disposed) return false
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            permissionPending = true
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
             return true
         }
@@ -227,10 +229,12 @@ class MainActivity : FlutterActivity() {
             val min = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             require(min > 0) { "Invalid microphone buffer size: $min" }
             val record = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, min * 2)
+            require(record.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord не инициализирован" }
             try { AcousticEchoCanceler.create(record.audioSessionId)?.enabled = true } catch (_: Exception) {}
             try { NoiseSuppressor.create(record.audioSessionId)?.enabled = true } catch (_: Exception) {}
             audioRecord = record
             record.startRecording()
+            require(record.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Микрофон не перешёл в режим записи" }
             voiceActive = true
             eventSink?.success("__LISTENING__")
             recordingThread = thread(start = true, name = "jarvis-stt") {
@@ -440,8 +444,17 @@ class MainActivity : FlutterActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_RECORD_AUDIO) {
+            permissionPending = false
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                eventSink?.success("__READY__"); voiceLoopEnabled = true; startRecognition()
+                try {
+                    initRecognizer()
+                    try { initTts() } catch (e: Exception) { eventSink?.success("__TTS_ERROR__:${e.javaClass.simpleName}:${e.message ?: ""}") }
+                    eventSink?.success("__READY__")
+                    voiceLoopEnabled = true
+                    startRecognition()
+                } catch (e: Exception) {
+                    eventSink?.success("__ERROR__:voice_init_after_permission_${e.javaClass.simpleName}:${e.message ?: ""}")
+                }
             } else eventSink?.success("__ERROR__:microphone_permission_denied")
         }
     }
