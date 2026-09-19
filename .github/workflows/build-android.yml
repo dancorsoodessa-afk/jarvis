@@ -14,17 +14,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Initialize Grimoire coding environment
-        uses: grimoire-rs/setup-grimoire@v1
-
-      - name: Verify Grimoire configuration
-        run: |
-          set -euo pipefail
-          grim --version
-          grim lock
-          grim install --client codex
-          grim status --format json
-
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
