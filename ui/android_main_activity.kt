@@ -63,6 +63,7 @@ class MainActivity : FlutterActivity() {
     private var ttsPlaying = false
     private var disposed = false
     private var permissionPending = false
+    private var voiceInitialized = false
     private var pendingTts: String? = null
     private var pendingFileResult: MethodChannel.Result? = null
 
@@ -222,15 +223,24 @@ class MainActivity : FlutterActivity() {
     private fun startRecognition() {
         if (disposed || !voiceLoopEnabled || ttsPlaying || voiceActive) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        if (!voiceInitialized) {
+            try {
+                initRecognizer()
+                voiceInitialized = true
+            } catch (e: Exception) {
+                eventSink?.success("__ERROR__:local_stt_init_" + e.javaClass.simpleName + ":" + (e.message ?: ""))
+                return
+            }
+        }
         try {
-            stopRecognition()
-            val rec = recognizer ?: run { initRecognizer(); recognizer!! }
+            if (voiceActive) return
+            val rec = recognizer ?: run { initRecognizer(); voiceInitialized = true; recognizer!! }
             recognitionStream = rec.createStream()
             val min = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             require(min > 0) { "Invalid microphone buffer size: $min" }
             val sources = intArrayOf(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 MediaRecorder.AudioSource.DEFAULT
             )
             var record: AudioRecord? = null
@@ -453,6 +463,7 @@ class MainActivity : FlutterActivity() {
         audioTrack = null
         try { recognizer?.release() } catch (_: Exception) {}
         recognizer = null
+        voiceInitialized = false
         try { tts?.release() } catch (_: Exception) {}
         tts = null
     }
