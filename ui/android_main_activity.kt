@@ -66,6 +66,7 @@ class MainActivity : FlutterActivity() {
     private var voiceInitialized = false
     private var pendingTts: String? = null
     private var pendingFileResult: MethodChannel.Result? = null
+    private val voiceLock = Any()
 
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
@@ -221,7 +222,10 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun startRecognition() {
-        if (disposed || !voiceLoopEnabled || ttsPlaying || voiceActive) return
+        synchronized(voiceLock) {
+            if (disposed || !voiceLoopEnabled || ttsPlaying || voiceActive) return
+            voiceActive = true
+        }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
         if (!voiceInitialized) {
             try {
@@ -261,31 +265,46 @@ class MainActivity : FlutterActivity() {
             val activeRecord = record!!
             eventSink?.success("__MIC_SOURCE_READY__")
             require(activeRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Микрофон не перешёл в режим записи" }
-            voiceActive = true
             eventSink?.success("__LISTENING__")
             recordingThread = thread(start = true, name = "jarvis-stt") {
                 val buffer = ShortArray(1600)
                 var lastPartial = ""
-                while (voiceLoopEnabled && voiceActive && !disposed) {
-                    val n = activeRecord.read(buffer, 0, buffer.size)
-                    if (n <= 0) continue
-                    val samples = FloatArray(n) { buffer[it] / 32768.0f }
-                    val stream = recognitionStream ?: break
-                    stream.acceptWaveform(samples, 16000)
-                    while (rec.isReady(stream)) rec.decode(stream)
-                    val text = rec.getResult(stream).text.trim()
-                    if (text.isNotEmpty() && text != lastPartial) {
-                        lastPartial = text
-                        runOnUiThread { eventSink?.success("__PARTIAL__:$text") }
+                try {
+                    while (voiceLoopEnabled && voiceActive && !disposed) {
+                        val n = try { activeRecord.read(buffer, 0, buffer.size) } catch (t: Throwable) {
+                            runOnUiThread { eventSink?.success("__ERROR__:audio_read_\${t.javaClass.simpleName}:\${t.message ?: ""}") }
+                            break
+                        }
+                        if (n <= 0) continue
+                        try {
+                            val samples = FloatArray(n) { buffer[it] / 32768.0f }
+                            val stream = recognitionStream ?: break
+                            stream.acceptWaveform(samples, 16000)
+                            while (rec.isReady(stream)) rec.decode(stream)
+                            val text = rec.getResult(stream).text.trim()
+                            if (text.isNotEmpty() && text != lastPartial) {
+                                lastPartial = text
+                                runOnUiThread { eventSink?.success("__PARTIAL__:$text") }
+                            }
+                            if (rec.isEndpoint(stream)) {
+                                if (text.isNotBlank()) runOnUiThread { eventSink?.success(text) }
+                                rec.reset(stream)
+                                lastPartial = ""
+                            }
+                        } catch (t: Throwable) {
+                            runOnUiThread { eventSink?.success("__ERROR__:stt_decode_\${t.javaClass.simpleName}:\${t.message ?: ""}") }
+                            break
+                        }
                     }
-                    if (rec.isEndpoint(stream)) {
-                        if (text.isNotBlank()) runOnUiThread { eventSink?.success(text) }
-                        rec.reset(stream)
-                        lastPartial = ""
+                } finally {
+                    try { activeRecord.stop() } catch (_: Exception) {}
+                    try { activeRecord.release() } catch (_: Exception) {}
+                    synchronized(voiceLock) {
+                        if (audioRecord === activeRecord) audioRecord = null
+                        voiceActive = false
+                        recordingThread = null
                     }
                 }
-                try { activeRecord.stop() } catch (_: Exception) {}
-                try { activeRecord.release() } catch (_: Exception) {}
             }
         } catch (e: Exception) {
             voiceActive = false
@@ -295,12 +314,17 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun stopRecognition() {
-        voiceActive = false
-        try { audioRecord?.stop() } catch (_: Exception) {}
-        try { audioRecord?.release() } catch (_: Exception) {}
-        audioRecord = null
-        try { recognitionStream?.release() } catch (_: Exception) {}
-        recognitionStream = null
+        val record: AudioRecord?
+        val stream: OnlineStream?
+        synchronized(voiceLock) {
+            voiceActive = false
+            record = audioRecord
+            audioRecord = null
+            stream = recognitionStream
+            recognitionStream = null
+        }
+        try { record?.stop() } catch (_: Exception) {}
+        try { stream?.release() } catch (_: Exception) {}
     }
 
     private fun speak(text: String) {
@@ -475,6 +499,7 @@ class MainActivity : FlutterActivity() {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 try {
                     initRecognizer()
+                    voiceInitialized = true
                     try { initTts() } catch (e: Exception) { eventSink?.success("__TTS_ERROR__:${e.javaClass.simpleName}:${e.message ?: ""}") }
                     eventSink?.success("__READY__")
                     voiceLoopEnabled = true
