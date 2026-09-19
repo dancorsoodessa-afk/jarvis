@@ -228,20 +228,36 @@ class MainActivity : FlutterActivity() {
             recognitionStream = rec.createStream()
             val min = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             require(min > 0) { "Invalid microphone buffer size: $min" }
-            val record = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, min * 2)
-            require(record.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord не инициализирован" }
-            try { AcousticEchoCanceler.create(record.audioSessionId)?.enabled = true } catch (_: Exception) {}
-            try { NoiseSuppressor.create(record.audioSessionId)?.enabled = true } catch (_: Exception) {}
+            val sources = intArrayOf(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.DEFAULT
+            )
+            var record: AudioRecord? = null
+            var lastError: Throwable? = null
+            for (source in sources) {
+                try {
+                    val candidate = AudioRecord(source, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, min * 2)
+                    if (candidate.state != AudioRecord.STATE_INITIALIZED) { candidate.release(); continue }
+                    try { AcousticEchoCanceler.create(candidate.audioSessionId)?.enabled = true } catch (_: Exception) {}
+                    try { NoiseSuppressor.create(candidate.audioSessionId)?.enabled = true } catch (_: Exception) {}
+                    candidate.startRecording()
+                    if (candidate.recordingState == AudioRecord.RECORDSTATE_RECORDING) { record = candidate; break }
+                    candidate.release()
+                } catch (t: Throwable) { lastError = t }
+            }
+            requireNotNull(record) { "Не удалось открыть микрофон: " + (lastError?.javaClass?.simpleName ?: "AudioRecord") + " " + (lastError?.message ?: "") }
             audioRecord = record
-            record.startRecording()
-            require(record.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Микрофон не перешёл в режим записи" }
+            val activeRecord = record!!
+            eventSink?.success("__MIC_SOURCE_READY__")
+            require(activeRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Микрофон не перешёл в режим записи" }
             voiceActive = true
             eventSink?.success("__LISTENING__")
             recordingThread = thread(start = true, name = "jarvis-stt") {
                 val buffer = ShortArray(1600)
                 var lastPartial = ""
                 while (voiceLoopEnabled && voiceActive && !disposed) {
-                    val n = record.read(buffer, 0, buffer.size)
+                    val n = activeRecord.read(buffer, 0, buffer.size)
                     if (n <= 0) continue
                     val samples = FloatArray(n) { buffer[it] / 32768.0f }
                     val stream = recognitionStream ?: break
@@ -258,8 +274,8 @@ class MainActivity : FlutterActivity() {
                         lastPartial = ""
                     }
                 }
-                try { record.stop() } catch (_: Exception) {}
-                try { record.release() } catch (_: Exception) {}
+                try { activeRecord.stop() } catch (_: Exception) {}
+                try { activeRecord.release() } catch (_: Exception) {}
             }
         } catch (e: Exception) {
             voiceActive = false
