@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
@@ -45,7 +46,7 @@ class BusyaHomePage extends StatefulWidget {
   @override State<BusyaHomePage> createState() => _BusyaHomePageState();
 }
 
-class _BusyaHomePageState extends State<BusyaHomePage> {
+class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProviderStateMixin {
   static const _voice = MethodChannel('busya.voice');
   static const _voiceEvents = EventChannel('busya.voice.events');
   JarvisIpc? _client;
@@ -59,11 +60,13 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   StreamSubscription<dynamic>? _voiceSub;
   StreamSubscription<String>? _partialSub;
   bool _voiceReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
+  late final AnimationController _orbController;
   String _status = 'БУСЯ запускается…', _streamText = '';
   bool get _android => Platform.isAndroid;
 
   @override void initState() {
     super.initState();
+    _orbController = AnimationController(vsync: this, duration: const Duration(seconds: 7))..repeat();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (_android) {
         await _loadSettings();
@@ -369,6 +372,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   void _scrollToBottom() { WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut); }); }
 
   @override void dispose() {
+    _orbController.dispose();
     _voiceSub?.cancel(); _partialSub?.cancel();
     if (_android) { _voice.invokeMethod('stop'); _voice.invokeMethod('dispose'); }
     _client?.dispose(); _input.dispose(); _endpoint.dispose(); _model1.dispose(); _model2.dispose(); _model3.dispose(); _key1.dispose(); _key2.dispose(); _key3.dispose(); _apiHostKey.dispose(); _scroll.dispose(); super.dispose();
@@ -397,7 +401,12 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
     final listening = _listening;
     final ready = _voiceReady && _voiceEnabled;
     final accent = listening ? kGreen : (ready ? kCyan : kRed);
-    return Container(
+    return AnimatedBuilder(
+      animation: _orbController,
+      builder: (context, child) {
+        final phase = _orbController.value * 6.283185307;
+        final pulse = 0.92 + 0.08 * (0.5 + 0.5 * math.sin(phase));
+        return Container(
       height: 250,
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       decoration: BoxDecoration(
@@ -414,7 +423,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          for (final size in [210.0, 170.0, 132.0])
+          for (final size in [210.0 * pulse, 170.0 * pulse, 132.0 * pulse])
             Container(
               width: size,
               height: size,
@@ -424,8 +433,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
               ),
             ),
           Container(
-            width: 108,
-            height: 108,
+            width: 108 * pulse,
+            height: 108 * pulse,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: RadialGradient(colors: [accent.withOpacity(.20), const Color(0xFF071311)]),
@@ -467,6 +476,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
           ),
         ],
       ),
+    );
+      },
     );
   }
 
