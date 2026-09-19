@@ -37,6 +37,13 @@ class MainActivity : FlutterActivity() {
         private const val KEY_MODEL = "ai_model"
         private const val KEY_AI_API_KEY = "ai_api_key"
         private const val KEY_APIHOST = "apihost_key"
+        private const val KEY_MODEL1 = "ai_model_1"
+        private const val KEY_MODEL2 = "ai_model_2"
+        private const val KEY_MODEL3 = "ai_model_3"
+        private const val KEY_KEY1 = "ai_key_1"
+        private const val KEY_KEY2 = "ai_key_2"
+        private const val KEY_KEY3 = "ai_key_3"
+        private const val KEY_ACTIVE_MODEL = "ai_active_model"
         private const val KEY_VOICE_ENABLED = "voice_enabled"
     }
 
@@ -70,6 +77,13 @@ class MainActivity : FlutterActivity() {
                         "endpoint" to p.getString(KEY_ENDPOINT, "https://openrouter.ai/api/v1"),
                         "model" to p.getString(KEY_MODEL, "openrouter/free"),
                         "apiKey" to p.getString(KEY_AI_API_KEY, ""),
+                        "model1" to p.getString(KEY_MODEL1, p.getString(KEY_MODEL, "openrouter/free")),
+                        "model2" to p.getString(KEY_MODEL2, "deepseek/deepseek-v4-flash:free"),
+                        "model3" to p.getString(KEY_MODEL3, "z-ai/glm-5.3-flash:free"),
+                        "key1" to p.getString(KEY_KEY1, p.getString(KEY_AI_API_KEY, "")),
+                        "key2" to p.getString(KEY_KEY2, p.getString(KEY_AI_API_KEY, "")),
+                        "key3" to p.getString(KEY_KEY3, p.getString(KEY_AI_API_KEY, "")),
+                        "activeModel" to p.getInt(KEY_ACTIVE_MODEL, 0),
                         "apiHostKey" to p.getString(KEY_APIHOST, ""),
                         "voiceEnabled" to p.getBoolean(KEY_VOICE_ENABLED, true)
                     ))
@@ -79,6 +93,13 @@ class MainActivity : FlutterActivity() {
                         .putString(KEY_ENDPOINT, call.argument<String>("endpoint").orEmpty().trim())
                         .putString(KEY_MODEL, call.argument<String>("model").orEmpty().trim())
                         .putString(KEY_AI_API_KEY, call.argument<String>("apiKey").orEmpty().trim())
+                        .putString(KEY_MODEL1, call.argument<String>("model1").orEmpty().trim())
+                        .putString(KEY_MODEL2, call.argument<String>("model2").orEmpty().trim())
+                        .putString(KEY_MODEL3, call.argument<String>("model3").orEmpty().trim())
+                        .putString(KEY_KEY1, call.argument<String>("key1").orEmpty().trim())
+                        .putString(KEY_KEY2, call.argument<String>("key2").orEmpty().trim())
+                        .putString(KEY_KEY3, call.argument<String>("key3").orEmpty().trim())
+                        .putInt(KEY_ACTIVE_MODEL, call.argument<Int>("activeModel") ?: 0)
                         .putString(KEY_APIHOST, call.argument<String>("apiHostKey").orEmpty().trim())
                         .putBoolean(KEY_VOICE_ENABLED, call.argument<Boolean>("voiceEnabled") ?: true).apply()
                     result.success(true)
@@ -113,13 +134,17 @@ class MainActivity : FlutterActivity() {
         }
         return try {
             initRecognizer()
-            initTts()
-            eventSink?.success("__READY__")
             voiceLoopEnabled = true
+            eventSink?.success("__READY__")
+            try {
+                initTts()
+            } catch (e: Exception) {
+                eventSink?.success("__TTS_ERROR__:${e.javaClass.simpleName}:${e.message ?: ""}")
+            }
             startRecognition()
             true
         } catch (e: Exception) {
-            eventSink?.success("__ERROR__:local_voice_init_${e.javaClass.simpleName}:${e.message ?: ""}")
+            eventSink?.success("__ERROR__:local_stt_init_${e.javaClass.simpleName}:${e.message ?: ""}")
             false
         }
     }
