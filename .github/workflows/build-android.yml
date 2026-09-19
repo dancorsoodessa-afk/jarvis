@@ -114,6 +114,13 @@ jobs:
                   text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
               else:
                   text = text.rstrip() + '\n\ndependencies {\n    ' + dep + '\n}\n'
+          # The sherpa-onnx AAR contains native libraries for several ABIs.
+          # This APK is intentionally arm64-only; remove incompatible extra ABIs.
+          if 'jniLibs.excludes' not in text:
+              marker = 'android {\n'
+              block = 'android {\n    packagingOptions {\n        jniLibs {\n            excludes += setOf("**/armeabi-v7a/**", "**/x86/**", "**/x86_64/**")\n        }\n    }\n'
+              if marker in text:
+                  text = text.replace(marker, block, 1)
           p.write_text(text, encoding='utf-8')
           PY
           grep -n "sherpa-onnx" android/app/build.gradle.kts android/settings.gradle.kts
