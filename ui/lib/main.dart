@@ -412,7 +412,19 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
   }
 
   Widget _quickAction(IconData icon, String label, VoidCallback onTap) => Expanded(
-    child: Padding(padding: const EdgeInsets.symmetric(horizontal: 3), child: OutlinedButton.icon(onPressed: onTap, icon: Icon(icon, size: 16), label: Text(label, style: const TextStyle(fontSize: 10)), style: OutlinedButton.styleFrom(foregroundColor: kCyan, side: const BorderSide(color: kLine), padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 5))),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 16),
+        label: Text(label, style: const TextStyle(fontSize: 10)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: kCyan,
+          side: const BorderSide(color: kLine),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 5),
+        ),
+      ),
+    ),
   );
 
   @override
