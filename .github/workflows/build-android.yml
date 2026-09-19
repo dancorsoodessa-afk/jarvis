@@ -98,6 +98,14 @@ jobs:
                   text = head + '\n' + line + tail
                   end = text.find('>', text.find('<manifest '))
                   head, tail = text[:end+1], text[end+1:]
+          text = text.replace('android:label="jarvis_ui"', 'android:label="БУСЯ"')
+          if '<queries>' not in text:
+              text = text.replace('</manifest>', '''  <queries>
+    <intent>
+      <action android:name="android.speech.RecognitionService" />
+    </intent>
+  </queries>
+</manifest>''')
           p.write_text(text, encoding='utf-8')
 
           p = Path('android/settings.gradle.kts')
@@ -116,21 +124,6 @@ jobs:
                   text = text.rstrip() + '\n\ndependencies {\n    ' + dep + '\n}\n'
           p.write_text(text, encoding='utf-8')
           PY
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('android/app/src/main/AndroidManifest.xml')
-          text = p.read_text(encoding='utf-8')
-          text = text.replace('android:label="jarvis_ui"', 'android:label="БУСЯ"')
-          if '<queries>' not in text:
-              text = text.replace('</manifest>', '''  <queries>
-    <intent>
-      <action android:name="android.speech.RecognitionService" />
-    </intent>
-  </queries>
-</manifest>''')
-          p.write_text(text, encoding='utf-8')
-          PY
-          grep -n "БУСЯ" android/app/src/main/AndroidManifest.xml
           grep -n "sherpa-onnx" android/app/build.gradle.kts android/settings.gradle.kts
           grep -n 'signingConfig = signingConfigs.getByName("debug")' android/app/build.gradle.kts
 
