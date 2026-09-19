@@ -237,7 +237,6 @@ class MainActivity : FlutterActivity() {
             }
         }
         try {
-            if (voiceActive) return
             val rec = recognizer ?: run { initRecognizer(); voiceInitialized = true; recognizer!! }
             recognitionStream = rec.createStream()
             val min = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
