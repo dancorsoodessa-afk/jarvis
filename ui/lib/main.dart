@@ -10,6 +10,7 @@ import 'jarvis_client.dart';
 const kCyan = Color(0xFF32E6D0);
 const kGreen = Color(0xFF35F58A);
 const kRed = Color(0xFFFF5268);
+const kAmber = Color(0xFFFFC857);
 const kBg = Color(0xFF020607);
 const kPanel = Color(0xFF071012);
 const kLine = Color(0xFF17463F);
@@ -260,7 +261,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
             width: 520,
             child: SingleChildScrollView(
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                const Text('AI · 3 ПРОФИЛЯ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
+                const Text('API / AI · 3 ПРОФИЛЯ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                const Text('У каждого профиля свой OpenRouter API key. Ключи сохраняются отдельно на телефоне.', style: TextStyle(color: Colors.white60, fontSize: 11)),
                 const SizedBox(height: 8),
                 for (int i = 0; i < 3; i++) ...[
                   Card(
@@ -269,12 +272,12 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
                       padding: const EdgeInsets.all(8),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Row(children: [
-                          Expanded(child: Text(i == 0 ? 'МОДЕЛЬ 1 · JARVIS' : i == 1 ? 'МОДЕЛЬ 2 · DEEPSEEK' : 'МОДЕЛЬ 3 · GLM', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
+                          Expanded(child: Text(i == 0 ? 'API KEY 1 · JARVIS' : i == 1 ? 'API KEY 2 · DEEPSEEK' : 'API KEY 3 · GLM', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
                           Radio<int>(value: i, groupValue: _activeModel, onChanged: (v) { if (v != null) setDialogState(() => _activeModel = v); }),
                         ]),
                         TextField(controller: i == 0 ? _model1 : i == 1 ? _model2 : _model3, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
                         const SizedBox(height: 6),
-                        TextField(controller: i == 0 ? _key1 : i == 1 ? _key2 : _key3, obscureText: true, decoration: const InputDecoration(labelText: 'OpenRouter API key', isDense: true)),
+                        TextField(controller: i == 0 ? _key1 : i == 1 ? _key2 : _key3, obscureText: true, decoration: InputDecoration(labelText: 'OpenRouter API key ${i + 1}', hintText: 'sk-or-v1-…', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
                       ]),
                     ),
                   ),
@@ -284,8 +287,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> {
                 const SizedBox(height: 6),
                 TextField(controller: _apiHostKey, obscureText: true, decoration: const InputDecoration(labelText: 'APIHOST key · голос Леда', isDense: true)),
                 const SizedBox(height: 12),
-                const Text('ГОЛОС', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
-                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Без двойного хлопка. Локальный русский STT/TTS.')),
+                const Text('ГОЛОС / МИКРОФОН', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
+                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Без двойного хлопка. Микрофон слушает постоянно. Локальный русский STT/TTS.')),
                 Row(children: [
                   Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('test_tts'), icon: const Icon(Icons.volume_up), label: const Text('Проверить голос'))),
                   const SizedBox(width: 8),
