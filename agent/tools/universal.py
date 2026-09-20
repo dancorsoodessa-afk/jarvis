@@ -1,6 +1,6 @@
 """Universal Windows/file tools for JARVIS."""
 from __future__ import annotations
-import json, os, platform, shutil, subprocess, sys, tarfile, zipfile, tempfile
+import json, os, platform, shutil, subprocess, sys, tarfile, zipfile, tempfile, urllib.request, urllib.error, urllib.parse
 from pathlib import Path
 
 MAX_TEXT = 120_000
@@ -248,3 +248,139 @@ def shutdown(action: str = "shutdown") -> str:
     if action not in commands: raise ValueError("Доступно: shutdown, restart, sleep")
     subprocess.Popen(commands[action],creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
     return {"shutdown":"Выключаю компьютер.","restart":"Перезагружаю компьютер.","sleep":"Перевожу компьютер в сон."}[action]
+
+def app_test_environment() -> str:
+    """Проверить доступность инструментов тестирования приложения."""
+    tools = {
+        "JMeter": shutil.which("jmeter") or shutil.which("jmeter.bat"),
+        "ADB": shutil.which("adb"),
+        "Flutter": shutil.which("flutter"),
+        "Gradle": shutil.which("gradle") or shutil.which("gradle.bat"),
+        "Xcode": shutil.which("xcodebuild"),
+    }
+    data = {
+        "JMeter": "доступен" if tools["JMeter"] else "не найден",
+        "ADB": "доступен" if tools["ADB"] else "не найден",
+        "Flutter": "доступен" if tools["Flutter"] else "не найден",
+        "Gradle": "доступен" if tools["Gradle"] else "не найден",
+        "Xcode": "доступен" if tools["Xcode"] else "не найден (Xcode работает только на macOS)",
+    }
+    return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def android_app_diagnostics(serial: str = "", package: str = "") -> str:
+    """Диагностика Android через ADB: устройство, ресурсы и критические ошибки."""
+    adb = shutil.which("adb")
+    if not adb:
+        return "ADB не найден. Нужен Android SDK Platform-Tools."
+    code, devices = subprocess.run([adb, "devices", "-l"], capture_output=True, text=True,
+                                   encoding="utf-8", errors="replace", timeout=20).returncode, ""
+    p = subprocess.run([adb, "devices", "-l"], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=20)
+    devices = (p.stdout + p.stderr).strip()
+    rows = [x for x in devices.splitlines() if "\tdevice" in x]
+    if not rows:
+        return "Android-устройство не подключено или USB-отладка не разрешена."
+    target = serial.strip() or rows[0].split("\t", 1)[0]
+    prefix = [adb, "-s", target]
+    def sh(*args, timeout=30):
+        r = subprocess.run(prefix + list(args), capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
+        return (r.stdout + r.stderr).strip()
+    log = sh("logcat", "-d", "-v", "time", timeout=45)
+    needles = ("FATAL EXCEPTION", "ANR in ", "SecurityException",
+               "OutOfMemoryError", "AndroidRuntime", "DeadObjectException")
+    if package.strip():
+        log = "\n".join(x for x in log.splitlines() if package.strip() in x)
+    errors = [x for x in log.splitlines() if any(n in x for n in needles)]
+    data = {
+        "устройство": target,
+        "Android": sh("shell", "getprop", "ro.build.version.release"),
+        "модель": sh("shell", "getprop", "ro.product.model"),
+        "память": sh("shell", "cat", "/proc/meminfo")[:3000],
+        "батарея": sh("shell", "dumpsys", "battery")[:2000],
+        "критические_ошибки": errors[-100:],
+        "результат": "ОШИБКИ НАЙДЕНЫ" if errors else "критических ошибок в logcat не найдено",
+    }
+    return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def jmeter_load_test(jmx_path: str, result_file: str = "") -> str:
+    """Запустить JMeter в non-GUI режиме. Запуск нагрузки требует подтверждения."""
+    exe = shutil.which("jmeter") or shutil.which("jmeter.bat")
+    if not exe:
+        return "JMeter не найден. Добавьте Apache JMeter/bin в PATH."
+    jmx = _path(jmx_path)
+    if not jmx.is_file() or jmx.suffix.lower() != ".jmx":
+        raise ValueError(f"JMX-файл не найден: {jmx}")
+    result = _path(result_file) if result_file else jmx.with_suffix(".jtl")
+    result.parent.mkdir(parents=True, exist_ok=True)
+    log = result.with_suffix(".jmeter.log")
+    r = subprocess.run([exe, "-n", "-t", str(jmx), "-l", str(result), "-j", str(log)],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+    return json.dumps({
+        "инструмент": "JMeter", "статус": "OK" if r.returncode == 0 else "ОШИБКА",
+        "код": r.returncode, "результат": str(result), "лог": str(log),
+        "вывод": (r.stdout + "\n" + r.stderr)[-5000:]
+    }, ensure_ascii=False, indent=2)
+
+
+def loaderio_status(action: str = "tests", test_id: str = "") -> str:
+    """Loader.io API. Ключ берётся только из JARVIS_LOADERIO_KEY."""
+    key = os.environ.get("JARVIS_LOADERIO_KEY", "").strip()
+    if not key:
+        return "Loader.io не настроен: задайте JARVIS_LOADERIO_KEY."
+    base = "https://api.loader.io/v2"
+    headers = {"loaderio-auth": key}
+    if action == "apps":
+        url, method = f"{base}/apps", "GET"
+    elif action == "tests":
+        url, method = f"{base}/tests", "GET"
+    elif action == "results":
+        if not test_id: return "Укажите test_id."
+        url, method = f"{base}/tests/{test_id}/results", "GET"
+    elif action == "run":
+        if not test_id: return "Укажите test_id."
+        url, method = f"{base}/tests/{test_id}/run", "PUT"
+    else:
+        return "Доступно: apps, tests, results, run."
+    req = urllib.request.Request(url, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            return response.read().decode("utf-8", errors="replace")[:MAX_TEXT]
+    except urllib.error.HTTPError as exc:
+        return f"Loader.io HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')[:2000]}"
+
+
+def cloudflare_analytics(query: str = "") -> str:
+    """Cloudflare Analytics GraphQL. Ключ: JARVIS_CLOUDFLARE_TOKEN."""
+    token = os.environ.get("JARVIS_CLOUDFLARE_TOKEN", "").strip()
+    if not token:
+        return "Cloudflare не настроен: задайте JARVIS_CLOUDFLARE_TOKEN."
+    query = query.strip() or "query { viewer { accounts { id name } } }"
+    body = json.dumps({"query": query}).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.cloudflare.com/client/v4/graphql", data=body,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            return response.read().decode("utf-8", errors="replace")[:MAX_TEXT]
+    except urllib.error.HTTPError as exc:
+        return f"Cloudflare HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')[:2000]}"
+
+
+def manageengine_monitor(path: str = "") -> str:
+    """ManageEngine Applications Manager REST. URL/key хранятся в переменных окружения."""
+    base = os.environ.get("JARVIS_MANAGEENGINE_URL", "").strip().rstrip("/")
+    key = os.environ.get("JARVIS_MANAGEENGINE_KEY", "").strip()
+    if not base or not key:
+        return "ManageEngine не настроен: задайте JARVIS_MANAGEENGINE_URL и JARVIS_MANAGEENGINE_KEY."
+    sep = "&" if "?" in path else "?"
+    url = base + "/" + path.lstrip("/")
+    url += f"{sep}apikey={urllib.parse.quote(key)}"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, method="GET"), timeout=30) as response:
+            return response.read().decode("utf-8", errors="replace")[:MAX_TEXT]
+    except urllib.error.HTTPError as exc:
+        return f"ManageEngine HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')[:2000]}"
