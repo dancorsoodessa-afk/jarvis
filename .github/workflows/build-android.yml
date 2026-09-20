@@ -1,4 +1,5 @@
 name: Build JARVIS Android APK
+# rebuild requested: Windows + Android verification
 # verified install build
 
 on:
