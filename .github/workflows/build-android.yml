@@ -130,6 +130,18 @@ jobs:
         working-directory: ui
         run: flutter pub get
 
+      - name: Verify control center and microphone contracts
+        working-directory: ui
+        run: |
+          set -euo pipefail
+          grep -q "await _send(text)" lib/main.dart
+          ! grep -q "Проверить голос" lib/main.dart
+          ! grep -q "Голосовые данные" lib/main.dart
+          grep -q "__MIC_SOURCE_READY__" lib/main.dart
+          grep -q "__MIC_LEVEL__" lib/main.dart
+          grep -q "__MIC_LEVEL__" android_main_activity.kt
+          grep -q "microphone_permission_missing" android_main_activity.kt
+
       - name: Analyze Dart code
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
