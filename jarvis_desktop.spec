@@ -1,24 +1,18 @@
-# PyInstaller spec for the native JARVIS desktop application.
-# Torch is intentionally optional: when it is not installed, TTS falls back to SAPI/Piper.
+# PyInstaller spec for native JARVIS desktop application.
 hiddenimports = [
     "numpy",
     "pycaw",
     "pycaw.pycaw",
     "comtypes",
     "sounddevice",
-    "speech_recognition",
-    "faster_whisper",
-    "ctranslate2",
-    "av",
-    "tokenizers",
-    "huggingface_hub",
+    "vosk",
+    "cffi",
 ]
-
 a = Analysis(
     ["jarvis_desktop.py"],
     pathex=["."],
     binaries=[],
-    datas=[("docs", "docs"), ("vendor/stt_model", "stt_model")],
+    datas=[("docs", "docs"), ("vendor/stt_model", "stt_model"), ("vendor/piper", "piper")],
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
@@ -27,15 +21,6 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.datas,
-    [],
-    name="jarvis_desktop",
-    debug=False,
-    strip=False,
-    upx=False,
-    console=False,
-    icon=None,
+    pyz, a.scripts, a.binaries, a.datas, [], name="jarvis_desktop",
+    debug=False, strip=False, upx=False, console=False, icon=None,
 )
