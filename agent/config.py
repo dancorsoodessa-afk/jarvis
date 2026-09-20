@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 
 
-SUPPORTED_PROVIDERS = ("openai-compatible", "local-vulkan")
+SUPPORTED_PROVIDERS = ("openai-compatible", "local-vulkan", "hermes")
 
 
 def normalize_provider(value: str | None) -> str:
@@ -20,6 +20,7 @@ def normalize_provider(value: str | None) -> str:
         "vulkan": "local-vulkan",
         "llama": "local-vulkan",
         "llama-cpp": "local-vulkan",
+        "hermes-local": "hermes",
     }
     return aliases.get(provider, provider)
 
@@ -31,7 +32,7 @@ class Settings:
     provider: str = "openai-compatible"
     chat_url: str = ""
     chat_key: str = ""
-    chat_model: str = "openrouter/free"
+    chat_model: str = "hermes-agent"
     # Current free OpenRouter variants; these can also be overridden for local models.
     deepseek_url: str = ""
     deepseek_key: str = ""
@@ -70,7 +71,7 @@ class Settings:
             provider=provider,
             chat_url=os.environ.get("JARVIS_CHAT_URL", "").strip(),
             chat_key=os.environ.get("JARVIS_CHAT_KEY", ""),
-            chat_model=os.environ.get("JARVIS_CHAT_MODEL", "openrouter/free").strip() or "openrouter/free",
+            chat_model=os.environ.get("JARVIS_CHAT_MODEL", "hermes-agent").strip() or "hermes-agent",
             deepseek_url=os.environ.get("JARVIS_DEEPSEEK_URL", "").strip(),
             deepseek_key=os.environ.get("JARVIS_DEEPSEEK_KEY", ""),
             deepseek_model=os.environ.get("JARVIS_DEEPSEEK_MODEL", "deepseek/deepseek-chat:free").strip(),
