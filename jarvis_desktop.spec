@@ -18,7 +18,7 @@ a = Analysis(
     ["jarvis_desktop.py"],
     pathex=["."],
     binaries=[],
-    datas=[("docs", "docs"), ("vendor/stt_model", "stt_model")],
+    datas=[("docs", "docs"), ("vendor/stt_model", "stt_model"), ("vendor/piper", "piper")],
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
