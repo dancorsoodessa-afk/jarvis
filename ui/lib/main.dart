@@ -352,7 +352,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     final clean = text.trim(); final client = _client; final attachment = _attachment;
     if (clean.isEmpty || _busy) return;
     if (client == null) { if (mounted) setState(() => _status = 'Сначала подключите AI в настройках'); if (fromVoice) await _speak('Сначала подключите AI в настройках'); return; }
-    setState(() { _busy = true; _streamText = ''; _messages.add(_Msg(attachment == null ? clean : '$clean\n📎 ${attachment.name}', isUser: true)); }); _scrollToBottom();
+    if (!mounted) return; setState(() { _busy = true; _streamText = ''; _messages.add(_Msg(attachment == null ? clean : '$clean\n📎 ${attachment.name}', isUser: true)); }); _scrollToBottom();
     try {
       final reply = await client.sendMessage(clean, attachment: attachment == null ? null : {'name': attachment.name, 'mime': attachment.mime, 'data': attachment.data});
       if (!mounted) return;
@@ -446,7 +446,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
             top: 16,
             left: 18,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
-              Text('БУCЯ', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
               SizedBox(height: 2),
               Text('JARVIS ASSISTANT', style: TextStyle(color: Colors.white54, fontSize: 9, letterSpacing: 1.8)),
             ]),
@@ -543,7 +543,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
               const SizedBox(width: 11),
               const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
-                Text('БУCЯ · ЛИЧНЫЙ АССИСТЕНТ', style: TextStyle(color: Colors.white54, fontSize: 8, letterSpacing: 1.1)),
+                Text('JARVIS · ЛИЧНЫЙ АССИСТЕНТ', style: TextStyle(color: Colors.white54, fontSize: 8, letterSpacing: 1.1)),
               ])),
               IconButton(tooltip: 'Микрофон', onPressed: _toggleVoice, icon: Icon(_listening ? Icons.mic_rounded : Icons.mic_none_rounded, color: micColor, size: 27)),
               IconButton(tooltip: 'Центр управления', onPressed: _settings, icon: const Icon(Icons.settings_rounded, color: kCyan, size: 25)),
@@ -618,7 +618,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   cursorColor: kCyan,
                   decoration: InputDecoration(
-                    hintText: 'Сообщение Бусе…',
+                    hintText: 'Сообщение JARVIS…',
                     hintStyle: const TextStyle(color: Colors.white30),
                     filled: true,
                     fillColor: kPanel,
