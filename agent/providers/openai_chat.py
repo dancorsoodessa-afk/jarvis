@@ -209,7 +209,7 @@ class OpenAIChatProvider:
             raise RuntimeError(f"ИИ вернул неожиданный ответ: {body!r}") from exc
         return {"content": msg.get("content") or "", "tool_calls": msg.get("tool_calls") or []}
 
-    def generate(self, prompt, tools: Optional[list] = None, max_steps: int = 4) -> str:
+    def generate(self, prompt, tools: Optional[list] = None, max_steps: int = 8) -> str:
         self._ensure_endpoint()
         model = self.discover_model()
         messages = self._messages(prompt)
