@@ -33,7 +33,7 @@ def _voice_dir() -> Path:
 def _piper_dir() -> Path:
     # In the packaged Windows build Piper is shipped next to the EXE.
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent / "piper"
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent)) / "piper"
     return Path(os.environ.get("JARVIS_HOME", ".")) / "voice"
 
 
