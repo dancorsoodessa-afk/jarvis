@@ -5,6 +5,8 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from ..permissions import audit, severity
+
 
 class ConfirmationRequired(Exception):
     """Raised when a tool must be confirmed before running."""
@@ -79,12 +81,19 @@ class ToolRegistry:
         entry = self._tools.get(name)
         if entry is None:
             raise KeyError(name)
-        if entry.confirm and not _confirmed:
+        if (entry.confirm or severity(name, _confirmed) == "critical") and not _confirmed:
+            audit(name, "blocked", "ожидалось подтверждение")
             raise ConfirmationRequired(name)
         if args and len(args) > 1 and len(entry.parameters) == 1 and not kwargs:
             args = (" ".join(map(str, args)),)
+        audit(name, "start", severity(name, _confirmed))
         try:
-            return entry.fn(*args, **kwargs)
+            result = entry.fn(*args, **kwargs)
+            audit(name, "success")
+            return result
+        except Exception as exc:
+            audit(name, "error", type(exc).__name__)
+            raise
         except TypeError:
             if len(args) > 1 and not kwargs:
                 return entry.fn(" ".join(map(str, args)))
