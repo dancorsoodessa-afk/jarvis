@@ -13,6 +13,7 @@ import mimetypes
 from agent.runtime import build_agent
 from agent import tts, voice
 from agent.tools_catalog import TOOLS
+from agent.security import load_secret, save_secret, delete_secret
 
 BG = "#05080f"
 PANEL = "#0b111b"
@@ -67,7 +68,7 @@ class JarvisDesktop(tk.Tk):
         provider = self.settings.get("provider") or os.environ.get("JARVIS_PROVIDER") or DEFAULT_PROVIDER
         url = self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL
         model = self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or ""
-        api_key = self.settings.get("api_key") or os.environ.get("JARVIS_CHAT_KEY") or ""
+        api_key = load_secret("chat_api_key") or os.environ.get("JARVIS_CHAT_KEY") or self.settings.get("api_key") or ""
         disabled = self.settings.get("disabled_tools", [])
         if not isinstance(disabled, list):
             disabled = []
@@ -87,6 +88,11 @@ class JarvisDesktop(tk.Tk):
 
     def _save_settings(self):
         APP_DIR.mkdir(parents=True, exist_ok=True)
+        api_key = str(self.settings.pop("api_key", "") or "")
+        if api_key:
+            save_secret("chat_api_key", api_key)
+        elif "api_key" in self.settings:
+            delete_secret("chat_api_key")
         SETTINGS_FILE.write_text(json.dumps(self.settings, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _build_style(self):
