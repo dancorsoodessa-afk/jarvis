@@ -264,7 +264,7 @@ class JarvisIpc {
       req.headers.set(HttpHeaders.acceptHeader, 'application/json');
       _auth(req);
       req.write(jsonEncode({'model': model, 'messages': messages, 'tools': _tools(), 'tool_choice': 'auto', 'temperature': 0.2, 'stream': false}));
-      final decoded = await _json(await req.close());
+      Map<String, dynamic> decoded;\n      try {\n        decoded = await _json(await req.close());\n      } catch (e) {\n        // Некоторые бесплатные модели OpenRouter не принимают tool schema. Повторяем обычный чат без tools.\n        if (round == 0) {\n          final retry = await _httpClient!.postUrl(Uri.parse('$_apiUrl/chat/completions'));\n          retry.headers.contentType = ContentType.json;\n          retry.headers.set(HttpHeaders.acceptHeader, 'application/json');\n          _auth(retry);\n          retry.write(jsonEncode({'model': model, 'messages': messages, 'temperature': 0.2, 'stream': false}));\n          decoded = await _json(await retry.close());\n        } else {\n          rethrow;\n        }\n      }
       final choices = decoded['choices'];
       if (choices is! List || choices.isEmpty) throw StateError('AI не вернул choices');
       final first = choices.first;
