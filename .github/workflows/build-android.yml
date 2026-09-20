@@ -82,12 +82,6 @@ jobs:
 
           p = Path('android/app/src/main/AndroidManifest.xml')
           text = p.read_text(encoding='utf-8')
-          text = text.replace('<application android:label="jarvis_ui"', '<application android:label="JARVIS"')
-          text = text.replace('<application android:label="jarvis"', '<application android:label="JARVIS"')
-          p.write_text(text, encoding='utf-8')
-
-          p = Path('android/app/src/main/AndroidManifest.xml')
-          text = p.read_text(encoding='utf-8')
           end = text.find('>', text.find('<manifest '))
           if end < 0:
               raise SystemExit('AndroidManifest.xml: <manifest> not found')
