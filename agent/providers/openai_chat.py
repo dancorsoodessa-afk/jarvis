@@ -89,9 +89,11 @@ class OpenAIChatProvider:
 
     def _auth_headers(self, *, stream: bool = False) -> dict:
         if not self.api_key:
-            raise RuntimeError(
-                "API-ключ не задан. Для OpenRouter укажите API key в настройках JARVIS."
-            )
+            parsed = urllib.parse.urlsplit(self.url)
+            if parsed.hostname not in ("127.0.0.1", "localhost", "::1"):
+                raise RuntimeError(
+                    "API-ключ не задан. Для удалённого ИИ укажите API key в настройках JARVIS."
+                )
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
         if stream:
             headers["Accept"] = "text/event-stream"
