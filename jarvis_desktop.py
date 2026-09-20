@@ -277,14 +277,33 @@ class JarvisDesktop(tk.Tk):
                 tts.stop()
                 self.events.put(("voice_status", "Перебивание: TTS остановлен, слушаю вас."))
         def work():
+            wake_words = ("jarvis", "джарвис")
             while self._voice_loop_running and self.settings.get("voice_enabled", True):
                 try:
-                    command = voice.listen_for_phrase(
+                    heard = voice.listen_for_phrase(
                         silence_seconds=0.55,
                         max_seconds=8.0,
                         start_timeout=2.0,
                         on_speech_start=on_speech_start,
                     )
+                    if not heard or not self._voice_loop_running:
+                        continue
+                    normalized = " ".join(heard.lower().split())
+                    command = None
+                    for word in wake_words:
+                        if normalized.startswith(word):
+                            command = normalized[len(word):].strip(" ,.!")
+                            break
+                    if command is None:
+                        continue
+                    if not command:
+                        self.events.put(("voice_status", "Jarvis активирован. Слушаю вас."))
+                        command = voice.listen_for_phrase(
+                            silence_seconds=0.55,
+                            max_seconds=8.0,
+                            start_timeout=4.0,
+                            on_speech_start=on_speech_start,
+                        )
                     if command and self._voice_loop_running:
                         self.events.put(("voice_text", command))
                 except Exception as exc:
