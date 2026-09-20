@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [foundation, jarvis-universal-agent, voice-stack-ru]
+  pull_request:
+    branches: [foundation]
 
 jobs:
   build:
