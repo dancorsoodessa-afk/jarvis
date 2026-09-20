@@ -1,8 +1,9 @@
 name: Build JARVIS Windows
 
 on:
-  push:
-    branches: [foundation]
+  # This workflow is retained as a manual fallback.
+  # The canonical push build is build-exe.yml; running both in parallel
+  # caused duplicate Hugging Face downloads and intermittent HTTP 429s.
   workflow_dispatch:
 
 jobs:
@@ -15,7 +16,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Build JARVIS
         shell: pwsh
