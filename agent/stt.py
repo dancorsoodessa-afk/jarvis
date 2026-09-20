@@ -1,127 +1,73 @@
-"""Speech-to-text engines for JARVIS.
-
-Priority:
-1. whisper.cpp when JARVIS_WHISPER is configured (fully local).
-2. faster-whisper when installed (local CPU, int8).
-3. Voice module may use its lightweight network fallback when no local engine
-   exists. STT itself never performs network requests.
-
-The faster-whisper model is cached for the lifetime of the process. Creating a
-WhisperModel for every utterance makes voice interaction painfully slow.
-"""
+"""Надёжный локальный STT JARVIS: Vosk, русский язык, без облака."""
 
 from __future__ import annotations
-
-import os
-import subprocess
-import threading
+import json, os, shutil, urllib.request, zipfile, sys, threading
 from pathlib import Path
-import sys
 
-_FASTER_MODEL = None
-_FASTER_MODEL_KEY = None
-_FASTER_MODEL_LOCK = threading.Lock()
+MODEL_NAME = "vosk-model-small-ru-0.22"
+MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
+_MODEL = None
+_LOCK = threading.Lock()
 
+def model_dir() -> Path:
+    override = os.environ.get("JARVIS_VOSK_MODEL", "").strip()
+    if override: return Path(override)
+    if getattr(sys, "frozen", False): return Path(sys._MEIPASS) / "stt_model"
+    return Path(os.environ.get("APPDATA", Path.home())) / "JARVIS" / "stt_model"
 
-def _stt_model_dir() -> Path:
-    override = os.environ.get("JARVIS_STT_MODEL_PATH", "").strip()
-    if override:
-        return Path(override)
-    if getattr(sys, "frozen", False):
-        return Path(sys._MEIPASS) / "stt_model"
-    return Path(__file__).resolve().parent.parent / "vendor" / "stt_model"
-
+def _ensure_model() -> Path:
+    path = model_dir()
+    if (path / "am").exists() and (path / "conf").exists(): return path
+    vendor = Path(__file__).resolve().parent.parent / "vendor" / "stt_model"
+    if (vendor / "am").exists() and (vendor / "conf").exists(): return vendor
+    path.parent.mkdir(parents=True, exist_ok=True)
+    archive = path.parent / f"{MODEL_NAME}.zip"
+    tmp = path.parent / f"{MODEL_NAME}.download"
+    urllib.request.urlretrieve(MODEL_URL, tmp)
+    tmp.replace(archive)
+    with zipfile.ZipFile(archive) as zf: zf.extractall(path.parent)
+    extracted = path.parent / MODEL_NAME
+    if extracted != path:
+        if path.exists(): shutil.rmtree(path, ignore_errors=True)
+        extracted.rename(path)
+    try: archive.unlink()
+    except OSError: pass
+    return path
 
 def available_engines() -> list[str]:
-    engines = []
-    exe = os.environ.get("JARVIS_WHISPER", "").strip()
-    if exe and Path(exe).exists():
-        engines.append("whisper-cpp")
     try:
-        import faster_whisper  # noqa: F401
-        engines.append("faster-whisper")
+        import vosk
+        return ["vosk"]
     except ImportError:
-        pass
-    return engines
-
+        return []
 
 def current_engine() -> str:
-    mode = os.environ.get("JARVIS_STT", "auto").strip().lower()
-    if mode == "auto":
-        engines = available_engines()
-        return engines[0] if engines else "off"
-    if mode in {"off", "whisper-cpp", "faster-whisper"}:
-        return mode
-    return "off"
+    mode = os.environ.get("JARVIS_STT", "vosk").strip().lower()
+    return "off" if mode == "off" else ("vosk" if "vosk" in available_engines() else "off")
 
-
-def _run_whisper_cpp(wav_path: Path) -> str:
-    exe = os.environ.get("JARVIS_WHISPER", "").strip()
-    model = os.environ.get("JARVIS_WHISPER_MODEL", "").strip()
-    if not exe or not Path(exe).exists():
-        raise RuntimeError(f"whisper.cpp не найден: {exe}")
-    if not model or not Path(model).exists():
-        raise RuntimeError(f"Модель whisper не найдена: {model}")
-    proc = subprocess.run(
-        [exe, "-m", model, "-f", str(wav_path), "-nt", "-l", "ru"],
-        capture_output=True,
-        timeout=120,
-    )
-    text = proc.stdout.decode("utf-8", errors="replace").strip()
-    if proc.returncode != 0:
-        raise RuntimeError(
-            "whisper.cpp ошибка: "
-            + proc.stderr.decode("utf-8", errors="replace")[:300]
-        )
-    return text
-
-
-def _get_faster_model(model_size: str):
-    global _FASTER_MODEL, _FASTER_MODEL_KEY
-    key = model_size.strip() or "tiny"
-    with _FASTER_MODEL_LOCK:
-        if _FASTER_MODEL is None or _FASTER_MODEL_KEY != key:
-            try:
-                from faster_whisper import WhisperModel
-            except ImportError as exc:
-                raise RuntimeError("faster-whisper не установлен") from exc
-            _FASTER_MODEL = WhisperModel(
-                str(_stt_model_dir()) if _stt_model_dir().exists() else key,
-                device="cpu",
-                compute_type="int8",
-                cpu_threads=max(1, int(os.environ.get("JARVIS_STT_THREADS", "4") or 4)),
-                num_workers=1,
-            )
-            _FASTER_MODEL_KEY = key
-    return _FASTER_MODEL
-
-
-def _run_faster_whisper(wav_path: Path) -> str:
-    model_size = os.environ.get("JARVIS_STT_MODEL_SIZE", "tiny").strip() or "tiny"
-    model = _get_faster_model(model_size)
-    segments, _info = model.transcribe(
-        str(wav_path),
-        language="ru",
-        beam_size=1,
-        best_of=1,
-        temperature=0.0,
-        vad_filter=True,
-        vad_parameters={"min_silence_duration_ms": 250, "speech_pad_ms": 80},
-    )
-    return " ".join(seg.text.strip() for seg in segments).strip()
-
+def _get_model():
+    global _MODEL
+    with _LOCK:
+        if _MODEL is None:
+            from vosk import Model, SetLogLevel
+            SetLogLevel(-1)
+            _MODEL = Model(str(_ensure_model()))
+    return _MODEL
 
 def transcribe(audio_path: str) -> str:
-    engine = current_engine()
-    if engine == "off":
-        raise RuntimeError(
-            "Локальное распознавание речи не установлено. В этой сборке нужен faster-whisper."
-        )
+    if current_engine() == "off": raise RuntimeError("STT Vosk не установлен.")
     path = Path(audio_path)
-    if not path.exists():
-        raise ValueError(f"Файл не найден: {audio_path}")
-    if engine == "whisper-cpp":
-        return _run_whisper_cpp(path)
-    if engine == "faster-whisper":
-        return _run_faster_whisper(path)
-    raise RuntimeError(f"Неизвестный STT-движок: {engine}")
+    if not path.exists(): raise ValueError(f"Файл не найден: {audio_path}")
+    import wave
+    from vosk import KaldiRecognizer
+    with wave.open(str(path), "rb") as wf:
+        if wf.getnchannels() != 1 or wf.getsampwidth() != 2:
+            raise RuntimeError("STT требует моно WAV PCM 16-bit.")
+        rec = KaldiRecognizer(_get_model(), wf.getframerate())
+        chunks = []
+        while True:
+            data = wf.readframes(4000)
+            if not data: break
+            if rec.AcceptWaveform(data): chunks.append(json.loads(rec.Result()).get("text", ""))
+        chunks.append(json.loads(rec.FinalResult()).get("text", ""))
+    return " ".join(x for x in chunks if x).strip()
