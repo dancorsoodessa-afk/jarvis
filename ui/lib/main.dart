@@ -295,12 +295,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 TextField(controller: _apiHostKey, obscureText: true, decoration: const InputDecoration(labelText: 'APIHOST key · голос Леда', isDense: true)),
                 const SizedBox(height: 12),
                 const Text('ГОЛОС / МИКРОФОН', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
-                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Без двойного хлопка. Микрофон слушает постоянно. Локальный русский STT/TTS.')),
-                Row(children: [
-                  Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('test_tts'), icon: const Icon(Icons.volume_up), label: const Text('Проверить голос'))),
-                  const SizedBox(width: 8),
-                  Expanded(child: OutlinedButton.icon(onPressed: () => _voice.invokeMethod('install_tts_data'), icon: const Icon(Icons.download), label: const Text('Голосовые данные'))),
-                ]),
+                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Локальный русский STT. Микрофон работает только при открытом приложении.')),
                 const SizedBox(height: 12),
                 const Text('ИНСТРУМЕНТЫ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 Wrap(spacing: 6, runSpacing: 6, children: [
@@ -392,7 +387,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   }
 
   Widget _commandChip(String text) => InkWell(
-    onTap: () => _input.text = text,
+    onTap: _busy ? null : () async {
+      await _send(text);
+    },
     child: Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(color: kPanel, border: Border.all(color: kLine), borderRadius: BorderRadius.circular(3)),
       child: Text(text, style: const TextStyle(color: kCyan, fontSize: 10, fontFamily: 'monospace'))));
