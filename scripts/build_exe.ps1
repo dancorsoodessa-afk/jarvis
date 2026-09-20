@@ -77,10 +77,9 @@ Copy-Item "vendor\piper" "$release\piper" -Recurse -Force
 JARVIS — Windows x64
 
 Основное приложение: JARVIS Desktop.exe
-Ядро: JARVIS.exe
 
-JARVIS Desktop.exe — основной графический интерфейс.
-JARVIS.exe — отдельное ядро/CLI и не требуется запускать вручную для обычной работы Desktop.
+Все необходимые компоненты, включая офлайн-распознавание речи и русский голос Piper, встроены в один EXE.
+Дополнительные DLL, Piper и модели вручную устанавливать или копировать не требуется.
 
 Конфигурация сохраняется в %APPDATA%\JARVIS\settings.json.
 "@ | Set-Content -Path "$release\README.txt" -Encoding UTF8
