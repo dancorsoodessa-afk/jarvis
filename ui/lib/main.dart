@@ -195,6 +195,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     if (value == '__LOADING_VOICE__') { if (mounted) setState(() => _status = 'Загрузка локальной модели речи…'); return; }
     if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
     if (value.startsWith('__TTS_ERROR__')) { if (mounted) setState(() => _status = 'Ошибка TTS: ${value.substring(12)}'); return; }
+    if (value == '__MIC_SOURCE_READY__') { if (mounted) setState(() => _status = 'Микрофон подключён · проверяю сигнал…'); return; }
+    if (value.startsWith('__MIC_LEVEL__:')) { if (mounted) setState(() => _status = 'Микрофон работает · сигнал ${value.substring(14)}'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
     if (value.startsWith('__ERROR__:')) {
       _listening = false;
