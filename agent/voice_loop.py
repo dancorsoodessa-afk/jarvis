@@ -1,6 +1,6 @@
 """Unified voice loop for JARVIS.
 
-Desktop and CLI use the same activation rule: two claps, then bounded speech
+Desktop and CLI activate only after the wake word "Jarvis" is detected.
 capture. The legacy ``step`` method remains for compatibility with existing
 wake-word tests and integrations.
 """
@@ -57,7 +57,7 @@ class Recorder:
 
 
 class VoiceLoop:
-    """Voice assistant loop with direct speech activation."""
+    """Voice assistant loop activated only by the wake word "Jarvis"."""
 
     def __init__(self, agent, recorder: Recorder | None = None,
                  wake_words=None, wake_enabled: bool | None = None,
@@ -112,7 +112,6 @@ class VoiceLoop:
         self.log.info("Голосовой режим включён: ожидание речи")
         while True:
             try:
-                # Do not require two claps. Listen for normal speech directly.
                 heard = voice.listen_for_phrase(
                     silence_seconds=0.70,
                     max_seconds=10.0,
@@ -121,9 +120,22 @@ class VoiceLoop:
                 )
                 if not heard:
                     continue
-                result = self.agent.handle(heard)
+                command = self.strip_wake(heard, self.wake_words)
+                if command is None:
+                    continue
+                if not command:
+                    heard = voice.listen_for_phrase(
+                        silence_seconds=0.70,
+                        max_seconds=10.0,
+                        start_timeout=5.0,
+                        on_speech_start=tts.stop,
+                    )
+                    command = heard.strip() if heard else ""
+                if not command:
+                    continue
+                result = self.agent.handle(command)
                 answer = str(result.text or "").strip()
-                self.log.info("Голос: %r -> %r", heard, answer[:80])
+                self.log.info("Голос: %r -> %r", command, answer[:80])
                 if answer:
                     tts.speak_and_play(answer)
             except KeyboardInterrupt:
