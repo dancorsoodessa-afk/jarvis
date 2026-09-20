@@ -3,22 +3,19 @@ name: Build JARVIS для Windows
 on:
   workflow_dispatch:
   push:
-    branches: [foundation, jarvis-universal-agent]
+    branches: [foundation, jarvis-universal-agent, voice-stack-ru]
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Собрать и проверить Windows-пакет
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
-
       - name: Загрузить готовый Windows-пакет
         uses: actions/upload-artifact@v4
         with:
