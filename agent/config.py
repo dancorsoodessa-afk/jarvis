@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 
 
-SUPPORTED_PROVIDERS = ("openai-compatible", "local-vulkan", "hermes")
+SUPPORTED_PROVIDERS = ("openai-compatible", "local-vulkan", "hermes", "hybrid")
 
 
 def normalize_provider(value: str | None) -> str:
