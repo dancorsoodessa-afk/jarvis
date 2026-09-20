@@ -3,7 +3,7 @@ name: Build JARVIS для Windows
 on:
   workflow_dispatch:
   push:
-    branches: [foundation, jarvis-universal-agent]
+    branches: [foundation, jarvis-universal-agent, russian-ui]
 
 jobs:
   build:
