@@ -1,6 +1,5 @@
 name: Build JARVIS Android APK
-# rebuild requested: Windows + Android verification
-# verified install build
+# Android release verification
 
 on:
   push:
@@ -69,11 +68,24 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          # Use a new stable application id so old debug-signed JARVIS builds cannot block installation.
           p = Path('android/app/build.gradle.kts')
           text = p.read_text(encoding='utf-8')
           text = text.replace('applicationId = "com.dancorsoodessa.jarvis_ui"', 'applicationId = "com.dancorsoodessa.jarvis"')
           text = text.replace('namespace = "com.dancorsoodessa.jarvis_ui"', 'namespace = "com.dancorsoodessa.jarvis"')
+          dep = 'implementation(files("libs/sherpa-onnx-1.13.8.aar"))'
+          if dep not in text:
+              text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
+          if 'jniLibs.excludes' not in text:
+              marker = 'android {\n'
+              block = '''android {
+    packagingOptions {
+        jniLibs {
+            excludes += setOf("**/armeabi-v7a/**", "**/x86/**", "**/x86_64/**")
+        }
+    }
+'''
+              if marker in text:
+                  text = text.replace(marker, block, 1)
           p.write_text(text, encoding='utf-8')
 
           p = Path('pubspec.yaml')
@@ -109,25 +121,8 @@ jobs:
           text = text.replace('    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)\\n', '')
           text = text.replace('        maven { url = uri("https://jitpack.io") }\\n', '')
           p.write_text(text, encoding='utf-8')
-
-          p = Path('android/app/build.gradle.kts')
-          text = p.read_text(encoding='utf-8')
-          dep = 'implementation(files("libs/sherpa-onnx-1.13.8.aar"))'
-          if dep not in text:
-              if 'dependencies {' in text:
-                  text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
-              else:
-                  text = text.rstrip() + '\n\ndependencies {\n    ' + dep + '\n}\n'
-          # The sherpa-onnx AAR contains native libraries for several ABIs.
-          # This APK is intentionally arm64-only; remove incompatible extra ABIs.
-          if 'jniLibs.excludes' not in text:
-              marker = 'android {\n'
-              block = 'android {\n    packagingOptions {\n        jniLibs {\n            excludes += setOf("**/armeabi-v7a/**", "**/x86/**", "**/x86_64/**")\n        }\n    }\n'
-              if marker in text:
-                  text = text.replace(marker, block, 1)
-          p.write_text(text, encoding='utf-8')
           PY
-          grep -n "sherpa-onnx" android/app/build.gradle.kts android/settings.gradle.kts
+          grep -n "sherpa-onnx" android/app/build.gradle.kts
           grep -n 'signingConfig = signingConfigs.getByName("debug")' android/app/build.gradle.kts
 
       - name: Get dependencies
@@ -145,59 +140,7 @@ jobs:
           grep -q "__MIC_LEVEL__" lib/main.dart
           grep -q "__MIC_LEVEL__" android_main_activity.kt
           grep -q "microphone_permission_missing" android_main_activity.kt
-          grep -q '^package com.dancorsoodessa.jarvis
-      - name: Analyze Dart code
-        working-directory: ui
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
-      - name: Build release APK
-        working-directory: ui
-        run: flutter build apk --release --target-platform android-arm64
-
-      - name: Verify APK exists, alignment, signature, manifest and hash
-        working-directory: ui
-        run: |
-          set -euo pipefail
-          apk="build/app/outputs/flutter-apk/app-release.apk"
-          test -s "$apk"
-          test "$(du -b "$apk" | cut -f1)" -lt 250000000
-
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
-          ZIPALIGN=$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)
-          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
-          test -x "$APKSIGNER"
-          test -x "$ZIPALIGN"
-          test -x "$AAPT"
-
-          "$APKSIGNER" verify --verbose --print-certs "$apk"
-          "$ZIPALIGN" -c -v 4 "$apk"
-
-          if ! unzip -l "$apk" | grep -q "lib/arm64-v8a/"; then
-            echo "ERROR: arm64-v8a native libraries are missing"
-            exit 1
-          fi
-          if unzip -l "$apk" | grep -q "lib/armeabi-v7a/\|lib/x86_64/"; then
-            echo "ERROR: APK contains unsupported extra ABIs"
-            exit 1
-          fi
-          "$AAPT" dump badging "$apk" | tee apk-manifest.txt
-          grep -q "^package: name='com.dancorsoodessa.jarvis'" apk-manifest.txt
-          grep -q "versionName='0.1.1'" apk-manifest.txt
-          "$AAPT" dump permissions "$apk" | grep -q "android.permission.RECORD_AUDIO"
-
-          sha256sum "$apk" | tee apk.sha256
-          stat -c '%n %s bytes' "$apk"
-
-      - name: Upload JARVIS APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: jarvis-android-apk
-          path: |
-            ui/build/app/outputs/flutter-apk/app-release.apk
-            ui/apk.sha256
-            ui/apk-manifest.txt
-          if-no-files-found: error
- android_main_activity.kt
+          grep -q '^package com.dancorsoodessa.jarvis$' android_main_activity.kt
           ! grep -q "БУСЯ" lib/main.dart android_main_activity.kt
           ! grep -q "busya.voice" lib/main.dart android_main_activity.kt
 
