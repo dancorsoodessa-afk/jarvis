@@ -44,4 +44,10 @@ TOOLS = [
     ("kg_show", "Граф знаний: визуализация", "Показать граф знаний", "graph"),
     ("calc", "Калькулятор", "Вычислить арифметическое выражение", "calc"),
     ("now", "Дата и время", "Показать текущие дату и время", "time"),
+    ("app_test_environment", "Среда тестирования", "Проверить JMeter, ADB, Flutter, Gradle и Xcode", "process"),
+    ("android_app_diagnostics", "Диагностика Android", "ADB, память, батарея и критические ошибки приложения", "process"),
+    ("jmeter_load_test", "Нагрузочный тест", "Запустить JMeter JMX в non-GUI режиме", "danger"),
+    ("loaderio_status", "Loader.io", "Облачные нагрузочные тесты и результаты", "web"),
+    ("cloudflare_analytics", "Cloudflare APM/Analytics", "Получить телеметрию Cloudflare через API", "web"),
+    ("manageengine_monitor", "ManageEngine APM", "Получить данные Applications Manager через API", "process"),
 ]
