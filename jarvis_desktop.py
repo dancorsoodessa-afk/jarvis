@@ -41,7 +41,7 @@ def _load_saved_settings() -> dict:
 class JarvisDesktop(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("JARVIS — Personal AI System")
+        self.title("JARVIS — Персональный ИИ-помощник")
         self.geometry("1260x800")
         self.minsize(1040, 650)
         self.configure(bg=BG)
@@ -79,7 +79,7 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_URL"] = url
         os.environ["JARVIS_CHAT_KEY"] = api_key
         os.environ["JARVIS_DISABLED_TOOLS"] = json.dumps(disabled, ensure_ascii=False)
-        os.environ["JARVIS_TTS_GENDER"] = self.settings["tts_gender"]
+        os.environ["JARVIS_Озвучивание_GENDER"] = self.settings["tts_gender"]
         if model:
             os.environ["JARVIS_CHAT_MODEL"] = model
         else:
@@ -106,9 +106,9 @@ class JarvisDesktop(tk.Tk):
         header.grid(row=0, column=0, columnspan=3, sticky="ew")
         header.grid_columnconfigure(1, weight=1)
         tk.Label(header, text="JARVIS", bg=BG, fg=CYAN, font=("Segoe UI", 24, "bold"), padx=24).grid(row=0, column=0, pady=18)
-        tk.Label(header, text="PERSONAL AI SYSTEM  /  COMMAND CENTER", bg=BG, fg=MUTED,
+        tk.Label(header, text="ПЕРСОНАЛЬНЫЙ ИИ  /  ЦЕНТР УПРАВЛЕНИЯ", bg=BG, fg=MUTED,
                  font=("Segoe UI", 9, "bold")).grid(row=0, column=1, sticky="w")
-        self.status = tk.Label(header, text="● STARTING", bg=BG, fg=MUTED,
+        self.status = tk.Label(header, text="● ЗАПУСК", bg=BG, fg=MUTED,
                                font=("Segoe UI", 10, "bold"), padx=24)
         self.status.grid(row=0, column=2, sticky="e")
         self._build_sidebar()
@@ -118,14 +118,14 @@ class JarvisDesktop(tk.Tk):
     def _build_sidebar(self):
         side = tk.Frame(self, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
         side.grid(row=1, column=0, sticky="nsew", padx=(12, 6), pady=(0, 12))
-        tk.Label(side, text="CONTROL", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
+        tk.Label(side, text="УПРАВЛЕНИЕ", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
                  padx=18, pady=18).pack(anchor="w")
         self.tools_button = ttk.Button(side, text="⌁  Модули", command=self.show_tools)
         self.tools_button.pack(fill="x", padx=12, pady=5)
         ttk.Button(side, text="⚙  Настройки", command=self.show_settings).pack(fill="x", padx=12, pady=5)
         ttk.Button(side, text="🔊  Голос: ВКЛ", command=self.toggle_voice).pack(fill="x", padx=12, pady=5)
         self.voice_control = side.winfo_children()[-1]
-        ttk.Button(side, text="🗣  TTS: ВКЛ", command=self.toggle_tts).pack(fill="x", padx=12, pady=5)
+        ttk.Button(side, text="🗣  Озвучивание: ВКЛ", command=self.toggle_tts).pack(fill="x", padx=12, pady=5)
         self.tts_control = side.winfo_children()[-1]
         tk.Frame(side, bg=LINE, height=1).pack(fill="x", padx=12, pady=15)
         tk.Label(side, text="БЫСТРО", bg=PANEL, fg=MUTED, font=("Segoe UI", 8, "bold"),
@@ -171,7 +171,7 @@ class JarvisDesktop(tk.Tk):
         self.attach_button.grid(row=0, column=1, padx=(0, 8), ipady=3)
         self.voice_button = ttk.Button(input_frame, text="🎙 ГОЛОС", command=self.start_voice)
         self.voice_button.grid(row=0, column=2, padx=(0, 8), ipady=3)
-        self.send_button = ttk.Button(input_frame, text="SEND", style="Accent.TButton", command=self.send)
+        self.send_button = ttk.Button(input_frame, text="ОТПРАВИТЬ", style="Accent.TButton", command=self.send)
         self.send_button.grid(row=0, column=3, ipadx=10, ipady=3)
         self.attachment_label = tk.Label(center, text="Вложений нет", bg=BG, fg=MUTED, font=("Segoe UI", 8), anchor="w")
         self.attachment_label.grid(row=3, column=0, sticky="ew", pady=(4, 0))
@@ -179,10 +179,10 @@ class JarvisDesktop(tk.Tk):
     def _build_right(self):
         right = tk.Frame(self, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
         right.grid(row=1, column=2, sticky="nsew", padx=(6, 12), pady=(0, 12))
-        tk.Label(right, text="LIVE STATUS", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
+        tk.Label(right, text="ТЕКУЩИЙ СТАТУС", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
                  padx=16, pady=18).pack(anchor="w")
         self.metrics = {}
-        for name in ("Core", "AI Provider", "Memory", "Tools", "Voice", "TTS"):
+        for name in ("Ядро", "Провайдер ИИ", "Память", "Модули", "Голос", "Озвучивание"):
             row = tk.Frame(right, bg=PANEL)
             row.pack(fill="x", padx=16, pady=7)
             tk.Label(row, text=name, bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(side="left")
@@ -203,7 +203,7 @@ class JarvisDesktop(tk.Tk):
             "LISTENING": "СЛУШАЮ ВАС",
             "THINKING": "ОБРАБОТКА",
             "SPEAKING": "ОТВЕЧАЮ",
-            "ERROR": "ОШИБКА",
+            "ОШИБКА": "ОШИБКА",
         }
         self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
 
@@ -213,7 +213,7 @@ class JarvisDesktop(tk.Tk):
         phase = self._orb_phase
         state = self._visual_state
         level = self._visual_level
-        speed = {"IDLE": 0.025, "LISTENING": 0.075, "THINKING": 0.11, "SPEAKING": 0.085, "ERROR": 0.16}.get(state, 0.05)
+        speed = {"IDLE": 0.025, "LISTENING": 0.075, "THINKING": 0.11, "SPEAKING": 0.085, "ОШИБКА": 0.16}.get(state, 0.05)
         pulse = 1.0 + 0.18 * math.sin(phase * 3.0)
         if state == "LISTENING":
             pulse += level * 0.55
@@ -221,8 +221,8 @@ class JarvisDesktop(tk.Tk):
             pulse += level * 0.45
         elif state == "THINKING":
             pulse += 0.18 * math.sin(phase * 7.0)
-        core = RED if state == "ERROR" else (YELLOW if state == "THINKING" else CYAN)
-        ring = "#6b2735" if state == "ERROR" else "#1b6f88"
+        core = RED if state == "ОШИБКА" else (YELLOW if state == "THINKING" else CYAN)
+        ring = "#6b2735" if state == "ОШИБКА" else "#1b6f88"
 
         # Псевдо-3D сфера: глубина точек меняет размер и яркость.
         for i in range(48):
@@ -275,7 +275,7 @@ class JarvisDesktop(tk.Tk):
         def on_speech_start():
             if tts.is_playing():
                 tts.stop()
-                self.events.put(("voice_status", "Перебивание: TTS остановлен, слушаю вас."))
+                self.events.put(("voice_status", "Перебивание: Озвучивание остановлен, слушаю вас."))
         def work():
             wake_words = ("jarvis", "джарвис")
             while self._voice_loop_running and self.settings.get("voice_enabled", True):
@@ -315,7 +315,7 @@ class JarvisDesktop(tk.Tk):
     def _stop_voice(self):
         self._voice_loop_running = False
         self.voice_button.config(text="🎙 ГОЛОС")
-        self._append("VOICE", "Голосовой цикл остановлен. Его можно включить снова кнопкой «Голос». ")
+        self._append("ГОЛОС", "Голосовой цикл остановлен. Его можно включить снова кнопкой «Голос». ")
 
     def toggle_voice(self):
         self.settings["voice_enabled"] = not self.settings.get("voice_enabled", True)
@@ -333,15 +333,15 @@ class JarvisDesktop(tk.Tk):
         self._save_settings()
         if not self.settings["tts_enabled"]:
             tts.stop()
-        self.tts_control.config(text=("🗣  TTS: ВКЛ" if self.settings["tts_enabled"] else "🗣  TTS: ВЫКЛ"))
+        self.tts_control.config(text=("🗣  Озвучивание: ВКЛ" if self.settings["tts_enabled"] else "🗣  Озвучивание: ВЫКЛ"))
         self._update_voice_status()
 
     def _update_voice_status(self):
         stt_ok = voice.available() and self.settings.get("voice_enabled", True)
         tts_engine = tts.current_engine()
         tts_ok = self.settings.get("tts_enabled", True) and tts_engine != "off"
-        self.metrics["Voice"].config(text="ON" if stt_ok else "OFF", fg=GREEN if stt_ok else RED)
-        self.metrics["TTS"].config(text=tts_engine.upper() if tts_ok else "OFF", fg=GREEN if tts_ok else RED)
+        self.metrics["Голос"].config(text="ON" if stt_ok else "OFF", fg=GREEN if stt_ok else RED)
+        self.metrics["Озвучивание"].config(text=tts_engine.upper() if tts_ok else "OFF", fg=GREEN if tts_ok else RED)
 
     def _drain_events(self):
         try:
@@ -351,13 +351,13 @@ class JarvisDesktop(tk.Tk):
                 if kind == "ready":
                     self.agent = event[1]
                     self.tool_names = list(self.agent.tools.names())
-                    provider = getattr(self.agent.provider, "name", "unknown").upper()
-                    self.status.config(text="● ONLINE", fg=GREEN)
+                    provider = getattr(self.agent.provider, "name", "неизвестно").upper()
+                    self.status.config(text="● В СЕТИ", fg=GREEN)
                     self.hud_text.config(text="Ядро активно\nAI: " + provider)
-                    self.metrics["Core"].config(text="ONLINE", fg=GREEN)
-                    self.metrics["AI Provider"].config(text=provider)
-                    self.metrics["Memory"].config(text="ACTIVE", fg=GREEN)
-                    self.metrics["Tools"].config(text=str(len(self.tool_names)), fg=GREEN)
+                    self.metrics["Ядро"].config(text="В СЕТИ", fg=GREEN)
+                    self.metrics["Провайдер ИИ"].config(text=provider)
+                    self.metrics["Память"].config(text="АКТИВНО", fg=GREEN)
+                    self.metrics["Модули"].config(text=str(len(self.tool_names)), fg=GREEN)
                     self.tools_button.config(text=f"⌁  Модули ({len(self.tool_names)}/{len(TOOLS)})")
                     self.enabled_label.config(text=f"Активно модулей: {len(self.tool_names)} из {len(TOOLS)}\nОтключено: {len(TOOLS)-len(self.tool_names)}")
                     self._update_voice_status()
@@ -371,7 +371,7 @@ class JarvisDesktop(tk.Tk):
                     self.busy = False
                     self.send_button.config(state="normal")
                     self.attach_button.config(state="normal")
-                    self.status.config(text="● ONLINE", fg=GREEN)
+                    self.status.config(text="● В СЕТИ", fg=GREEN)
                     self._set_visual_state("IDLE", 0.0)
                     if self.settings.get("tts_enabled", True):
                         threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
@@ -383,16 +383,16 @@ class JarvisDesktop(tk.Tk):
                     self.input.insert(0, event[1])
                     self.send(event[1])
                 elif kind == "voice_status":
-                    self._append("VOICE", event[1])
+                    self._append("ГОЛОС", event[1])
                 elif kind == "voice_error":
-                    self._set_visual_state("ERROR")
-                    self._append("VOICE", "Ошибка: " + event[1])
+                    self._set_visual_state("ОШИБКА")
+                    self._append("ГОЛОС", "Ошибка: " + event[1])
                 elif kind == "tts_error":
-                    self._append("VOICE", "Ошибка TTS: " + event[1])
-                    self.metrics["TTS"].config(fg=RED)
+                    self._append("ГОЛОС", "Ошибка Озвучивание: " + event[1])
+                    self.metrics["Озвучивание"].config(fg=RED)
                 elif kind == "agent_error":
-                    self._set_visual_state("ERROR")
-                    self.status.config(text="● ERROR", fg=RED)
+                    self._set_visual_state("ОШИБКА")
+                    self.status.config(text="● ОШИБКА", fg=RED)
                     self._append("SYSTEM", "Не удалось запустить ядро: " + event[1])
                     self.busy = False
                     self.send_button.config(state="normal")
@@ -431,7 +431,7 @@ class JarvisDesktop(tk.Tk):
         else:
             return False
         self.settings["tts_gender"] = gender
-        os.environ["JARVIS_TTS_GENDER"] = gender
+        os.environ["JARVIS_Озвучивание_GENDER"] = gender
         tts.set_gender(gender)
         self._save_settings()
         self.events.put(("reply", message))
@@ -490,14 +490,14 @@ class JarvisDesktop(tk.Tk):
 
     def start_voice(self):
         if not self.settings.get("voice_enabled", True):
-            self._append("VOICE", "Голос выключен. Нажмите кнопку «Голос: ВЫКЛ», чтобы включить.")
+            self._append("ГОЛОС", "Голос выключен. Нажмите кнопку «Голос: ВЫКЛ», чтобы включить.")
             return
         if self._voice_loop_running:
-            self._append("VOICE", "Голосовой режим уже слушает.")
+            self._append("ГОЛОС", "Голосовой режим уже слушает.")
             return
         self._start_voice_loop()
         if not self._voice_loop_running:
-            self._append("VOICE", "Голосовой ввод недоступен. Проверьте зависимости STT.")
+            self._append("ГОЛОС", "Голосовой ввод недоступен. Проверьте зависимости STT.")
 
     def _draw_tool_avatar(self, canvas, kind, seed):
         palette = {
@@ -658,7 +658,7 @@ class JarvisDesktop(tk.Tk):
         voice_var = tk.BooleanVar(value=self.settings.get("voice_enabled", True))
         tts_var = tk.BooleanVar(value=self.settings.get("tts_enabled", True))
         ttk.Checkbutton(win, text="Включать голосовое прослушивание при старте", variable=voice_var).grid(row=4, column=1, sticky="w", padx=20, pady=8)
-        ttk.Checkbutton(win, text="Озвучивать ответы JARVIS через TTS", variable=tts_var).grid(row=5, column=1, sticky="w", padx=20, pady=8)
+        ttk.Checkbutton(win, text="Озвучивать ответы JARVIS через Озвучивание", variable=tts_var).grid(row=5, column=1, sticky="w", padx=20, pady=8)
         tk.Label(win, text="Модули управления находятся в отдельном окне «Модули». Изменения применяются после пересборки ядра.",
                  bg=PANEL, fg=MUTED, wraplength=700, justify="left").grid(row=6, column=0, columnspan=2, padx=20, pady=14)
         def save():
@@ -674,7 +674,7 @@ class JarvisDesktop(tk.Tk):
 
     def _reload_agent(self):
         self.agent = None
-        self.status.config(text="● RESTARTING", fg=YELLOW)
+        self.status.config(text="● REЗАПУСК", fg=YELLOW)
         self._start_agent()
 
     def _close(self):
