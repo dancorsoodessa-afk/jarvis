@@ -449,10 +449,19 @@ class MainActivity : FlutterActivity() {
         try { startActivity(Intent("android.speech.tts.engine.INSTALL_TTS_DATA")) } catch (_: Exception) {}
     }
 
+    override fun onPause() {
+        // Microphone is intentionally active only while JARVIS is visible.
+        // Stop capture when the app is backgrounded/screen is locked to avoid
+        // Android background-microphone restrictions and leaked AudioRecord instances.
+        handler.removeCallbacksAndMessages(null)
+        if (!disposed && !ttsPlaying) stopRecognition()
+        super.onPause()
+    }
+
     override fun onResume() {
         super.onResume()
         if (!disposed && voiceLoopEnabled && !ttsPlaying) {
-            handler.postDelayed({ if (!disposed && voiceLoopEnabled && !ttsPlaying && !voiceActive) startRecognition() }, 300)
+            handler.postDelayed({ if (!disposed && voiceLoopEnabled && !ttsPlaying && !voiceActive) startRecognition() }, 350)
         }
     }
 
