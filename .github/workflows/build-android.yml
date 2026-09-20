@@ -26,7 +26,7 @@ jobs:
         working-directory: ui
         run: |
           set -e
-          flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
+          flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis .
           rm -rf test
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
@@ -45,7 +45,7 @@ jobs:
         working-directory: ui
         run: |
           set -e
-          root=android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
+          root=android/app/src/main/kotlin/com/dancorsoodessa/jarvis
           mkdir -p "$root"
           cp android_main_activity.kt "$root/MainActivity.kt"
           cp android_tools/AndroidToolRouter.kt "$root/AndroidToolRouter.kt"
@@ -73,10 +73,17 @@ jobs:
           p = Path('android/app/build.gradle.kts')
           text = p.read_text(encoding='utf-8')
           text = text.replace('applicationId = "com.dancorsoodessa.jarvis_ui"', 'applicationId = "com.dancorsoodessa.jarvis"')
+          text = text.replace('namespace = "com.dancorsoodessa.jarvis_ui"', 'namespace = "com.dancorsoodessa.jarvis"')
           p.write_text(text, encoding='utf-8')
 
           p = Path('pubspec.yaml')
           text = p.read_text(encoding='utf-8').replace('version: 0.1.0', 'version: 0.1.1', 1)
+          p.write_text(text, encoding='utf-8')
+
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace('<application android:label="jarvis_ui"', '<application android:label="JARVIS"')
+          text = text.replace('<application android:label="jarvis"', '<application android:label="JARVIS"')
           p.write_text(text, encoding='utf-8')
 
           p = Path('android/app/src/main/AndroidManifest.xml')
