@@ -6,12 +6,12 @@
 
 import sys
 
-from .runtime import build_agent
-from .config import Settings
-from .multi_agent import ThreeAgentProvider
-from .providers.openai_chat import OpenAIChatProvider
-from . import ipc
-from .tools import self_modify
+from agent.runtime import build_agent
+from agent.config import Settings
+from agent.multi_agent import ThreeAgentProvider
+from agent.providers.openai_chat import OpenAIChatProvider
+from agent import ipc
+from agent.tools import self_modify
 
 
 JARVIS_SYSTEM_PROMPT = (
@@ -98,13 +98,13 @@ def main():
         return
 
     if "--voice" in args:
-        from .voice_loop import VoiceLoop
+        from agent.voice_loop import VoiceLoop
         VoiceLoop(agent).run()
         return
 
     if "--memory-clear" in args:
-        from .memory import SessionMemory
-        from .memory.store import MemoryStore
+        from agent.memory import SessionMemory
+        from agent.memory.store import MemoryStore
         store = MemoryStore(settings.memory_path)
         print(SessionMemory(store).clear())
         return
