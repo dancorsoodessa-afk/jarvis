@@ -26,7 +26,7 @@ jobs:
         working-directory: ui
         run: |
           set -e
-          flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis .
+          flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
           rm -rf test
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
@@ -149,6 +149,61 @@ jobs:
           grep -q "__MIC_LEVEL__" lib/main.dart
           grep -q "__MIC_LEVEL__" android_main_activity.kt
           grep -q "microphone_permission_missing" android_main_activity.kt
+          grep -q '^package com.dancorsoodessa.jarvis
+      - name: Analyze Dart code
+        working-directory: ui
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Build release APK
+        working-directory: ui
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Verify APK exists, alignment, signature, manifest and hash
+        working-directory: ui
+        run: |
+          set -euo pipefail
+          apk="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$apk"
+          test "$(du -b "$apk" | cut -f1)" -lt 250000000
+
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          ZIPALIGN=$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          test -x "$ZIPALIGN"
+          test -x "$AAPT"
+
+          "$APKSIGNER" verify --verbose --print-certs "$apk"
+          "$ZIPALIGN" -c -v 4 "$apk"
+
+          if ! unzip -l "$apk" | grep -q "lib/arm64-v8a/"; then
+            echo "ERROR: arm64-v8a native libraries are missing"
+            exit 1
+          fi
+          if unzip -l "$apk" | grep -q "lib/armeabi-v7a/\|lib/x86_64/"; then
+            echo "ERROR: APK contains unsupported extra ABIs"
+            exit 1
+          fi
+          "$AAPT" dump badging "$apk" | tee apk-manifest.txt
+          grep -q "^package: name='com.dancorsoodessa.jarvis'" apk-manifest.txt
+          grep -q "versionName='0.1.1'" apk-manifest.txt
+          "$AAPT" dump permissions "$apk" | grep -q "android.permission.RECORD_AUDIO"
+
+          sha256sum "$apk" | tee apk.sha256
+          stat -c '%n %s bytes' "$apk"
+
+      - name: Upload JARVIS APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-android-apk
+          path: |
+            ui/build/app/outputs/flutter-apk/app-release.apk
+            ui/apk.sha256
+            ui/apk-manifest.txt
+          if-no-files-found: error
+ android_main_activity.kt
+          ! grep -q "БУСЯ" lib/main.dart android_main_activity.kt
+          ! grep -q "busya.voice" lib/main.dart android_main_activity.kt
 
       - name: Analyze Dart code
         working-directory: ui
