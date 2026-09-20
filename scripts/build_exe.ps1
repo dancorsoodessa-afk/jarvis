@@ -58,35 +58,30 @@ Write-Host "== JARVIS: tests ==" -ForegroundColor Cyan
 pytest tests/ -q
 if ($LASTEXITCODE -ne 0) { throw "Tests failed; release build aborted." }
 
-Write-Host "== JARVIS: core ==" -ForegroundColor Cyan
-pyinstaller jarvis.spec --clean --noconfirm
-if ($LASTEXITCODE -ne 0) { throw "JARVIS.exe build failed." }
-
-Write-Host "== JARVIS: desktop ==" -ForegroundColor Cyan
+Write-Host "== JARVIS: desktop UI (единственный EXE) ==" -ForegroundColor Cyan
 pyinstaller jarvis_desktop.spec --clean --noconfirm
-if ($LASTEXITCODE -ne 0) { throw "JARVIS Desktop.exe build failed." }
+if ($LASTEXITCODE -ne 0) { throw "JARVIS Desktop EXE build failed." }
 
 $release = "release"
 Remove-Item $release -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $release | Out-Null
-Copy-Item "dist\jarvis.exe" "$release\JARVIS.exe"
-Copy-Item "dist\jarvis_desktop.exe" "$release\JARVIS Desktop.exe"
-Copy-Item "vendor\piper" "$release\piper" -Recurse -Force
+Copy-Item "dist\jarvis_desktop.exe" "$release\JARVIS.exe"
 
 @"
 JARVIS — Windows x64
 
-Основное приложение: JARVIS Desktop.exe
+Единственный исполняемый файл: JARVIS.exe
+Это полноценный графический интерфейс JARVIS с русским интерфейсом, голосом, STT, TTS, модулями, памятью и вложениями.
 
-Все необходимые компоненты, включая офлайн-распознавание речи и русский голос Piper, встроены в один EXE.
-Дополнительные DLL, Piper и модели вручную устанавливать или копировать не требуется.\nАрхив содержит только один исполняемый файл: JARVIS Desktop.exe.
+Все необходимые компоненты, включая офлайн-распознавание речи и русский голос Piper, встроены в EXE.
+Никаких дополнительных DLL, Piper, моделей или второго EXE вручную устанавливать/копировать не требуется.
 
 Конфигурация сохраняется в %APPDATA%\JARVIS\settings.json.
 "@ | Set-Content -Path "$release\README.txt" -Encoding UTF8
 
 $package = "JARVIS-Windows-x64.zip"
 Remove-Item $package -Force -ErrorAction SilentlyContinue
-Compress-Archive -Path "$release\JARVIS.exe", "$release\JARVIS Desktop.exe", "$release\piper", "$release\README.txt" -DestinationPath $package -Force
+Compress-Archive -Path "$release\JARVIS.exe", "$release\README.txt" -DestinationPath $package -Force
 
 Write-Host ""
 Write-Host "Release ready:" -ForegroundColor Green
