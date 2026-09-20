@@ -26,6 +26,39 @@ def _send_email(to: str, subject: str, body: str) -> str:
     return f"Письмо отправлено: {to}"
 
 
+def _ensure_hermes_gateway() -> bool:
+    """Start the local Hermes gateway when Hermes is installed and not already listening."""
+    import shutil, subprocess, time, urllib.request
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8642/health", timeout=0.8) as response:
+            return response.status == 200
+    except Exception:
+        pass
+    exe = shutil.which("hermes")
+    if not exe:
+        return False
+    env = os.environ.copy()
+    env.setdefault("API_SERVER_ENABLED", "true")
+    env.setdefault("API_SERVER_HOST", "127.0.0.1")
+    env.setdefault("API_SERVER_PORT", "8642")
+    env.setdefault("API_SERVER_KEY", "jarvis-local")
+    try:
+        subprocess.Popen([exe, "gateway"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                         env=env)
+        deadline = time.time() + 8
+        while time.time() < deadline:
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:8642/health", timeout=0.8) as response:
+                    if response.status == 200:
+                        return True
+            except Exception:
+                time.sleep(0.3)
+    except Exception:
+        pass
+    return False
+
+
 def build_agent(settings: Settings | None = None) -> JarvisAgent:
     settings=settings or Settings.from_env(); log=get_log("runtime"); log.info("Старт агента (provider=%s)",settings.provider); memory=MemoryStore(settings.memory_path)
     if settings.provider == "local-vulkan":
@@ -46,6 +79,16 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
             settings.llama_cli, settings.model, ctx=settings.ctx, threads=settings.threads
         )
         provider = HybridProvider(cloud, local)
+    elif settings.provider == "hermes":
+        session = SessionMemory(memory)
+        if not _ensure_hermes_gateway():
+            raise RuntimeError("Hermes Agent не найден или не запустил локальный gateway на 127.0.0.1:8642.")
+        provider = OpenAIChatProvider(
+            url=(settings.chat_url.strip() or "http://127.0.0.1:8642/v1/chat/completions"),
+            api_key=(settings.chat_key.strip() or "jarvis-local"),
+            model=(settings.chat_model.strip() or "hermes-agent"),
+            history=session.load_history(),
+        )
     elif settings.provider == "openai-compatible":
         session = SessionMemory(memory)
         chat_url = settings.chat_url.strip()
@@ -58,7 +101,7 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     else:
         raise RuntimeError(
             f"Неизвестный провайдер: {settings.provider}. "
-            "Доступны: hybrid, openai-compatible, local-vulkan"
+            "Доступны: hermes, hybrid, openai-compatible, local-vulkan"
         )
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
     tools=ToolRegistry()
