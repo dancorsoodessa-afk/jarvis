@@ -79,7 +79,7 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_URL"] = url
         os.environ["JARVIS_CHAT_KEY"] = api_key
         os.environ["JARVIS_DISABLED_TOOLS"] = json.dumps(disabled, ensure_ascii=False)
-        os.environ["JARVIS_Озвучивание_GENDER"] = self.settings["tts_gender"]
+        os.environ["JARVIS_TTS_GENDER"] = self.settings["tts_gender"]
         if model:
             os.environ["JARVIS_CHAT_MODEL"] = model
         else:
@@ -481,7 +481,7 @@ class JarvisDesktop(tk.Tk):
             self._clear_attachments(); return
         prompt=text+("\n\n"+context if context else "")
         self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
-        self.status.config(text="● PROCESSING",fg=CYAN)
+        self.status.config(text="● ОБРАБОТКА",fg=CYAN)
         def work():
             try: self.events.put(("reply",self.agent.handle(prompt).text))
             except Exception as exc: self.events.put(("reply","Ошибка: "+str(exc)))
