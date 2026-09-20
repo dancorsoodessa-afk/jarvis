@@ -27,7 +27,7 @@ class BusyaApp extends StatelessWidget {
   const BusyaApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'БУСЯ', debugShowCheckedModeBanner: false,
+    title: 'JARVIS', debugShowCheckedModeBanner: false,
     theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: kBg,
       colorScheme: ColorScheme.fromSeed(seedColor: kCyan, brightness: Brightness.dark), useMaterial3: true,
       inputDecorationTheme: const InputDecorationTheme(filled: true, fillColor: Color(0xFF050B0C), border: OutlineInputBorder(borderSide: BorderSide(color: kLine)), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: kLine)), focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: kCyan))) ),
@@ -47,8 +47,8 @@ class BusyaHomePage extends StatefulWidget {
 }
 
 class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProviderStateMixin {
-  static const _voice = MethodChannel('busya.voice');
-  static const _voiceEvents = EventChannel('busya.voice.events');
+  static const _voice = MethodChannel('jarvis.voice');
+  static const _voiceEvents = EventChannel('jarvis.voice.events');
   JarvisIpc? _client;
   final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint),
       _model1 = TextEditingController(text: _defaultModel1), _model2 = TextEditingController(text: _defaultModel2), _model3 = TextEditingController(text: _defaultModel3),
@@ -61,7 +61,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   StreamSubscription<String>? _partialSub;
   bool _voiceReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
   late final AnimationController _orbController;
-  String _status = 'БУСЯ запускается…', _streamText = '';
+  String _status = 'JARVIS запускается…', _streamText = '';
   bool get _android => Platform.isAndroid;
 
   @override void initState() {
@@ -190,7 +190,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     if (!_android || !_voiceEnabled || !mounted) return;
     final value = event?.toString().trim() ?? '';
     if (value.isEmpty) return;
-    if (value == '__READY__') { _voiceReady = true; _listening = false; setState(() => _status = 'Постоянный локальный голос'); await _startNativeListening(); return; }
+    if (value == '__READY__') { _voiceReady = true; _listening = false; if (mounted) setState(() => _status = 'Русский голосовой контур готов · слушаю'); return; }
     if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Локальный русский голос готов'); return; }
     if (value == '__LOADING_VOICE__') { if (mounted) setState(() => _status = 'Загрузка локальной модели речи…'); return; }
     if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
@@ -352,7 +352,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     final clean = text.trim(); final client = _client; final attachment = _attachment;
     if (clean.isEmpty || _busy) return;
     if (client == null) { if (mounted) setState(() => _status = 'Сначала подключите AI в настройках'); if (fromVoice) await _speak('Сначала подключите AI в настройках'); return; }
-    setState(() { _busy = true; _streamText = ''; _messages.add(_Msg(attachment == null ? clean : '$clean\n📎 ${attachment.name}', isUser: true)); }); _scrollToBottom();
+    if (!mounted) return; setState(() { _busy = true; _streamText = ''; _messages.add(_Msg(attachment == null ? clean : '$clean\n📎 ${attachment.name}', isUser: true)); }); _scrollToBottom();
     try {
       final reply = await client.sendMessage(clean, attachment: attachment == null ? null : {'name': attachment.name, 'mime': attachment.mime, 'data': attachment.data});
       if (!mounted) return;
@@ -446,7 +446,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
             top: 16,
             left: 18,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
-              Text('БУCЯ', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
               SizedBox(height: 2),
               Text('JARVIS ASSISTANT', style: TextStyle(color: Colors.white54, fontSize: 9, letterSpacing: 1.8)),
             ]),
@@ -543,7 +543,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
               const SizedBox(width: 11),
               const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
-                Text('БУCЯ · ЛИЧНЫЙ АССИСТЕНТ', style: TextStyle(color: Colors.white54, fontSize: 8, letterSpacing: 1.1)),
+                Text('JARVIS · ЛИЧНЫЙ АССИСТЕНТ', style: TextStyle(color: Colors.white54, fontSize: 8, letterSpacing: 1.1)),
               ])),
               IconButton(tooltip: 'Микрофон', onPressed: _toggleVoice, icon: Icon(_listening ? Icons.mic_rounded : Icons.mic_none_rounded, color: micColor, size: 27)),
               IconButton(tooltip: 'Центр управления', onPressed: _settings, icon: const Icon(Icons.settings_rounded, color: kCyan, size: 25)),
@@ -618,7 +618,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   cursorColor: kCyan,
                   decoration: InputDecoration(
-                    hintText: 'Сообщение Бусе…',
+                    hintText: 'Сообщение JARVIS…',
                     hintStyle: const TextStyle(color: Colors.white30),
                     filled: true,
                     fillColor: kPanel,

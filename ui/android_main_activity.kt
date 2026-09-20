@@ -28,8 +28,8 @@ import kotlin.math.sqrt
 
 class MainActivity : FlutterActivity() {
     companion object {
-        private const val VOICE_CHANNEL = "busya.voice"
-        private const val EVENTS_CHANNEL = "busya.voice.events"
+        private const val VOICE_CHANNEL = "jarvis.voice"
+        private const val EVENTS_CHANNEL = "jarvis.voice.events"
         private const val REQUEST_RECORD_AUDIO = 701
         private const val REQUEST_PICK_FILE = 702
         private const val PREFS = "busya_voice"
@@ -140,8 +140,7 @@ class MainActivity : FlutterActivity() {
         }
         return try {
             initRecognizer()
-            voiceLoopEnabled = true
-            eventSink?.success("__READY__")
+            voiceInitialized = true
             try {
                 initTts()
             } catch (e: Exception) {
@@ -222,6 +221,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun startRecognition() {
+        // Единственный активный цикл распознавания: повторный запуск блокируется voiceLock/voiceActive.
         if (disposed || !voiceLoopEnabled || ttsPlaying) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             eventSink?.success("__ERROR__:microphone_permission_missing")
@@ -516,8 +516,8 @@ class MainActivity : FlutterActivity() {
                     initRecognizer()
                     voiceInitialized = true
                     try { initTts() } catch (e: Exception) { eventSink?.success("__TTS_ERROR__:${e.javaClass.simpleName}:${e.message ?: ""}") }
-                    eventSink?.success("__READY__")
                     voiceLoopEnabled = true
+                    eventSink?.success("__READY__")
                     startRecognition()
                 } catch (e: Exception) {
                     eventSink?.success("__ERROR__:voice_init_after_permission_${e.javaClass.simpleName}:${e.message ?: ""}")
