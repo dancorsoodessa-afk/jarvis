@@ -1,4 +1,4 @@
-package com.dancorsoodessa.jarvis_ui
+package com.dancorsoodessa.jarvis
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -28,11 +28,11 @@ import kotlin.math.sqrt
 
 class MainActivity : FlutterActivity() {
     companion object {
-        private const val VOICE_CHANNEL = "busya.voice"
-        private const val EVENTS_CHANNEL = "busya.voice.events"
+        private const val VOICE_CHANNEL = "jarvis.voice"
+        private const val EVENTS_CHANNEL = "jarvis.voice.events"
         private const val REQUEST_RECORD_AUDIO = 701
         private const val REQUEST_PICK_FILE = 702
-        private const val PREFS = "busya_voice"
+        private const val PREFS = "jarvis_voice"
         private const val KEY_ENDPOINT = "ai_endpoint"
         private const val KEY_MODEL = "ai_model"
         private const val KEY_AI_API_KEY = "ai_api_key"
@@ -112,7 +112,7 @@ class MainActivity : FlutterActivity() {
                 "speak" -> { speak(call.argument<String>("text").orEmpty()); result.success(true) }
                 "open_tts_settings" -> { openTtsSettings(); result.success(true) }
                 "install_tts_data" -> { installTtsData(); result.success(true) }
-                "test_tts" -> { speak("Проверка голоса БУСЯ. Если вы это слышите, синтез речи работает."); result.success(true) }
+                "test_tts" -> { speak("Проверка голоса JARVIS. Если вы это слышите, синтез речи работает."); result.success(true) }
                 "pick_file" -> pickFile(result)
                 "android_tool" -> try {
                     result.success(tools.execute(call.argument<String>("name").orEmpty(), JSONObject(call.argument<String>("args") ?: "{}")))
