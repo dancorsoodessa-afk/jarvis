@@ -78,11 +78,11 @@ The Android workflow generates the Flutter Android platform during CI and builds
 
 Before publishing a release, verify:
 1. `git pull origin foundation`
-2. `powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1`
-3. `dist\jarvis.exe` starts and `/status`, `/calc`, `/now`, `/volume`, `/exit` work.
+2. `powershell -ExecutionPolicy Bypass -File scripts\\build_exe.ps1`
+3. `dist\\jarvis.exe` starts and `/status`, `/calc`, `/now`, `/volume`, `/exit` work.
 4. Verify the selected free/local AI provider and model through environment variables.
 5. Run the Flutter UI smoke test if the UI is part of the release.
-6. Test the double-clap voice activation and TTS interruption on a real Windows microphone.
+6. Test the **Jarvis wake word** and TTS interruption on a real Windows microphone. No clap activation is used.
 
 Never put API keys, memory files, reminders, or runtime logs into Git.
 
@@ -104,12 +104,10 @@ Never put API keys, memory files, reminders, or runtime logs into Git.
 poetry install --extras voice
 $env:JARVIS_STT = "faster-whisper"
 $env:JARVIS_TTS = "auto"
-python -m agent --voice                # jarvis.exe --voice
+python -m agent --voice
 ```
 
-Цикл: ожидание речи → запись команды → STT → ответ JARVIS → TTS → снова ожидание речи. Никаких хлопков или отдельного wake-сигнала не требуется. Запись ограничена 10 секундами с детекцией тишины. Во время ответа начало речи останавливает воспроизведение TTS, чтобы JARVIS не перебивал пользователя.
-
-Основной runtime голосового режима постоянно слушает обычную речь; старый wake-word API оставлен только для совместимости.
+JARVIS ожидает речь, но **не отправляет обычную речь в ядро**. Активация происходит только после слова **«Jarvis»** или **«Джарвис»**. Можно сказать «Jarvis, открой браузер» одной фразой. Если произнесено только «Jarvis», JARVIS активируется и ждёт следующую фразу. Хлопки и другие отдельные wake-сигналы не используются. Во время ответа начало речи останавливает TTS.
 
 ## Windows-полировка
 
