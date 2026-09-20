@@ -614,7 +614,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 child: TextField(
                   controller: _input,
                   textInputAction: TextInputAction.send,
-                  onSubmitted: (value) { _input.clear(); _send(value); },
+                  onSubmitted: (value) async {\n                    final clean = value.trim();\n                    _input.clear();\n                    if (clean.isNotEmpty) await _send(clean);\n                  },
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   cursorColor: kCyan,
                   decoration: InputDecoration(
