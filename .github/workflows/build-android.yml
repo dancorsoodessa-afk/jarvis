@@ -82,6 +82,8 @@ jobs:
 
           p = Path('android/app/src/main/AndroidManifest.xml')
           text = p.read_text(encoding='utf-8')
+          text = text.replace('android:label="jarvis_ui"', 'android:label="JARVIS"')
+          text = text.replace('android:label="jarvis"', 'android:label="JARVIS"')
           end = text.find('>', text.find('<manifest '))
           if end < 0:
               raise SystemExit('AndroidManifest.xml: <manifest> not found')
