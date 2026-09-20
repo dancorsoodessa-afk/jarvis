@@ -222,11 +222,15 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun startRecognition() {
+        if (disposed || !voiceLoopEnabled || ttsPlaying) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            eventSink?.success("__ERROR__:microphone_permission_missing")
+            return
+        }
         synchronized(voiceLock) {
             if (disposed || !voiceLoopEnabled || ttsPlaying || voiceActive) return
             voiceActive = true
         }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
         if (!voiceInitialized) {
             try {
                 initRecognizer()
@@ -268,6 +272,7 @@ class MainActivity : FlutterActivity() {
             recordingThread = thread(start = true, name = "jarvis-stt") {
                 val buffer = ShortArray(1600)
                 var lastPartial = ""
+                var levelCounter = 0
                 try {
                     while (voiceLoopEnabled && voiceActive && !disposed) {
                         val n = try { activeRecord.read(buffer, 0, buffer.size) } catch (t: Throwable) {
@@ -275,6 +280,17 @@ class MainActivity : FlutterActivity() {
                             break
                         }
                         if (n <= 0) continue
+                        var sum = 0.0
+                        for (i in 0 until n) {
+                            val sample = buffer[i] / 32768.0
+                            sum += sample * sample
+                        }
+                        levelCounter++
+                        if (levelCounter >= 10) {
+                            val rms = sqrt(sum / n)
+                            runOnUiThread { eventSink?.success("__MIC_LEVEL__:" + "%.4f".format(java.util.Locale.US, rms)) }
+                            levelCounter = 0
+                        }
                         try {
                             val samples = FloatArray(n) { buffer[it] / 32768.0f }
                             val stream = recognitionStream ?: break
