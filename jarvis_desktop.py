@@ -275,7 +275,7 @@ class JarvisDesktop(tk.Tk):
         def on_speech_start():
             if tts.is_playing():
                 tts.stop()
-                self.events.put(("voice_status", "Перебивание: Озвучивание остановлен, слушаю вас."))
+                self.events.put(("voice_status", "Перебивание: Озвучивание остановлено, слушаю вас."))
         def work():
             wake_words = ("jarvis", "джарвис")
             while self._voice_loop_running and self.settings.get("voice_enabled", True):
@@ -340,8 +340,8 @@ class JarvisDesktop(tk.Tk):
         stt_ok = voice.available() and self.settings.get("voice_enabled", True)
         tts_engine = tts.current_engine()
         tts_ok = self.settings.get("tts_enabled", True) and tts_engine != "off"
-        self.metrics["Голос"].config(text="ON" if stt_ok else "OFF", fg=GREEN if stt_ok else RED)
-        self.metrics["Озвучивание"].config(text=tts_engine.upper() if tts_ok else "OFF", fg=GREEN if tts_ok else RED)
+        self.metrics["Голос"].config(text="ВКЛ" if stt_ok else "ВЫКЛ", fg=GREEN if stt_ok else RED)
+        self.metrics["Озвучивание"].config(text=tts_engine.upper() if tts_ok else "ВЫКЛ", fg=GREEN if tts_ok else RED)
 
     def _drain_events(self):
         try:
@@ -393,7 +393,7 @@ class JarvisDesktop(tk.Tk):
                 elif kind == "agent_error":
                     self._set_visual_state("ОШИБКА")
                     self.status.config(text="● ОШИБКА", fg=RED)
-                    self._append("SYSTEM", "Не удалось запустить ядро: " + event[1])
+                    self._append("СИСТЕМА", "Не удалось запустить ядро: " + event[1])
                     self.busy = False
                     self.send_button.config(state="normal")
         except queue.Empty:
@@ -431,7 +431,7 @@ class JarvisDesktop(tk.Tk):
         else:
             return False
         self.settings["tts_gender"] = gender
-        os.environ["JARVIS_Озвучивание_GENDER"] = gender
+        os.environ["JARVIS_TTS_GENDER"] = gender
         tts.set_gender(gender)
         self._save_settings()
         self.events.put(("reply", message))
@@ -658,7 +658,7 @@ class JarvisDesktop(tk.Tk):
         voice_var = tk.BooleanVar(value=self.settings.get("voice_enabled", True))
         tts_var = tk.BooleanVar(value=self.settings.get("tts_enabled", True))
         ttk.Checkbutton(win, text="Включать голосовое прослушивание при старте", variable=voice_var).grid(row=4, column=1, sticky="w", padx=20, pady=8)
-        ttk.Checkbutton(win, text="Озвучивать ответы JARVIS через Озвучивание", variable=tts_var).grid(row=5, column=1, sticky="w", padx=20, pady=8)
+        ttk.Checkbutton(win, text="Озвучивать ответы JARVIS через голос", variable=tts_var).grid(row=5, column=1, sticky="w", padx=20, pady=8)
         tk.Label(win, text="Модули управления находятся в отдельном окне «Модули». Изменения применяются после пересборки ядра.",
                  bg=PANEL, fg=MUTED, wraplength=700, justify="left").grid(row=6, column=0, columnspan=2, padx=20, pady=14)
         def save():
@@ -674,7 +674,7 @@ class JarvisDesktop(tk.Tk):
 
     def _reload_agent(self):
         self.agent = None
-        self.status.config(text="● REЗАПУСК", fg=YELLOW)
+        self.status.config(text="● ПЕРЕЗАПУСК", fg=YELLOW)
         self._start_agent()
 
     def _close(self):
