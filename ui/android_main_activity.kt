@@ -54,7 +54,7 @@ class MainActivity : FlutterActivity() {
     private var recognitionStream: OnlineStream? = null
     private var audioRecord: AudioRecord? = null
     private var recordingThread: Thread? = null
-    private var tts: OfflineTts? = null
+    private var tts: OfflineTts? = null\n    private var systemTts: android.speech.tts.TextToSpeech? = null
     private var audioTrack: AudioTrack? = null
     private var monitorRecord: AudioRecord? = null
     private var monitorThread: Thread? = null
@@ -349,40 +349,7 @@ class MainActivity : FlutterActivity() {
         startTtsPlayback()
     }
 
-    private fun startTtsPlayback() {
-        val text = pendingTts ?: return
-        pendingTts = null
-        try {
-            initTts()
-            val engine = tts ?: return
-            ttsPlaying = true
-            eventSink?.success("__TTS_START__")
-            val sampleRate = engine.sampleRate()
-            val min = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
-            val format = AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()
-            val track = AudioTrack(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build(), format, min * 2, AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE)
-            audioTrack = track
-            track.play()
-            startBargeInMonitor()
-            thread(start = true, name = "jarvis-tts") {
-                try {
-                    val audio = engine.generateWithConfigAndCallback(text, GenerationConfig(speed = 1.0f, sid = 0)) { samples ->
-                        if (!ttsPlaying || disposed) return@generateWithConfigAndCallback 0
-                        track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-                        1
-                    }
-                    if (ttsPlaying && audio.samples.isNotEmpty()) runOnUiThread { finishTts() }
-                } catch (e: Exception) {
-                    runOnUiThread { eventSink?.success("__TTS_ERROR__:${e.message ?: ""}"); finishTts() }
-                }
-            }
-        } catch (e: Exception) {
-            eventSink?.success("__TTS_ERROR__:${e.message ?: ""}")
-            finishTts()
-        }
-    }
-
-    private fun startBargeInMonitor() {
+    private fun startTtsPlayback() {\n        val text = pendingTts ?: return\n        pendingTts = null\n        try {\n            val locale = java.util.Locale("ru", "RU")\n            val engine = android.speech.tts.TextToSpeech(this) { status ->\n                if (status == android.speech.tts.TextToSpeech.SUCCESS) {\n                    engine.language = locale\n                    engine.setSpeechRate(0.92f)\n                    engine.setPitch(0.88f)\n                    ttsPlaying = true\n                    eventSink?.success("__TTS_START__")\n                    engine.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "jarvis-${System.currentTimeMillis()}")\n                    handler.postDelayed({ finishTts() }, maxOf(2500L, text.length * 75L))\n                } else {\n                    eventSink?.success("__TTS_ERROR__:AndroidTTS_INIT_$status")\n                    finishTts()\n                }\n            }\n            systemTts = engine\n        } catch (e: Exception) {\n            eventSink?.success("__TTS_ERROR__:${e.javaClass.simpleName}:${e.message ?: ""}")\n            finishTts()\n        }\n    }\n\n    private fun startBargeInMonitor() {
         stopBargeInMonitor()
         val min = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val record = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, min * 2)
