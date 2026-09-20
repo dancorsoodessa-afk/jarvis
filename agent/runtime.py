@@ -1,3 +1,4 @@
+import os
 """Assemble a runnable agent from settings."""
 from pathlib import Path
 from .config import Settings
@@ -7,6 +8,7 @@ from .memory import KnowledgeGraph, MemoryStore, SessionMemory, relevant_notes
 from .providers.local_vulkan import LocalVulkanProvider
 from .providers.openai_chat import OpenAIChatProvider
 from .reminders import ReminderService
+from .tasks import TaskStore
 from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint, universal
 from .tools.registry import ToolRegistry
 from . import stt, tts
@@ -105,6 +107,10 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         )
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
     tools=ToolRegistry()
+    tasks=TaskStore(str(Path(settings.memory_path).with_name("jarvis_tasks.json")))
+    tools.register("task_add",tasks.add,description="Создать долгосрочную задачу и сохранить её между запусками.",parameters={"title":"название задачи"})
+    tools.register("task_list",tasks.list,description="Показать активные задачи.")
+    tools.register("task_update",tasks.update,description="Обновить статус и добавить шаг задачи.",parameters={"task_id":"ID задачи","status":"active, done, failed или cancelled","step":"описание выполненного шага, необязательно"})
     tools.register("inspect_file",universal.inspect_file,description="Прочитать и проанализировать локальный файл: TXT, MD, CSV, JSON, XML, Python, PDF, DOCX, XLSX и другие поддерживаемые форматы.",parameters={"path":"путь к файлу или папке"})
     tools.register("inspect_archive",universal.inspect_archive,description="Прочитать содержимое ZIP, TAR, GZ, 7Z или RAR архива.",parameters={"path":"путь к архиву"})
     tools.register("extract_archive",universal.extract_archive,confirm=True,description="Распаковать архив. Требует подтверждения.",parameters={"path":"путь к архиву","destination":"папка назначения (необязательно)"})
