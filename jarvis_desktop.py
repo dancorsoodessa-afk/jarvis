@@ -465,7 +465,7 @@ class JarvisDesktop(tk.Tk):
         text=text.strip()
         if not text or self.agent is None or self.busy: return
         context=self._build_attachment_context()
-        shown=text+("\n📎 "+", ".join(x["name"] for x in self.attachments) if self.attachments else "")        self.input.delete(0,"end"); self._append("ВЫ",shown)
+        shown = text + (\n            "\n📎 " + ", ".join(x["name"] for x in self.attachments)\n            if self.attachments else ""\n        )\n        self.input.delete(0, "end")\n        self._append("ВЫ", shown)
         if self._handle_voice_setting_command(text):
             self._clear_attachments(); return
         prompt=text+("\n\n"+context if context else "")
