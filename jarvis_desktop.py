@@ -637,45 +637,117 @@ class JarvisDesktop(tk.Tk):
 
     def show_settings(self):
         win = tk.Toplevel(self)
-        win.title("JARVIS — Настройки")
+        win.title("JARVIS — Центр управления")
         win.configure(bg=PANEL)
-        win.geometry("820x700")
+        win.geometry("900x780")
+        win.minsize(820, 700)
         win.transient(self)
         win.grab_set()
-        saved = self.settings
-        fields = [
-            ("Провайдер", "provider", os.environ.get("JARVIS_PROVIDER", saved.get("provider", DEFAULT_PROVIDER))),
-            ("OpenAI-compatible URL", "url", os.environ.get("JARVIS_CHAT_URL", saved.get("url", DEFAULT_URL))),
-            ("Модель", "model", os.environ.get("JARVIS_CHAT_MODEL", saved.get("model", ""))),
-            ("API ключ", "api_key", os.environ.get("JARVIS_CHAT_KEY", saved.get("api_key", ""))),
-            ("ElevenLabs API ключ", "elevenlabs_api_key", os.environ.get("JARVIS_ELEVENLABS_API_KEY", saved.get("elevenlabs_api_key", ""))),
-            ("ElevenLabs Voice ID", "elevenlabs_voice_id", os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", saved.get("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w"))),
-            ("ElevenLabs модель", "elevenlabs_model", os.environ.get("JARVIS_ELEVENLABS_MODEL", saved.get("elevenlabs_model", "eleven_flash_v2_5"))),
-        ]
-        entries = {}
-        for i, (label, name, value) in enumerate(fields):
-            tk.Label(win, text=label, bg=PANEL, fg=MUTED).grid(row=i, column=0, sticky="w", padx=20, pady=(20 if i == 0 else 10, 4))
-            entry = tk.Entry(win, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", width=60,
-                             show="•" if name in {"api_key", "elevenlabs_api_key"} else "")
-            entry.insert(0, value)
-            entry.grid(row=i, column=1, padx=20, pady=(20 if i == 0 else 10, 4), ipady=7)
-            entries[name] = entry
+        tk.Label(win, text="ЦЕНТР УПРАВЛЕНИЯ JARVIS", bg=PANEL, fg=CYAN,
+                 font=("Segoe UI", 19, "bold")).pack(anchor="w", padx=24, pady=(22, 4))
+        tk.Label(win, text="Три независимых AI-профиля. У каждого свой URL, модель и API-ключ.",
+                 bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(0, 16))
+
+        body = tk.Frame(win, bg=PANEL)
+        body.pack(fill="both", expand=True, padx=20)
+        canvas = tk.Canvas(body, bg=PANEL, highlightthickness=0)
+        scroll = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+        inner = tk.Frame(canvas, bg=PANEL)
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        profiles = self.settings.get("agents", {})
+        if not isinstance(profiles, dict):
+            profiles = {}
+        active = int(self.settings.get("active_agent", 0) or 0)
+        names = ("JARVIS", "DEEPSEEK", "GLM")
+        defaults = (
+            ("openai-compatible", DEFAULT_URL, "openrouter/free"),
+            ("openai-compatible", DEFAULT_URL, "deepseek/deepseek-chat:free"),
+            ("openai-compatible", DEFAULT_URL, "z-ai/glm-5.2:free"),
+        )
+        entries = []
+        for i, title in enumerate(names):
+            dprov, durl, dmodel = defaults[i]
+            p = profiles.get(str(i), {})
+            if not isinstance(p, dict):
+                p = {}
+            card = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN if i == active else LINE, highlightthickness=1)
+            card.pack(fill="x", pady=7)
+            head = tk.Frame(card, bg="#091b29")
+            head.pack(fill="x", padx=14, pady=(12, 4))
+            tk.Label(head, text=f"{i+1}. {title}", bg="#091b29",
+                     fg=CYAN if i == active else TEXT, font=("Segoe UI", 12, "bold")).pack(side="left")
+            tk.Button(head, text="СДЕЛАТЬ АКТИВНЫМ", command=lambda idx=i: self._select_agent(idx, win),
+                      bg="#0e667a", fg=TEXT, relief="flat", padx=10, pady=5).pack(side="right")
+            fields = {}
+            for label, key, default, secret in (
+                ("Провайдер", "provider", p.get("provider", dprov), False),
+                ("API URL", "url", p.get("url", durl), False),
+                ("Модель", "model", p.get("model", dmodel), False),
+                ("API ключ", "api_key", p.get("api_key", ""), True),
+            ):
+                row = tk.Frame(card, bg="#091b29")
+                row.pack(fill="x", padx=14, pady=4)
+                tk.Label(row, text=label, width=13, anchor="w", bg="#091b29", fg=MUTED).pack(side="left")
+                e = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat",
+                             show="•" if secret else "")
+                e.insert(0, str(default))
+                e.pack(side="left", fill="x", expand=True, ipady=6)
+                fields[key] = e
+            entries.append(fields)
+
+        voice_frame = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
+        voice_frame.pack(fill="x", pady=10)
+        tk.Label(voice_frame, text="ГОЛОС / ELEVENLABS", bg="#091b29", fg=CYAN,
+                 font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 6))
+        voice_fields = {}
+        for label, key, default, secret in (
+            ("ElevenLabs API ключ", "elevenlabs_api_key", os.environ.get("JARVIS_ELEVENLABS_API_KEY", self.settings.get("elevenlabs_api_key", "")), True),
+            ("Voice ID", "elevenlabs_voice_id", os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", self.settings.get("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w")), False),
+            ("Модель TTS", "elevenlabs_model", os.environ.get("JARVIS_ELEVENLABS_MODEL", self.settings.get("elevenlabs_model", "eleven_flash_v2_5")), False),
+        ):
+            row = tk.Frame(voice_frame, bg="#091b29")
+            row.pack(fill="x", padx=14, pady=4)
+            tk.Label(row, text=label, width=20, anchor="w", bg="#091b29", fg=MUTED).pack(side="left")
+            e = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•" if secret else "")
+            e.insert(0, str(default))
+            e.pack(side="left", fill="x", expand=True, ipady=6)
+            voice_fields[key] = e
+
         voice_var = tk.BooleanVar(value=self.settings.get("voice_enabled", True))
         tts_var = tk.BooleanVar(value=self.settings.get("tts_enabled", True))
-        ttk.Checkbutton(win, text="Включать голосовое прослушивание при старте", variable=voice_var).grid(row=7, column=1, sticky="w", padx=20, pady=8)
-        ttk.Checkbutton(win, text="Озвучивать ответы JARVIS через TTS", variable=tts_var).grid(row=8, column=1, sticky="w", padx=20, pady=8)
-        tk.Label(win, text="Настройки сохраняются в %APPDATA%\\JARVIS\\settings.json и применяются сразу после перезапуска ядра.",
-                 bg=PANEL, fg=MUTED, wraplength=700, justify="left").grid(row=9, column=0, columnspan=2, padx=20, pady=14)
+        ttk.Checkbutton(inner, text="Голосовое прослушивание при старте", variable=voice_var).pack(anchor="w", padx=14, pady=6)
+        ttk.Checkbutton(inner, text="Озвучивать ответы через TTS", variable=tts_var).pack(anchor="w", padx=14, pady=6)
+
         def save():
-            for name, entry in entries.items():
-                self.settings[name] = entry.get().strip()
+            new_profiles = {}
+            for i, fields in enumerate(entries):
+                new_profiles[str(i)] = {k: e.get().strip() for k, e in fields.items()}
+                new_profiles[str(i)]["name"] = names[i]
+            self.settings["agents"] = new_profiles
+            self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
+            for k, e in voice_fields.items():
+                self.settings[k] = e.get().strip()
             self._apply_saved_settings()
             self._save_settings()
             win.destroy()
             self._reload_agent()
-        ttk.Button(win, text="СОХРАНИТЬ И ПЕРЕЗАПУСТИТЬ", style="Accent.TButton", command=save).grid(row=10, column=1, sticky="e", padx=20, pady=10)
+
+        ttk.Button(win, text="СОХРАНИТЬ И ПЕРЕЗАПУСТИТЬ", style="Accent.TButton", command=save).pack(anchor="e", padx=24, pady=18)
+
+    def _select_agent(self, idx, parent=None):
+        self.settings["active_agent"] = idx
+        self._apply_saved_settings()
+        self._save_settings()
+        self._reload_agent()
+        if parent and parent.winfo_exists():
+            parent.destroy()
 
     def _reload_agent(self):
         self.agent = None
