@@ -1,7 +1,7 @@
 """Text-to-speech for JARVIS/BUSYA.
 
-Engines: APIHOST (preferred when JARVIS_APIHOST_KEY is configured),
-Windows SAPI, Silero and Piper.
+Engines: ElevenLabs (preferred when JARVIS_ELEVENLABS_API_KEY is configured),
+APIHOST, Windows SAPI, Silero and Piper.
 """
 
 import json
@@ -19,12 +19,15 @@ DEFAULT_SILERO_VOICE = "eugene"
 DEFAULT_SAPI_LANGUAGE = "ru-RU"
 APIHOST_BASE = "https://apihost.ru/api/v1"
 APIHOST_VOICE_NAME = "Леда"
+ELEVENLABS_DEFAULT_VOICE_ID = "srULqtwUV9XZPg1ZCO5w"
+ELEVENLABS_DEFAULT_MODEL = "eleven_flash_v2_5"
+ELEVENLABS_DEFAULT_FORMAT = "wav_22050"
 _PLAYBACK_LOCK = threading.Lock()
 _PLAYBACK_PROCESS = None
 _PLAYBACK_ACTIVE = False
 _APIHOST_SPEAKER_ID = None
 _APIHOST_LOCK = threading.Lock()
-
+\n\ndef _elevenlabs_client():\n    key = os.environ.get("JARVIS_ELEVENLABS_API_KEY", "").strip()\n    if not key:\n        raise RuntimeError("Для ElevenLabs нужен JARVIS_ELEVENLABS_API_KEY")\n    try:\n        from elevenlabs.client import ElevenLabs\n    except ImportError as exc:\n        raise RuntimeError("Пакет ElevenLabs не установлен. Установите зависимость elevenlabs.") from exc\n    return ElevenLabs(api_key=key)\n\n\ndef _run_elevenlabs(text: str, out_path: Path) -> Path:\n    voice_id = os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", ELEVENLABS_DEFAULT_VOICE_ID).strip()\n    model_id = os.environ.get("JARVIS_ELEVENLABS_MODEL", ELEVENLABS_DEFAULT_MODEL).strip()\n    output_format = os.environ.get("JARVIS_ELEVENLABS_FORMAT", ELEVENLABS_DEFAULT_FORMAT).strip()\n    if not voice_id:\n        raise RuntimeError("Не задан JARVIS_ELEVENLABS_VOICE_ID")\n    client = _elevenlabs_client()\n    try:\n        response = client.text_to_speech.convert(\n            voice_id=voice_id,\n            text=text,\n            model_id=model_id,\n            output_format=output_format,\n        )\n        with open(out_path, "wb") as wav:\n            for chunk in response:\n                if chunk:\n                    wav.write(chunk)\n    except Exception as exc:\n        raise RuntimeError(f"ElevenLabs TTS: {exc}") from exc\n    return out_path\n
 
 def _voice_dir() -> Path:
     return Path(os.environ.get("APPDATA", Path.home())) / "JARVIS" / "voice"
@@ -258,6 +261,7 @@ def speak(text: str) -> Path:
     if engine == "off": raise RuntimeError("TTS отключён (JARVIS_TTS=off)")
     text = " ".join(text.split())[:1000]
     out = Path(tempfile.gettempdir()) / "jarvis_tts.wav"
+    if engine == "elevenlabs": return _run_elevenlabs(text, out)
     if engine == "apihost": return _run_apihost(text, out)
     if engine == "sapi": return _run_windows_sapi(text, out)
     if engine == "silero": return _run_silero(text, out)
