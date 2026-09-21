@@ -22,7 +22,7 @@ a = Analysis(
     ["jarvis_desktop.py"],
     pathex=["."],
     binaries=[],
-    datas=[("docs", "docs"), ("vendor/stt_model", "stt_model"), ("vendor/piper", "piper")] + faster_whisper_datas,
+    datas=[("docs", "docs"), ("vendor/stt_model", "stt_model")] + faster_whisper_datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
