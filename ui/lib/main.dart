@@ -9,13 +9,13 @@ import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 import 'jarvis_client.dart';
 
-const kCyan = Color(0xFF32E6D0);
-const kGreen = Color(0xFF35F58A);
-const kRed = Color(0xFFFF5268);
+const kCyan = Color(0xFF08E6FF);
+const kGreen = Color(0xFF45F0B0);
+const kRed = Color(0xFFFF6078);
 const kAmber = Color(0xFFFFC857);
-const kBg = Color(0xFF020607);
-const kPanel = Color(0xFF071012);
-const kLine = Color(0xFF17463F);
+const kBg = Color(0xFF070B12);
+const kPanel = Color(0xFF0B111B);
+const kLine = Color(0xFF18283A);
 const _defaultAiEndpoint = 'https://openrouter.ai/api/v1';
 const _defaultModel1 = 'openrouter/free';
 const _defaultModel2 = 'deepseek/deepseek-v4-flash:free';
@@ -27,7 +27,7 @@ class BusyaApp extends StatelessWidget {
   const BusyaApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'БУСЯ', debugShowCheckedModeBanner: false,
+    title: 'JARVIS', debugShowCheckedModeBanner: false,
     theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: kBg,
       colorScheme: ColorScheme.fromSeed(seedColor: kCyan, brightness: Brightness.dark), useMaterial3: true,
       inputDecorationTheme: const InputDecorationTheme(filled: true, fillColor: Color(0xFF050B0C), border: OutlineInputBorder(borderSide: BorderSide(color: kLine)), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: kLine)), focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: kCyan))) ),
@@ -61,7 +61,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   StreamSubscription<String>? _partialSub;
   bool _voiceReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
   late final AnimationController _orbController;
-  String _status = 'БУСЯ запускается…', _streamText = '';
+  String _status = 'JARVIS запускается…', _streamText = '';
   bool get _android => Platform.isAndroid;
 
   @override void initState() {
@@ -356,7 +356,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     try {
       final reply = await client.sendMessage(clean, attachment: attachment == null ? null : {'name': attachment.name, 'mime': attachment.mime, 'data': attachment.data});
       if (!mounted) return;
-      setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'Локальное голосовое общение' : 'Готов'); });
+      setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'JARVIS · голосовой канал' : 'Готов'); });
       _scrollToBottom();
       if (_android && fromVoice) await _speak(reply.text);
     } catch (e) {
@@ -404,78 +404,80 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
       animation: _orbController,
       builder: (context, child) {
         final phase = _orbController.value * 6.283185307;
-        final pulse = 0.92 + 0.08 * (0.5 + 0.5 * math.sin(phase));
+        final pulse = 0.94 + 0.06 * (0.5 + 0.5 * math.sin(phase));
         return Container(
-      height: 250,
-      margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      decoration: BoxDecoration(
-        gradient: const RadialGradient(
-          center: Alignment.center,
-          radius: 0.95,
-          colors: [Color(0xFF123A35), Color(0xFF071A18), Color(0xFF030809)],
-          stops: [0.0, 0.48, 1.0],
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: accent.withOpacity(.42)),
-        boxShadow: [BoxShadow(color: accent.withOpacity(.10), blurRadius: 30, spreadRadius: 1)],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          for (final size in [210.0 * pulse, 170.0 * pulse, 132.0 * pulse])
-            Container(
-              width: size,
-              height: size,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: accent.withOpacity(.10), width: 1),
+          height: 286,
+          margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF080E17),
+            border: Border.all(color: const Color(0xFF18283A)),
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(.35), blurRadius: 24)],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned(top: 10, left: 12, right: 12, child: Row(
+                children: [
+                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 8)])),
+                  const SizedBox(width: 7),
+                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                  const SizedBox(width: 7),
+                  const Text('V4.2 // ONLINE', style: TextStyle(color: Colors.white38, fontSize: 8, fontFamily: 'monospace')),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: accent.withOpacity(.08), border: Border.all(color: accent.withOpacity(.35)), borderRadius: BorderRadius.circular(3)),
+                    child: Text(listening ? 'JARVIS ACTIVE' : (ready ? 'READY' : 'OFFLINE'), style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                  ),
+                ],
+              )),
+              for (final size in [198.0 * pulse, 166.0 * pulse, 132.0 * pulse])
+                Container(
+                  width: size,
+                  height: size,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: accent.withOpacity(.16), width: 1),
+                  ),
+                ),
+              Container(
+                width: 108 * pulse,
+                height: 108 * pulse,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0E3440), Color(0xFF09202A)]),
+                  border: Border.all(color: accent.withOpacity(.8)),
+                  boxShadow: [BoxShadow(color: accent.withOpacity(.22), blurRadius: 30)],
+                ),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    for (final h in [13.0, 24.0, 34.0, 20.0, 29.0])
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 450),
+                          width: 4,
+                          height: h * pulse,
+                          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(3), boxShadow: [BoxShadow(color: accent, blurRadius: 7)]),
+                        ),
+                      ),
+                  ]),
+                  const SizedBox(height: 8),
+                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                ]),
               ),
-            ),
-          Container(
-            width: 108 * pulse,
-            height: 108 * pulse,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(colors: [accent.withOpacity(.20), const Color(0xFF071311)]),
-              border: Border.all(color: accent, width: 2),
-              boxShadow: [BoxShadow(color: accent.withOpacity(.22), blurRadius: 28)],
-            ),
-            child: Icon(listening ? Icons.graphic_eq_rounded : Icons.auto_awesome, size: 46, color: accent),
+              Positioned(bottom: 36, left: 16, right: 16, child: Column(children: [
+                RichText(textAlign: TextAlign.center, text: TextSpan(children: [
+                  TextSpan(text: listening ? 'СЛУШАЕТ ПОТОК ' : 'JARVIS ', style: const TextStyle(color: Colors.white, fontSize: 20, fontFamily: 'serif', fontWeight: FontWeight.w700)),
+                  TextSpan(text: listening ? 'DUPLEX' : 'CORE', style: TextStyle(color: const Color(0xFF061016), backgroundColor: accent, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                ])),
+                const SizedBox(height: 4),
+                Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 9, fontFamily: 'monospace')),
+              ])),
+            ],
           ),
-          Positioned(
-            top: 16,
-            left: 18,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
-              Text('БУCЯ', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-              SizedBox(height: 2),
-              Text('JARVIS ASSISTANT', style: TextStyle(color: Colors.white54, fontSize: 9, letterSpacing: 1.8)),
-            ]),
-          ),
-          Positioned(
-            top: 18,
-            right: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: accent.withOpacity(.10),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: accent.withOpacity(.38)),
-              ),
-              child: Text(
-                listening ? 'СЛУШАЮ' : (ready ? 'ГОТОВА' : 'МИКРОФОН ВЫКЛ'),
-                style: TextStyle(color: accent, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 16,
-            left: 18,
-            right: 18,
-            child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11)),
-          ),
-        ],
-      ),
-    );
+        );
       },
     );
   }
@@ -543,7 +545,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
               const SizedBox(width: 11),
               const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
-                Text('БУCЯ · ЛИЧНЫЙ АССИСТЕНТ', style: TextStyle(color: Colors.white54, fontSize: 8, letterSpacing: 1.1)),
+                Text('TACTICAL AI CORE', style: TextStyle(color: Colors.white54, fontSize: 8, letterSpacing: 1.1)),
               ])),
               IconButton(tooltip: 'Микрофон', onPressed: _toggleVoice, icon: Icon(_listening ? Icons.mic_rounded : Icons.mic_none_rounded, color: micColor, size: 27)),
               IconButton(tooltip: 'Центр управления', onPressed: _settings, icon: const Icon(Icons.settings_rounded, color: kCyan, size: 25)),
@@ -594,7 +596,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   if (_messages.isEmpty && _streamText.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 34),
-                      child: Center(child: Text('Готова к работе. Говорите или напишите команду.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12))),
+                      child: Center(child: Text('Система готова. Говорите или введите команду.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12))),
                     ),
                   if (_attachment != null) Row(children: [
                     const Icon(Icons.attach_file_rounded, color: kCyan, size: 17),
@@ -618,7 +620,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   cursorColor: kCyan,
                   decoration: InputDecoration(
-                    hintText: 'Сообщение Бусе…',
+                    hintText: 'Команда JARVIS…',
                     hintStyle: const TextStyle(color: Colors.white30),
                     filled: true,
                     fillColor: kPanel,
