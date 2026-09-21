@@ -21,12 +21,13 @@ faster-whisper = { version = ">=1.1.0", optional = true }
 pypdf = { version = ">=5.0.0", optional = true }
 python-docx = { version = ">=1.1.0", optional = true }
 openpyxl = { version = ">=3.1.0", optional = true }
+elevenlabs = { version = ">=2.34.0" }
 
 [tool.poetry.extras]
 screenshot = ["Pillow"]
 windows-audio = ["pycaw"]
 voice = ["sounddevice", "numpy", "SpeechRecognition", "faster-whisper"]
-documents = ["pypdf", "python-docx", "openpyxl"]
+documents = ["pypdf", "python-docx", "openpyxl", "elevenlabs"]
 all = ["Pillow", "pycaw", "sounddevice", "numpy", "SpeechRecognition", "faster-whisper", "pypdf", "python-docx", "openpyxl"]
 
 [tool.poetry.scripts]
