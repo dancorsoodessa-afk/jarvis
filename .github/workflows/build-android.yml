@@ -179,7 +179,7 @@ jobs:
           fi
           "$AAPT" dump badging "$apk" | tee apk-manifest.txt
           grep -q "^package: name='com.dancorsoodessa.jarvis'" apk-manifest.txt
-          grep -q "versionName='0.1.1'" apk-manifest.txt
+          grep -q "versionName='0.1.2'" apk-manifest.txt
           "$AAPT" dump permissions "$apk" | grep -q "android.permission.RECORD_AUDIO"
 
           sha256sum "$apk" | tee apk.sha256
