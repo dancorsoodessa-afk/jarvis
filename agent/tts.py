@@ -59,6 +59,13 @@ def _run_elevenlabs(text: str, out_path: Path) -> Path:
                 if chunk:
                     wav.write(chunk)
     except Exception as exc:
+        # ElevenLabs library voices can require a paid plan. Do not break JARVIS
+        # or spam the UI with a provider error: fall back to the local Windows voice.
+        detail = str(exc)
+        status = getattr(exc, "status_code", None)
+        if status == 402 or "paid_plan_required" in detail or "payment_required" in detail:
+            os.environ["JARVIS_ELEVENLABS_DISABLED"] = "1"
+            return _run_windows_sapi(text, out_path)
         raise RuntimeError(f"ElevenLabs TTS: {exc}") from exc
     return out_path
 
@@ -252,7 +259,7 @@ $s.Rate = 0; $s.Volume = 100; $s.SetOutputToWaveFile($target); $s.Speak($text); 
 
 def available_engines() -> list[str]:
     engines = []
-    if os.environ.get("JARVIS_ELEVENLABS_API_KEY", "").strip() and os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", ELEVENLABS_DEFAULT_VOICE_ID).strip(): engines.append("elevenlabs")
+    if (not os.environ.get("JARVIS_ELEVENLABS_DISABLED", "").strip()) and os.environ.get("JARVIS_ELEVENLABS_API_KEY", "").strip() and os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", ELEVENLABS_DEFAULT_VOICE_ID).strip(): engines.append("elevenlabs")
     if os.environ.get("JARVIS_APIHOST_KEY", "").strip(): engines.append("apihost")
     if sys.platform == "win32": engines.append("sapi")
     try:
