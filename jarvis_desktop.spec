@@ -1,6 +1,10 @@
 # PyInstaller spec for the native JARVIS desktop application.
 # Torch is intentionally optional: when it is not installed, TTS falls back to SAPI/Piper.
-from PyInstaller.utils.hooks import collect_data_files\n\nfaster_whisper_datas = collect_data_files("faster_whisper")\n\nhiddenimports = [
+from PyInstaller.utils.hooks import collect_data_files
+
+faster_whisper_datas = collect_data_files("faster_whisper")
+
+hiddenimports = [
     "numpy",
     "pycaw",
     "pycaw.pycaw",
