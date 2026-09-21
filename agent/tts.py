@@ -27,7 +27,41 @@ _PLAYBACK_PROCESS = None
 _PLAYBACK_ACTIVE = False
 _APIHOST_SPEAKER_ID = None
 _APIHOST_LOCK = threading.Lock()
-\n\ndef _elevenlabs_client():\n    key = os.environ.get("JARVIS_ELEVENLABS_API_KEY", "").strip()\n    if not key:\n        raise RuntimeError("Для ElevenLabs нужен JARVIS_ELEVENLABS_API_KEY")\n    try:\n        from elevenlabs.client import ElevenLabs\n    except ImportError as exc:\n        raise RuntimeError("Пакет ElevenLabs не установлен. Установите зависимость elevenlabs.") from exc\n    return ElevenLabs(api_key=key)\n\n\ndef _run_elevenlabs(text: str, out_path: Path) -> Path:\n    voice_id = os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", ELEVENLABS_DEFAULT_VOICE_ID).strip()\n    model_id = os.environ.get("JARVIS_ELEVENLABS_MODEL", ELEVENLABS_DEFAULT_MODEL).strip()\n    output_format = os.environ.get("JARVIS_ELEVENLABS_FORMAT", ELEVENLABS_DEFAULT_FORMAT).strip()\n    if not voice_id:\n        raise RuntimeError("Не задан JARVIS_ELEVENLABS_VOICE_ID")\n    client = _elevenlabs_client()\n    try:\n        response = client.text_to_speech.convert(\n            voice_id=voice_id,\n            text=text,\n            model_id=model_id,\n            output_format=output_format,\n        )\n        with open(out_path, "wb") as wav:\n            for chunk in response:\n                if chunk:\n                    wav.write(chunk)\n    except Exception as exc:\n        raise RuntimeError(f"ElevenLabs TTS: {exc}") from exc\n    return out_path\n
+
+
+def _elevenlabs_client():
+    key = os.environ.get("JARVIS_ELEVENLABS_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("Для ElevenLabs нужен JARVIS_ELEVENLABS_API_KEY")
+    try:
+        from elevenlabs.client import ElevenLabs
+    except ImportError as exc:
+        raise RuntimeError("Пакет ElevenLabs не установлен. Установите зависимость elevenlabs.") from exc
+    return ElevenLabs(api_key=key)
+
+
+def _run_elevenlabs(text: str, out_path: Path) -> Path:
+    voice_id = os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", ELEVENLABS_DEFAULT_VOICE_ID).strip()
+    model_id = os.environ.get("JARVIS_ELEVENLABS_MODEL", ELEVENLABS_DEFAULT_MODEL).strip()
+    output_format = os.environ.get("JARVIS_ELEVENLABS_FORMAT", ELEVENLABS_DEFAULT_FORMAT).strip()
+    if not voice_id:
+        raise RuntimeError("Не задан JARVIS_ELEVENLABS_VOICE_ID")
+    client = _elevenlabs_client()
+    try:
+        response = client.text_to_speech.convert(
+            voice_id=voice_id,
+            text=text,
+            model_id=model_id,
+            output_format=output_format,
+        )
+        with open(out_path, "wb") as wav:
+            for chunk in response:
+                if chunk:
+                    wav.write(chunk)
+    except Exception as exc:
+        raise RuntimeError(f"ElevenLabs TTS: {exc}") from exc
+    return out_path
+
 
 def _voice_dir() -> Path:
     return Path(os.environ.get("APPDATA", Path.home())) / "JARVIS" / "voice"
@@ -218,6 +252,7 @@ $s.Rate = 0; $s.Volume = 100; $s.SetOutputToWaveFile($target); $s.Speak($text); 
 
 def available_engines() -> list[str]:
     engines = []
+    if os.environ.get("JARVIS_ELEVENLABS_API_KEY", "").strip() and os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", ELEVENLABS_DEFAULT_VOICE_ID).strip(): engines.append("elevenlabs")
     if os.environ.get("JARVIS_APIHOST_KEY", "").strip(): engines.append("apihost")
     if sys.platform == "win32": engines.append("sapi")
     try:
@@ -234,8 +269,9 @@ def available_engines() -> list[str]:
 def current_engine() -> str:
     mode = os.environ.get("JARVIS_TTS", "auto").strip().lower()
     if mode == "auto":
-        # JARVIS works locally by default: no cloud TTS and no API voice.
-        # Prefer bundled Piper male voice; otherwise use installed Windows SAPI.
+        # Prefer ElevenLabs when configured; otherwise stay fully local.
+        if "elevenlabs" in available_engines():
+            return "elevenlabs"
         if sys.platform == "win32" and "piper" in available_engines():
             return "piper"
         if sys.platform == "win32" and "sapi" in available_engines():
