@@ -80,6 +80,9 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_KEY"] = api_key
         os.environ["JARVIS_DISABLED_TOOLS"] = json.dumps(disabled, ensure_ascii=False)
         os.environ["JARVIS_TTS_GENDER"] = self.settings["tts_gender"]
+        os.environ["JARVIS_ELEVENLABS_API_KEY"] = self.settings.get("elevenlabs_api_key") or os.environ.get("JARVIS_ELEVENLABS_API_KEY", "")
+        os.environ["JARVIS_ELEVENLABS_VOICE_ID"] = self.settings.get("elevenlabs_voice_id") or os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", "srULqtwUV9XZPg1ZCO5w")
+        os.environ["JARVIS_ELEVENLABS_MODEL"] = self.settings.get("elevenlabs_model") or os.environ.get("JARVIS_ELEVENLABS_MODEL", "eleven_flash_v2_5")
         if model:
             os.environ["JARVIS_CHAT_MODEL"] = model
         else:
@@ -646,21 +649,24 @@ class JarvisDesktop(tk.Tk):
             ("OpenAI-compatible URL", "url", os.environ.get("JARVIS_CHAT_URL", saved.get("url", DEFAULT_URL))),
             ("Модель", "model", os.environ.get("JARVIS_CHAT_MODEL", saved.get("model", ""))),
             ("API ключ", "api_key", os.environ.get("JARVIS_CHAT_KEY", saved.get("api_key", ""))),
+            ("ElevenLabs API ключ", "elevenlabs_api_key", os.environ.get("JARVIS_ELEVENLABS_API_KEY", saved.get("elevenlabs_api_key", ""))),
+            ("ElevenLabs Voice ID", "elevenlabs_voice_id", os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", saved.get("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w"))),
+            ("ElevenLabs модель", "elevenlabs_model", os.environ.get("JARVIS_ELEVENLABS_MODEL", saved.get("elevenlabs_model", "eleven_flash_v2_5"))),
         ]
         entries = {}
         for i, (label, name, value) in enumerate(fields):
             tk.Label(win, text=label, bg=PANEL, fg=MUTED).grid(row=i, column=0, sticky="w", padx=20, pady=(20 if i == 0 else 10, 4))
             entry = tk.Entry(win, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", width=60,
-                             show="•" if name == "api_key" else "")
+                             show="•" if name in {"api_key", "elevenlabs_api_key"} else "")
             entry.insert(0, value)
             entry.grid(row=i, column=1, padx=20, pady=(20 if i == 0 else 10, 4), ipady=7)
             entries[name] = entry
         voice_var = tk.BooleanVar(value=self.settings.get("voice_enabled", True))
         tts_var = tk.BooleanVar(value=self.settings.get("tts_enabled", True))
-        ttk.Checkbutton(win, text="Включать голосовое прослушивание при старте", variable=voice_var).grid(row=4, column=1, sticky="w", padx=20, pady=8)
-        ttk.Checkbutton(win, text="Озвучивать ответы JARVIS через TTS", variable=tts_var).grid(row=5, column=1, sticky="w", padx=20, pady=8)
+        ttk.Checkbutton(win, text="Включать голосовое прослушивание при старте", variable=voice_var).grid(row=7, column=1, sticky="w", padx=20, pady=8)
+        ttk.Checkbutton(win, text="Озвучивать ответы JARVIS через TTS", variable=tts_var).grid(row=8, column=1, sticky="w", padx=20, pady=8)
         tk.Label(win, text="Модули управления находятся в отдельном окне «Модули». Изменения применяются после пересборки ядра.",
-                 bg=PANEL, fg=MUTED, wraplength=700, justify="left").grid(row=6, column=0, columnspan=2, padx=20, pady=14)
+                 bg=PANEL, fg=MUTED, wraplength=700, justify="left").grid(row=9, column=0, columnspan=2, padx=20, pady=14)
         def save():
             for name, entry in entries.items():
                 self.settings[name] = entry.get().strip()
@@ -670,7 +676,7 @@ class JarvisDesktop(tk.Tk):
             self._save_settings()
             win.destroy()
             self._reload_agent()
-        ttk.Button(win, text="СОХРАНИТЬ И ПЕРЕЗАПУСТИТЬ", style="Accent.TButton", command=save).grid(row=7, column=1, sticky="e", padx=20, pady=10)
+        ttk.Button(win, text="СОХРАНИТЬ И ПЕРЕЗАПУСТИТЬ", style="Accent.TButton", command=save).grid(row=10, column=1, sticky="e", padx=20, pady=10)
 
     def _reload_agent(self):
         self.agent = None
