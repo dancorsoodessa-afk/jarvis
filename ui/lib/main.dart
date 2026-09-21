@@ -352,7 +352,12 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     final clean = text.trim(); final client = _client; final attachment = _attachment;
     if (clean.isEmpty || _busy) return;
     if (client == null) { if (mounted) setState(() => _status = 'Сначала подключите AI в настройках'); if (fromVoice) await _speak('Сначала подключите AI в настройках'); return; }
-    if (!mounted) return; setState(() { _busy = true; _streamText = ''; _messages.add(_Msg(attachment == null ? clean : '$clean\n📎 ${attachment.name}', isUser: true)); }); _scrollToBottom();
+    // Pause native STT during typed requests to avoid AudioRecord/Sherpa races.
+    final resumeVoice = _android && _voiceEnabled && !fromVoice;
+    if (resumeVoice) await _stopNativeListening();
+    if (!mounted) return;
+    setState(() { _busy = true; _streamText = ''; _messages.add(_Msg(attachment == null ? clean : '$clean\n📎 ${attachment.name}', isUser: true)); });
+    _scrollToBottom();
     try {
       final reply = await client.sendMessage(clean, attachment: attachment == null ? null : {'name': attachment.name, 'mime': attachment.mime, 'data': attachment.data});
       if (!mounted) return;
@@ -363,7 +368,13 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
       if (!mounted) return;
       setState(() { _messages.add(_Msg('Ошибка: $e', isUser: false)); _status = 'Ошибка'; });
       if (_android && _voiceEnabled) await _speak('Произошла ошибка');
-    } finally { if (mounted) setState(() => _busy = false); }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      if (resumeVoice && mounted && _voiceEnabled) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        if (mounted && !_busy) await _startNativeListening();
+      }
+    }
   }
 
   void _scrollToBottom() { WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut); }); }
