@@ -50,7 +50,7 @@ class Settings:
     def __post_init__(self):
         self.provider = normalize_provider(self.provider)
         if self.provider not in SUPPORTED_PROVIDERS:
-            raise ValueError(f"Неизвестный провайдер: {self.provider}. Доступны: {\", \".join(SUPPORTED_PROVIDERS)}")
+            raise ValueError(f"Неизвестный провайдер: {self.provider}. Доступны: {", ".join(SUPPORTED_PROVIDERS)}")
 
     @property
     def use_local(self) -> bool:
