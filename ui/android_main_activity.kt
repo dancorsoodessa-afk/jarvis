@@ -141,11 +141,16 @@ class MainActivity : FlutterActivity() {
         return try {
             initRecognizer()
             voiceInitialized = true
+            // Enable the continuous loop before starting recognition. Without
+            // this, an already-granted microphone permission leaves the UI red
+            // and startRecognition() returns immediately.
+            voiceLoopEnabled = true
             try {
                 initTts()
             } catch (e: Exception) {
                 eventSink?.success("__TTS_ERROR__:${e.javaClass.simpleName}:${e.message ?: ""}")
             }
+            eventSink?.success("__READY__")
             startRecognition()
             true
         } catch (e: Exception) {
