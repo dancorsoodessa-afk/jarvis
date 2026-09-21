@@ -69,28 +69,23 @@ if ($LASTEXITCODE -ne 0) { throw "JARVIS Desktop.exe build failed." }
 $release = "release"
 Remove-Item $release -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $release | Out-Null
-Copy-Item "dist\jarvis.exe" "$release\JARVIS.exe"
-Copy-Item "dist\jarvis_desktop.exe" "$release\JARVIS Desktop.exe"
-Copy-Item "vendor\piper" "$release\piper" -Recurse -Force
+Copy-Item "dist\jarvis_desktop.exe" "$release\JARVIS.exe"
 
 @"
 JARVIS — Windows x64
 
-Основное приложение: JARVIS Desktop.exe
-Ядро: JARVIS.exe
-
-JARVIS Desktop.exe — основной графический интерфейс.
-JARVIS.exe — отдельное ядро/CLI и не требуется запускать вручную для обычной работы Desktop.
+JARVIS.exe — единственное пользовательское приложение с графическим интерфейсом, голосом, памятью и инструментами.
+Отдельный JARVIS Desktop.exe пользователю не нужен.
+Piper не поставляется отдельно: локальный голос Windows используется как резерв для ElevenLabs.
 
 Конфигурация сохраняется в %APPDATA%\JARVIS\settings.json.
 "@ | Set-Content -Path "$release\README.txt" -Encoding UTF8
 
 $package = "JARVIS-Windows-x64.zip"
 Remove-Item $package -Force -ErrorAction SilentlyContinue
-Compress-Archive -Path "$release\JARVIS.exe", "$release\JARVIS Desktop.exe", "$release\piper", "$release\README.txt" -DestinationPath $package -Force
+Compress-Archive -Path "$release\JARVIS.exe", "$release\README.txt" -DestinationPath $package -Force
 
 Write-Host ""
 Write-Host "Release ready:" -ForegroundColor Green
 Write-Host "  $release\JARVIS.exe"
-Write-Host "  $release\JARVIS Desktop.exe"
 Write-Host "  $package"
