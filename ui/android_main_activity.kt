@@ -268,7 +268,14 @@ class MainActivity : FlutterActivity() {
                 } catch (t: Throwable) { lastError = t }
             }
             requireNotNull(record) { "Не удалось открыть микрофон: " + (lastError?.javaClass?.simpleName ?: "AudioRecord") + " " + (lastError?.message ?: "") }
-            audioRecord = record
+            synchronized(voiceLock) {
+                if (!voiceLoopEnabled || disposed) {
+                    try { record?.release() } catch (_: Exception) {}
+                    voiceActive = false
+                    return
+                }
+                audioRecord = record
+            }
             val activeRecord = record!!
             eventSink?.success("__MIC_SOURCE_READY__")
             require(activeRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Микрофон не перешёл в режим записи" }
@@ -335,14 +342,22 @@ class MainActivity : FlutterActivity() {
     private fun stopRecognition() {
         val record: AudioRecord?
         val stream: OnlineStream?
+        val threadToJoin: Thread?
         synchronized(voiceLock) {
             voiceActive = false
             record = audioRecord
             audioRecord = null
             stream = recognitionStream
             recognitionStream = null
+            threadToJoin = recordingThread
         }
+        // Stop the recorder first so AudioRecord.read() unblocks. Do not release
+        // the sherpa stream while the STT thread may still be decoding it.
         try { record?.stop() } catch (_: Exception) {}
+        if (threadToJoin != null && threadToJoin !== Thread.currentThread()) {
+            try { threadToJoin.join(700) } catch (_: InterruptedException) {}
+        }
+        try { record?.release() } catch (_: Exception) {}
         try { stream?.release() } catch (_: Exception) {}
     }
 
