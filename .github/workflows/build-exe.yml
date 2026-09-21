@@ -3,15 +3,22 @@ name: Build JARVIS для Windows
 on:
   workflow_dispatch:
   push:
-    branches: [foundation, jarvis-universal-agent]
+    branches: [foundation]
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
-      - uses: actions/checkout@v4
+      - name: Получить исходники
+        uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - name: Установить Python
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -20,7 +27,7 @@ jobs:
         run: powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 
       - name: Загрузить готовый Windows-пакет
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: JARVIS-Windows-x64
           path: JARVIS-Windows-x64.zip
