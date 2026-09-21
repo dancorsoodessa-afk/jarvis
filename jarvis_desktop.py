@@ -5,6 +5,7 @@ import math
 import os
 import queue
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -51,6 +52,7 @@ class JarvisDesktop(tk.Tk):
         self.tool_names = []
         self.attachments = []
         self._voice_loop_running = False
+        self._voice_armed_until = 0.0
         self._orb_phase = 0.0
         self._visual_state = "IDLE"
         self._visual_level = 0.0
@@ -280,13 +282,14 @@ class JarvisDesktop(tk.Tk):
                         continue
                     normalized = " ".join(heard.lower().split())
                     command = None
+                    activated = False
                     for word in wake_words:
                         if normalized.startswith(word):
+                            activated = True
                             command = normalized[len(word):].strip(" ,.!")
+                            self._voice_armed_until = time.monotonic() + 45.0
                             break
-                    if command is None:
-                        continue
-                    if not command:
+                    if activated and not command:
                         self.events.put(("voice_status", "Jarvis активирован. Слушаю вас."))
                         command = voice.listen_for_phrase(
                             silence_seconds=0.55,
@@ -294,7 +297,12 @@ class JarvisDesktop(tk.Tk):
                             start_timeout=4.0,
                             on_speech_start=on_speech_start,
                         )
+                    elif not activated and time.monotonic() < self._voice_armed_until:
+                        command = normalized
+                    else:
+                        continue
                     if command and self._voice_loop_running:
+                        self._voice_armed_until = time.monotonic() + 45.0
                         self.events.put(("voice_text", command))
                 except Exception as exc:
                     self.events.put(("voice_error", str(exc)))
