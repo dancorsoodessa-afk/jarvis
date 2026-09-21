@@ -112,7 +112,7 @@ class MainActivity : FlutterActivity() {
                 "speak" -> { speak(call.argument<String>("text").orEmpty()); result.success(true) }
                 "open_tts_settings" -> { openTtsSettings(); result.success(true) }
                 "install_tts_data" -> { installTtsData(); result.success(true) }
-                "test_tts" -> { speak("Проверка голоса БУСЯ. Если вы это слышите, синтез речи работает."); result.success(true) }
+                "test_tts" -> { speak("Проверка голоса JARVIS. Если вы это слышите, синтез речи работает."); result.success(true) }
                 "pick_file" -> pickFile(result)
                 "android_tool" -> try {
                     result.success(tools.execute(call.argument<String>("name").orEmpty(), JSONObject(call.argument<String>("args") ?: "{}")))
