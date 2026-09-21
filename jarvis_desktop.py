@@ -66,29 +66,50 @@ class JarvisDesktop(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._close)
 
     def _apply_saved_settings(self):
-        provider = self.settings.get("provider") or os.environ.get("JARVIS_PROVIDER") or DEFAULT_PROVIDER
-        url = self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL
-        model = self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or ""
-        api_key = self.settings.get("api_key") or os.environ.get("JARVIS_CHAT_KEY") or ""
+        profiles = self.settings.get("agents", {})
+        if not isinstance(profiles, dict):
+            profiles = {}
+        active = int(self.settings.get("active_agent", 0) or 0)
+        active = max(0, min(2, active))
+        legacy = {
+            "name": "JARVIS",
+            "provider": self.settings.get("provider") or os.environ.get("JARVIS_PROVIDER") or DEFAULT_PROVIDER,
+            "url": self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL,
+            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "openrouter/free",
+            "api_key": self.settings.get("api_key") or os.environ.get("JARVIS_CHAT_KEY") or "",
+        }
+        defaults = {
+            "0": legacy,
+            "1": {"name": "DeepSeek", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "deepseek/deepseek-chat:free", "api_key": ""},
+            "2": {"name": "GLM", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "z-ai/glm-5.2:free", "api_key": ""},
+        }
+        merged = {}
+        for key, default in defaults.items():
+            value = profiles.get(key, {})
+            merged[key] = {**default, **(value if isinstance(value, dict) else {})}
+        profile = merged[str(active)]
+        self.settings["active_agent"] = active
+        self.settings["agents"] = merged
+        self.settings["provider"] = profile["provider"]
+        self.settings["url"] = profile["url"]
+        self.settings["model"] = profile["model"]
+        self.settings["api_key"] = profile["api_key"]
+        os.environ["JARVIS_PROVIDER"] = profile["provider"]
+        os.environ["JARVIS_CHAT_URL"] = profile["url"]
+        os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
+        os.environ["JARVIS_CHAT_MODEL"] = profile["model"]
         disabled = self.settings.get("disabled_tools", [])
         if not isinstance(disabled, list):
             disabled = []
         self.settings["disabled_tools"] = disabled
+        os.environ["JARVIS_DISABLED_TOOLS"] = json.dumps(disabled, ensure_ascii=False)
         self.settings.setdefault("voice_enabled", True)
         self.settings.setdefault("tts_enabled", True)
         self.settings.setdefault("tts_gender", "male")
-        os.environ["JARVIS_PROVIDER"] = provider
-        os.environ["JARVIS_CHAT_URL"] = url
-        os.environ["JARVIS_CHAT_KEY"] = api_key
-        os.environ["JARVIS_DISABLED_TOOLS"] = json.dumps(disabled, ensure_ascii=False)
         os.environ["JARVIS_TTS_GENDER"] = self.settings["tts_gender"]
         os.environ["JARVIS_ELEVENLABS_API_KEY"] = self.settings.get("elevenlabs_api_key") or os.environ.get("JARVIS_ELEVENLABS_API_KEY", "")
         os.environ["JARVIS_ELEVENLABS_VOICE_ID"] = self.settings.get("elevenlabs_voice_id") or os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", "srULqtwUV9XZPg1ZCO5w")
         os.environ["JARVIS_ELEVENLABS_MODEL"] = self.settings.get("elevenlabs_model") or os.environ.get("JARVIS_ELEVENLABS_MODEL", "eleven_flash_v2_5")
-        if model:
-            os.environ["JARVIS_CHAT_MODEL"] = model
-        else:
-            os.environ.pop("JARVIS_CHAT_MODEL", None)
 
     def _save_settings(self):
         APP_DIR.mkdir(parents=True, exist_ok=True)
