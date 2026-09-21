@@ -640,7 +640,7 @@ class JarvisDesktop(tk.Tk):
         win = tk.Toplevel(self)
         win.title("JARVIS — Настройки")
         win.configure(bg=PANEL)
-        win.geometry("760x500")
+        win.geometry("820x700")
         win.transient(self)
         win.grab_set()
         saved = self.settings
