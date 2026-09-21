@@ -1,0 +1,49 @@
+name: Build JARVIS Windows x64
+
+on:
+  push:
+    branches: ["foundation", "agent-hardening"]
+  pull_request:
+    branches: ["foundation"]
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build and verify Windows executables
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
+
+      - name: Verify EXE structure
+        shell: powershell
+        run: |
+          $files = @("release\JARVIS.exe", "release\JARVIS Desktop.exe")
+          foreach ($file in $files) {
+            if (-not (Test-Path $file)) { throw "Missing $file" }
+            $size = (Get-Item $file).Length
+            if ($size -le 0) { throw "Empty $file" }
+            Write-Host "$file -> $size bytes"
+          }
+
+      - name: Upload Windows release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-Windows-x64
+          path: |
+            release/JARVIS.exe
+            release/JARVIS Desktop.exe
+            release/README.txt
+            JARVIS-Windows-x64.zip
+          if-no-files-found: error
