@@ -6,6 +6,7 @@ from .logging_setup import get as get_log
 from .memory import KnowledgeGraph, MemoryStore, SessionMemory, relevant_notes
 from .providers.local_vulkan import LocalVulkanProvider
 from .providers.openai_chat import OpenAIChatProvider
+from .providers.hybrid import HybridProvider
 from .reminders import ReminderService
 from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint, universal
 from .tools.registry import ToolRegistry

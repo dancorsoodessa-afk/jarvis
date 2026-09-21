@@ -2,6 +2,7 @@
 # Run from the project root:
 #   powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 $ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
 
 python -m pip install --upgrade pip
 python -m pip install -e ".[all]"
@@ -54,6 +55,10 @@ Invoke-WebRequest -Uri "$voiceBase/ru_RU-dmitri-medium.onnx.json" -OutFile "$ven
 if (-not (Test-Path "$vendorPiper\piper.exe")) { throw "Bundled Piper verification failed." }
 if (-not (Test-Path "$vendorPiper\ru_RU-dmitri-medium.onnx")) { throw "Bundled Dmitri voice verification failed." }
 
+Write-Host "== JARVIS: static checks ==" -ForegroundColor Cyan
+python -m compileall -q agent tests
+if ($LASTEXITCODE -ne 0) { throw "Python compile check failed; release build aborted." }
+
 Write-Host "== JARVIS: tests ==" -ForegroundColor Cyan
 pytest tests/ -q
 if ($LASTEXITCODE -ne 0) { throw "Tests failed; release build aborted." }
@@ -61,10 +66,14 @@ if ($LASTEXITCODE -ne 0) { throw "Tests failed; release build aborted." }
 Write-Host "== JARVIS: core ==" -ForegroundColor Cyan
 pyinstaller jarvis.spec --clean --noconfirm
 if ($LASTEXITCODE -ne 0) { throw "JARVIS.exe build failed." }
+if (-not (Test-Path "dist\\jarvis.exe")) { throw "dist\\jarvis.exe was not created." }
+if ((Get-Item "dist\\jarvis.exe").Length -le 0) { throw "dist\\jarvis.exe is empty." }
 
 Write-Host "== JARVIS: desktop ==" -ForegroundColor Cyan
 pyinstaller jarvis_desktop.spec --clean --noconfirm
 if ($LASTEXITCODE -ne 0) { throw "JARVIS Desktop.exe build failed." }
+if (-not (Test-Path "dist\\jarvis_desktop.exe")) { throw "dist\\jarvis_desktop.exe was not created." }
+if ((Get-Item "dist\\jarvis_desktop.exe").Length -le 0) { throw "dist\\jarvis_desktop.exe is empty." }
 
 $release = "release"
 Remove-Item $release -Recurse -Force -ErrorAction SilentlyContinue

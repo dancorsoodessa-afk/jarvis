@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 
 
-SUPPORTED_PROVIDERS = ("openai-compatible", "local-vulkan")
+SUPPORTED_PROVIDERS = ("openai-compatible", "local-vulkan", "hybrid")
 
 
 def normalize_provider(value: str | None) -> str:
@@ -20,6 +20,7 @@ def normalize_provider(value: str | None) -> str:
         "vulkan": "local-vulkan",
         "llama": "local-vulkan",
         "llama-cpp": "local-vulkan",
+        "offline-fallback": "hybrid",
     }
     return aliases.get(provider, provider)
 
@@ -48,10 +49,12 @@ class Settings:
 
     def __post_init__(self):
         self.provider = normalize_provider(self.provider)
+        if self.provider not in SUPPORTED_PROVIDERS:
+            raise ValueError(f"Неизвестный провайдер: {self.provider}. Доступны: {", ".join(SUPPORTED_PROVIDERS)}")
 
     @property
     def use_local(self) -> bool:
-        return self.provider == "local-vulkan"
+        return self.provider in ("local-vulkan", "hybrid")
 
     @classmethod
     def from_env(cls) -> "Settings":

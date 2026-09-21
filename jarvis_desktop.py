@@ -68,6 +68,7 @@ class JarvisDesktop(tk.Tk):
         url = self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL
         model = self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or ""
         api_key = self.settings.get("api_key") or os.environ.get("JARVIS_CHAT_KEY") or ""
+        eleven_key = self.settings.get("elevenlabs_key") or os.environ.get("JARVIS_ELEVENLABS_KEY") or ""
         disabled = self.settings.get("disabled_tools", [])
         if not isinstance(disabled, list):
             disabled = []
@@ -78,6 +79,8 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_PROVIDER"] = provider
         os.environ["JARVIS_CHAT_URL"] = url
         os.environ["JARVIS_CHAT_KEY"] = api_key
+        os.environ["JARVIS_ELEVENLABS_KEY"] = eleven_key
+        os.environ["JARVIS_ELEVENLABS_VOICE_ID"] = "srULqtwUV9XZPg1ZCO5w"
         os.environ["JARVIS_DISABLED_TOOLS"] = json.dumps(disabled, ensure_ascii=False)
         os.environ["JARVIS_TTS_GENDER"] = self.settings["tts_gender"]
         if model:
@@ -105,95 +108,121 @@ class JarvisDesktop(tk.Tk):
         header = tk.Frame(self, bg=BG, height=72)
         header.grid(row=0, column=0, columnspan=3, sticky="ew")
         header.grid_columnconfigure(1, weight=1)
-        tk.Label(header, text="JARVIS", bg=BG, fg=CYAN, font=("Segoe UI", 24, "bold"), padx=24).grid(row=0, column=0, pady=18)
-        tk.Label(header, text="PERSONAL AI SYSTEM  /  COMMAND CENTER", bg=BG, fg=MUTED,
+        tk.Label(header, text="JARVIS", bg=BG, fg=CYAN, font=("Segoe UI", 25, "bold")).grid(row=0, column=0, padx=22, pady=16)
+        tk.Label(header, text="AI COMMAND CENTER  /  VERIFIED EXECUTION", bg=BG, fg=MUTED,
                  font=("Segoe UI", 9, "bold")).grid(row=0, column=1, sticky="w")
         self.status = tk.Label(header, text="● STARTING", bg=BG, fg=MUTED,
-                               font=("Segoe UI", 10, "bold"), padx=24)
+                               font=("Segoe UI", 10, "bold"), padx=20)
         self.status.grid(row=0, column=2, sticky="e")
         self._build_sidebar()
         self._build_center()
         self._build_right()
-
     def _build_sidebar(self):
         side = tk.Frame(self, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
         side.grid(row=1, column=0, sticky="nsew", padx=(12, 6), pady=(0, 12))
-        tk.Label(side, text="CONTROL", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
-                 padx=18, pady=18).pack(anchor="w")
+        tk.Label(side, text="COMMAND CENTER", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
+                 padx=16, pady=16).pack(anchor="w")
         self.tools_button = ttk.Button(side, text="⌁  Модули", command=self.show_tools)
-        self.tools_button.pack(fill="x", padx=12, pady=5)
-        ttk.Button(side, text="⚙  Настройки", command=self.show_settings).pack(fill="x", padx=12, pady=5)
-        ttk.Button(side, text="🔊  Голос: ВКЛ", command=self.toggle_voice).pack(fill="x", padx=12, pady=5)
-        self.voice_control = side.winfo_children()[-1]
-        ttk.Button(side, text="🗣  TTS: ВКЛ", command=self.toggle_tts).pack(fill="x", padx=12, pady=5)
-        self.tts_control = side.winfo_children()[-1]
-        tk.Frame(side, bg=LINE, height=1).pack(fill="x", padx=12, pady=15)
-        tk.Label(side, text="БЫСТРО", bg=PANEL, fg=MUTED, font=("Segoe UI", 8, "bold"),
-                 padx=18, pady=4).pack(anchor="w")
-        ttk.Button(side, text="↻  Перезапустить ядро", command=self._reload_agent).pack(fill="x", padx=12, pady=5)
-        ttk.Button(side, text="⛔  Остановить голос", command=self._stop_voice).pack(fill="x", padx=12, pady=5)
-        tk.Label(side, text="Выключенный модуль не передаётся ИИ как доступный инструмент.",
-                 bg=PANEL, fg=MUTED, wraplength=210, justify="left", font=("Segoe UI", 8),
-                 padx=16, pady=20).pack(side="bottom", anchor="w")
-
+        self.tools_button.pack(fill="x", padx=12, pady=4)
+        ttk.Button(side, text="⚙  Настройки", command=self.show_settings).pack(fill="x", padx=12, pady=4)
+        ttk.Button(side, text="↻  Перезапустить ядро", command=self._reload_agent).pack(fill="x", padx=12, pady=4)
+        self.voice_control = ttk.Button(side, text="🔊  Голос: ВКЛ", command=self.toggle_voice)
+        self.voice_control.pack(fill="x", padx=12, pady=4)
+        self.tts_control = ttk.Button(side, text="🗣  TTS: ВКЛ", command=self.toggle_tts)
+        self.tts_control.pack(fill="x", padx=12, pady=4)
+        tk.Frame(side, bg=LINE, height=1).pack(fill="x", padx=12, pady=14)
+        tk.Label(side, text="СИСТЕМА", bg=PANEL, fg=MUTED, font=("Segoe UI", 8, "bold"),
+                 padx=16).pack(anchor="w")
+        self.resource_labels = {}
+        for name in ("CPU", "RAM", "DISK", "NETWORK"):
+            row = tk.Frame(side, bg=PANEL)
+            row.pack(fill="x", padx=16, pady=5)
+            tk.Label(row, text=name, bg=PANEL, fg=MUTED, font=("Segoe UI", 8)).pack(side="left")
+            value = tk.Label(row, text="—", bg=PANEL, fg=CYAN, font=("Consolas", 8, "bold"))
+            value.pack(side="right")
+            self.resource_labels[name] = value
+        self.connection = tk.Label(side, text="Сеть: проверка…", bg=PANEL, fg=MUTED,
+                                   font=("Segoe UI", 8), wraplength=205, justify="left")
+        self.connection.pack(anchor="w", padx=16, pady=(12, 4))
     def _build_center(self):
         center = tk.Frame(self, bg=BG)
         center.grid(row=1, column=1, sticky="nsew", padx=6, pady=(0, 12))
-        center.grid_rowconfigure(1, weight=1)
+        center.grid_rowconfigure(2, weight=1)
         center.grid_columnconfigure(0, weight=1)
-        hud = tk.Frame(center, bg=BG, height=250)
+
+        hud = tk.Frame(center, bg=BG, height=220)
         hud.grid(row=0, column=0, sticky="ew")
         hud.grid_propagate(False)
-        self.canvas = tk.Canvas(hud, width=300, height=235, bg=BG, highlightthickness=0)
-        self.canvas.pack(side="left", padx=12)
+        self.canvas = tk.Canvas(hud, width=300, height=210, bg=BG, highlightthickness=0)
+        self.canvas.pack(side="left", padx=8)
         self._draw_orb()
-        self.hud_text = tk.Label(hud, text="Инициализация ядра…", bg=BG, fg=CYAN,
-                                 font=("Segoe UI", 12, "bold"), justify="left")
+        self.hud_text = tk.Label(hud, text="СИСТЕМА ГОТОВА", bg=BG, fg=CYAN,
+                                 font=("Segoe UI", 13, "bold"), justify="left")
         self.hud_text.pack(side="left", anchor="center")
+
+        task = tk.Frame(center, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
+        task.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        tk.Label(task, text="АКТИВНАЯ ЗАДАЧА", bg=PANEL, fg=MUTED,
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=14, pady=(11, 3))
+        self.task_label = tk.Label(task, text="Ожидаю команду пользователя", bg=PANEL, fg=TEXT,
+                                   font=("Segoe UI", 11, "bold"), anchor="w", justify="left", wraplength=720)
+        self.task_label.pack(fill="x", padx=14)
+        self.pipeline_label = tk.Label(task, text="ЦЕЛЬ  →  ПЛАН  →  ВЫПОЛНЕНИЕ  →  ПРОВЕРКА  →  РЕЗУЛЬТАТ",
+                                      bg=PANEL, fg=MUTED, font=("Consolas", 8), anchor="w")
+        self.pipeline_label.pack(fill="x", padx=14, pady=(6, 3))
+        self.verify_label = tk.Label(task, text="Проверка: не выполняется", bg=PANEL, fg=MUTED,
+                                     font=("Segoe UI", 8), anchor="w")
+        self.verify_label.pack(fill="x", padx=14, pady=(0, 10))
+
         chat_frame = tk.Frame(center, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
-        chat_frame.grid(row=1, column=0, sticky="nsew")
+        chat_frame.grid(row=2, column=0, sticky="nsew")
         chat_frame.grid_rowconfigure(0, weight=1)
         chat_frame.grid_columnconfigure(0, weight=1)
         self.chat = tk.Text(chat_frame, bg=PANEL, fg=TEXT, insertbackground=CYAN, relief="flat",
-                            wrap="word", padx=18, pady=16, font=("Segoe UI", 11), state="disabled")
+                            wrap="word", padx=18, pady=14, font=("Segoe UI", 10), state="disabled")
         self.chat.grid(row=0, column=0, sticky="nsew")
         scroll = ttk.Scrollbar(chat_frame, command=self.chat.yview)
         scroll.grid(row=0, column=1, sticky="ns")
         self.chat.configure(yscrollcommand=scroll.set)
+
         input_frame = tk.Frame(center, bg=BG)
-        input_frame.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+        input_frame.grid(row=3, column=0, sticky="ew", pady=(8, 0))
         input_frame.grid_columnconfigure(0, weight=1)
         self.input = tk.Entry(input_frame, bg=PANEL2, fg=TEXT, insertbackground=CYAN,
                               relief="flat", font=("Segoe UI", 11))
-        self.input.grid(row=0, column=0, sticky="ew", ipady=12, padx=(0, 8))
+        self.input.grid(row=0, column=0, sticky="ew", ipady=11, padx=(0, 7))
         self.input.bind("<Return>", lambda _e: self.send())
         self.attach_button = ttk.Button(input_frame, text="📎 ФАЙЛЫ", command=self.pick_attachments)
-        self.attach_button.grid(row=0, column=1, padx=(0, 8), ipady=3)
+        self.attach_button.grid(row=0, column=1, padx=3)
         self.voice_button = ttk.Button(input_frame, text="🎙 ГОЛОС", command=self.start_voice)
-        self.voice_button.grid(row=0, column=2, padx=(0, 8), ipady=3)
+        self.voice_button.grid(row=0, column=2, padx=3)
         self.send_button = ttk.Button(input_frame, text="SEND", style="Accent.TButton", command=self.send)
-        self.send_button.grid(row=0, column=3, ipadx=10, ipady=3)
-        self.attachment_label = tk.Label(center, text="Вложений нет", bg=BG, fg=MUTED, font=("Segoe UI", 8), anchor="w")
-        self.attachment_label.grid(row=3, column=0, sticky="ew", pady=(4, 0))
-
+        self.send_button.grid(row=0, column=3, padx=(5, 0))
+        self.attachment_label = tk.Label(center, text="Вложений нет", bg=BG, fg=MUTED,
+                                         font=("Segoe UI", 8), anchor="w")
+        self.attachment_label.grid(row=4, column=0, sticky="ew", pady=(3, 0))
     def _build_right(self):
         right = tk.Frame(self, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
         right.grid(row=1, column=2, sticky="nsew", padx=(6, 12), pady=(0, 12))
-        tk.Label(right, text="LIVE STATUS", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
-                 padx=16, pady=18).pack(anchor="w")
+        tk.Label(right, text="LIVE SYSTEM", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
+                 padx=16, pady=16).pack(anchor="w")
         self.metrics = {}
         for name in ("Core", "AI Provider", "Memory", "Tools", "Voice", "TTS"):
             row = tk.Frame(right, bg=PANEL)
-            row.pack(fill="x", padx=16, pady=7)
-            tk.Label(row, text=name, bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(side="left")
-            value = tk.Label(row, text="—", bg=PANEL, fg=CYAN, font=("Segoe UI", 9, "bold"))
+            row.pack(fill="x", padx=16, pady=6)
+            tk.Label(row, text=name.upper(), bg=PANEL, fg=MUTED, font=("Segoe UI", 8)).pack(side="left")
+            value = tk.Label(row, text="—", bg=PANEL, fg=CYAN, font=("Consolas", 8, "bold"))
             value.pack(side="right")
             self.metrics[name] = value
-        tk.Frame(right, bg=LINE, height=1).pack(fill="x", padx=16, pady=15)
-        self.enabled_label = tk.Label(right, text="", bg=PANEL, fg=MUTED, wraplength=220,
-                                      justify="left", font=("Segoe UI", 8), padx=16)
-        self.enabled_label.pack(anchor="w")
-
+        tk.Frame(right, bg=LINE, height=1).pack(fill="x", padx=16, pady=12)
+        tk.Label(right, text="АКТИВНЫЕ ИНСТРУМЕНТЫ", bg=PANEL, fg=MUTED,
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=16)
+        self.tool_list = tk.Listbox(right, bg=PANEL2, fg=TEXT, selectbackground="#17465c",
+                                    relief="flat", height=14, font=("Consolas", 8))
+        self.tool_list.pack(fill="both", expand=True, padx=12, pady=8)
+        self.enabled_label = tk.Label(right, text="Проверка: —", bg=PANEL, fg=MUTED,
+                                      wraplength=220, justify="left", font=("Segoe UI", 8), padx=16)
+        self.enabled_label.pack(anchor="w", pady=(2, 14))
     def _set_visual_state(self, state, level=None):
         self._visual_state = state
         if level is not None:
@@ -201,12 +230,14 @@ class JarvisDesktop(tk.Tk):
         labels = {
             "IDLE": "СИСТЕМА ГОТОВА",
             "LISTENING": "СЛУШАЮ ВАС",
-            "THINKING": "ОБРАБОТКА",
+            "THINKING": "ПЛАНИРУЮ / ОБРАБАТЫВАЮ",
             "SPEAKING": "ОТВЕЧАЮ",
-            "ERROR": "ОШИБКА",
+            "EXECUTING": "ВЫПОЛНЯЮ",
+            "VERIFYING": "ПРОВЕРЯЮ РЕЗУЛЬТАТ",
+            "DONE": "ЗАДАЧА ЗАВЕРШЕНА",
+            "ERROR": "ТРЕБУЕТСЯ ВМЕШАТЕЛЬСТВО",
         }
         self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
-
     def _draw_orb(self):
         self.canvas.delete("all")
         cx, cy = 150, 112
@@ -372,7 +403,7 @@ class JarvisDesktop(tk.Tk):
                     self.send_button.config(state="normal")
                     self.attach_button.config(state="normal")
                     self.status.config(text="● ONLINE", fg=GREEN)
-                    self._set_visual_state("IDLE", 0.0)
+                    self._set_visual_state("DONE", 0.0)
                     if self.settings.get("tts_enabled", True):
                         threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
                 elif kind == "voice_text":
@@ -481,9 +512,9 @@ class JarvisDesktop(tk.Tk):
             self._clear_attachments(); return
         prompt=text+("\n\n"+context if context else "")
         self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
-        self.status.config(text="● PROCESSING",fg=CYAN)
+        self.status.config(text="● EXECUTING",fg=CYAN)\n        self._set_visual_state("THINKING", 0.6)\n        self.task_label.config(text=text)\n        self.pipeline_label.config(text="ЦЕЛЬ  ✓   ПЛАН  …   ВЫПОЛНЕНИЕ  …   ПРОВЕРКА  …   РЕЗУЛЬТАТ")\n        self.verify_label.config(text="Проверка: ожидает фактический результат инструмента", fg=AMBER)
         def work():
-            try: self.events.put(("reply",self.agent.handle(prompt).text))
+            try: result = self.agent.handle(prompt)\n                self.events.put(("reply", result.text))
             except Exception as exc: self.events.put(("reply","Ошибка: "+str(exc)))
         self._clear_attachments()
         threading.Thread(target=work,daemon=True).start()
@@ -645,21 +676,22 @@ class JarvisDesktop(tk.Tk):
             ("Провайдер", "provider", os.environ.get("JARVIS_PROVIDER", saved.get("provider", DEFAULT_PROVIDER))),
             ("OpenAI-compatible URL", "url", os.environ.get("JARVIS_CHAT_URL", saved.get("url", DEFAULT_URL))),
             ("Модель", "model", os.environ.get("JARVIS_CHAT_MODEL", saved.get("model", ""))),
-            ("API ключ", "api_key", os.environ.get("JARVIS_CHAT_KEY", saved.get("api_key", ""))),
+            ("API ключ AI", "api_key", os.environ.get("JARVIS_CHAT_KEY", saved.get("api_key", ""))),
+            ("ElevenLabs API ключ", "elevenlabs_key", os.environ.get("JARVIS_ELEVENLABS_KEY", saved.get("elevenlabs_key", ""))),
         ]
         entries = {}
         for i, (label, name, value) in enumerate(fields):
             tk.Label(win, text=label, bg=PANEL, fg=MUTED).grid(row=i, column=0, sticky="w", padx=20, pady=(20 if i == 0 else 10, 4))
             entry = tk.Entry(win, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", width=60,
-                             show="•" if name == "api_key" else "")
+                             show="•" if name in {"api_key", "elevenlabs_key"} else "")
             entry.insert(0, value)
             entry.grid(row=i, column=1, padx=20, pady=(20 if i == 0 else 10, 4), ipady=7)
             entries[name] = entry
         voice_var = tk.BooleanVar(value=self.settings.get("voice_enabled", True))
         tts_var = tk.BooleanVar(value=self.settings.get("tts_enabled", True))
         ttk.Checkbutton(win, text="Включать голосовое прослушивание при старте", variable=voice_var).grid(row=4, column=1, sticky="w", padx=20, pady=8)
-        ttk.Checkbutton(win, text="Озвучивать ответы JARVIS через TTS", variable=tts_var).grid(row=5, column=1, sticky="w", padx=20, pady=8)
-        tk.Label(win, text="Модули управления находятся в отдельном окне «Модули». Изменения применяются после пересборки ядра.",
+        ttk.Checkbutton(win, text="Озвучивать ответы JARVIS через TTS", variable=tts_var).grid(row=6, column=1, sticky="w", padx=20, pady=8)
+        tk.Label(win, text="Модули управления находятся в отдельном окне «Модули». Голос ElevenLabs: Kyrylo (Voice ID srULqtwUV9XZPg1ZCO5w). Для него нужен API-ключ ElevenLabs. Изменения применяются после перезапуска ядра.",
                  bg=PANEL, fg=MUTED, wraplength=700, justify="left").grid(row=6, column=0, columnspan=2, padx=20, pady=14)
         def save():
             for name, entry in entries.items():

@@ -30,6 +30,7 @@ class JarvisAgent:
         self.on_exchange = None
         self.context_hook = None
         self.log = get_log("core")
+        self.action_history: list[dict] = []
 
     def _notify(self, user: str, assistant: str):
         self._remember(user, assistant)
@@ -80,7 +81,7 @@ class JarvisAgent:
             if hasattr(self.provider, "tool_executor"):
                 self.provider.tool_executor = self._execute_for_llm
                 prompt = {"text": text, "attachment": attachment} if attachment else text
-                reply = generate(prompt, tools=self.tools.specs())
+                reply = generate(prompt, tools=self.tools.specs(), max_steps=8)
             else:
                 prompt = {"text": text, "attachment": attachment} if attachment else text
                 reply = generate(prompt)
@@ -116,11 +117,19 @@ class JarvisAgent:
                 self.provider.name,
             )
         except (TypeError, ValueError, RuntimeError, OSError) as exc:
+            self._record_action(name, "failed", str(exc))
             return AgentResult(f"Ошибка инструмента «{name}»: {exc}",
                                self.provider.name, tool_used=name)
+        output_text = str(output)
+        self._record_action(name, "ok", output_text)
         if remember is not None:
-            self._remember(remember, str(output))
+            self._remember(remember, output_text)
         return AgentResult(str(output), self.provider.name, tool_used=name)
+
+    def _record_action(self, name: str, status: str, output: str):
+        self.action_history.append({"tool": name, "status": status, "output": output[-4000:]})
+        self.action_history = self.action_history[-50:]
+        self.log.info("Действие %s: %s", name, status)
 
     def _execute_for_llm(self, name: str, args: dict) -> str:
         """Execute a model-requested tool through the same safety gate as CLI tools."""

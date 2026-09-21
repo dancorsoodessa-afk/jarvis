@@ -19,6 +19,8 @@ DEFAULT_SILERO_VOICE = "eugene"
 DEFAULT_SAPI_LANGUAGE = "ru-RU"
 APIHOST_BASE = "https://apihost.ru/api/v1"
 APIHOST_VOICE_NAME = "Леда"
+ELEVENLABS_VOICE_ID = "srULqtwUV9XZPg1ZCO5w"  # Kyrylo
+ELEVENLABS_BASE = "https://api.elevenlabs.io/v1"
 _PLAYBACK_LOCK = threading.Lock()
 _PLAYBACK_PROCESS = None
 _PLAYBACK_ACTIVE = False
@@ -66,6 +68,24 @@ def is_playing() -> bool:
             return True
         return _PLAYBACK_PROCESS is not None and _PLAYBACK_PROCESS.poll() is None
 
+
+def _run_elevenlabs(text: str, out_path: Path) -> Path:
+    """Generate speech with the configured ElevenLabs voice."""
+    key = os.environ.get("JARVIS_ELEVENLABS_KEY", "").strip()
+    if not key:
+        raise RuntimeError("Для ElevenLabs нужен JARVIS_ELEVENLABS_KEY")
+    voice_id = os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", ELEVENLABS_VOICE_ID).strip()
+    model_id = os.environ.get("JARVIS_ELEVENLABS_MODEL", "eleven_v3").strip()
+    payload = {"text": text, "model_id": model_id, "voice_settings": {"stability": 0.45, "similarity_boost": 0.80, "style": 0.20, "speed": 1.0, "use_speaker_boost": True}}
+    request = urllib.request.Request(
+        f"{ELEVENLABS_BASE}/text-to-speech/{voice_id}?output_format=wav_22050",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/wav"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        out_path.write_bytes(response.read())
+    return out_path
 
 def _run_piper(text: str, out_path: Path) -> Path:
     piper = os.environ.get("JARVIS_PIPER", "").strip()
@@ -215,6 +235,7 @@ $s.Rate = 0; $s.Volume = 100; $s.SetOutputToWaveFile($target); $s.Speak($text); 
 
 def available_engines() -> list[str]:
     engines = []
+    if os.environ.get("JARVIS_ELEVENLABS_KEY", "").strip(): engines.append("elevenlabs")
     if os.environ.get("JARVIS_APIHOST_KEY", "").strip(): engines.append("apihost")
     if sys.platform == "win32": engines.append("sapi")
     try:
@@ -231,8 +252,9 @@ def available_engines() -> list[str]:
 def current_engine() -> str:
     mode = os.environ.get("JARVIS_TTS", "auto").strip().lower()
     if mode == "auto":
-        # JARVIS works locally by default: no cloud TTS and no API voice.
-        # Prefer bundled Piper male voice; otherwise use installed Windows SAPI.
+        if "elevenlabs" in available_engines():
+            return "elevenlabs"
+        # Stay local when ElevenLabs is not configured.
         if sys.platform == "win32" and "piper" in available_engines():
             return "piper"
         if sys.platform == "win32" and "sapi" in available_engines():
@@ -258,6 +280,7 @@ def speak(text: str) -> Path:
     if engine == "off": raise RuntimeError("TTS отключён (JARVIS_TTS=off)")
     text = " ".join(text.split())[:1000]
     out = Path(tempfile.gettempdir()) / "jarvis_tts.wav"
+    if engine == "elevenlabs": return _run_elevenlabs(text, out)
     if engine == "apihost": return _run_apihost(text, out)
     if engine == "sapi": return _run_windows_sapi(text, out)
     if engine == "silero": return _run_silero(text, out)
