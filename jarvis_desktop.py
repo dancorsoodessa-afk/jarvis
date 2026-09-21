@@ -42,7 +42,7 @@ def _load_saved_settings() -> dict:
 class JarvisDesktop(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("JARVIS — NEXT COMMAND CENTER")
+        self.title("JARVIS — AI COMMAND CENTER")
         self.geometry("1420x900")
         self.minsize(1180, 740)
         self.configure(bg=BG)
@@ -423,7 +423,7 @@ class JarvisDesktop(tk.Tk):
                     self._set_visual_state("ERROR")
                     self._append("VOICE", "Ошибка: " + event[1])
                 elif kind == "tts_error":
-                    self._append("VOICE", "Ошибка TTS: " + event[1])
+                    self._append("VOICE", "ElevenLabs недоступен для выбранного Voice ID — использую локальный голос Windows.")
                     self.metrics["TTS"].config(fg=RED)
                 elif kind == "agent_error":
                     self._set_visual_state("ERROR")
@@ -609,7 +609,7 @@ class JarvisDesktop(tk.Tk):
         self.tool_status_label = tk.Label(header, text="", bg=BG, fg=GREEN,
                                           font=("Segoe UI", 10, "bold"))
         self.tool_status_label.pack(side="right")
-        tk.Label(win, text="Нажми переключатель — модуль будет исключён из ядра после перезапуска. Это уменьшает доступные функции и помогает разгрузить систему.",
+        tk.Label(win, text="Нажми на модуль, чтобы открыть его. Переключатель «АКТИВЕН» включает или отключает функцию. JARVIS сам выбирает нужный инструмент по вашей задаче — команды вводить не нужно.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9), wraplength=1040, justify="left").pack(anchor="w", padx=22, pady=(0, 10))
 
         outer = tk.Frame(win, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
@@ -646,15 +646,19 @@ class JarvisDesktop(tk.Tk):
             body.pack(side="left", fill="both", expand=True, padx=(0, 10), pady=10)
             tk.Label(body, text=title, bg=PANEL2, fg=TEXT, font=("Segoe UI", 10, "bold"),
                      anchor="w").pack(fill="x")
-            tk.Label(body, text=f"/{name}", bg=PANEL2, fg=CYAN, font=("Consolas", 8),
-                     anchor="w").pack(fill="x", pady=(2, 2))
             tk.Label(body, text=desc, bg=PANEL2, fg=MUTED, font=("Segoe UI", 8),
                      wraplength=310, justify="left", anchor="w").pack(fill="x")
             state_label = tk.Label(body, text=("● АКТИВЕН" if enabled_var.get() else "● ВЫКЛЮЧЕН"), bg=PANEL2, fg=GREEN if enabled_var.get() else RED, font=("Segoe UI", 8, "bold"), cursor="hand2")
             state_label.pack(anchor="w", pady=(5, 0))
             state_label.bind("<Button-1>", lambda e, v=enabled_var, l=state_label: (v.set(not v.get()), l.config(text=("● АКТИВЕН" if v.get() else "● ВЫКЛЮЧЕН"), fg=GREEN if v.get() else RED)))
-            card.bind("<Button-1>", lambda e, n=name, t=title, d=desc, v=enabled_var: self._open_module_details(n, t, d, v.get()))
-            icon.bind("<Button-1>", lambda e, n=name, t=title, d=desc, v=enabled_var: self._open_module_details(n, t, d, v.get()))
+            def open_card(_event=None, n=name, t=title, d=desc, v=enabled_var):
+                self._open_module_details(n, t, d, v.get())
+            def bind_card(widget):
+                widget.bind("<Button-1>", open_card)
+                for child in widget.winfo_children():
+                    bind_card(child)
+            bind_card(card)
+            state_label.bind("<Button-1>", lambda e, v=enabled_var, l=state_label: (v.set(not v.get()), l.config(text=("● АКТИВЕН" if v.get() else "● ВЫКЛЮЧЕН"), fg=GREEN if v.get() else RED)))
 
         def save_modules():
             new_disabled = [name for name, var in switches.items() if not var.get()]
@@ -737,9 +741,9 @@ class JarvisDesktop(tk.Tk):
                 fields[key] = e
             entries.append(fields)
 
-        voice_frame = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
+        voice_frame = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         voice_frame.pack(fill="x", pady=10)
-        tk.Label(voice_frame, text="ГОЛОС / ELEVENLABS", bg="#091b29", fg=CYAN,
+        tk.Label(voice_frame, text="ГОЛОС JARVIS / ELEVENLABS", bg="#091b29", fg=CYAN,
                  font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 6))
         voice_fields = {}
         for label, key, default, secret in (
