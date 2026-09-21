@@ -14,13 +14,13 @@ from agent.runtime import build_agent
 from agent import tts, voice
 from agent.tools_catalog import TOOLS
 
-BG = "#071a2b"
-PANEL = "#0b2437"
-PANEL2 = "#12344b"
-LINE = "#2d6683"
-CYAN = "#63e8ff"
-TEXT = "#e7f6ff"
-MUTED = "#7890a3"
+BG = "#081522"
+PANEL = "#0d2638"
+PANEL2 = "#123e55"
+LINE = "#2f7d9e"
+CYAN = "#6ff3ff"
+TEXT = "#f0fbff"
+MUTED = "#91adbd"
 GREEN = "#55e39b"
 RED = "#ff647c"
 YELLOW = "#ffcf6b"
@@ -96,115 +96,105 @@ class JarvisDesktop(tk.Tk):
         style = ttk.Style(self)
         style.theme_use("clam")
         style.configure("TButton", background=PANEL2, foreground=TEXT, bordercolor=LINE,
-                        padding=(12, 9), font=("Segoe UI", 10))
-        style.map("TButton", background=[("active", "#153043")], foreground=[("active", "white")])
-        style.configure("Accent.TButton", background="#103744", foreground=CYAN, bordercolor=CYAN)
+                        padding=(12, 9), font=("Segoe UI", 10, "bold"), relief="flat")
+        style.map("TButton", background=[("active", "#1b526c")], foreground=[("active", "white")])
+        style.configure("Accent.TButton", background="#0e667a", foreground="#f4ffff",
+                        bordercolor=CYAN, padding=(14, 9), font=("Segoe UI", 10, "bold"))
+        style.map("Accent.TButton", background=[("active", "#148aa1")])
         style.configure("TCheckbutton", background=PANEL2, foreground=TEXT, font=("Segoe UI", 9))
         style.map("TCheckbutton", background=[("active", PANEL2)], foreground=[("active", TEXT)])
 
     def _build_ui(self):
-        self.grid_columnconfigure(0, weight=0)
+        self.grid_columnconfigure(0, weight=0, minsize=235)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(1, weight=1)
-        header = tk.Frame(self, bg="#081f32", height=82)
-        header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=12, pady=(12, 8))
-        header.grid_columnconfigure(1, weight=1)
-        tk.Label(header, text="JARVIS", bg="#081f32", fg=CYAN,
-                 font=("Segoe UI", 27, "bold")).grid(row=0, column=0, padx=22, pady=16)
-        tk.Label(header, text="AI COMMAND CENTER", bg="#081f32", fg=TEXT,
-                 font=("Segoe UI", 11, "bold")).grid(row=0, column=1, sticky="w", padx=8)
-        tk.Label(header, text="VOICE  •  MEMORY  •  TOOLS", bg="#081f32", fg=MUTED,
-                 font=("Segoe UI", 8, "bold")).grid(row=1, column=1, sticky="w", padx=8, pady=(0,12))
-        self.status = tk.Label(header, text="● STARTING", bg="#081f32", fg=MUTED,
-                               font=("Segoe UI", 10, "bold"), padx=22)
-        self.status.grid(row=0, column=2, rowspan=2, sticky="e")
 
+        top = tk.Frame(self, bg="#0b2233", height=76, highlightbackground=LINE, highlightthickness=1)
+        top.grid(row=0, column=0, columnspan=2, sticky="ew", padx=14, pady=(14, 8))
+        top.grid_propagate(False)
+        top.grid_columnconfigure(1, weight=1)
+        tk.Label(top, text="JARVIS", bg="#0b2233", fg=CYAN, font=("Segoe UI", 24, "bold")).grid(row=0, column=0, rowspan=2, padx=(22, 16))
+        tk.Label(top, text="COMMAND DECK", bg="#0b2233", fg=TEXT, font=("Segoe UI", 11, "bold")).grid(row=0, column=1, sticky="sw")
+        tk.Label(top, text="AI  •  MEMORY  •  VOICE  •  TOOLS", bg="#0b2233", fg=MUTED, font=("Segoe UI", 8, "bold")).grid(row=1, column=1, sticky="nw", pady=(2, 14))
+        self.status = tk.Label(top, text="● INITIALIZING", bg="#0b2233", fg=YELLOW, font=("Segoe UI", 10, "bold"), padx=20)
+        self.status.grid(row=0, column=2, rowspan=2, sticky="e", padx=14)
         self._build_sidebar()
         self._build_center()
 
     def _build_sidebar(self):
         side = tk.Frame(self, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
-        side.grid(row=1, column=0, sticky="nsew", padx=(12, 8), pady=(0, 12))
-        side.configure(width=250)
-        tk.Label(side, text="СИСТЕМА", bg=PANEL, fg=MUTED,
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=18, pady=(20, 10))
-
+        side.grid(row=1, column=0, sticky="nsew", padx=(14, 8), pady=(0, 14))
+        side.configure(width=235)
+        tk.Label(side, text="CONTROL", bg=PANEL, fg=MUTED, font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=18, pady=(20, 10))
         self.tools_button = ttk.Button(side, text="◈  Модули", command=self.show_tools)
-        self.tools_button.pack(fill="x", padx=14, pady=5, ipady=4)
-        ttk.Button(side, text="⚙  Настройки", command=self.show_settings).pack(fill="x", padx=14, pady=5, ipady=4)
-        ttk.Button(side, text="🔊  Голос: ВКЛ", command=self.toggle_voice).pack(fill="x", padx=14, pady=5, ipady=4)
+        self.tools_button.pack(fill="x", padx=12, pady=4, ipady=5)
+        ttk.Button(side, text="⚙  Настройки", command=self.show_settings).pack(fill="x", padx=12, pady=4, ipady=5)
+        ttk.Button(side, text="🔊  Голос: ВКЛ", command=self.toggle_voice).pack(fill="x", padx=12, pady=4, ipady=5)
         self.voice_control = side.winfo_children()[-1]
-        ttk.Button(side, text="🗣  TTS: ВКЛ", command=self.toggle_tts).pack(fill="x", padx=14, pady=5, ipady=4)
+        ttk.Button(side, text="🗣  TTS: ВКЛ", command=self.toggle_tts).pack(fill="x", padx=12, pady=4, ipady=5)
         self.tts_control = side.winfo_children()[-1]
-
         tk.Frame(side, bg=LINE, height=1).pack(fill="x", padx=16, pady=18)
-        tk.Label(side, text="БЫСТРЫЕ ДЕЙСТВИЯ", bg=PANEL, fg=MUTED,
-                 font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=18, pady=(0, 6))
-        ttk.Button(side, text="↻  Перезапустить JARVIS", command=self._reload_agent).pack(fill="x", padx=14, pady=5)
-        ttk.Button(side, text="■  Остановить голос", command=self._stop_voice).pack(fill="x", padx=14, pady=5)
-
-        tk.Label(side, text="Все функции JARVIS управляются из этого центра. Настройки и модули применяются после перезапуска ядра.",
-                 bg=PANEL, fg=MUTED, wraplength=210, justify="left",
-                 font=("Segoe UI", 8), padx=18, pady=20).pack(side="bottom", anchor="w")
+        tk.Label(side, text="SYSTEM", bg=PANEL, fg=MUTED, font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=18, pady=(0, 6))
+        self.side_core = tk.Label(side, text="● CORE  —  BOOT", bg=PANEL, fg=YELLOW, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=18, pady=5)
+        self.side_voice = tk.Label(side, text="● VOICE  —  READY", bg=PANEL, fg=GREEN, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=18, pady=5)
+        self.side_memory = tk.Label(side, text="● MEMORY  —  ACTIVE", bg=PANEL, fg=GREEN, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=18, pady=5)
+        tk.Frame(side, bg=LINE, height=1).pack(fill="x", padx=16, pady=18)
+        ttk.Button(side, text="↻  Перезапустить ядро", command=self._reload_agent).pack(fill="x", padx=12, pady=4)
+        ttk.Button(side, text="■  Остановить голос", command=self._stop_voice).pack(fill="x", padx=12, pady=4)
+        tk.Label(side, text="JARVIS ONLINE\nЛокальное управление • память • инструменты", bg=PANEL, fg=MUTED, wraplength=195, justify="left", font=("Segoe UI", 8), padx=18, pady=20).pack(side="bottom", anchor="w")
 
     def _build_center(self):
         center = tk.Frame(self, bg=BG)
-        center.grid(row=1, column=1, sticky="nsew", padx=(0, 12), pady=(0, 12))
+        center.grid(row=1, column=1, sticky="nsew", padx=(0, 14), pady=(0, 14))
         center.grid_rowconfigure(1, weight=1)
         center.grid_columnconfigure(0, weight=1)
-
-        hud = tk.Frame(center, bg=PANEL, highlightbackground=LINE, highlightthickness=1, height=235)
-        hud.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        hud = tk.Frame(center, bg="#0c2b40", highlightbackground=LINE, highlightthickness=1, height=300)
+        hud.grid(row=0, column=0, sticky="ew", pady=(0, 9))
         hud.grid_propagate(False)
-        self.canvas = tk.Canvas(hud, width=330, height=225, bg=PANEL, highlightthickness=0)
-        self.canvas.pack(side="left", padx=14)
+        hud.grid_columnconfigure(1, weight=1)
+        self.canvas = tk.Canvas(hud, width=380, height=290, bg="#0c2b40", highlightthickness=0)
+        self.canvas.grid(row=0, column=0, padx=8)
         self._draw_orb()
-        hud_info = tk.Frame(hud, bg=PANEL)
-        hud_info.pack(side="left", fill="both", expand=True, padx=10)
-        tk.Label(hud_info, text="JARVIS CORE", bg=PANEL, fg=CYAN,
-                 font=("Segoe UI", 16, "bold")).pack(anchor="w", pady=(42, 2))
-        self.hud_text = tk.Label(hud_info, text="СИСТЕМА ГОТОВА\nJARVIS CORE",
-                                 bg=PANEL, fg=TEXT, font=("Segoe UI", 11, "bold"),
-                                 justify="left")
-        self.hud_text.pack(anchor="w", pady=6)
+        info = tk.Frame(hud, bg="#0c2b40")
+        info.grid(row=0, column=1, sticky="nsew", padx=(8, 22))
+        tk.Label(info, text="JARVIS CORE", bg="#0c2b40", fg=CYAN, font=("Segoe UI", 20, "bold")).pack(anchor="w", pady=(42, 2))
+        tk.Label(info, text="PERSONAL AI COMMAND CENTER", bg="#0c2b40", fg=MUTED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 14))
+        self.hud_text = tk.Label(info, text="СИСТЕМА ЗАПУСКАЕТСЯ\nJARVIS CORE", bg="#0c2b40", fg=TEXT, font=("Segoe UI", 12, "bold"), justify="left")
+        self.hud_text.pack(anchor="w", pady=4)
         self.metrics = {}
+        metric_frame = tk.Frame(info, bg="#0c2b40")
+        metric_frame.pack(fill="x", pady=(14, 0))
         for name in ("Core", "AI Provider", "Memory", "Tools", "Voice", "TTS"):
-            value = tk.Label(hud_info, text="—", bg=PANEL, fg=GREEN,
-                             font=("Segoe UI", 8, "bold"))
-            value.pack(anchor="w", pady=1)
+            row = tk.Frame(metric_frame, bg="#0c2b40")
+            row.pack(fill="x", pady=2)
+            tk.Label(row, text=name.upper(), width=13, anchor="w", bg="#0c2b40", fg=MUTED, font=("Segoe UI", 8, "bold")).pack(side="left")
+            value = tk.Label(row, text="—", anchor="w", bg="#0c2b40", fg=GREEN, font=("Segoe UI", 8, "bold"))
+            value.pack(side="left")
             self.metrics[name] = value
-
         chat_frame = tk.Frame(center, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
         chat_frame.grid(row=1, column=0, sticky="nsew")
         chat_frame.grid_rowconfigure(0, weight=1)
         chat_frame.grid_columnconfigure(0, weight=1)
-        self.chat = tk.Text(chat_frame, bg="#092033", fg=TEXT, insertbackground=CYAN,
-                            relief="flat", wrap="word", padx=22, pady=18,
-                            font=("Segoe UI", 11), state="disabled")
+        self.chat = tk.Text(chat_frame, bg="#0a2030", fg=TEXT, insertbackground=CYAN, relief="flat", wrap="word", padx=24, pady=20, font=("Segoe UI", 11), state="disabled")
         self.chat.grid(row=0, column=0, sticky="nsew")
         scroll = ttk.Scrollbar(chat_frame, command=self.chat.yview)
         scroll.grid(row=0, column=1, sticky="ns")
         self.chat.configure(yscrollcommand=scroll.set)
-
         input_frame = tk.Frame(center, bg=BG)
         input_frame.grid(row=2, column=0, sticky="ew", pady=(9, 0))
         input_frame.grid_columnconfigure(0, weight=1)
-        self.input = tk.Entry(input_frame, bg=PANEL2, fg=TEXT, insertbackground=CYAN,
-                              relief="flat", font=("Segoe UI", 11))
-        self.input.grid(row=0, column=0, sticky="ew", ipady=12, padx=(0, 7))
+        self.input = tk.Entry(input_frame, bg="#123b52", fg=TEXT, insertbackground=CYAN, relief="flat", font=("Segoe UI", 11))
+        self.input.grid(row=0, column=0, sticky="ew", ipady=13, padx=(0, 7))
         self.input.bind("<Return>", lambda _e: self.send())
-        self.attach_button = ttk.Button(input_frame, text="📎 ФАЙЛЫ", command=self.pick_attachments)
-        self.attach_button.grid(row=0, column=1, padx=4, ipady=3)
-        self.voice_button = ttk.Button(input_frame, text="🎙 ГОЛОС", command=self.start_voice)
-        self.voice_button.grid(row=0, column=2, padx=4, ipady=3)
-        self.send_button = ttk.Button(input_frame, text="ОТПРАВИТЬ",
-                                      style="Accent.TButton", command=self.send)
-        self.send_button.grid(row=0, column=3, padx=(4,0), ipadx=10, ipady=3)
-        self.attachment_label = tk.Label(center, text="Вложений нет", bg=BG, fg=MUTED,
-                                         font=("Segoe UI", 8), anchor="w")
+        self.attach_button = ttk.Button(input_frame, text="📎", command=self.pick_attachments)
+        self.attach_button.grid(row=0, column=1, padx=3, ipady=4)
+        self.voice_button = ttk.Button(input_frame, text="🎙", command=self.start_voice)
+        self.voice_button.grid(row=0, column=2, padx=3, ipady=4)
+        self.send_button = ttk.Button(input_frame, text="ОТПРАВИТЬ", style="Accent.TButton", command=self.send)
+        self.send_button.grid(row=0, column=3, padx=(3,0), ipadx=12, ipady=4)
+        self.attachment_label = tk.Label(center, text="Вложений нет", bg=BG, fg=MUTED, font=("Segoe UI", 8), anchor="w")
         self.attachment_label.grid(row=3, column=0, sticky="ew", pady=(4,0))
-        self.enabled_label = tk.Label(center, text="", bg=BG, fg=MUTED,
-                                      font=("Segoe UI", 8), anchor="e")
+        self.enabled_label = tk.Label(center, text="", bg=BG, fg=MUTED, font=("Segoe UI", 8), anchor="e")
         self.enabled_label.grid(row=4, column=0, sticky="e", pady=(2,0))
 
     def _build_right(self):
@@ -225,40 +215,38 @@ class JarvisDesktop(tk.Tk):
 
     def _draw_orb(self):
         self.canvas.delete("all")
-        cx, cy = 155, 108
+        cx, cy = 175, 132
         phase = self._orb_phase
         state = self._visual_state
         level = self._visual_level
-        speed = {"IDLE": 0.018, "LISTENING": 0.06, "THINKING": 0.095,
-                 "SPEAKING": 0.07, "ERROR": 0.14}.get(state, 0.04)
-        pulse = 1.0 + 0.13 * math.sin(phase * 3.0)
+        speed = {"IDLE": 0.018, "LISTENING": 0.07, "THINKING": 0.11, "SPEAKING": 0.08, "ERROR": 0.16}.get(state, 0.04)
+        pulse = 1.0 + 0.10 * math.sin(phase * 3.0)
         if state in ("LISTENING", "SPEAKING"):
-            pulse += level * 0.35
+            pulse += level * 0.28
         core = RED if state == "ERROR" else (YELLOW if state == "THINKING" else CYAN)
-        ring = "#28718d"
-        for r in (84, 64, 44):
-            self.canvas.create_oval(cx-r, cy-r*0.48, cx+r, cy+r*0.48,
-                                    outline=ring, width=1)
-        for i in range(36):
-            a = phase + i * math.pi * 2 / 36
-            z = math.sin(a * 1.7 + phase * 0.4)
-            x = cx + math.cos(a) * (48 + 12*z) * pulse
-            y = cy + math.sin(a) * (48 + 12*z) * 0.55 * pulse
-            size = 1.3 + (z+1)*1.2
-            self.canvas.create_oval(x-size, y-size, x+size, y+size,
-                                    fill=core if z > 0 else ring, outline="")
-        for i in range(10):
-            a = phase*0.5 + i*math.pi/5
-            x1,y1 = cx+math.cos(a)*28, cy+math.sin(a)*18
-            x2,y2 = cx+math.cos(a)*78, cy+math.sin(a)*44
-            self.canvas.create_line(x1,y1,x2,y2,fill=ring,width=1)
-        core_r = 13*pulse
+        dim = "#23566e"
+        self.canvas.create_oval(48, 48, 302, 218, outline="#123e55", width=1)
+        self.canvas.create_oval(66, 62, 284, 202, outline=dim, width=2)
+        self.canvas.create_oval(92, 80, 258, 184, outline="#2a7591", width=1)
+        for i in range(56):
+            a = phase * 0.75 + i * math.pi * 2 / 56
+            wobble = math.sin(a * 2.0 + phase) * 8
+            r = (67 + wobble) * pulse
+            x = cx + math.cos(a) * r
+            y = cy + math.sin(a) * r * 0.60
+            size = 1.2 + (math.sin(a * 3.0) + 1) * 0.8
+            self.canvas.create_oval(x-size, y-size, x+size, y+size, fill=core if i % 4 == 0 else dim, outline="")
+        for i in range(12):
+            a = -phase * 0.45 + i * math.pi / 6
+            x1, y1 = cx + math.cos(a) * 32, cy + math.sin(a) * 20
+            x2, y2 = cx + math.cos(a) * 112, cy + math.sin(a) * 67
+            self.canvas.create_line(x1, y1, x2, y2, fill="#24637d", width=1)
+        core_r = 16 * pulse
         self.canvas.create_oval(cx-core_r, cy-core_r, cx+core_r, cy+core_r, fill=core, outline="")
-        self.canvas.create_oval(cx-core_r*.45, cy-core_r*.45, cx+core_r*.45, cy+core_r*.45, fill="#efffff", outline="")
-        self.canvas.create_text(cx, cy+86, text="J · A · R · V · I · S", fill=core,
-                                font=("Segoe UI", 11, "bold"))
+        self.canvas.create_oval(cx-core_r*.42, cy-core_r*.42, cx+core_r*.42, cy+core_r*.42, fill="#f5ffff", outline="")
+        self.canvas.create_text(cx, 244, text="J  A  R  V  I  S", fill=core, font=("Segoe UI", 12, "bold"))
         self._orb_phase += speed
-        self._orb_after = self.after(80, self._draw_orb)
+        self._orb_after = self.after(70, self._draw_orb)
 
     def _start_agent(self):
         def work():
@@ -477,8 +465,7 @@ class JarvisDesktop(tk.Tk):
         text=text.strip()
         if not text or self.agent is None or self.busy: return
         context=self._build_attachment_context()
-        shown=text+("\n📎 "+", ".join(x["name"] for x in self.attachments) if self.attachments else "")
-        self.input.delete(0,"end"); self._append("ВЫ",shown)
+        shown=text+("\n📎 "+", ".join(x["name"] for x in self.attachments) if self.attachments else "")        self.input.delete(0,"end"); self._append("ВЫ",shown)
         if self._handle_voice_setting_command(text):
             self._clear_attachments(); return
         prompt=text+("\n\n"+context if context else "")
