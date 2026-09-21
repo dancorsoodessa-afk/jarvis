@@ -14,11 +14,11 @@ from agent.runtime import build_agent
 from agent import tts, voice
 from agent.tools_catalog import TOOLS
 
-BG = "#05080f"
-PANEL = "#0b111b"
-PANEL2 = "#101a27"
-LINE = "#1d3142"
-CYAN = "#37d5ee"
+BG = "#07111c"
+PANEL = "#0d1b29"
+PANEL2 = "#122437"
+LINE = "#21445a"
+CYAN = "#55e7ff"
 TEXT = "#e7f6ff"
 MUTED = "#7890a3"
 GREEN = "#55e39b"
@@ -41,9 +41,9 @@ def _load_saved_settings() -> dict:
 class JarvisDesktop(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("JARVIS — Personal AI System")
-        self.geometry("1260x800")
-        self.minsize(1040, 650)
+        self.title("JARVIS — AI COMMAND CENTER")
+        self.geometry("1360x860")
+        self.minsize(1120, 700)
         self.configure(bg=BG)
         self.agent = None
         self.busy = False
@@ -109,7 +109,7 @@ class JarvisDesktop(tk.Tk):
         header.grid(row=0, column=0, columnspan=3, sticky="ew")
         header.grid_columnconfigure(1, weight=1)
         tk.Label(header, text="JARVIS", bg=BG, fg=CYAN, font=("Segoe UI", 24, "bold"), padx=24).grid(row=0, column=0, pady=18)
-        tk.Label(header, text="PERSONAL AI SYSTEM  /  COMMAND CENTER", bg=BG, fg=MUTED,
+        tk.Label(header, text="AI COMMAND CENTER  /  VOICE • MEMORY • TOOLS", bg=BG, fg=MUTED,
                  font=("Segoe UI", 9, "bold")).grid(row=0, column=1, sticky="w")
         self.status = tk.Label(header, text="● STARTING", bg=BG, fg=MUTED,
                                font=("Segoe UI", 10, "bold"), padx=24)
@@ -121,9 +121,9 @@ class JarvisDesktop(tk.Tk):
     def _build_sidebar(self):
         side = tk.Frame(self, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
         side.grid(row=1, column=0, sticky="nsew", padx=(12, 6), pady=(0, 12))
-        tk.Label(side, text="CONTROL", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
+        tk.Label(side, text="УПРАВЛЕНИЕ", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
                  padx=18, pady=18).pack(anchor="w")
-        self.tools_button = ttk.Button(side, text="⌁  Модули", command=self.show_tools)
+        self.tools_button = ttk.Button(side, text="◈  Модули", command=self.show_tools)
         self.tools_button.pack(fill="x", padx=12, pady=5)
         ttk.Button(side, text="⚙  Настройки", command=self.show_settings).pack(fill="x", padx=12, pady=5)
         ttk.Button(side, text="🔊  Голос: ВКЛ", command=self.toggle_voice).pack(fill="x", padx=12, pady=5)
@@ -133,8 +133,8 @@ class JarvisDesktop(tk.Tk):
         tk.Frame(side, bg=LINE, height=1).pack(fill="x", padx=12, pady=15)
         tk.Label(side, text="БЫСТРО", bg=PANEL, fg=MUTED, font=("Segoe UI", 8, "bold"),
                  padx=18, pady=4).pack(anchor="w")
-        ttk.Button(side, text="↻  Перезапустить ядро", command=self._reload_agent).pack(fill="x", padx=12, pady=5)
-        ttk.Button(side, text="⛔  Остановить голос", command=self._stop_voice).pack(fill="x", padx=12, pady=5)
+        ttk.Button(side, text="↻  Перезапустить JARVIS", command=self._reload_agent).pack(fill="x", padx=12, pady=5)
+        ttk.Button(side, text="■  Остановить голос", command=self._stop_voice).pack(fill="x", padx=12, pady=5)
         tk.Label(side, text="Выключенный модуль не передаётся ИИ как доступный инструмент.",
                  bg=PANEL, fg=MUTED, wraplength=210, justify="left", font=("Segoe UI", 8),
                  padx=16, pady=20).pack(side="bottom", anchor="w")
@@ -174,7 +174,7 @@ class JarvisDesktop(tk.Tk):
         self.attach_button.grid(row=0, column=1, padx=(0, 8), ipady=3)
         self.voice_button = ttk.Button(input_frame, text="🎙 ГОЛОС", command=self.start_voice)
         self.voice_button.grid(row=0, column=2, padx=(0, 8), ipady=3)
-        self.send_button = ttk.Button(input_frame, text="SEND", style="Accent.TButton", command=self.send)
+        self.send_button = ttk.Button(input_frame, text="ОТПРАВИТЬ", style="Accent.TButton", command=self.send)
         self.send_button.grid(row=0, column=3, ipadx=10, ipady=3)
         self.attachment_label = tk.Label(center, text="Вложений нет", bg=BG, fg=MUTED, font=("Segoe UI", 8), anchor="w")
         self.attachment_label.grid(row=3, column=0, sticky="ew", pady=(4, 0))
@@ -182,7 +182,7 @@ class JarvisDesktop(tk.Tk):
     def _build_right(self):
         right = tk.Frame(self, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
         right.grid(row=1, column=2, sticky="nsew", padx=(6, 12), pady=(0, 12))
-        tk.Label(right, text="LIVE STATUS", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
+        tk.Label(right, text="СОСТОЯНИЕ СИСТЕМЫ", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"),
                  padx=16, pady=18).pack(anchor="w")
         self.metrics = {}
         for name in ("Core", "AI Provider", "Memory", "Tools", "Voice", "TTS"):
@@ -665,7 +665,7 @@ class JarvisDesktop(tk.Tk):
         tts_var = tk.BooleanVar(value=self.settings.get("tts_enabled", True))
         ttk.Checkbutton(win, text="Включать голосовое прослушивание при старте", variable=voice_var).grid(row=7, column=1, sticky="w", padx=20, pady=8)
         ttk.Checkbutton(win, text="Озвучивать ответы JARVIS через TTS", variable=tts_var).grid(row=8, column=1, sticky="w", padx=20, pady=8)
-        tk.Label(win, text="Модули управления находятся в отдельном окне «Модули». Изменения применяются после пересборки ядра.",
+        tk.Label(win, text="Настройки сохраняются в %APPDATA%\\JARVIS\\settings.json и применяются сразу после перезапуска ядра.",
                  bg=PANEL, fg=MUTED, wraplength=700, justify="left").grid(row=9, column=0, columnspan=2, padx=20, pady=14)
         def save():
             for name, entry in entries.items():
