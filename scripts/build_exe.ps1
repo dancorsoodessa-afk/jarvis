@@ -5,7 +5,7 @@ $ErrorActionPreference = "Stop"
 
 python -m pip install --upgrade pip
 python -m pip install -e ".[all]"
-python -m pip install --upgrade pyinstaller pytest faster-whisper huggingface-hub
+python -m pip install --upgrade pyinstaller pytest faster-whisper huggingface-hub elevenlabs
 
 Write-Host "== JARVIS: prepare bundled offline STT (faster-whisper tiny) ==" -ForegroundColor Cyan
 $sttDir = Join-Path $PWD "vendor\stt_model"
