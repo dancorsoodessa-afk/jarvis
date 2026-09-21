@@ -81,6 +81,15 @@ class TestLocalVulkan(unittest.TestCase):
 
 
 class TestSettings(unittest.TestCase):
+    def test_hybrid_provider_is_supported(self):
+        settings = Settings(provider="hybrid")
+        self.assertEqual(settings.provider, "hybrid")
+        self.assertTrue(settings.use_local)
+
+    def test_invalid_provider_is_rejected(self):
+        with self.assertRaises(ValueError):
+            Settings(provider="not-a-provider")
+
     def test_free_provider_is_default(self):
         settings = Settings.from_env()
         self.assertEqual(settings.provider, "openai-compatible")
@@ -166,6 +175,8 @@ class TestFunctionCalling(unittest.TestCase):
         result = agent.handle("удвой 21")
         self.assertEqual(result.text, "Ответ: 42")
         self.assertEqual(p.history[-1]["content"], "Ответ: 42")
+        self.assertEqual(agent.action_history[-1]["tool"], "double")
+        self.assertEqual(agent.action_history[-1]["status"], "ok")
 
     def test_specs_sent_to_api(self):
         seen = {}
