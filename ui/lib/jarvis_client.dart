@@ -14,7 +14,7 @@ class JarvisReply {
 
 class JarvisIpc {
   JarvisIpc._({Process? process, HttpClient? httpClient, String? apiUrl, String? apiKey, String? model}) : _process = process, _httpClient = httpClient, _apiUrl = apiUrl, _apiKey = apiKey, _model = model;
-  static const _channel = MethodChannel('busya.voice');
+  static const _channel = MethodChannel('jarvis.voice');
 
   static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async => JarvisIpc._(process: await Process.start(executable, args));
   static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = ''}) async {

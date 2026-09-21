@@ -47,8 +47,8 @@ class BusyaHomePage extends StatefulWidget {
 }
 
 class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProviderStateMixin {
-  static const _voice = MethodChannel('busya.voice');
-  static const _voiceEvents = EventChannel('busya.voice.events');
+  static const _voice = MethodChannel('jarvis.voice');
+  static const _voiceEvents = EventChannel('jarvis.voice.events');
   JarvisIpc? _client;
   final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint),
       _model1 = TextEditingController(text: _defaultModel1), _model2 = TextEditingController(text: _defaultModel2), _model3 = TextEditingController(text: _defaultModel3),
@@ -190,7 +190,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     if (!_android || !_voiceEnabled || !mounted) return;
     final value = event?.toString().trim() ?? '';
     if (value.isEmpty) return;
-    if (value == '__READY__') { _voiceReady = true; _listening = false; setState(() => _status = 'Постоянный локальный голос'); await _startNativeListening(); return; }
+    if (value == '__READY__') { _voiceReady = true; _listening = false; if (mounted) setState(() => _status = 'Русский голосовой контур готов · слушаю'); return; }
     if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Локальный русский голос готов'); return; }
     if (value == '__LOADING_VOICE__') { if (mounted) setState(() => _status = 'Загрузка локальной модели речи…'); return; }
     if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
@@ -352,7 +352,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     final clean = text.trim(); final client = _client; final attachment = _attachment;
     if (clean.isEmpty || _busy) return;
     if (client == null) { if (mounted) setState(() => _status = 'Сначала подключите AI в настройках'); if (fromVoice) await _speak('Сначала подключите AI в настройках'); return; }
-    setState(() { _busy = true; _streamText = ''; _messages.add(_Msg(attachment == null ? clean : '$clean\n📎 ${attachment.name}', isUser: true)); }); _scrollToBottom();
+    if (!mounted) return; setState(() { _busy = true; _streamText = ''; _messages.add(_Msg(attachment == null ? clean : '$clean\n📎 ${attachment.name}', isUser: true)); }); _scrollToBottom();
     try {
       final reply = await client.sendMessage(clean, attachment: attachment == null ? null : {'name': attachment.name, 'mime': attachment.mime, 'data': attachment.data});
       if (!mounted) return;
