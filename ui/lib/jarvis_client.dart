@@ -296,6 +296,14 @@ class JarvisIpc {
     return JarvisReply(answer, model, lastTool, false);
   }
 
+  Future<void> verifyConnection() async {
+    if (!_standalone) return;
+    final r = await _httpClient!.getUrl(Uri.parse('$_apiUrl/models'));
+    _auth(r);
+    r.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    await _json(await r.close());
+  }
+
   Future<JarvisReply> sendMessage(String text, {Map<String, dynamic>? attachment}) async {
     if (_standalone) return await _standaloneSend(text, attachment: attachment);
     final response = await _ipc({
