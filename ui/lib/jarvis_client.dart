@@ -254,7 +254,7 @@ class JarvisIpc {
     final attachmentMime = (activeAttachment?['mime']?.toString() ?? '').toLowerCase();
     final model = activeAttachment != null ? 'google/gemma-4-26b-a4b-it:free' : defaultModel;
     final behavior = Platform.isAndroid ? await _tool('self_behavior', {}) : '';
-    final system = 'Ты БУСЯ — автономный AI-агент. Отвечай на языке пользователя. Используй инструменты для реальных действий и не выдумывай результат. Отделы: internet (Google.com, HTTP, download, weather), files, database (SQLite), other, self-improvement. Самоулучшение — изменение постоянного поведенческого слоя: правила, навыки, предпочтения, исправления, успешные шаблоны и политики инструментов. Когда пользователь просит улучшить себя — используй self_improve или self_learn. Не заявляй об изменении весов модели или подписанного APK. Активный слой:\n$behavior';
+    final system = 'Ты JARVIS — автономный AI-агент. Отвечай на языке пользователя. Используй инструменты для реальных действий и не выдумывай результат. Отделы: internet (Google.com, HTTP, download, weather), files, database (SQLite), other, self-improvement. Самоулучшение — изменение постоянного поведенческого слоя: правила, навыки, предпочтения, исправления, успешные шаблоны и политики инструментов. Когда пользователь просит улучшить себя — используй self_improve или self_learn. Не заявляй об изменении весов модели или подписанного APK. Активный слой:\n$behavior';
     final messages = <Map<String, dynamic>>[{'role': 'system', 'content': system}, ..._history, {'role': 'user', 'content': activeAttachment == null ? userText : _attachmentParts(activeAttachment, userText)}];
     String answer = '';
     String? lastTool;
