@@ -1,29 +1,18 @@
-"""Speech-to-text engines for JARVIS.
+"""Локальное распознавание речи JARVIS.
 
-Priority:
-1. whisper.cpp when JARVIS_WHISPER is configured (fully local).
-2. faster-whisper when installed (local CPU, int8).
-3. Voice module may use its lightweight network fallback when no local engine
-   exists. STT itself never performs network requests.
-
-The faster-whisper model is cached for the lifetime of the process. Creating a
-WhisperModel for every utterance makes voice interaction painfully slow.
+Единственный STT-движок: faster-whisper.
+Модель поставляется вместе с Windows-сборкой, поэтому сеть для STT не нужна.
 """
-
 from __future__ import annotations
-
 import os
-import subprocess
+import sys
 import threading
 from pathlib import Path
-import sys
 
-_FASTER_MODEL = None
-_FASTER_MODEL_KEY = None
-_FASTER_MODEL_LOCK = threading.Lock()
+_MODEL = None
+_MODEL_LOCK = threading.Lock()
 
-
-def _stt_model_dir() -> Path:
+def _model_dir() -> Path:
     override = os.environ.get("JARVIS_STT_MODEL_PATH", "").strip()
     if override:
         return Path(override)
@@ -31,97 +20,53 @@ def _stt_model_dir() -> Path:
         return Path(sys._MEIPASS) / "stt_model"
     return Path(__file__).resolve().parent.parent / "vendor" / "stt_model"
 
-
 def available_engines() -> list[str]:
-    engines = []
-    exe = os.environ.get("JARVIS_WHISPER", "").strip()
-    if exe and Path(exe).exists():
-        engines.append("whisper-cpp")
     try:
         import faster_whisper  # noqa: F401
-        engines.append("faster-whisper")
+        return ["faster-whisper"]
     except ImportError:
-        pass
-    return engines
-
+        return []
 
 def current_engine() -> str:
-    mode = os.environ.get("JARVIS_STT", "auto").strip().lower()
-    if mode == "auto":
-        engines = available_engines()
-        return engines[0] if engines else "off"
-    if mode in {"off", "whisper-cpp", "faster-whisper"}:
-        return mode
-    return "off"
+    mode = os.environ.get("JARVIS_STT", "faster-whisper").strip().lower()
+    if mode == "off":
+        return "off"
+    return "faster-whisper" if "faster-whisper" in available_engines() else "off"
 
-
-def _run_whisper_cpp(wav_path: Path) -> str:
-    exe = os.environ.get("JARVIS_WHISPER", "").strip()
-    model = os.environ.get("JARVIS_WHISPER_MODEL", "").strip()
-    if not exe or not Path(exe).exists():
-        raise RuntimeError(f"whisper.cpp не найден: {exe}")
-    if not model or not Path(model).exists():
-        raise RuntimeError(f"Модель whisper не найдена: {model}")
-    proc = subprocess.run(
-        [exe, "-m", model, "-f", str(wav_path), "-nt", "-l", "ru"],
-        capture_output=True,
-        timeout=120,
-    )
-    text = proc.stdout.decode("utf-8", errors="replace").strip()
-    if proc.returncode != 0:
-        raise RuntimeError(
-            "whisper.cpp ошибка: "
-            + proc.stderr.decode("utf-8", errors="replace")[:300]
-        )
-    return text
-
-
-def _get_faster_model(model_size: str):
-    global _FASTER_MODEL, _FASTER_MODEL_KEY
-    key = model_size.strip() or "tiny"
-    with _FASTER_MODEL_LOCK:
-        if _FASTER_MODEL is None or _FASTER_MODEL_KEY != key:
+def _get_model():
+    global _MODEL
+    with _MODEL_LOCK:
+        if _MODEL is None:
             try:
                 from faster_whisper import WhisperModel
             except ImportError as exc:
                 raise RuntimeError("faster-whisper не установлен") from exc
-            _FASTER_MODEL = WhisperModel(
-                str(_stt_model_dir()) if _stt_model_dir().exists() else key,
+            model_path = _model_dir()
+            source = str(model_path) if model_path.exists() else "small"
+            _MODEL = WhisperModel(
+                source,
                 device="cpu",
                 compute_type="int8",
-                cpu_threads=max(1, int(os.environ.get("JARVIS_STT_THREADS", "4") or 4)),
+                cpu_threads=max(1, int(os.environ.get("JARVIS_STT_THREADS", "6") or 6)),
                 num_workers=1,
             )
-            _FASTER_MODEL_KEY = key
-    return _FASTER_MODEL
-
-
-def _run_faster_whisper(wav_path: Path) -> str:
-    model_size = os.environ.get("JARVIS_STT_MODEL_SIZE", "tiny").strip() or "tiny"
-    model = _get_faster_model(model_size)
-    segments, _info = model.transcribe(
-        str(wav_path),
-        language="ru",
-        beam_size=1,
-        best_of=1,
-        temperature=0.0,
-        vad_filter=True,
-        vad_parameters={"min_silence_duration_ms": 250, "speech_pad_ms": 80},
-    )
-    return " ".join(seg.text.strip() for seg in segments).strip()
-
+    return _MODEL
 
 def transcribe(audio_path: str) -> str:
-    engine = current_engine()
-    if engine == "off":
-        raise RuntimeError(
-            "Локальное распознавание речи не установлено. В этой сборке нужен faster-whisper."
-        )
+    if current_engine() == "off":
+        raise RuntimeError("Распознавание речи отключено или faster-whisper не установлен.")
     path = Path(audio_path)
     if not path.exists():
         raise ValueError(f"Файл не найден: {audio_path}")
-    if engine == "whisper-cpp":
-        return _run_whisper_cpp(path)
-    if engine == "faster-whisper":
-        return _run_faster_whisper(path)
-    raise RuntimeError(f"Неизвестный STT-движок: {engine}")
+    model = _get_model()
+    segments, _info = model.transcribe(
+        str(path),
+        language="ru",
+        beam_size=3,
+        best_of=3,
+        temperature=0.0,
+        vad_filter=True,
+        vad_parameters={"min_silence_duration_ms": 300, "speech_pad_ms": 100},
+        condition_on_previous_text=False,
+    )
+    return " ".join(segment.text.strip() for segment in segments).strip()
