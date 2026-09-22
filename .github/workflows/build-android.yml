@@ -60,6 +60,10 @@ jobs:
           tar -xjf /tmp/ru-asr.tar.bz2 -C android/app/src/main/assets
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-ru_RU-irina-medium.tar.bz2 -o /tmp/ru-tts.tar.bz2
           tar -xjf /tmp/ru-tts.tar.bz2 -C android/app/src/main/assets
+          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx -o android/app/src/main/assets/silero_vad.onnx
+          test -s android/app/src/main/assets/silero_vad.onnx
+          test -s android/app/src/main/assets/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16/encoder.int8.onnx
+          test -s android/app/src/main/assets/vits-piper-ru_RU-irina-medium/ru_RU-irina-medium.onnx
           rm -f /tmp/ru-asr.tar.bz2 /tmp/ru-tts.tar.bz2
 
       - name: Configure Android permissions and sherpa-onnx
@@ -142,6 +146,9 @@ jobs:
           grep -q "__MIC_LEVEL__" lib/main.dart
           grep -q "__MIC_LEVEL__" android_main_activity.kt
           grep -q "microphone_permission_missing" android_main_activity.kt
+          grep -q "silero_vad.onnx" android_main_activity.kt
+          ! grep -q "WakeClapService\|startWakeService\|WAKE_ACTION" android_main_activity.kt
+          ! grep -q "double clap\|двойной хлоп" -i .
 
       - name: Analyze Dart code
         working-directory: ui
