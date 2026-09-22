@@ -420,7 +420,8 @@ class MainActivity : FlutterActivity() {
                 try {
                     val audio = engine.generateWithConfigAndCallback(text, GenerationConfig(speed = 1.0f, sid = 0)) { samples ->
                         if (!ttsPlaying || disposed) return@generateWithConfigAndCallback 0
-                        val pcm = ShortArray(samples.size) { i -> (samples[i].coerceIn(-1.0f, 1.0f) * 32767f).toInt().toShort() }\n                        track.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
+                        val pcm = ShortArray(samples.size) { i -> (samples[i].coerceIn(-1.0f, 1.0f) * 32767f).toInt().toShort() }
+                        track.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
                         1
                     }
                     if (ttsPlaying && audio.samples.isNotEmpty()) runOnUiThread { finishTts() }
