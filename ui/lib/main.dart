@@ -254,7 +254,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     if (endpoint.isEmpty) { if (mounted) setState(() => _status = 'Укажите endpoint AI в настройках'); return; }
     try {
       final old = _client; _client = null; await old?.dispose();
+      if (key.isEmpty) throw StateError('OpenRouter API key не указан для выбранной модели');
       _client = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model);
+      await _client!.verifyConnection();
       await _finishConnect();
     } catch (e) { if (mounted) setState(() => _status = 'Ошибка подключения AI: $e'); }
   }
