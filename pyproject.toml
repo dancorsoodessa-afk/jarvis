@@ -16,17 +16,19 @@ pycaw = { version = ">=20240210", optional = true, markers = "sys_platform == 'w
 # Desktop microphone recording and speech recognition
 sounddevice = { version = ">=0.5.0", optional = true }
 numpy = { version = ">=1.24", optional = true }
-faster-whisper = { version = ">=1.2.1", optional = true }
+SpeechRecognition = { version = ">=3.10.0", optional = true }
+faster-whisper = { version = ">=1.1.0", optional = true }
 pypdf = { version = ">=5.0.0", optional = true }
 python-docx = { version = ">=1.1.0", optional = true }
 openpyxl = { version = ">=3.1.0", optional = true }
+elevenlabs = { version = ">=2.34.0" }
 
 [tool.poetry.extras]
 screenshot = ["Pillow"]
 windows-audio = ["pycaw"]
-voice = ["sounddevice", "numpy", "faster-whisper"]
-documents = ["pypdf", "python-docx", "openpyxl"]
-all = ["Pillow", "pycaw", "sounddevice", "numpy", "faster-whisper", "pypdf", "python-docx", "openpyxl"]
+voice = ["sounddevice", "numpy", "SpeechRecognition", "faster-whisper"]
+documents = ["pypdf", "python-docx", "openpyxl", "elevenlabs"]
+all = ["Pillow", "pycaw", "sounddevice", "numpy", "SpeechRecognition", "faster-whisper", "pypdf", "python-docx", "openpyxl"]
 
 [tool.poetry.scripts]
 jarvis = "agent.__main__:main"

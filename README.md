@@ -267,12 +267,14 @@ Never put API keys, memory files, reminders, or runtime logs into Git.
 
 ## Голосовой режим
 
+Основной режим: локальный `faster-whisper small` для распознавания и локальный `Piper + Dmitri Medium` для озвучивания. Облачные TTS в JARVIS не используются.
+
 Основной режим активации JARVIS на desktop/CLI:
 
 ```powershell
 poetry install --extras voice
 $env:JARVIS_STT = "faster-whisper"
-$env:JARVIS_TTS = "auto"
+$env:JARVIS_TTS = "piper"
 python -m agent --voice
 ```
 

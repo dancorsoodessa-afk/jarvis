@@ -308,7 +308,7 @@ class JarvisDesktop(tk.Tk):
                 try:
                     heard = voice.listen_for_phrase(
                         silence_seconds=0.55,
-                        max_seconds=8.0,
+                        max_seconds=10.0,
                         start_timeout=2.0,
                         on_speech_start=on_speech_start,
                     )
@@ -327,7 +327,7 @@ class JarvisDesktop(tk.Tk):
                         self.events.put(("voice_status", "Jarvis активирован. Слушаю вас."))
                         command = voice.listen_for_phrase(
                             silence_seconds=0.55,
-                            max_seconds=8.0,
+                            max_seconds=10.0,
                             start_timeout=4.0,
                             on_speech_start=on_speech_start,
                         )
