@@ -106,10 +106,7 @@ class JarvisDesktop(tk.Tk):
         self.settings.setdefault("voice_enabled", True)
         self.settings.setdefault("tts_enabled", True)
         self.settings.setdefault("tts_gender", "male")
-        os.environ["JARVIS_TTS_GENDER"] = self.settings["tts_gender"]
-        os.environ["JARVIS_ELEVENLABS_API_KEY"] = self.settings.get("elevenlabs_api_key") or os.environ.get("JARVIS_ELEVENLABS_API_KEY", "")
-        os.environ["JARVIS_ELEVENLABS_VOICE_ID"] = self.settings.get("elevenlabs_voice_id") or os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", "srULqtwUV9XZPg1ZCO5w")
-        os.environ["JARVIS_ELEVENLABS_MODEL"] = self.settings.get("elevenlabs_model") or os.environ.get("JARVIS_ELEVENLABS_MODEL", "eleven_flash_v2_5")
+        os.environ["JARVIS_TTS"] = "piper"
 
     def _save_settings(self):
         APP_DIR.mkdir(parents=True, exist_ok=True)
@@ -743,13 +740,12 @@ class JarvisDesktop(tk.Tk):
 
         voice_frame = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         voice_frame.pack(fill="x", pady=10)
-        tk.Label(voice_frame, text="ГОЛОС JARVIS / ELEVENLABS", bg="#091b29", fg=CYAN,
+        tk.Label(voice_frame, text="ГОЛОС JARVIS / PIPER", bg="#091b29", fg=CYAN,
                  font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 6))
         voice_fields = {}
         for label, key, default, secret in (
-            ("ElevenLabs API ключ", "elevenlabs_api_key", os.environ.get("JARVIS_ELEVENLABS_API_KEY", self.settings.get("elevenlabs_api_key", "")), True),
-            ("Voice ID", "elevenlabs_voice_id", os.environ.get("JARVIS_ELEVENLABS_VOICE_ID", self.settings.get("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w")), False),
-            ("Модель TTS", "elevenlabs_model", os.environ.get("JARVIS_ELEVENLABS_MODEL", self.settings.get("elevenlabs_model", "eleven_flash_v2_5")), False),
+            ("Движок TTS", "tts_engine", "Piper", False),
+            ("Русский голос", "tts_voice", "Dmitri Medium", False),
         ):
             row = tk.Frame(voice_frame, bg="#091b29")
             row.pack(fill="x", padx=14, pady=4)
@@ -773,6 +769,8 @@ class JarvisDesktop(tk.Tk):
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
+            self.settings["tts_engine"] = "Piper"
+            self.settings["tts_voice"] = "Dmitri Medium"
             for k, e in voice_fields.items():
                 self.settings[k] = e.get().strip()
             self._apply_saved_settings()

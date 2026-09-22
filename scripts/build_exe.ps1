@@ -7,7 +7,7 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[all]"
 python -m pip install --upgrade pyinstaller pytest faster-whisper huggingface-hub elevenlabs
 
-Write-Host "== JARVIS: prepare bundled offline STT (faster-whisper tiny) ==" -ForegroundColor Cyan
+Write-Host "== JARVIS: prepare bundled offline STT (faster-whisper small) ==" -ForegroundColor Cyan
 $sttDir = Join-Path $PWD "vendor\stt_model"
 Remove-Item $sttDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $sttDir | Out-Null
@@ -17,7 +17,7 @@ New-Item -ItemType Directory -Force -Path $sttDir | Out-Null
 $sttReady = $false
 for ($attempt = 1; $attempt -le 5; $attempt++) {
     try {
-        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='Systran/faster-whisper-tiny', local_dir=r'vendor/stt_model')"
+        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='Systran/faster-whisper-small', local_dir=r'vendor/stt_model')"
         if (Test-Path "$sttDir\model.bin") {
             $sttReady = $true
             break
@@ -75,8 +75,9 @@ Copy-Item "dist\jarvis_desktop.exe" "$release\JARVIS.exe"
 JARVIS — Windows x64
 
 JARVIS.exe — единственное пользовательское приложение с графическим интерфейсом, голосом, памятью и инструментами.
-Отдельный JARVIS Desktop.exe пользователю не нужен.
-Piper не поставляется отдельно: локальный голос Windows используется как резерв для ElevenLabs.
+STT: faster-whisper small, локально на CPU.
+TTS: Piper + русский мужской голос Dmitri Medium.
+Все голосовые компоненты входят в пакет и работают без облачного TTS.
 
 Конфигурация сохраняется в %APPDATA%\JARVIS\settings.json.
 "@ | Set-Content -Path "$release\README.txt" -Encoding UTF8
