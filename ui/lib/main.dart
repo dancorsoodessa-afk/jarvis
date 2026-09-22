@@ -17,9 +17,9 @@ const kBg = Color(0xFF070B12);
 const kPanel = Color(0xFF0B111B);
 const kLine = Color(0xFF18283A);
 const _defaultAiEndpoint = 'https://openrouter.ai/api/v1';
-const _defaultModel1 = 'openrouter/free';
-const _defaultModel2 = 'deepseek/deepseek-v4-flash:free';
-const _defaultModel3 = 'z-ai/glm-5.3-flash:free';
+const _defaultModel1 = 'qwen/qwen3.8-27b:free';
+const _defaultModel2 = 'google/gemma-4-26b-a4b-it:free';
+const _defaultModel3 = 'openrouter/free';
 
 void main() => runApp(const BusyaApp());
 

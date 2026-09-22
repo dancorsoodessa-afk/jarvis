@@ -51,6 +51,7 @@ class MainActivity : FlutterActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var eventSink: EventChannel.EventSink? = null
     private var recognizer: OnlineRecognizer? = null
+    private var vad: Vad? = null
     private var recognitionStream: OnlineStream? = null
     private var audioRecord: AudioRecord? = null
     private var recordingThread: Thread? = null
@@ -80,9 +81,9 @@ class MainActivity : FlutterActivity() {
                         "endpoint" to p.getString(KEY_ENDPOINT, "https://openrouter.ai/api/v1"),
                         "model" to p.getString(KEY_MODEL, "openrouter/free"),
                         "apiKey" to p.getString(KEY_AI_API_KEY, ""),
-                        "model1" to p.getString(KEY_MODEL1, p.getString(KEY_MODEL, "openrouter/free")),
-                        "model2" to p.getString(KEY_MODEL2, "deepseek/deepseek-v4-flash:free"),
-                        "model3" to p.getString(KEY_MODEL3, "z-ai/glm-5.3-flash:free"),
+                        "model1" to p.getString(KEY_MODEL1, p.getString(KEY_MODEL, "qwen/qwen3.8-27b:free")),
+                        "model2" to p.getString(KEY_MODEL2, "google/gemma-4-26b-a4b-it:free"),
+                        "model3" to p.getString(KEY_MODEL3, "openrouter/free"),
                         "key1" to p.getString(KEY_KEY1, p.getString(KEY_AI_API_KEY, "")),
                         "key2" to p.getString(KEY_KEY2, p.getString(KEY_AI_API_KEY, "")),
                         "key3" to p.getString(KEY_KEY3, p.getString(KEY_AI_API_KEY, "")),
@@ -140,6 +141,7 @@ class MainActivity : FlutterActivity() {
         }
         return try {
             initRecognizer()
+            initVad()
             voiceInitialized = true
             // Enable the continuous loop before starting recognition. Without
             // this, an already-granted microphone permission leaves the UI red
@@ -185,6 +187,25 @@ class MainActivity : FlutterActivity() {
                 enableEndpoint = true
             )
         )
+    }
+
+    private fun initVad() {
+        if (vad != null) return
+        val config = VadModelConfig(
+            sileroVadModelConfig = SileroVadModelConfig(
+                model = "silero_vad.onnx",
+                threshold = 0.5f,
+                minSilenceDuration = 0.35f,
+                minSpeechDuration = 0.15f,
+                windowSize = 512,
+                maxSpeechDuration = 10.0f
+            ),
+            sampleRate = 16000,
+            numThreads = 1,
+            provider = "cpu"
+        )
+        vad = Vad(assetManager = assets, config = config)
+        eventSink?.success("__VAD_READY__")
     }
 
     private fun initTts() {
@@ -238,6 +259,7 @@ class MainActivity : FlutterActivity() {
         if (!voiceInitialized) {
             try {
                 initRecognizer()
+                initVad()
                 voiceInitialized = true
             } catch (e: Exception) {
                 eventSink?.success("__ERROR__:local_stt_init_" + e.javaClass.simpleName + ":" + (e.message ?: ""))
@@ -284,6 +306,7 @@ class MainActivity : FlutterActivity() {
                 val buffer = ShortArray(1600)
                 var lastPartial = ""
                 var levelCounter = 0
+                var lastVadSpeech = false
                 try {
                     while (voiceLoopEnabled && voiceActive && !disposed) {
                         val n = try { activeRecord.read(buffer, 0, buffer.size) } catch (t: Throwable) {
@@ -304,6 +327,15 @@ class MainActivity : FlutterActivity() {
                         }
                         try {
                             val samples = FloatArray(n) { buffer[it] / 32768.0f }
+                            val detector = vad
+                            detector?.acceptWaveform(samples)
+                            val vadSpeech = detector?.isSpeechDetected() ?: true
+                            if (vadSpeech != lastVadSpeech) {
+                                lastVadSpeech = vadSpeech
+                                runOnUiThread {
+                                    eventSink?.success(if (vadSpeech) "__VAD_SPEECH_BEGIN__" else "__VAD_SPEECH_END__")
+                                }
+                            }
                             val stream = recognitionStream ?: break
                             stream.acceptWaveform(samples, 16000)
                             while (rec.isReady(stream)) rec.decode(stream)
@@ -378,6 +410,7 @@ class MainActivity : FlutterActivity() {
             eventSink?.success("__TTS_START__")
             val sampleRate = engine.sampleRate()
             val min = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
+            require(min > 0) { "AudioTrack: неверный размер буфера" }
             val format = AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()
             val track = AudioTrack(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build(), format, min * 2, AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE)
             audioTrack = track
@@ -404,11 +437,27 @@ class MainActivity : FlutterActivity() {
     private fun startBargeInMonitor() {
         stopBargeInMonitor()
         val min = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        val record = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, min * 2)
+        if (min <= 0) return
+        val record = try {
+            AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, min * 2)
+        } catch (_: Exception) { return }
+        if (record.state != AudioRecord.STATE_INITIALIZED) {
+            try { record.release() } catch (_: Exception) {}
+            return
+        }
         try { AcousticEchoCanceler.create(record.audioSessionId)?.enabled = true } catch (_: Exception) {}
         try { NoiseSuppressor.create(record.audioSessionId)?.enabled = true } catch (_: Exception) {}
+        try {
+            record.startRecording()
+            if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                record.release()
+                return
+            }
+        } catch (_: Exception) {
+            try { record.release() } catch (_: Exception) {}
+            return
+        }
         monitorRecord = record
-        record.startRecording()
         monitorThread = thread(start = true, name = "jarvis-barge-in") {
             val buf = ShortArray(800)
             var loudFrames = 0
@@ -521,6 +570,8 @@ class MainActivity : FlutterActivity() {
         audioTrack = null
         try { recognizer?.release() } catch (_: Exception) {}
         recognizer = null
+        try { vad?.release() } catch (_: Exception) {}
+        vad = null
         voiceInitialized = false
         try { tts?.release() } catch (_: Exception) {}
         tts = null
