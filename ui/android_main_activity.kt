@@ -105,7 +105,7 @@ class MainActivity : FlutterActivity() {
                         .putString(KEY_KEY3, call.argument<String>("key3").orEmpty().trim())
                         .putInt(KEY_ACTIVE_MODEL, call.argument<Int>("activeModel") ?: 0)
                         .putString(KEY_APIHOST, call.argument<String>("apiHostKey").orEmpty().trim())
-                        .putBoolean(KEY_VOICE_ENABLED, call.argument<Boolean>("voiceEnabled") ?: true).apply()
+                        .putBoolean(KEY_VOICE_ENABLED, call.argument<Boolean>("voiceEnabled") ?: true).commit()
                     result.success(true)
                 }
                 "start", "listen_now" -> { voiceLoopEnabled = true; startRecognition(); result.success(true) }
@@ -409,9 +409,9 @@ class MainActivity : FlutterActivity() {
             ttsPlaying = true
             eventSink?.success("__TTS_START__")
             val sampleRate = engine.sampleRate()
-            val min = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
+            val min = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
             require(min > 0) { "AudioTrack: неверный размер буфера" }
-            val format = AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()
+            val format = AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()
             val track = AudioTrack(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build(), format, min * 2, AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE)
             audioTrack = track
             track.play()
@@ -420,7 +420,7 @@ class MainActivity : FlutterActivity() {
                 try {
                     val audio = engine.generateWithConfigAndCallback(text, GenerationConfig(speed = 1.0f, sid = 0)) { samples ->
                         if (!ttsPlaying || disposed) return@generateWithConfigAndCallback 0
-                        track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+                        val pcm = ShortArray(samples.size) { i -> (samples[i].coerceIn(-1.0f, 1.0f) * 32767f).toInt().toShort() }\n                        track.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
                         1
                     }
                     if (ttsPlaying && audio.samples.isNotEmpty()) runOnUiThread { finishTts() }
