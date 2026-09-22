@@ -60,6 +60,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   StreamSubscription<dynamic>? _voiceSub;
   StreamSubscription<String>? _partialSub;
   bool _voiceReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
+  static final RegExp _jarvisWake = RegExp(r'^\s*(?:jarvis|джарвис)\s*[,;:.!?-]?\s*', caseSensitive: false);
   late final AnimationController _orbController;
   String _status = 'JARVIS запускается…', _streamText = '';
   bool get _android => Platform.isAndroid;
@@ -212,10 +213,22 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     _listening = false;
     await _stopNativeListening();
     final phrase = value.trim();
-    final command = phrase;
+    final wakeMatch = _jarvisWake.matchAsPrefix(phrase);
+    // Голосовые команды принимаются только после обращения «Jarvis».
+    // Никаких хлопков, порогов амплитуды или скрытой активации.
+    if (wakeMatch == null) {
+      if (mounted) setState(() => _status = 'Жду команду «Jarvis …»');
+      Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); });
+      return;
+    }
+    final command = phrase.substring(wakeMatch.end).trim();
     _awaitingCommand = false;
-    if (command.isEmpty) { Future<void>.delayed(const Duration(milliseconds: 300), () { if (mounted) _startNativeListening(); }); return; }
-    if (mounted) setState(() => _status = 'Команда: $command');
+    if (command.isEmpty) {
+      if (mounted) setState(() => _status = 'Jarvis активирован · слушаю команду');
+      Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); });
+      return;
+    }
+    if (mounted) setState(() => _status = 'Команда Jarvis: $command');
     await _send(command, fromVoice: true);
   }
 
