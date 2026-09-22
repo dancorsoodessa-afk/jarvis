@@ -29,6 +29,9 @@ def _piper_paths() -> tuple[str, Path]:
         raise RuntimeError(f"Русская модель голоса Dmitri не найдена: {voice}")
     return str(executable), voice
 
+def _engine_setting() -> str:
+    return os.environ.get("JARVIS_TTS", "piper").strip().lower()
+
 def available_engines() -> list[str]:
     try:
         _piper_paths()
@@ -37,8 +40,10 @@ def available_engines() -> list[str]:
         return []
 
 def current_engine() -> str:
-    mode = os.environ.get("JARVIS_TTS", "piper").strip().lower()
-    return "piper" if mode != "off" and available_engines() else "off"
+    mode = _engine_setting()
+    if mode not in {"piper", "off"}:
+        raise RuntimeError(f"Неизвестный TTS-движок: {mode}")
+    return "piper" if mode == "piper" and available_engines() else "off"
 
 def stop() -> None:
     global _PLAYBACK_ACTIVE
@@ -56,7 +61,8 @@ def is_playing() -> bool:
         return _PLAYBACK_ACTIVE
 
 def speak(text: str) -> Path:
-    if current_engine() == "off":
+    engine = current_engine()
+    if engine == "off":
         raise RuntimeError("Piper TTS недоступен.")
     text = " ".join(str(text).split())[:1000]
     piper, voice = _piper_paths()
