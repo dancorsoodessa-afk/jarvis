@@ -16,7 +16,6 @@ hiddenimports = [
     "av",
     "tokenizers",
     "huggingface_hub",
-    "tzdata",
 ]
 
 a = Analysis(
