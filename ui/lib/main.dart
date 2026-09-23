@@ -547,82 +547,256 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     );
   }
 
+
+  Future<void> _runMenuAction(String label, Future<void> Function() action) async {
+    if (!mounted) return;
+    Navigator.of(context).maybePop();
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    if (mounted) await action();
+  }
+
+  Widget _drawerSection(String title) => Padding(
+    padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+    child: Text(title, style: const TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1.4)),
+  );
+
+  Widget _drawerItem(IconData icon, String title, Future<void> Function() action, {bool selected = false, Color? color}) {
+    final c = color ?? (selected ? kCyan : Colors.white70);
+    return ListTile(
+      dense: true,
+      visualDensity: const VisualDensity(vertical: -1),
+      leading: Icon(icon, size: 19, color: c),
+      title: Text(title, style: TextStyle(color: c, fontSize: 12, fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      tileColor: selected ? const Color(0xFF0A2424) : Colors.transparent,
+      onTap: () => _runMenuAction(title, action),
+    );
+  }
+
+  Widget _buildDrawer() {
+    return Drawer(
+      backgroundColor: const Color(0xFF050B12),
+      width: 292,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 14, 12),
+              child: Row(children: [
+                Container(
+                  width: 42, height: 42,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const RadialGradient(colors: [Color(0xFF16453F), Color(0xFF07100F)]),
+                    border: Border.all(color: kCyan.withOpacity(.45)),
+                  ),
+                  child: const Icon(Icons.auto_awesome, color: kCyan, size: 22),
+                ),
+                const SizedBox(width: 11),
+                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                  Text('COMMAND CENTER', style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1.2)),
+                ])),
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white38, size: 19)),
+              ]),
+            ),
+            Container(height: 1, color: kLine),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                children: [
+                  _drawerSection('СИСТЕМА'),
+                  _drawerItem(Icons.dashboard_rounded, 'Главная', () async => _scrollToBottom(), selected: true),
+                  _drawerItem(Icons.mic_rounded, 'Голос', () async => _toggleVoice()),
+                  _drawerItem(Icons.psychology_rounded, 'AI / Модели', () async => _settings()),
+                  _drawerItem(Icons.tune_rounded, 'Команды', () async => _openCommandCenter()),
+                  _drawerItem(Icons.folder_rounded, 'Файлы', () async => _send('список файлов')),
+                  _drawerItem(Icons.apps_rounded, 'Программы', () async => _send('покажи установленные программы')),
+                  _drawerItem(Icons.memory_rounded, 'Процессы', () async => _send('ps')),
+                  _drawerItem(Icons.monitor_heart_rounded, 'Система', () async => _send('status')),
+                  _drawerSection('ИНСТРУМЕНТЫ'),
+                  _drawerItem(Icons.search_rounded, 'OSINT / Поиск', () async => _send('поиск')),
+                  _drawerItem(Icons.extension_rounded, 'MCP', () async => _send('покажи доступные MCP инструменты')),
+                  _drawerItem(Icons.psychology_alt_rounded, 'Память', () async => _send('покажи память')),
+                  _drawerItem(Icons.task_alt_rounded, 'Задачи', () async => _send('напомни мне мои задачи')),
+                  _drawerSection('БЫСТРЫЕ ДЕЙСТВИЯ'),
+                  _drawerItem(Icons.camera_alt_rounded, 'Скриншот', () async => _send('screenshot')),
+                  _drawerItem(Icons.volume_up_rounded, 'Громкость', () async => _send('volume')),
+                  _drawerItem(Icons.cloud_rounded, 'Погода', () async => _send('weather')),
+                  _drawerItem(Icons.access_time_rounded, 'Время', () async => _send('now')),
+                  _drawerItem(Icons.calculate_rounded, 'Калькулятор', () async => _send('calc')),
+                  _drawerItem(Icons.settings_rounded, 'Настройки', () async => _settings()),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+              child: Container(
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(color: const Color(0xFF071411), border: Border.all(color: kGreen.withOpacity(.16)), borderRadius: BorderRadius.circular(7)),
+                child: Row(children: [
+                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: _voiceReady ? kGreen : kRed, boxShadow: [BoxShadow(color: _voiceReady ? kGreen : kRed, blurRadius: 7)])),
+                  const SizedBox(width: 9),
+                  Expanded(child: Text(_voiceReady ? 'ГОЛОСОВОЙ КОНТУР ГОТОВ' : 'ГОЛОСОВОЙ КОНТУР НЕ ГОТОВ', style: TextStyle(color: _voiceReady ? kGreen : kRed, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .7))),
+                ]),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openCommandCenter() async {
+    if (!mounted) return;
+    final commands = <Map<String, Object>>[
+      {'name': '/status', 'icon': Icons.monitor_heart_rounded, 'command': 'status'},
+      {'name': '/ps', 'icon': Icons.memory_rounded, 'command': 'ps'},
+      {'name': '/screenshot', 'icon': Icons.camera_alt_rounded, 'command': 'screenshot'},
+      {'name': '/volume', 'icon': Icons.volume_up_rounded, 'command': 'volume'},
+      {'name': '/weather', 'icon': Icons.cloud_rounded, 'command': 'weather'},
+      {'name': '/now', 'icon': Icons.access_time_rounded, 'command': 'now'},
+      {'name': '/calc', 'icon': Icons.calculate_rounded, 'command': 'calc'},
+      {'name': '/search', 'icon': Icons.search_rounded, 'command': 'поиск'},
+      {'name': '/remember', 'icon': Icons.bookmark_add_rounded, 'command': 'запомни'},
+      {'name': '/recall', 'icon': Icons.bookmarks_rounded, 'command': 'вспомни'},
+      {'name': '/forget', 'icon': Icons.delete_sweep_rounded, 'command': 'забудь'},
+      {'name': '/reminders', 'icon': Icons.alarm_rounded, 'command': 'напоминания'},
+      {'name': '/tools', 'icon': Icons.build_circle_rounded, 'command': 'покажи инструменты'},
+      {'name': '/help', 'icon': Icons.help_outline_rounded, 'command': 'help'},
+    ];
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF050B12),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              const Icon(Icons.terminal_rounded, color: kCyan, size: 20),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('ЦЕНТР КОМАНД JARVIS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 1))),
+              IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close, color: Colors.white38)),
+            ]),
+            const SizedBox(height: 5),
+            const Text('Команды выполняются через подключённый AI-контур.', style: TextStyle(color: Colors.white38, fontSize: 10)),
+            const SizedBox(height: 10),
+            Flexible(
+              child: GridView.builder(
+                shrinkWrap: true,
+                itemCount: commands.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisExtent: 56, crossAxisSpacing: 8, mainAxisSpacing: 8),
+                itemBuilder: (context, index) {
+                  final item = commands[index];
+                  return OutlinedButton.icon(
+                    onPressed: _busy ? null : () {
+                      Navigator.pop(ctx);
+                      _send(item['command']! as String);
+                    },
+                    icon: Icon(item['icon']! as IconData, size: 17),
+                    label: Text(item['name']! as String, style: const TextStyle(fontFamily: 'monospace', fontSize: 10)),
+                    style: OutlinedButton.styleFrom(foregroundColor: kCyan, side: const BorderSide(color: kLine), alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 10)),
+                  );
+                },
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
     final micColor = _listening ? kGreen : (_voiceReady && _voiceEnabled ? kCyan : kRed);
-    final modelLabel = (_activeModel + 1).toString() + '/3';
+    final modelLabel = '\${_activeModel + 1}/3';
     return Scaffold(
       backgroundColor: kBg,
+      drawer: _buildDrawer(),
+      appBar: AppBar(
+        backgroundColor: kBg,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: Builder(builder: (ctx) => IconButton(
+          tooltip: 'Меню JARVIS',
+          onPressed: () => Scaffold.of(ctx).openDrawer(),
+          icon: const Icon(Icons.menu_rounded, color: kCyan),
+        )),
+        titleSpacing: 0,
+        title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+          Text('COMMAND CENTER', style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1.1)),
+        ]),
+        actions: [
+          IconButton(tooltip: 'Микрофон', onPressed: _toggleVoice, icon: Icon(_listening ? Icons.mic_rounded : Icons.mic_none_rounded, color: micColor, size: 25)),
+          IconButton(tooltip: 'Настройки', onPressed: _settings, icon: const Icon(Icons.settings_rounded, color: kCyan, size: 23)),
+        ],
+      ),
       body: SafeArea(
+        top: false,
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 10, 4),
-            child: Row(children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const RadialGradient(colors: [Color(0xFF17463F), Color(0xFF07110F)]),
-                  border: Border.all(color: kCyan.withOpacity(.45)),
-                ),
-                child: const Icon(Icons.auto_awesome, color: kCyan, size: 23),
-              ),
-              const SizedBox(width: 11),
-              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
-                Text('TACTICAL AI CORE', style: TextStyle(color: Colors.white54, fontSize: 8, letterSpacing: 1.1)),
-              ])),
-              IconButton(tooltip: 'Микрофон', onPressed: _toggleVoice, icon: Icon(_listening ? Icons.mic_rounded : Icons.mic_none_rounded, color: micColor, size: 27)),
-              IconButton(tooltip: 'Центр управления', onPressed: _settings, icon: const Icon(Icons.settings_rounded, color: kCyan, size: 25)),
-            ]),
-          ),
           _coreVisual(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             child: Row(children: [
               _statusCard(Icons.memory_rounded, 'МОДЕЛЬ', modelLabel, kCyan),
-              _statusCard(Icons.mic_rounded, 'STT', _voiceReady ? 'SHERPA · RU' : 'OFFLINE', kGreen),
-              _statusCard(Icons.volume_up_rounded, 'TTS', _voiceReady ? 'PIPER · RU' : 'OFFLINE', kAmber),
+              _statusCard(Icons.mic_rounded, 'STT', _voiceReady ? 'RU · ГОТОВ' : 'OFFLINE', kGreen),
+              _statusCard(Icons.volume_up_rounded, 'TTS', _voiceReady ? 'RU · ГОТОВ' : 'OFFLINE', kAmber),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(9, 7, 9, 2),
+            child: Row(children: [
+              _quickAction(Icons.terminal_rounded, 'КОМАНДЫ', _openCommandCenter),
+              _quickAction(Icons.camera_alt_rounded, 'СКРИН', () => _send('screenshot')),
+              _quickAction(Icons.monitor_heart_rounded, 'СТАТУС', () => _send('status')),
+              _quickAction(Icons.search_rounded, 'ПОИСК', () => _send('поиск')),
             ]),
           ),
           Expanded(
             child: Container(
               margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-              decoration: BoxDecoration(color: const Color(0xFF050C0C), borderRadius: BorderRadius.circular(20), border: Border.all(color: kLine.withOpacity(.8))),
+              decoration: BoxDecoration(color: const Color(0xFF050C0C), borderRadius: BorderRadius.circular(9), border: Border.all(color: kLine.withOpacity(.8))),
               child: ListView(
                 controller: _scroll,
                 children: [
                   Row(children: [
-                    const Expanded(child: Text('ДИАЛОГ', style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1))),
-                    if (_busy) const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: kCyan)),
+                    const Expanded(child: Text('ЖУРНАЛ / ДИАЛОГ', style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                    Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: _listening ? kGreen : Colors.white38, fontSize: 8, fontFamily: 'monospace')),
+                    if (_busy) const Padding(padding: EdgeInsets.only(left: 8), child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: kCyan))),
                   ]),
                   const SizedBox(height: 8),
                   ..._messages.map((m) => Align(
                     alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft,
                     child: Container(
-                      constraints: const BoxConstraints(maxWidth: 330),
+                      constraints: const BoxConstraints(maxWidth: 340),
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: m.isUser ? const Color(0xFF0B2926) : const Color(0xFF0A1514),
-                        borderRadius: BorderRadius.only(
-                          topLeft: const Radius.circular(15),
-                          topRight: const Radius.circular(15),
-                          bottomLeft: Radius.circular(m.isUser ? 15 : 4),
-                          bottomRight: Radius.circular(m.isUser ? 4 : 15),
-                        ),
-                        border: Border.all(color: (m.isUser ? kCyan : kGreen).withOpacity(.16)),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: (m.isUser ? kCyan : kGreen).withOpacity(.18)),
                       ),
-                      child: Text(m.text, style: TextStyle(color: m.isUser ? Colors.white : Colors.white70, fontSize: 13, height: 1.3)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(m.isUser ? 'КОМАНДА' : 'JARVIS', style: TextStyle(color: m.isUser ? kCyan : kGreen, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                        const SizedBox(height: 3),
+                        Text(m.text, style: TextStyle(color: m.isUser ? Colors.white : Colors.white70, fontSize: 12.5, height: 1.3)),
+                      ]),
                     ),
                   )),
-                  if (_streamText.isNotEmpty) Text(_streamText, style: const TextStyle(color: kCyan, fontSize: 13)),
+                  if (_streamText.isNotEmpty) Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: const Color(0xFF06161A), border: Border.all(color: kCyan.withOpacity(.2)), borderRadius: BorderRadius.circular(5)),
+                    child: Text(_streamText, style: const TextStyle(color: kCyan, fontSize: 12)),
+                  ),
                   if (_messages.isEmpty && _streamText.isEmpty)
                     const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 34),
-                      child: Center(child: Text('Система готова. Говорите или введите команду.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12))),
+                      padding: EdgeInsets.symmetric(vertical: 32),
+                      child: Center(child: Text('СИСТЕМА ГОТОВА\nОткройте меню или скажите команду JARVIS.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.5))),
                     ),
                   if (_attachment != null) Row(children: [
                     const Icon(Icons.attach_file_rounded, color: kCyan, size: 17),
@@ -646,14 +820,14 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   cursorColor: kCyan,
                   decoration: InputDecoration(
-                    hintText: 'Команда JARVIS…',
+                    hintText: 'Введите команду JARVIS…',
                     hintStyle: const TextStyle(color: Colors.white30),
                     filled: true,
                     fillColor: kPanel,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide(color: kLine.withOpacity(.8))),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide(color: kLine.withOpacity(.8))),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: kCyan)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide(color: kLine.withOpacity(.8))),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide(color: kLine.withOpacity(.8))),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: kCyan)),
                   ),
                 ),
               ),
