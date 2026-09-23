@@ -765,7 +765,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 controller: _scroll,
                 children: [
                   Row(children: [
-                    const Expanded(child: Text('ЖУРНАЛ / ДИАЛОГ', style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                    const Expanded(child: Text('ЖУРНАЛ / ДИАЛОГ', style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1))),
                     Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: _listening ? kGreen : Colors.white38, fontSize: 8, fontFamily: 'monospace')),
                     if (_busy) const Padding(padding: EdgeInsets.only(left: 8), child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: kCyan))),
                   ]),
