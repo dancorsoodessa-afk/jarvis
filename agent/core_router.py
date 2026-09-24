@@ -49,26 +49,20 @@ def _probe_models(chat_url: str, timeout: float = 1.5) -> list[str]:
     return [str(item.get("id", "")).strip() for item in data if isinstance(item, dict) and str(item.get("id", "")).strip()]
 
 
+OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+
+
 def discover_chat_endpoint(preferred_url: str = "", timeout: float = 1.5) -> tuple[str, list[str]]:
-    """Find a healthy local OpenAI-compatible chat endpoint and its models."""
-    candidates: list[str] = []
-    if preferred_url.strip():
-        candidates.append(preferred_url.strip())
-    candidates.extend(url for url in LOCAL_BACKEND_CANDIDATES if url not in candidates)
-    failures: list[str] = []
-    for url in candidates:
+    """Return the configured OpenRouter endpoint, or a preferred compatible endpoint."""
+    preferred = preferred_url.strip()
+    if preferred and "openrouter.ai" not in preferred:
         try:
-            models = _probe_models(url, timeout=timeout)
+            models = _probe_models(preferred, timeout=timeout)
             if models:
-                return url, models
-            failures.append(f"{url}: сервер отвечает, но моделей нет")
-        except Exception as exc:
-            failures.append(f"{url}: {exc}")
-    raise RuntimeError(
-        "Локальный AI-backend не найден. Проверены: "
-        + ", ".join(candidates)
-        + ". Запустите Dragon/LM Studio/другой OpenAI-compatible сервер или задайте JARVIS_CHAT_URL."
-    )
+                return preferred, models
+        except Exception:
+            pass
+    return OPENROUTER_ENDPOINT, []
 
 
 def discover_model(chat_url: str, timeout: float = 3.0) -> str:
@@ -114,4 +108,4 @@ def select_core(provider: str, chat_url: str, configured_model: str = "") -> Cor
     if provider != "openai-compatible":
         raise RuntimeError(f"Неизвестный провайдер: {provider}. Доступны: openai-compatible, local-vulkan")
     endpoint, models = discover_chat_endpoint(chat_url)
-    return CoreSelection(provider=provider, model=configured_model or models[0], source=f"Локальный AI: {endpoint}")
+    return CoreSelection(provider=provider, model=configured_model or (models[0] if models else "openrouter/free"), source=f"OpenRouter: {endpoint}")
