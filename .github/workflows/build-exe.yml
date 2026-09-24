@@ -32,3 +32,4 @@ jobs:
           name: JARVIS-Windows-x64
           path: release/JARVIS.exe
           if-no-files-found: error
+# Release build trigger: foundation
