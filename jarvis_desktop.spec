@@ -1,5 +1,5 @@
 # PyInstaller spec for the native JARVIS desktop application.
- # Голос полностью локальный: Piper входит в пакет.
+# Голос полностью локальный: Piper входит в пакет.
 from PyInstaller.utils.hooks import collect_data_files
 
 faster_whisper_datas = collect_data_files("faster_whisper")
@@ -38,7 +38,7 @@ exe = EXE(
     name="jarvis_desktop",
     debug=False,
     strip=False,
-    upx=False,
+    upx=True,
     console=False,
     icon=None,
 )
