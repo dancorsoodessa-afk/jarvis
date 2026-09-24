@@ -32,6 +32,10 @@ class Settings:
     chat_url: str = "https://openrouter.ai/api/v1/chat/completions"
     chat_key: str = ""
     chat_model: str = "openrouter/free"
+    fast_model: str = "openrouter/free"
+    reasoning_model: str = "deepseek/deepseek-chat:free"
+    coding_model: str = "z-ai/glm-5.2:free"
+    additional_model: str = "openrouter/free"
     # Current free OpenRouter variants; these can also be overridden for local models.
     deepseek_url: str = ""
     deepseek_key: str = ""
@@ -71,6 +75,10 @@ class Settings:
             chat_url=os.environ.get("JARVIS_CHAT_URL", "https://openrouter.ai/api/v1/chat/completions").strip() or "https://openrouter.ai/api/v1/chat/completions",
             chat_key=os.environ.get("JARVIS_CHAT_KEY", "") or os.environ.get("OPENROUTER_API_KEY", ""),
             chat_model=os.environ.get("JARVIS_CHAT_MODEL", "openrouter/free").strip() or "openrouter/free",
+            fast_model=os.environ.get("JARVIS_FAST_MODEL", os.environ.get("JARVIS_CHAT_MODEL", "openrouter/free")).strip() or "openrouter/free",
+            reasoning_model=os.environ.get("JARVIS_REASONING_MODEL", "deepseek/deepseek-chat:free").strip() or "deepseek/deepseek-chat:free",
+            coding_model=os.environ.get("JARVIS_CODING_MODEL", "z-ai/glm-5.2:free").strip() or "z-ai/glm-5.2:free",
+            additional_model=os.environ.get("JARVIS_ADDITIONAL_MODEL", "openrouter/free").strip() or "openrouter/free",
             deepseek_url=os.environ.get("JARVIS_DEEPSEEK_URL", "").strip(),
             deepseek_key=os.environ.get("JARVIS_DEEPSEEK_KEY", ""),
             deepseek_model=os.environ.get("JARVIS_DEEPSEEK_MODEL", "deepseek/deepseek-chat:free").strip(),
