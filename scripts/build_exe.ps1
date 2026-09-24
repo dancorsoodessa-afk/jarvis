@@ -78,10 +78,6 @@ TTS: Piper + русский мужской голос Dmitri Medium.
 Конфигурация сохраняется в %APPDATA%\JARVIS\settings.json.
 "@ | Set-Content -Path "$release\README.txt" -Encoding UTF8
 
-$package = "JARVIS-Windows-x64.zip"
-Remove-Item $package -Force -ErrorAction SilentlyContinue
-Compress-Archive -Path "$release\JARVIS.exe", "$release\README.txt" -DestinationPath $package -Force
-
 Write-Host ""
 Write-Host "Release ready:" -ForegroundColor Green
 Write-Host "  $release\JARVIS.exe"
