@@ -52,6 +52,12 @@ def _get_model():
             )
     return _MODEL
 
+def warmup() -> None:
+    """Загрузить модель в память заранее, чтобы первая голосовая команда не тормозила."""
+    if current_engine() != "off":
+        _get_model()
+
+
 def transcribe(audio_path: str) -> str:
     if current_engine() == "off":
         raise RuntimeError("Распознавание речи отключено или faster-whisper не установлен.")
@@ -62,8 +68,8 @@ def transcribe(audio_path: str) -> str:
     segments, _info = model.transcribe(
         str(path),
         language="ru",
-        beam_size=3,
-        best_of=3,
+        beam_size=1,
+        best_of=1,
         temperature=0.0,
         vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 300, "speech_pad_ms": 100},
