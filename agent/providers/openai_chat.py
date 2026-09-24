@@ -47,7 +47,9 @@ class OpenAIChatProvider:
         if self.url:
             return
         from agent.core_router import discover_chat_endpoint
-        self.url, models = discover_chat_endpoint()
+        self.url, models = discover_chat_endpoint(self.url)
+        if not self.url:
+            raise RuntimeError("URL API не задан. Укажите адрес OpenAI-совместимого API в настройках JARVIS.")
         if not self.model and models:
             self._discovered_model = models[0]
 
