@@ -100,6 +100,10 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
         os.environ["OPENROUTER_API_KEY"] = profile["api_key"]
         os.environ["JARVIS_CHAT_MODEL"] = profile["model"]
+        os.environ["JARVIS_FAST_MODEL"] = merged["0"]["model"]
+        os.environ["JARVIS_REASONING_MODEL"] = merged["1"]["model"]
+        os.environ["JARVIS_CODING_MODEL"] = merged["2"]["model"]
+        os.environ["JARVIS_ADDITIONAL_MODEL"] = self.settings.get("additional_model") or os.environ.get("JARVIS_ADDITIONAL_MODEL") or merged["0"]["model"]
         disabled = self.settings.get("disabled_tools", [])
         if not isinstance(disabled, list):
             disabled = []
@@ -754,7 +758,7 @@ class JarvisDesktop(tk.Tk):
         if not isinstance(profiles, dict):
             profiles = {}
         active = int(self.settings.get("active_agent", 0) or 0)
-        names = ("JARVIS", "DEEPSEEK", "GLM")
+        names = ("FAST / Обычные", "REASONING / Рассуждения", "CODING / Код")
         defaults = (
             ("openai-compatible", DEFAULT_URL, "openrouter/free"),
             ("openai-compatible", DEFAULT_URL, "deepseek/deepseek-chat:free"),
