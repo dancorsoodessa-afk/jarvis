@@ -104,6 +104,14 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_REASONING_MODEL"] = merged["1"]["model"]
         os.environ["JARVIS_CODING_MODEL"] = merged["2"]["model"]
         os.environ["JARVIS_ADDITIONAL_MODEL"] = self.settings.get("additional_model") or os.environ.get("JARVIS_ADDITIONAL_MODEL") or merged["0"]["model"]
+        # Independent consultant providers. Keep secrets out of the repository;
+        # they live only in the user's settings/environment.
+        os.environ["JARVIS_DEEPSEEK_URL"] = self.settings.get("deepseek_url", os.environ.get("JARVIS_DEEPSEEK_URL", ""))
+        os.environ["JARVIS_DEEPSEEK_KEY"] = self.settings.get("deepseek_key", os.environ.get("JARVIS_DEEPSEEK_KEY", ""))
+        os.environ["JARVIS_DEEPSEEK_MODEL"] = self.settings.get("deepseek_model", os.environ.get("JARVIS_DEEPSEEK_MODEL", "deepseek/deepseek-chat:free"))
+        os.environ["JARVIS_GLM_URL"] = self.settings.get("glm_url", os.environ.get("JARVIS_GLM_URL", ""))
+        os.environ["JARVIS_GLM_KEY"] = self.settings.get("glm_key", os.environ.get("JARVIS_GLM_KEY", ""))
+        os.environ["JARVIS_GLM_MODEL"] = self.settings.get("glm_model", os.environ.get("JARVIS_GLM_MODEL", "z-ai/glm-5.2:free"))
         disabled = self.settings.get("disabled_tools", [])
         if not isinstance(disabled, list):
             disabled = []
@@ -872,6 +880,31 @@ class JarvisDesktop(tk.Tk):
         additional_model.insert(0, str(self.settings.get("additional_model", "openrouter/free")))
         additional_model.pack(fill="x", padx=14, pady=(0, 12), ipady=6)
 
+        consultant_frame = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
+        consultant_frame.pack(fill="x", pady=(2, 10))
+        tk.Label(consultant_frame, text="НЕЗАВИСИМЫЕ КОНСУЛЬТАНТЫ", bg="#091b29", fg=CYAN,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 3))
+        tk.Label(consultant_frame,
+                 text="Если указать собственные ключи, DeepSeek и GLM работают напрямую, а не через OpenRouter.",
+                 bg="#091b29", fg=MUTED, font=("Segoe UI", 8), wraplength=760, justify="left").pack(anchor="w", padx=14, pady=(0, 7))
+        consultant_fields = {}
+        consultant_defaults = (
+            ("DeepSeek URL", "deepseek_url", self.settings.get("deepseek_url", ""), False),
+            ("DeepSeek API-ключ", "deepseek_key", self.settings.get("deepseek_key", ""), True),
+            ("DeepSeek модель", "deepseek_model", self.settings.get("deepseek_model", "deepseek/deepseek-chat:free"), False),
+            ("GLM URL", "glm_url", self.settings.get("glm_url", ""), False),
+            ("GLM API-ключ", "glm_key", self.settings.get("glm_key", ""), True),
+            ("GLM модель", "glm_model", self.settings.get("glm_model", "z-ai/glm-5.2:free"), False),
+        )
+        for label, key, default, secret in consultant_defaults:
+            row = tk.Frame(consultant_frame, bg="#091b29")
+            row.pack(fill="x", padx=14, pady=3)
+            tk.Label(row, text=label, width=20, anchor="w", bg="#091b29", fg=MUTED).pack(side="left")
+            e = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•" if secret else "")
+            e.insert(0, str(default))
+            e.pack(side="left", fill="x", expand=True, ipady=6)
+            consultant_fields[key] = e
+
         entries = []
         for i, title in enumerate(names):
             dprov, durl, dmodel = defaults[i]
@@ -936,6 +969,8 @@ class JarvisDesktop(tk.Tk):
             self.settings["agents"] = new_profiles
             self.settings["openrouter_api_key"] = shared_key.get().strip()
             self.settings["additional_model"] = additional_model.get().strip() or "openrouter/free"
+            for k, e in consultant_fields.items():
+                self.settings[k] = e.get().strip()
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
