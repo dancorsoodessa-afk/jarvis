@@ -114,6 +114,34 @@ class VoiceLoop:
             if command is not None:
                 return command
 
+    def step(self, text: str):
+        """Synchronous compatibility adapter for tests and text-driven callers.
+
+        The live microphone path uses run(); this method preserves the old API
+        while following the new one-wake continuous-dialog behavior.
+        """
+        text = " ".join(str(text).lower().split())
+        if not text:
+            return None
+
+        if self.is_stop(text):
+            self.active = False
+            return "Ожидаю."
+
+        if self.wake_enabled and not self.active:
+            command = self.strip_wake(text, self.wake_words)
+            if command is None:
+                return None
+            if not command:
+                self.active = True
+                return "Слушаю."
+        else:
+            command = text
+
+        self.active = True
+        result = self.agent.handle(command)
+        return str(getattr(result, "text", result) or "").strip()
+
     def run(self):
         if not voice.available():
             raise RuntimeError("Голосовой ввод недоступен: установите sounddevice и numpy")
