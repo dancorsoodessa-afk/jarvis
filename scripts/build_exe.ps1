@@ -71,7 +71,7 @@ Copy-Item "dist\jarvis_desktop.exe" "$release\JARVIS.exe"
 JARVIS — Windows x64
 
 JARVIS.exe — единственное пользовательское приложение с графическим интерфейсом, голосом, памятью и инструментами.
-STT: faster-whisper small, локально на CPU.
+STT: faster-whisper base, локально на CPU.
 TTS: Piper + русский мужской голос Dmitri Medium.
 Все голосовые компоненты входят в пакет и работают без облачного TTS.
 
