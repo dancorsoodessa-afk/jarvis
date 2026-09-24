@@ -29,7 +29,7 @@ class Settings:
     """Runtime settings for free/local AI providers only."""
 
     provider: str = "openai-compatible"
-    chat_url: str = "https://openrouter.ai/api/v1/chat/completions"
+    chat_url: str = ""
     chat_key: str = ""
     chat_model: str = "openrouter/free"
     fast_model: str = "openrouter/free"
@@ -72,7 +72,7 @@ class Settings:
             threads = 6
         return cls(
             provider=provider,
-            chat_url=os.environ.get("JARVIS_CHAT_URL", "https://openrouter.ai/api/v1/chat/completions").strip() or "https://openrouter.ai/api/v1/chat/completions",
+            chat_url=os.environ.get("JARVIS_CHAT_URL", "").strip(),
             chat_key=os.environ.get("JARVIS_CHAT_KEY", "") or os.environ.get("OPENROUTER_API_KEY", ""),
             chat_model=os.environ.get("JARVIS_CHAT_MODEL", "openrouter/free").strip() or "openrouter/free",
             fast_model=os.environ.get("JARVIS_FAST_MODEL", os.environ.get("JARVIS_CHAT_MODEL", "openrouter/free")).strip() or "openrouter/free",
