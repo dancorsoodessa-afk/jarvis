@@ -318,6 +318,12 @@ class MainActivity : FlutterActivity() {
                 audioRecord = record
             }
             val activeRecord = record!!
+            val activeStream = recognitionStream ?: run {
+                try { activeRecord.stop() } catch (_: Exception) {}
+                try { activeRecord.release() } catch (_: Exception) {}
+                synchronized(voiceLock) { voiceActive = false }
+                return
+            }
             eventSink?.success("__MIC_SOURCE_READY__")
             require(activeRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Микрофон не перешёл в режим записи" }
             eventSink?.success("__LISTENING__")
@@ -355,7 +361,7 @@ class MainActivity : FlutterActivity() {
                                     eventSink?.success(if (vadSpeech) "__VAD_SPEECH_BEGIN__" else "__VAD_SPEECH_END__")
                                 }
                             }
-                            val stream = recognitionStream ?: break
+                            val stream = activeStream
                             stream.acceptWaveform(samples, 16000)
                             while (rec.isReady(stream)) rec.decode(stream)
                             val text = rec.getResult(stream).text.trim()
@@ -376,8 +382,10 @@ class MainActivity : FlutterActivity() {
                 } finally {
                     try { activeRecord.stop() } catch (_: Exception) {}
                     try { activeRecord.release() } catch (_: Exception) {}
+                    try { activeStream.release() } catch (_: Exception) {}
                     synchronized(voiceLock) {
                         if (audioRecord === activeRecord) audioRecord = null
+                        if (recognitionStream === activeStream) recognitionStream = null
                         voiceActive = false
                         recordingThread = null
                     }
@@ -409,7 +417,8 @@ class MainActivity : FlutterActivity() {
             try { threadToJoin.join(700) } catch (_: InterruptedException) {}
         }
         try { record?.release() } catch (_: Exception) {}
-        try { stream?.release() } catch (_: Exception) {}
+        // The STT thread owns and releases its sherpa stream after decoding stops.
+        // Releasing it here can race with native decode and terminate the app.
     }
 
     private fun speak(text: String) {
