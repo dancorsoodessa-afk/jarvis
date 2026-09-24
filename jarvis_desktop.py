@@ -29,7 +29,7 @@ YELLOW = "#ffcf6b"
 APP_DIR = Path(os.environ.get("APPDATA", Path.home())) / "JARVIS"
 SETTINGS_FILE = APP_DIR / "settings.json"
 DEFAULT_PROVIDER = "openai-compatible"
-DEFAULT_URL = "http://127.0.0.1:11434/v1/chat/completions"
+DEFAULT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def _load_saved_settings() -> dict:
@@ -77,12 +77,12 @@ class JarvisDesktop(tk.Tk):
             "provider": self.settings.get("provider") or os.environ.get("JARVIS_PROVIDER") or DEFAULT_PROVIDER,
             "url": self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL,
             "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "openrouter/free",
-            "api_key": self.settings.get("api_key") or os.environ.get("JARVIS_CHAT_KEY") or "",
+            "api_key": self.settings.get("api_key") or self.settings.get("openrouter_api_key") or os.environ.get("JARVIS_CHAT_KEY") or os.environ.get("OPENROUTER_API_KEY") or "",
         }
         defaults = {
             "0": legacy,
-            "1": {"name": "DeepSeek", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "deepseek/deepseek-chat:free", "api_key": ""},
-            "2": {"name": "GLM", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "z-ai/glm-5.2:free", "api_key": ""},
+            "1": {"name": "DeepSeek", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "deepseek/deepseek-chat:free", "api_key": legacy["api_key"]},
+            "2": {"name": "GLM", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "z-ai/glm-5.2:free", "api_key": legacy["api_key"]},
         }
         merged = {}
         for key, default in defaults.items():
@@ -98,6 +98,7 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_PROVIDER"] = profile["provider"]
         os.environ["JARVIS_CHAT_URL"] = profile["url"]
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
+        os.environ["OPENROUTER_API_KEY"] = profile["api_key"]
         os.environ["JARVIS_CHAT_MODEL"] = profile["model"]
         disabled = self.settings.get("disabled_tools", [])
         if not isinstance(disabled, list):
@@ -735,7 +736,7 @@ class JarvisDesktop(tk.Tk):
         win.grab_set()
         tk.Label(win, text="ЦЕНТР УПРАВЛЕНИЯ JARVIS", bg=PANEL, fg=CYAN,
                  font=("Segoe UI", 19, "bold")).pack(anchor="w", padx=24, pady=(22, 4))
-        tk.Label(win, text="Три независимых AI-профиля. У каждого свой URL, модель и API-ключ.",
+        tk.Label(win, text="Один OpenRouter API-ключ для всех моделей. Меняйте модель — ключ остаётся один.",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(0, 16))
 
         body = tk.Frame(win, bg=PANEL)
@@ -759,6 +760,13 @@ class JarvisDesktop(tk.Tk):
             ("openai-compatible", DEFAULT_URL, "deepseek/deepseek-chat:free"),
             ("openai-compatible", DEFAULT_URL, "z-ai/glm-5.2:free"),
         )
+        shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
+        shared_key_row.pack(fill="x", pady=(0, 10))
+        tk.Label(shared_key_row, text="OPENROUTER API-КЛЮЧ", bg="#091b29", fg=CYAN, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
+        shared_key = tk.Entry(shared_key_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•")
+        shared_key.insert(0, str(self.settings.get("openrouter_api_key") or profiles.get("0", {}).get("api_key", "") or os.environ.get("OPENROUTER_API_KEY", "")))
+        shared_key.pack(fill="x", padx=14, pady=(0, 12), ipady=7)
+
         entries = []
         for i, title in enumerate(names):
             dprov, durl, dmodel = defaults[i]
@@ -778,7 +786,6 @@ class JarvisDesktop(tk.Tk):
                 ("Провайдер", "provider", p.get("provider", dprov), False),
                 ("API URL", "url", p.get("url", durl), False),
                 ("Модель", "model", p.get("model", dmodel), False),
-                ("API ключ", "api_key", p.get("api_key", ""), True),
             ):
                 row = tk.Frame(card, bg="#091b29")
                 row.pack(fill="x", padx=14, pady=4)
@@ -819,8 +826,10 @@ class JarvisDesktop(tk.Tk):
             new_profiles = {}
             for i, fields in enumerate(entries):
                 new_profiles[str(i)] = {k: e.get().strip() for k, e in fields.items()}
+                new_profiles[str(i)]["api_key"] = shared_key.get().strip()
                 new_profiles[str(i)]["name"] = names[i]
             self.settings["agents"] = new_profiles
+            self.settings["openrouter_api_key"] = shared_key.get().strip()
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
