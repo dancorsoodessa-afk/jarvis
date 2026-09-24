@@ -477,8 +477,8 @@ class JarvisDesktop(tk.Tk):
             gender = "male"
             message = "Готово. Установил мужской голос JARVIS."
         elif any(phrase in normalized for phrase in female_phrases):
-            gender = "female"
-            message = "Готово. Установил женский голос JARVIS."
+            self.events.put(("reply", "В этой сборке доступен русский мужской голос Dmitri."))
+            return True
         else:
             return False
         self.settings["tts_gender"] = gender
