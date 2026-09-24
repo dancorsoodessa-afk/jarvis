@@ -208,24 +208,43 @@ class MainActivity : FlutterActivity() {
         eventSink?.success("__VAD_READY__")
     }
 
+    // Android system TTS is used for playback to isolate speech output from
+    // the optional sherpa-onnx TTS JNI path, which could crash on some devices.
     private fun initTts() {
-        if (tts != null) return
-        val dir = "vits-piper-ru_RU-irina-medium"
-        val dataDir = copyAssetTreeAndReturnRoot("$dir/espeak-ng-data")
-        tts = OfflineTts(
-            assetManager = assets,
-            config = OfflineTtsConfig(
-                model = OfflineTtsModelConfig(
-                    vits = OfflineTtsVitsModelConfig(
-                        model = "$dir/ru_RU-irina-medium.onnx",
-                        dataDir = dataDir
-                    ),
-                    numThreads = 2,
-                    provider = "cpu"
-                )
-            )
-        )
-        eventSink?.success("__TTS_READY__")
+        if (systemTts != null) return
+        systemTts = TextToSpeech(this) { status ->
+            if (status != TextToSpeech.SUCCESS) {
+                eventSink?.success("__TTS_ERROR__:android_tts_init")
+                return@TextToSpeech
+            }
+            val language = systemTts?.setLanguage(java.util.Locale("ru", "RU"))
+            systemTts?.setSpeechRate(0.92f)
+            systemTts?.setPitch(0.92f)
+            if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+                eventSink?.success("__TTS_ERROR__:android_tts_ru_missing")
+            } else {
+                systemTts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {
+                        runOnUiThread { eventSink?.success("__TTS_START__") }
+                    }
+                    override fun onDone(utteranceId: String?) {
+                        runOnUiThread {
+                            ttsPlaying = false
+                            eventSink?.success("__TTS_DONE__")
+                            scheduleRecognition(180)
+                        }
+                    }
+                    override fun onError(utteranceId: String?) {
+                        runOnUiThread {
+                            ttsPlaying = false
+                            eventSink?.success("__TTS_ERROR__:android_tts_speak")
+                            scheduleRecognition(180)
+                        }
+                    }
+                })
+                eventSink?.success("__TTS_READY__")
+            }
+        }
     }
 
     private fun copyAssetTreeAndReturnRoot(path: String): String {
@@ -394,10 +413,23 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun speak(text: String) {
-        if (text.isBlank() || disposed) return
-        pendingTts = text
+        val clean = text.trim()
+        if (clean.isBlank() || disposed) return
         stopRecognition()
-        startTtsPlayback()
+        initTts()
+        val engine = systemTts
+        if (engine == null) {
+            eventSink?.success("__TTS_ERROR__:android_tts_unavailable")
+            return
+        }
+        ttsPlaying = true
+        try {
+            engine.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "jarvis_reply")
+        } catch (e: Exception) {
+            ttsPlaying = false
+            eventSink?.success("__TTS_ERROR__:android_tts_speak_" + e.javaClass.simpleName)
+            scheduleRecognition(180)
+        }
     }
 
     private fun startTtsPlayback() {
@@ -576,6 +608,8 @@ class MainActivity : FlutterActivity() {
         voiceInitialized = false
         try { tts?.release() } catch (_: Exception) {}
         tts = null
+        try { systemTts?.stop(); systemTts?.shutdown() } catch (_: Exception) {}
+        systemTts = null
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
