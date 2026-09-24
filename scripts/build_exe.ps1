@@ -7,7 +7,7 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[all]"
 python -m pip install --upgrade pyinstaller pytest faster-whisper huggingface-hub
 
-Write-Host "== JARVIS: prepare bundled offline STT (faster-whisper small) ==" -ForegroundColor Cyan
+Write-Host "== JARVIS: prepare bundled offline STT (faster-whisper base) ==" -ForegroundColor Cyan
 $sttDir = Join-Path $PWD "vendor\stt_model"
 Remove-Item $sttDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $sttDir | Out-Null
@@ -17,7 +17,7 @@ New-Item -ItemType Directory -Force -Path $sttDir | Out-Null
 $sttReady = $false
 for ($attempt = 1; $attempt -le 5; $attempt++) {
     try {
-        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='Systran/faster-whisper-small', local_dir=r'vendor/stt_model')"
+        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='Systran/faster-whisper-base', local_dir=r'vendor/stt_model')"
         if (Test-Path "$sttDir\model.bin") {
             $sttReady = $true
             break
@@ -58,13 +58,9 @@ Write-Host "== JARVIS: tests ==" -ForegroundColor Cyan
 pytest tests/ -q
 if ($LASTEXITCODE -ne 0) { throw "Tests failed; release build aborted." }
 
-Write-Host "== JARVIS: core ==" -ForegroundColor Cyan
-pyinstaller jarvis.spec --clean --noconfirm
-if ($LASTEXITCODE -ne 0) { throw "JARVIS.exe build failed." }
-
-Write-Host "== JARVIS: desktop ==" -ForegroundColor Cyan
+Write-Host "== JARVIS: единственный Windows EXE ==" -ForegroundColor Cyan
 pyinstaller jarvis_desktop.spec --clean --noconfirm
-if ($LASTEXITCODE -ne 0) { throw "JARVIS Desktop.exe build failed." }
+if ($LASTEXITCODE -ne 0) { throw "JARVIS.exe build failed." }
 
 $release = "release"
 Remove-Item $release -Recurse -Force -ErrorAction SilentlyContinue
@@ -89,4 +85,5 @@ Compress-Archive -Path "$release\JARVIS.exe", "$release\README.txt" -Destination
 Write-Host ""
 Write-Host "Release ready:" -ForegroundColor Green
 Write-Host "  $release\JARVIS.exe"
+Write-Host ("  Размер: {0:N1} MB" -f ((Get-Item "$release\JARVIS.exe").Length / 1MB))
 Write-Host "  $package"
