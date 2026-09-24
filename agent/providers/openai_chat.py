@@ -29,7 +29,7 @@ class OpenAIChatProvider:
     def __init__(self, url: Optional[str] = None, api_key: Optional[str] = None,
                  model: Optional[str] = None, timeout: int = 30,
                  history: Optional[list] = None,
-                 system_prompt: Optional[str] = None):
+                 system_prompt: Optional[str] = None, fallback_models: Optional[list[str]] = None):
         self.url = (url or os.environ.get("JARVIS_CHAT_URL", "")).strip()
         configured_key = api_key if api_key is not None else os.environ.get("JARVIS_CHAT_KEY", "")
         self.api_key = (configured_key or os.environ.get("OPENROUTER_API_KEY", "") or os.environ.get("OPENAI_API_KEY", "")).strip()
@@ -40,6 +40,8 @@ class OpenAIChatProvider:
         self.tool_executor = None
         self.on_delta = None
         self._discovered_model: str | None = None
+        self.fallback_models = [str(x).strip() for x in (fallback_models or []) if str(x).strip()]
+        self.last_used_model = self.model
 
     def _ensure_endpoint(self) -> None:
         if self.url:
@@ -214,6 +216,8 @@ class OpenAIChatProvider:
         model = self.discover_model()
         messages = self._messages(prompt)
         payload = {"model": model, "messages": messages, "temperature": 0.25}
+        if self.fallback_models and "openrouter.ai" in self.url:
+            payload["models"] = list(dict.fromkeys([model, *self.fallback_models]))
         if tools:
             payload["tools"] = tools
 
@@ -243,6 +247,8 @@ class OpenAIChatProvider:
             if confirmation_pending:
                 break
             payload = {"model": model, "messages": messages, "temperature": 0.25}
+            if self.fallback_models and "openrouter.ai" in self.url:
+                payload["models"] = list(dict.fromkeys([model, *self.fallback_models]))
             if tools:
                 payload["tools"] = tools
         else:
@@ -253,4 +259,5 @@ class OpenAIChatProvider:
         self.history.append({"role": "assistant", "content": result_content})
         if len(self.history) > MAX_HISTORY_MESSAGES * 2:
             del self.history[: len(self.history) - MAX_HISTORY_MESSAGES * 2]
+        self.last_used_model = model
         return result_content
