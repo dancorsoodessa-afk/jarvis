@@ -37,6 +37,43 @@ def classify_role(prompt: Any) -> RoleDecision:
             return RoleDecision("coding", "прикреплён исходный код")
     return RoleDecision("fast", "обычный диалог")
 
+def discover_chat_endpoint(endpoint: str, timeout: float = 2.0) -> tuple[str, list[str]]:
+    """Check an OpenAI-compatible chat endpoint and discover models."""
+    from urllib.parse import urlsplit, urlunsplit
+    from urllib.request import Request, urlopen
+    import json
+
+    raw = str(endpoint or "").strip()
+    if not raw:
+        return "", []
+    parts = urlsplit(raw)
+    path = parts.path or ""
+    if path.endswith("/chat/completions"):
+        models_path = path[:-len("/chat/completions")] + "/models"
+    elif path.endswith("/completions"):
+        models_path = path[:-len("/completions")] + "/models"
+    elif path.endswith("/models"):
+        models_path = path
+        path = path[:-len("/models")] + "/chat/completions"
+    else:
+        models_path = path.rstrip("/") + "/models"
+        path = path.rstrip("/") + "/chat/completions"
+    models_url = urlunsplit((parts.scheme, parts.netloc, models_path, parts.query, ""))
+    chat_url = urlunsplit((parts.scheme, parts.netloc, path, parts.query, ""))
+    request = Request(models_url, headers={"Accept": "application/json", "User-Agent": "JARVIS"})
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            if getattr(response, "status", 200) != 200:
+                return "", []
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return "", []
+    models = []
+    for item in payload.get("data", []) if isinstance(payload, dict) else []:
+        if isinstance(item, dict) and item.get("id"):
+            models.append(str(item["id"]))
+    return chat_url, models
+
 class RoleRouterProvider:
     name = "JARVIS Router"
     def __init__(self, providers: dict[str, Any], fallback_order=("fast","reasoning","coding","additional")):
