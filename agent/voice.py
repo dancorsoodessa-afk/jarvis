@@ -92,7 +92,7 @@ def _calibrate(stream, blocks: int, block_size: int) -> float:
 def listen_for_phrase(
     samplerate: int = SAMPLE_RATE,
     silence_seconds: float = 0.55,
-    max_seconds: float = 8.0,
+    max_seconds: float = 120.0,
     start_timeout: float = 4.0,
     on_speech_start=None,
 ) -> str:
