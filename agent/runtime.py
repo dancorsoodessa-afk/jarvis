@@ -6,6 +6,8 @@ from .logging_setup import get as get_log
 from .memory import KnowledgeGraph, MemoryStore, SessionMemory, relevant_notes
 from .providers.local_vulkan import LocalVulkanProvider
 from .providers.openai_chat import OpenAIChatProvider
+from .providers.hybrid import HybridProvider
+from .model_router import RoleRouterProvider
 from .reminders import ReminderService
 from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint, universal
 from .tools.registry import ToolRegistry
@@ -49,12 +51,17 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     elif settings.provider == "openai-compatible":
         session = SessionMemory(memory)
         chat_url = settings.chat_url.strip()
-        provider = OpenAIChatProvider(
-            url=chat_url,
-            api_key=settings.chat_key,
-            model=settings.chat_model,
-            history=session.load_history(),
-        )
+        history = session.load_history()
+        key = settings.chat_key
+        fast = OpenAIChatProvider(url=chat_url, api_key=key, model=settings.fast_model,
+                                  history=history, fallback_models=[settings.reasoning_model, settings.additional_model])
+        reasoning = OpenAIChatProvider(url=chat_url, api_key=key, model=settings.reasoning_model,
+                                       history=history, fallback_models=[settings.coding_model, settings.additional_model])
+        coding = OpenAIChatProvider(url=chat_url, api_key=key, model=settings.coding_model,
+                                    history=history, fallback_models=[settings.reasoning_model, settings.additional_model])
+        additional = OpenAIChatProvider(url=chat_url, api_key=key, model=settings.additional_model,
+                                        history=history, fallback_models=[settings.fast_model, settings.reasoning_model])
+        provider = RoleRouterProvider({"fast": fast, "reasoning": reasoning, "coding": coding, "additional": additional})
     else:
         raise RuntimeError(
             f"Неизвестный провайдер: {settings.provider}. "
