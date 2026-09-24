@@ -75,7 +75,7 @@ def discover_chat_endpoint(endpoint: str, timeout: float = 2.0) -> tuple[str, li
     return chat_url, models
 
 class RoleRouterProvider:
-    name = "JARVIS Router"
+    name = "Джарвис ИИ"
     def __init__(self, providers: dict[str, Any], fallback_order=("fast","reasoning","coding","additional")):
         self.providers = providers
         self.fallback_order = fallback_order
