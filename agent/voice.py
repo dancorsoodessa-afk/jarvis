@@ -149,9 +149,6 @@ def listen_for_phrase(
     return _recognize(chunks, samplerate)
 
 
-def listen_for_double_clap_and_command(on_speech_start=None, samplerate: int = SAMPLE_RATE) -> str:
-    return listen_for_phrase(samplerate=samplerate, on_speech_start=on_speech_start)
-
 
 def listen_for_wake_and_command(on_speech_start=None, samplerate: int = SAMPLE_RATE):
     return listen_for_phrase(samplerate=samplerate, on_speech_start=on_speech_start)
