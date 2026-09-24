@@ -209,31 +209,28 @@ def speak_and_play(text: str) -> Path:
     path = speak(text)
     if sys.platform != "win32":
         return path
+
     import winsound
+    import time
+
+    stop()
+    try:
+        with wave.open(str(path), "rb") as wav:
+            duration = wav.getnframes() / max(1, wav.getframerate())
+    except Exception:
+        duration = 0.0
 
     with _PLAYBACK_LOCK:
         _PLAYBACK_ACTIVE = True
-    try:
-        # Async playback lets the microphone/VAD stop speech immediately.
-        winsound.PlaySound(
-            str(path),
-            winsound.SND_FILENAME | winsound.SND_ASYNC,
-        )
-        while is_playing():
-            # The VAD callback calls stop() on user speech.
-            import time
-            time.sleep(0.03)
-            # winsound does not expose reliable completion state. The audio
-            # file duration is therefore polled and stop() remains immediate.
-            try:
-                with wave.open(str(path), "rb") as wav:
-                    duration = wav.getnframes() / max(1, wav.getframerate())
-            except Exception:
-                duration = 0.0
-            if duration > 0:
-                time.sleep(duration)
-                break
-    finally:
+
+    winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)
+
+    def _clear_after_playback() -> None:
+        global _PLAYBACK_ACTIVE
+        if duration > 0:
+            time.sleep(duration + 0.05)
         with _PLAYBACK_LOCK:
             _PLAYBACK_ACTIVE = False
+
+    threading.Thread(target=_clear_after_playback, daemon=True).start()
     return path
