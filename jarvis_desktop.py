@@ -1,6 +1,7 @@
 """Native Windows desktop UI for JARVIS with live module controls."""
 
 import json
+import base64
 import math
 import os
 import queue
@@ -12,7 +13,7 @@ from tkinter import filedialog, messagebox, ttk
 import mimetypes
 
 from agent.runtime import build_agent
-from agent import tts, voice
+from agent import tts, voice, stt
 from agent.tools_catalog import TOOLS
 
 BG = "#081522"
@@ -287,10 +288,19 @@ class JarvisDesktop(tk.Tk):
     def _start_agent(self):
         def work():
             try:
-                self.events.put(("ready", build_agent()))
+                agent = build_agent()
+                self.events.put(("ready", agent))
+                threading.Thread(target=self._warmup_stt, daemon=True).start()
             except Exception as exc:
                 self.events.put(("agent_error", str(exc)))
         threading.Thread(target=work, daemon=True).start()
+
+    def _warmup_stt(self):
+        try:
+            stt.warmup()
+            self.events.put(("stt_ready", None))
+        except Exception as exc:
+            self.events.put(("stt_error", str(exc)))
 
     def _start_voice_loop(self):
         if not self.settings.get("voice_enabled", True) or self._voice_loop_running or not voice.available():
@@ -393,9 +403,15 @@ class JarvisDesktop(tk.Tk):
                     self.tools_button.config(text=f"⌁  Модули ({len(self.tool_names)}/{len(TOOLS)})")
                     self.enabled_label.config(text=f"Активно модулей: {len(self.tool_names)} из {len(TOOLS)}\nОтключено: {len(TOOLS)-len(self.tool_names)}")
                     self._update_voice_status()
+                    self.side_core.config(text="● CORE  —  ACTIVE", fg=GREEN)
                     self._append("JARVIS", f"Система готова. Активных модулей: {len(self.tool_names)} из {len(TOOLS)}.")
                     if self.settings.get("voice_enabled", True):
                         self._start_voice_loop()
+                elif kind == "stt_ready":
+                    self.metrics["Voice"].config(text="READY", fg=GREEN)
+                elif kind == "stt_error":
+                    self.metrics["Voice"].config(text="ERROR", fg=RED)
+                    self._append("VOICE", "STT: " + event[1])
                 elif kind == "reply":
                     reply = event[1]
                     self._set_visual_state("SPEAKING", 0.65)
@@ -492,12 +508,34 @@ class JarvisDesktop(tk.Tk):
         if not self.attachments: return ""
         parts=["ВЛОЖЕНИЯ ПОЛЬЗОВАТЕЛЯ:"]
         for x in self.attachments:
-            p=Path(x["path"]); line=f"- {x['name']} | {x['mime']} | {x['size']} байт | путь: {p}"
-            if p.suffix.lower() in {".txt",".md",".csv",".json",".xml",".log"} and x["size"]<=2*1024*1024:
-                try: line+="\n  Содержимое:\n"+p.read_text(encoding="utf-8",errors="replace")[:120000]
-                except OSError: pass
+            p=Path(x["path"])
+            line=f"- {x['name']} | {x['mime']} | {x['size']} байт | путь: {p}"
+            if x["size"] <= 15*1024*1024:
+                try:
+                    suffix=p.suffix.lower()
+                    if suffix in {".txt",".md",".csv",".json",".xml",".log",".yaml",".yml",".toml",".ini",".py",".ps1",".js",".ts",".html",".css"}:
+                        line+="\n  Содержимое:\n"+p.read_text(encoding="utf-8",errors="replace")[:120000]
+                    elif suffix in {".pdf",".docx",".xlsx",".xlsm",".zip",".tar",".gz",".7z",".rar"}:
+                        from agent.tools.universal import inspect_file
+                        line+="\n  Анализ файла:\n"+inspect_file(str(p))[:120000]
+                except Exception as exc:
+                    line+=f"\n  Не удалось прочитать содержимое автоматически: {exc}"
             parts.append(line)
         return "\n".join(parts)
+
+    def _build_attachment_payload(self):
+        for x in self.attachments:
+            mime=x.get("mime","").lower()
+            if not (mime.startswith("image/") or mime.startswith("audio/")):
+                continue
+            p=Path(x["path"])
+            try:
+                if p.stat().st_size > 15*1024*1024:
+                    continue
+                return {"name":p.name,"mime":mime,"data":base64.b64encode(p.read_bytes()).decode("ascii")}
+            except OSError:
+                continue
+        return None
 
     def _clear_attachments(self):
         self.attachments=[]; self._refresh_attachment_label()
@@ -516,10 +554,13 @@ class JarvisDesktop(tk.Tk):
         if self._handle_voice_setting_command(text):
             self._clear_attachments(); return
         prompt=text+("\n\n"+context if context else "")
+        attachment_payload=self._build_attachment_payload()
         self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
         self.status.config(text="● PROCESSING",fg=CYAN)
         def work():
-            try: self.events.put(("reply",self.agent.handle(prompt).text))
+            try:
+                result=self.agent.handle(prompt, attachment=attachment_payload)
+                self.events.put(("reply",result.text))
             except Exception as exc: self.events.put(("reply","Ошибка: "+str(exc)))
         self._clear_attachments()
         threading.Thread(target=work,daemon=True).start()
