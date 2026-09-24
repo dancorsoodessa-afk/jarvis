@@ -1,8 +1,7 @@
-"""Fast, simple continuous microphone control for JARVIS.
+"""Надёжный локальный голосовой ввод JARVIS: VAD + faster-whisper, без хлопков.
 
-The microphone stays ready for ordinary speech. Adaptive noise calibration and
-voice activity detection start/stop each utterance automatically. No claps and
-no mandatory wake word are required.
+Микрофон открывается на один цикл прослушивания, калибровка короткая,
+порог адаптивный. Устройство можно задать через JARVIS_AUDIO_DEVICE.
 """
 from __future__ import annotations
 
@@ -13,16 +12,35 @@ from pathlib import Path
 
 SAMPLE_RATE = 16_000
 BLOCK_SECONDS = 0.04
-SPEECH_MIN_SECONDS = 0.16
+SPEECH_MIN_SECONDS = 0.20
 
 
 def available() -> bool:
     try:
         import numpy  # noqa: F401
         import sounddevice  # noqa: F401
-        return True
-    except ImportError:
+        from . import stt
+        return stt.current_engine() != "off"
+    except Exception:
         return False
+
+
+def audio_devices() -> list[str]:
+    try:
+        import sounddevice as sd
+        return [str(d["name"]) for d in sd.query_devices() if int(d.get("max_input_channels", 0)) > 0]
+    except Exception:
+        return []
+
+
+def _device():
+    value = os.environ.get("JARVIS_AUDIO_DEVICE", "").strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return value
 
 
 def _rms(block) -> float:
@@ -30,7 +48,7 @@ def _rms(block) -> float:
     a = np.asarray(block, dtype="float32")
     if a.size == 0:
         return 0.0
-    return float((a * a).mean() ** 0.5) / 32768.0
+    return float(np.sqrt(np.mean(a * a))) / 32768.0
 
 
 def _write_wav(frames, samplerate: int) -> Path:
@@ -51,12 +69,6 @@ def _recognize(frames, samplerate: int) -> str:
     path = _write_wav(frames, samplerate)
     try:
         from . import stt
-        engine = stt.current_engine()
-        if engine == "off":
-            raise RuntimeError(
-                "Локальное распознавание речи не установлено. "
-                "Установите faster-whisper или настройте whisper.cpp."
-            )
         return stt.transcribe(str(path)).strip()
     finally:
         try:
@@ -74,17 +86,17 @@ def _calibrate(stream, blocks: int, block_size: int) -> float:
     if not levels:
         return 0.008
     levels.sort()
-    return max(0.003, levels[max(0, int(len(levels) * 0.75) - 1)])
+    return max(0.0025, levels[max(0, int(len(levels) * 0.75) - 1)])
 
 
 def listen_for_phrase(
     samplerate: int = SAMPLE_RATE,
-    silence_seconds: float = 0.70,
-    max_seconds: float = 10.0,
-    start_timeout: float = 5.0,
+    silence_seconds: float = 0.55,
+    max_seconds: float = 8.0,
+    start_timeout: float = 4.0,
     on_speech_start=None,
 ) -> str:
-    """Wait for normal speech, capture one utterance, then transcribe it."""
+    """Записать одну фразу автоматически по уровню речи и распознать её."""
     import numpy as np
     import sounddevice as sd
 
@@ -92,7 +104,6 @@ def listen_for_phrase(
     silence_blocks = max(1, int(silence_seconds / BLOCK_SECONDS))
     timeout_blocks = max(1, int(start_timeout / BLOCK_SECONDS))
     max_blocks = max(1, int(max_seconds / BLOCK_SECONDS))
-
     chunks = []
     started = False
     silent = 0
@@ -100,40 +111,32 @@ def listen_for_phrase(
 
     try:
         with sd.InputStream(
-            samplerate=samplerate,
-            channels=1,
-            dtype="int16",
-            blocksize=block_size,
+            samplerate=samplerate, channels=1, dtype="int16", blocksize=block_size,
+            device=_device(), latency="low",
         ) as stream:
-            noise = _calibrate(stream, 8, block_size)
-            speech_threshold = max(0.010, noise * 2.2)
-            end_threshold = max(0.007, noise * 1.35)
-
+            noise = _calibrate(stream, 6, block_size)
+            speech_threshold = max(0.006, noise * 1.8)
+            end_threshold = max(0.004, noise * 1.15)
             for i in range(timeout_blocks + max_blocks):
                 data, overflow = stream.read(block_size)
                 if overflow:
                     continue
                 block = np.asarray(data[:, 0], dtype=np.int16).copy()
                 level = _rms(block)
-
                 if not started:
                     if level >= speech_threshold:
                         started = True
                         chunks.append(block)
                         spoken_blocks = 1
                         if on_speech_start:
-                            try:
-                                on_speech_start()
-                            except Exception:
-                                pass
+                            try: on_speech_start()
+                            except Exception: pass
                     elif i >= timeout_blocks:
                         return ""
                     continue
-
                 chunks.append(block)
                 spoken_blocks += 1
                 silent = silent + 1 if level < end_threshold else 0
-
                 if spoken_blocks >= int(SPEECH_MIN_SECONDS / BLOCK_SECONDS) and silent >= silence_blocks:
                     break
                 if spoken_blocks >= max_blocks:
@@ -146,31 +149,13 @@ def listen_for_phrase(
     return _recognize(chunks, samplerate)
 
 
-# Compatibility aliases for older integrations. They now use the simple
-# continuous voice detector instead of clap activation.
 def listen_for_double_clap_and_command(on_speech_start=None, samplerate: int = SAMPLE_RATE) -> str:
-    return listen_for_phrase(
-        samplerate=samplerate,
-        silence_seconds=0.70,
-        max_seconds=10.0,
-        start_timeout=5.0,
-        on_speech_start=on_speech_start,
-    )
+    return listen_for_phrase(samplerate=samplerate, on_speech_start=on_speech_start)
 
 
 def listen_for_wake_and_command(on_speech_start=None, samplerate: int = SAMPLE_RATE):
-    return listen_for_phrase(
-        samplerate=samplerate,
-        silence_seconds=0.70,
-        max_seconds=10.0,
-        start_timeout=5.0,
-        on_speech_start=on_speech_start,
-    )
+    return listen_for_phrase(samplerate=samplerate, on_speech_start=on_speech_start)
 
 
-def record_and_transcribe(seconds=10, samplerate: int = SAMPLE_RATE):
-    return listen_for_phrase(
-        samplerate=samplerate,
-        max_seconds=min(float(seconds), 10.0),
-        start_timeout=5.0,
-    )
+def record_and_transcribe(seconds=8, samplerate: int = SAMPLE_RATE):
+    return listen_for_phrase(samplerate=samplerate, max_seconds=min(float(seconds), 8.0), start_timeout=3.0)
