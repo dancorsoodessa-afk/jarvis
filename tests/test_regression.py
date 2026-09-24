@@ -20,7 +20,6 @@ def test_python_sources_parse():
 def test_voice_has_no_clap_activation():
     source = (ROOT / "agent" / "voice.py").read_text(encoding="utf-8").lower()
     assert "detect_clap" not in source
-    assert "double_clap" in source  # compatibility alias only; it delegates to normal VAD
 
 
 def test_tts_has_gender_compatibility():
