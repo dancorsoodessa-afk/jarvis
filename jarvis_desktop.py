@@ -771,6 +771,13 @@ class JarvisDesktop(tk.Tk):
         shared_key.insert(0, str(self.settings.get("openrouter_api_key") or profiles.get("0", {}).get("api_key", "") or os.environ.get("OPENROUTER_API_KEY", "")))
         shared_key.pack(fill="x", padx=14, pady=(0, 12), ipady=7)
 
+        additional_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
+        additional_row.pack(fill="x", pady=(2, 10))
+        tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
+        additional_model = tk.Entry(additional_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
+        additional_model.insert(0, str(self.settings.get("additional_model", "openrouter/free")))
+        additional_model.pack(fill="x", padx=14, pady=(0, 12), ipady=6)
+
         entries = []
         for i, title in enumerate(names):
             dprov, durl, dmodel = defaults[i]
@@ -834,6 +841,7 @@ class JarvisDesktop(tk.Tk):
                 new_profiles[str(i)]["name"] = names[i]
             self.settings["agents"] = new_profiles
             self.settings["openrouter_api_key"] = shared_key.get().strip()
+            self.settings["additional_model"] = additional_model.get().strip() or "openrouter/free"
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
