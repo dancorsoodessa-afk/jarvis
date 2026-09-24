@@ -36,5 +36,6 @@ class HybridProvider:
             except Exception:
                 self._offline_until = time.monotonic() + self.offline_retry_seconds
 
-        self.local.system_prompt = self.cloud.system_prompt
-        return self.local.generate(prompt, tools=tools, max_steps=1)
+        self.local.system_prompt = self.cloud.system_prompt if hasattr(self.cloud, "system_prompt") else ""
+        local_prompt = prompt.get("text", "") if isinstance(prompt, dict) else prompt
+        return self.local.generate(local_prompt)
