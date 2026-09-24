@@ -1,9 +1,11 @@
-"""Unified voice loop for JARVIS.
+"""Непрерывный голосовой цикл JARVIS: одно пробуждение — дальше свободный диалог.
 
-Desktop and CLI activate only after the wake word "Jarvis" is detected.
-capture. The legacy ``step`` method remains for compatibility with existing
-wake-word tests and integrations.
+Без хлопков и без короткого лимита сессии. После слова «Джарвис» помощник
+остаётся в активном режиме и принимает следующие реплики без повторного wake-word.
+Команда выхода: «стоп», «режим ожидания», «спасибо, Джарвис».
 """
+
+from __future__ import annotations
 
 import os
 import time
@@ -13,6 +15,13 @@ from .logging_setup import get as get_log
 from . import stt, tts, voice
 
 DEFAULT_WAKE_WORDS = ("джарвис", "jarvis")
+STOP_PHRASES = (
+    "стоп",
+    "режим ожидания",
+    "перейди в режим ожидания",
+    "спасибо джарвис",
+    "спасибо, джарвис",
+)
 
 
 class Recorder:
@@ -33,7 +42,7 @@ class Recorder:
         spoken = 0.0
         started = time.time()
         with sd.InputStream(samplerate=self.samplerate, channels=1, dtype="int16"):
-            while time.time() - started < 12:
+            while time.time() - started < 120:
                 data, _overflow = sd.rec(chunk, samplerate=self.samplerate, channels=1, dtype="int16")
                 sd.wait()
                 frames.append(data.copy())
@@ -57,7 +66,7 @@ class Recorder:
 
 
 class VoiceLoop:
-    """Voice assistant loop activated only by the wake word "Jarvis"."""
+    """Continuous conversation after one wake word."""
 
     def __init__(self, agent, recorder: Recorder | None = None,
                  wake_words=None, wake_enabled: bool | None = None,
@@ -66,23 +75,13 @@ class VoiceLoop:
         self.recorder = recorder or Recorder()
         env_wake = os.environ.get("JARVIS_WAKE")
         self.wake_enabled = (env_wake != "off") if wake_enabled is None else wake_enabled
-        words = wake_words or tuple(os.environ.get("JARVIS_WAKE_WORD", "").lower().split() or DEFAULT_WAKE_WORDS)
+        words = wake_words or tuple(
+            os.environ.get("JARVIS_WAKE_WORD", "").lower().split() or DEFAULT_WAKE_WORDS
+        )
         self.wake_words = words
         self.log = get_log("voice")
         self.tmp_dir = tmp_dir or os.environ.get("JARVIS_HOME", ".")
-
-    def listen_once(self, recorder=None) -> str:
-        rec = recorder or self.recorder
-        wav = Path(self.tmp_dir) / "jarvis_mic.wav"
-        rec.record(wav)
-        try:
-            text = stt.transcribe(str(wav))
-            return text.strip()
-        finally:
-            try:
-                wav.unlink()
-            except OSError:
-                pass
+        self.active = False
 
     @staticmethod
     def strip_wake(text: str, wake_words) -> str | None:
@@ -92,54 +91,59 @@ class VoiceLoop:
                 return low[len(word):].strip(" ,.!")
         return None
 
-    def step(self, heard: str) -> str | None:
-        if self.wake_enabled:
+    @staticmethod
+    def is_stop(text: str) -> bool:
+        normalized = " ".join(text.lower().replace(",", " ").split())
+        return normalized in {p.replace(",", "") for p in STOP_PHRASES}
+
+    def _listen(self, timeout: float = 0.0) -> str:
+        # timeout=0 means no conversational timeout: wait indefinitely.
+        return voice.listen_for_phrase(
+            silence_seconds=0.55,
+            max_seconds=float(os.environ.get("JARVIS_VOICE_UTTERANCE_MAX", "120")),
+            start_timeout=timeout,
+            on_speech_start=tts.stop,
+        )
+
+    def _wait_for_wake(self) -> str:
+        while True:
+            heard = self._listen(timeout=0.0)
+            if not heard:
+                continue
             command = self.strip_wake(heard, self.wake_words)
-            if command is None:
-                return None
-            if not command:
-                return "Слушаю."
-        else:
-            command = heard
-        result = self.agent.handle(command)
-        self.log.info("Голос: %r -> %r", command, result.text[:80])
-        return result.text
+            if command is not None:
+                return command
 
     def run(self):
-        """Continuously listen for speech, answer, then return to standby."""
         if not voice.available():
             raise RuntimeError("Голосовой ввод недоступен: установите sounddevice и numpy")
-        self.log.info("Голосовой режим включён: ожидание речи")
+
+        self.log.info("Голосовой режим включён: без хлопков, непрерывный диалог")
+
         while True:
             try:
-                heard = voice.listen_for_phrase(
-                    silence_seconds=0.70,
-                    max_seconds=10.0,
-                    start_timeout=5.0,
-                    on_speech_start=tts.stop,
-                )
-                if not heard:
-                    continue
-                command = self.strip_wake(heard, self.wake_words)
-                if command is None:
-                    continue
-                if not command:
-                    heard = voice.listen_for_phrase(
-                        silence_seconds=0.70,
-                        max_seconds=10.0,
-                        start_timeout=5.0,
-                        on_speech_start=tts.stop,
-                    )
-                    command = heard.strip() if heard else ""
+                command = self._wait_for_wake() if self.wake_enabled and not self.active else self._listen()
+
                 if not command:
                     continue
+
+                if self.is_stop(command):
+                    self.active = False
+                    tts.stop()
+                    self.log.info("Голосовой режим: ожидание")
+                    continue
+
+                self.active = True
                 result = self.agent.handle(command)
                 answer = str(result.text or "").strip()
                 self.log.info("Голос: %r -> %r", command, answer[:80])
+
                 if answer:
+                    # Playback is interruptible by the next speech-start callback.
                     tts.speak_and_play(answer)
+
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
                 self.log.warning("Ошибка голосового цикла: %s", exc, exc_info=True)
-                time.sleep(1)
+                time.sleep(0.5)
