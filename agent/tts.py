@@ -73,7 +73,7 @@ def current_engine() -> str:
     if mode == "piper":
         return "piper" if "piper" in available_engines() else "off"
     if mode not in {"auto", "off"}:
-        mode = "auto"
+        raise RuntimeError(f"Неизвестный TTS-движок: {mode}")
     if mode == "off":
         return "off"
     engines = available_engines()
