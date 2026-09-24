@@ -29,6 +29,14 @@ def _piper_paths() -> tuple[str, Path]:
         raise RuntimeError(f"Русская модель голоса Dmitri не найдена: {voice}")
     return str(executable), voice
 
+def set_gender(gender: str) -> None:
+    """Совместимость с UI. В bundled-сборке установлен русский мужской голос Dmitri."""
+    value = str(gender).strip().lower()
+    if value not in {"male", "мужской", ""}:
+        raise ValueError("В этой сборке доступен русский мужской голос Dmitri.")
+    os.environ["JARVIS_TTS_GENDER"] = "male"
+
+
 def _engine_setting() -> str:
     return os.environ.get("JARVIS_TTS", "piper").strip().lower()
 
