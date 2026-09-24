@@ -155,4 +155,4 @@ def listen_for_wake_and_command(on_speech_start=None, samplerate: int = SAMPLE_R
 
 
 def record_and_transcribe(seconds=8, samplerate: int = SAMPLE_RATE):
-    return listen_for_phrase(samplerate=samplerate, max_seconds=min(float(seconds), 8.0), start_timeout=3.0)
+    return listen_for_phrase(samplerate=samplerate, max_seconds=float(seconds), start_timeout=3.0)
