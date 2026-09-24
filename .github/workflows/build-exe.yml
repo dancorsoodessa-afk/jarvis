@@ -6,7 +6,7 @@ on:
     branches: [foundation]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -33,3 +33,11 @@ jobs:
           path: release/JARVIS.exe
           if-no-files-found: error
 # Release build trigger: foundation
+
+      - name: Опубликовать прямой EXE-релиз
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "windows-${{ github.run_number }}"
+          gh release create $tag release/JARVIS.exe --title "JARVIS Windows ${{ github.run_number }}" --notes "Финальная Windows x64 сборка JARVIS. Прямой исполняемый файл без ZIP." --latest
