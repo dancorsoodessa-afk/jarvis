@@ -1,4 +1,5 @@
 name: Build JARVIS Android APK
+# verification build: Android voice/TTS crash fixes
 # rebuild requested: Windows + Android verification
 # verified install build
 
