@@ -11,6 +11,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Base64
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -56,6 +58,7 @@ class MainActivity : FlutterActivity() {
     private var audioRecord: AudioRecord? = null
     private var recordingThread: Thread? = null
     private var tts: OfflineTts? = null
+    private var systemTts: TextToSpeech? = null
     private var audioTrack: AudioTrack? = null
     private var monitorRecord: AudioRecord? = null
     private var monitorThread: Thread? = null
