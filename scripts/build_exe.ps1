@@ -57,6 +57,7 @@ if (-not (Test-Path "$vendorPiper\ru_RU-dmitri-medium.onnx")) { throw "Bundled D
 Write-Host "== JARVIS: tests ==" -ForegroundColor Cyan
 pytest tests/ -q
 if ($LASTEXITCODE -ne 0) { throw "Tests failed; release build aborted." }
+python -c "import jarvis_desktop; print('JARVIS desktop import OK')"
 
 Write-Host "== JARVIS: единственный Windows EXE ==" -ForegroundColor Cyan
 pyinstaller jarvis_desktop.spec --clean --noconfirm
@@ -82,4 +83,4 @@ Write-Host ""
 Write-Host "Release ready:" -ForegroundColor Green
 Write-Host "  $release\JARVIS.exe"
 Write-Host ("  Размер: {0:N1} MB" -f ((Get-Item "$release\JARVIS.exe").Length / 1MB))
-Write-Host "  $package"
+Write-Host "  Прямой EXE: release\JARVIS.exe"
