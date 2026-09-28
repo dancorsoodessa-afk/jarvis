@@ -480,6 +480,10 @@ class JarvisDesktop(tk.Tk):
                         command = normalized
                     else:
                         continue
+                    if command in {"стоп", "режим ожидания", "перейди в режим ожидания", "спасибо джарвис", "спасибо джарвис"}:
+                        self._voice_armed_until = 0.0
+                        self.events.put(("voice_status", "Голосовой режим: ожидание. Скажите «Джарвис», чтобы продолжить."))
+                        continue
                     if command and self._voice_loop_running:
                         self._voice_armed_until = float("inf")
                         self.events.put(("voice_text", command))
@@ -918,7 +922,7 @@ class JarvisDesktop(tk.Tk):
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
         tk.Label(shared_key_row, text="OPENROUTER API-КЛЮЧ", bg="#091b29", fg=CYAN, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
-        shared_key = tk.Entry(shared_key_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•")
+        shared_key = tk.Entry(shared_key_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•", exportselection=False)
         shared_key.insert(0, str(self.settings.get("openrouter_api_key") or profiles.get("0", {}).get("api_key", "") or os.environ.get("OPENROUTER_API_KEY", "")))
         shared_key.pack(fill="x", padx=14, pady=(0, 12), ipady=7)
 
@@ -949,7 +953,7 @@ class JarvisDesktop(tk.Tk):
             row = tk.Frame(consultant_frame, bg="#091b29")
             row.pack(fill="x", padx=14, pady=3)
             tk.Label(row, text=label, width=20, anchor="w", bg="#091b29", fg=MUTED).pack(side="left")
-            e = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•" if secret else "")
+            e = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•" if secret else "", exportselection=False)
             e.insert(0, str(default))
             e.pack(side="left", fill="x", expand=True, ipady=6)
             consultant_fields[key] = e
@@ -978,7 +982,7 @@ class JarvisDesktop(tk.Tk):
                 row.pack(fill="x", padx=14, pady=4)
                 tk.Label(row, text=label, width=13, anchor="w", bg="#091b29", fg=MUTED).pack(side="left")
                 e = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat",
-                             show="•" if secret else "")
+                             show="•" if secret else "", exportselection=False)
                 e.insert(0, str(default))
                 e.pack(side="left", fill="x", expand=True, ipady=6)
                 fields[key] = e
