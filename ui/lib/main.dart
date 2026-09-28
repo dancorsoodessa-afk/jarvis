@@ -210,25 +210,44 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
       if (_voiceEnabled && !_busy) Future<void>.delayed(const Duration(milliseconds: 450), () { if (mounted) _startNativeListening(); });
       return;
     }
+    if (value == '__WAKE_IGNORED__') {
+      if (mounted) setState(() => _status = 'Жду обращение «Jarvis»');
+      return;
+    }
+    if (value == '__WAKE_ONLY__') {
+      _awaitingCommand = true;
+      if (mounted) setState(() => _status = 'Jarvis активирован · слушаю команду');
+      return;
+    }
+    if (value.startsWith('__COMMAND__:')) {
+      final command = value.substring('__COMMAND__:'.length).trim();
+      if (command.isEmpty) return;
+      _awaitingCommand = false;
+      if (mounted) setState(() => _status = 'Команда Jarvis: $command');
+      // Pause STT without disabling the continuous voice loop. TTS completion
+      // will resume recognition automatically.
+      try { await _voice.invokeMethod('pause'); } catch (_) {}
+      _listening = false;
+      await _send(command, fromVoice: true);
+      return;
+    }
+
+    // Compatibility path for older native builds: accept only an explicit
+    // Jarvis prefix. No clap, amplitude threshold, or hidden activation.
     _listening = false;
-    await _stopNativeListening();
     final phrase = value.trim();
     final wakeMatch = _jarvisWake.matchAsPrefix(phrase);
-    // Голосовые команды принимаются только после обращения «Jarvis».
-    // Никаких хлопков, порогов амплитуды или скрытой активации.
     if (wakeMatch == null) {
-      if (mounted) setState(() => _status = 'Жду команду «Jarvis …»');
-      Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); });
+      if (mounted) setState(() => _status = 'Жду обращение «Jarvis»');
       return;
     }
     final command = phrase.substring(wakeMatch.end).trim();
-    _awaitingCommand = false;
     if (command.isEmpty) {
       if (mounted) setState(() => _status = 'Jarvis активирован · слушаю команду');
-      Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); });
       return;
     }
     if (mounted) setState(() => _status = 'Команда Jarvis: $command');
+    try { await _voice.invokeMethod('pause'); } catch (_) {}
     await _send(command, fromVoice: true);
   }
 
