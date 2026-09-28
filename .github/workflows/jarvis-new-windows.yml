@@ -39,3 +39,5 @@ jobs:
           name: JARVIS-Windows-New
           path: release/JARVIS.exe
           if-no-files-found: error
+
+# trigger build
