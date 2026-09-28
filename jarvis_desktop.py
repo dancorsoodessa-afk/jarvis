@@ -344,42 +344,81 @@ class JarvisDesktop(tk.Tk):
         self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
 
     def _draw_orb(self):
+        """Высокопроизводительный псевдо-3D ARC Reactor: глубина, орбиты, сетка и реакция на голос/AI."""
         self.canvas.delete("all")
-        w=max(420,self.canvas.winfo_width()); h=max(300,self.canvas.winfo_height())
-        cx,cy=w/2-8,h/2-18; phase=self._orb_phase
-        state=self._visual_state; level=self._visual_level
-        speed={"IDLE":0.018,"LISTENING":0.105,"THINKING":0.145,"SPEAKING":0.12,"ERROR":0.18}.get(state,0.04)
+        w=max(430,self.canvas.winfo_width()); h=max(300,self.canvas.winfo_height())
+        cx,cy=w*0.43,h*0.48
+        phase=self._orb_phase; state=self._visual_state; level=self._visual_level
+        speed={"IDLE":0.014,"LISTENING":0.085,"THINKING":0.12,"SPEAKING":0.10,"ERROR":0.17}.get(state,0.03)
         core=RED if state=="ERROR" else (YELLOW if state=="THINKING" else CYAN)
-        dim="#17536a"; faint="#0b2634"
-        # Live tactical reactor: rotating sweep, orbital nodes and reactive waveform.
-        for rr,yy,col in ((150,.61,"#0c3140"),(124,.58,faint),(101,.55,dim),(78,.50,"#24748c")):
-            self.canvas.create_oval(cx-rr,cy-rr*yy,cx+rr,cy+rr*yy,outline=col,width=1)
-        sweep=phase%(math.pi*2); sx=cx+math.cos(sweep)*150; sy=cy+math.sin(sweep)*92
-        self.canvas.create_line(cx,cy,sx,sy,fill=core,width=1)
-        nodes=[]
-        for i in range(8):
-            a=phase*(0.22 if i%2 else -0.14)+i*math.pi/4
-            rx,ry=(150,92) if i%2==0 else (124,70)
-            nx,ny=cx+math.cos(a)*rx,cy+math.sin(a)*ry; nodes.append((nx,ny))
-            self.canvas.create_line(cx,cy,nx,ny,fill=faint,width=1)
-            self.canvas.create_oval(nx-5,ny-5,nx+5,ny+5,fill=core if i in (0,4) else "#143e4e",outline=dim)
-        pulse=1+.10*math.sin(phase*3)+level*.18; r=34*pulse
-        self.canvas.create_oval(cx-r*2,cy-r*2,cx+r*2,cy+r*2,outline="#16485c",width=1)
-        self.canvas.create_oval(cx-r,cy-r,cx+r,cy+r,fill="#06121b",outline=core,width=2)
-        self.canvas.create_oval(cx-r*.58,cy-r*.58,cx+r*.58,cy+r*.58,fill="#0b3442",outline=core)
-        self.canvas.create_text(cx,cy-6,text="J",fill="#f4ffff",font=("Segoe UI",25,"bold"))
-        self.canvas.create_text(cx,cy+19,text=state,fill=core,font=("Segoe UI",7,"bold"))
-        for i in range(32):
-            a=i*math.pi*2/32; amp=5+(10+level*22)*(0.5+0.5*math.sin(phase*2.2+i*.73))
-            x1=cx+math.cos(a)*(r+13); y1=cy+math.sin(a)*(r+13)
-            x2=cx+math.cos(a)*(r+13+amp); y2=cy+math.sin(a)*(r+13+amp)
-            self.canvas.create_line(x1,y1,x2,y2,fill=core if i%3==0 else dim,width=2)
+        dark="#06121c"; faint="#0a2837"; dim="#17566d"; bright="#49cfe8"
+
+        # Perspective grid behind the reactor.
+        horizon=cy+h*.08
+        for i in range(9):
+            y=horizon+i*i*2.2
+            self.canvas.create_line(0,y,w,y,fill="#0b2431",width=1)
+        for i in range(-8,9):
+            self.canvas.create_line(cx+i*34,horizon,cx+i*105,h,fill="#0a202c",width=1)
+
+        # Depth particles orbiting the reactor.
+        for i in range(46):
+            a=phase*(0.10+(i%5)*0.018)+i*math.tau/46
+            depth=0.45+0.55*(0.5+0.5*math.sin(a*1.7+i))
+            rx=118+62*depth; ry=52+34*depth
+            x=cx+math.cos(a)*rx; y=cy+math.sin(a)*ry
+            size=0.7+2.0*depth*(0.5+0.5*level)
+            self.canvas.create_oval(x-size,y-size,x+size,y+size,fill=bright if i%11==0 else dim,outline="")
+
+        # Tilted orbital rings create the 3D illusion.
+        for idx,(rx,ry,tilt,rot) in enumerate(((168,78,.0,.12),(145,64,.38,-.18),(116,48,-.52,.25),(88,36,.72,-.31))):
+            a0=phase*rot+tilt
+            pts=[]
+            for j in range(73):
+                a=a0+math.tau*j/72
+                x=cx+math.cos(a)*rx
+                y=cy+math.sin(a)*ry
+                # slight vertical perspective wobble
+                y += math.sin(a+tilt)*10*(idx+1)/4
+                pts.append((x,y))
+            for j in range(len(pts)-1):
+                self.canvas.create_line(*pts[j],*pts[j+1],fill=("#257f98" if idx<2 else faint),width=1)
+
+        # Rotating scanner beam and radial energy spokes.
+        sweep=phase%math.tau
+        sx=cx+math.cos(sweep)*175; sy=cy+math.sin(sweep)*92
+        self.canvas.create_line(cx,cy,sx,sy,fill=core,width=2)
+        for i in range(18):
+            a=sweep+i*math.tau/18
+            r1=58+8*math.sin(phase+i); r2=112+22*level+12*math.sin(phase*1.4+i*.7)
+            self.canvas.create_line(cx+math.cos(a)*r1,cy+math.sin(a)*r1*.58,
+                                    cx+math.cos(a)*r2,cy+math.sin(a)*r2*.58,
+                                    fill=core if i%3==0 else dim,width=1)
+
+        # Central reactor with layered glow.
+        pulse=1+.08*math.sin(phase*3.0)+level*.22
+        for mul,col in ((2.9,"#0c3040"),(2.25,"#10485b"),(1.65,dim),(1.15,core)):
+            rr=38*pulse*mul
+            self.canvas.create_oval(cx-rr,cy-rr*.62,cx+rr,cy+rr*.62,outline=col,width=1)
+        rr=35*pulse
+        self.canvas.create_oval(cx-rr,cy-rr,cx+rr,cy+rr,fill=dark,outline=core,width=2)
+        self.canvas.create_oval(cx-rr*.62,cy-rr*.62,cx+rr*.62,cy+rr*.62,fill="#0b3a4a",outline=bright,width=2)
+        self.canvas.create_oval(cx-rr*.28,cy-rr*.28,cx+rr*.28,cy+rr*.28,fill=core,outline="")
+        self.canvas.create_text(cx,cy-4,text="J",fill="#f5ffff",font=("Segoe UI",25,"bold"))
+        self.canvas.create_text(cx,cy+19,text=state,fill=core,font=("Consolas",7,"bold"))
+
         labels=("CORE","VOICE","AI","TOOLS","MEMORY","FILES","SYSTEM","NET")
-        for i,(nx,ny) in enumerate(nodes):
-            self.canvas.create_text(nx,ny+(14 if ny<cy else -14),text=labels[i],fill="#7398a8",font=("Segoe UI",6,"bold"))
-        self.canvas.create_text(cx,h-28,text="J A R V I S  //  LIVE TACTICAL CORE  //  "+state,fill=core,font=("Segoe UI",8,"bold"))
+        for i in range(8):
+            a=phase*(.16 if i%2 else -.11)+i*math.tau/8
+            rx,ry=(168,78) if i%2==0 else (145,64)
+            nx,ny=cx+math.cos(a)*rx,cy+math.sin(a)*ry
+            self.canvas.create_oval(nx-5,ny-5,nx+5,ny+5,fill=core if i in (0,4) else "#123d4e",outline=dim)
+            self.canvas.create_text(nx,ny+(16 if ny<cy else -16),text=labels[i],fill="#82aebe",font=("Consolas",6,"bold"))
+
+        self.canvas.create_text(cx,h-18,text="J A R V I S  //  A.R.C. 3D REACTOR  //  "+state,
+                                fill=core,font=("Consolas",8,"bold"))
         self._orb_phase+=speed
-        self._orb_after=self.after(45,self._draw_orb)
+        self._orb_after=self.after(50,self._draw_orb)
 
     def _start_agent(self):
         def work():
@@ -427,7 +466,7 @@ class JarvisDesktop(tk.Tk):
                         if normalized.startswith(word):
                             activated = True
                             command = normalized[len(word):].strip(" ,.!")
-                            self._voice_armed_until = time.monotonic() + 45.0
+                            self._voice_armed_until = float("inf")
                             break
                     if activated and not command:
                         self.events.put(("voice_status", "Jarvis активирован. Слушаю вас."))
@@ -442,7 +481,7 @@ class JarvisDesktop(tk.Tk):
                     else:
                         continue
                     if command and self._voice_loop_running:
-                        self._voice_armed_until = time.monotonic() + 45.0
+                        self._voice_armed_until = float("inf")
                         self.events.put(("voice_text", command))
                 except Exception as exc:
                     self.events.put(("voice_error", str(exc)))
@@ -542,7 +581,7 @@ class JarvisDesktop(tk.Tk):
                     self._set_visual_state("ERROR")
                     self._append("VOICE", "Ошибка: " + event[1])
                 elif kind == "tts_error":
-                    self._append("VOICE", "ElevenLabs недоступен для выбранного Voice ID — использую локальный голос Windows.")
+                    self._append("VOICE", "ElevenLabs недоступен — автоматически использую локальный мужской голос Piper.")
                     self.metrics["TTS"].config(fg=RED)
                 elif kind == "agent_error":
                     self._set_visual_state("ERROR")
