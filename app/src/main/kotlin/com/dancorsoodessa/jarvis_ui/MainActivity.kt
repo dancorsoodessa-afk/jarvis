@@ -187,7 +187,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         val normalized = raw.trim()
             .lowercase(Locale("ru", "RU"))
             .replace('ё', 'е')
-        val wake = Regex("""(?i)(?:\\bjarvis\\b|джарвис)""")
+        val wake = Regex("(?i)jarvis|джарвис")
         val match = wake.find(normalized) ?: return null
         return raw.substring(match.range.last + 1).trim().trim(',', '.', ':', ';', '!', '?', '—', '-')
     }
