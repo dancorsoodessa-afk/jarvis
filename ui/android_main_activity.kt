@@ -268,6 +268,15 @@ class MainActivity : FlutterActivity() {
         for (child in children) copyAssetTree("$path/$child")
     }
 
+    private fun extractJarvisCommand(raw: String): String? {
+        val text = raw.trim()
+        if (text.isBlank()) return null
+        val normalized = text.lowercase(java.util.Locale("ru", "RU")).replace('ё', 'е')
+        val match = Regex("(?i)(?:jarvis|джарвис)").find(normalized) ?: return null
+        val end = match.range.last + 1
+        return text.substring(end).trim().trim(',', '.', ':', ';', '!', '?', '—', '-')
+    }
+
     private fun startRecognition() {
         if (disposed || !voiceLoopEnabled || ttsPlaying) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -373,7 +382,21 @@ class MainActivity : FlutterActivity() {
                                 runOnUiThread { eventSink?.success("__PARTIAL__:$text") }
                             }
                             if (rec.isEndpoint(stream)) {
-                                if (text.isNotBlank()) runOnUiThread { eventSink?.success(text) }
+                                if (text.isNotBlank()) {
+                                    val command = extractJarvisCommand(text)
+                                    runOnUiThread {
+                                        if (command != null) {
+                                            eventSink?.success("__WAKE__")
+                                            if (command.isNotBlank()) {
+                                                eventSink?.success(command)
+                                            } else {
+                                                eventSink?.success("__WAKE_ONLY__")
+                                            }
+                                        } else {
+                                            eventSink?.success("__WAKE_IGNORED__")
+                                        }
+                                    }
+                                }
                                 rec.reset(stream)
                                 lastPartial = ""
                             }
