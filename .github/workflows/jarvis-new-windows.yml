@@ -1,0 +1,41 @@
+name: JARVIS New Windows EXE
+
+on:
+  push:
+    branches: [jarvis-new-android]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - name: Получить исходники
+        uses: actions/checkout@v6
+
+      - name: Установить Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Собрать Windows EXE
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
+
+      - name: Проверить EXE
+        shell: pwsh
+        run: |
+          if (!(Test-Path "release\JARVIS.exe")) { throw "JARVIS.exe не создан" }
+          $item = Get-Item "release\JARVIS.exe"
+          Write-Host "JARVIS.exe: $($item.Length) bytes"
+
+      - name: Загрузить EXE
+        uses: actions/upload-artifact@v7
+        with:
+          name: JARVIS-Windows-New
+          path: release/JARVIS.exe
+          if-no-files-found: error
