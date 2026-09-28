@@ -250,7 +250,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     await _saveSettings();
     final endpoint = _endpoint.text.trim();
     final model = _activeModel == 0 ? _model1.text.trim() : _activeModel == 1 ? _model2.text.trim() : _model3.text.trim();
-    final key = _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim();
+    final selectedKey = _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim();
+    final key = selectedKey.isNotEmpty ? selectedKey : _key1.text.trim();
     if (endpoint.isEmpty) { if (mounted) setState(() => _status = 'Укажите endpoint AI в настройках'); return; }
     try {
       final old = _client; _client = null; await old?.dispose();
@@ -287,7 +288,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 const Text('API / AI · 3 ПРОФИЛЯ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text('У каждого профиля свой OpenRouter API key. Ключи сохраняются отдельно на телефоне.', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                const Text('Один OpenRouter API key можно использовать для всех трёх моделей. Если ключ профиля пуст, JARVIS использует API KEY 1.', style: TextStyle(color: Colors.white60, fontSize: 11)),
                 const SizedBox(height: 8),
                 for (int i = 0; i < 3; i++) ...[
                   Card(
@@ -378,7 +379,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
       if (!mounted) return;
       setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'JARVIS · голосовой канал' : 'Готов'); });
       _scrollToBottom();
-      if (_android && fromVoice) await _speak(reply.text);
+      if (_android && _voiceEnabled) await _speak(reply.text);
     } catch (e) {
       if (!mounted) return;
       setState(() { _messages.add(_Msg('Ошибка: $e', isUser: false)); _status = 'Ошибка'; });
