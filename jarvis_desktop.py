@@ -32,6 +32,19 @@ DEFAULT_PROVIDER = "openai-compatible"
 DEFAULT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
+def _safe_endpoint(value: str | None) -> str:
+    """Reject stale local endpoints that cause WinError 10061 on normal cloud setup."""
+    url = (value or "").strip()
+    if not url:
+        return DEFAULT_URL
+    lowered = url.lower()
+    blocked = ("localhost", "127.0.0.1", "0.0.0.0")
+    if any(lowered.startswith(f"{scheme}{host}") for scheme in ("http://", "https://") for host in blocked):
+        return DEFAULT_URL
+    return url
+
+
+
 def _load_saved_settings() -> dict:
     try:
         data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
@@ -75,7 +88,7 @@ class JarvisDesktop(tk.Tk):
         legacy = {
             "name": "JARVIS",
             "provider": self.settings.get("provider") or os.environ.get("JARVIS_PROVIDER") or DEFAULT_PROVIDER,
-            "url": self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL,
+            "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
             "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "openrouter/free",
             "api_key": self.settings.get("api_key") or self.settings.get("openrouter_api_key") or os.environ.get("JARVIS_CHAT_KEY") or os.environ.get("OPENROUTER_API_KEY") or "",
         }
@@ -88,15 +101,17 @@ class JarvisDesktop(tk.Tk):
         for key, default in defaults.items():
             value = profiles.get(key, {})
             merged[key] = {**default, **(value if isinstance(value, dict) else {})}
+            merged[key]["url"] = _safe_endpoint(merged[key].get("url"))
         profile = merged[str(active)]
         self.settings["active_agent"] = active
         self.settings["agents"] = merged
         self.settings["provider"] = profile["provider"]
-        self.settings["url"] = profile["url"]
+        self.settings["url"] = _safe_endpoint(profile["url"])
+        profile["url"] = self.settings["url"]
         self.settings["model"] = profile["model"]
         self.settings["api_key"] = profile["api_key"]
         os.environ["JARVIS_PROVIDER"] = profile["provider"]
-        os.environ["JARVIS_CHAT_URL"] = profile["url"]
+        os.environ["JARVIS_CHAT_URL"] = self.settings["url"]
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
         os.environ["OPENROUTER_API_KEY"] = profile["api_key"]
         os.environ["JARVIS_CHAT_MODEL"] = profile["model"]
