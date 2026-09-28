@@ -203,7 +203,7 @@ class JarvisDesktop(tk.Tk):
         self.side_core = tk.Label(side, text="● CORE — BOOT", bg="#070d16", fg=YELLOW,
                                   font=("Consolas", 9, "bold"))
         self.side_core.pack(anchor="w", padx=14, pady=(0, 10))
-        self.side_voice = tk.Label(side, text="◉ ГОЛОС — ПОДГОТОВКА", bg="#070d16", fg=MUTED,
+        self.side_voice = tk.Label(side, text="◉ ГОЛОС — ЗАГРУЗКА STT", bg="#070d16", fg=MUTED,
                                    font=("Consolas", 8, "bold"))
         self.side_voice.pack(anchor="w", padx=14, pady=(0, 4))
         self.side_memory = tk.Label(side, text="◆ ПАМЯТЬ — ACTIVE", bg="#070d16", fg=GREEN,
@@ -518,8 +518,10 @@ class JarvisDesktop(tk.Tk):
                         self._start_voice_loop()
                 elif kind == "stt_ready":
                     self.metrics["Voice"].config(text="READY", fg=GREEN)
+                    self.side_voice.config(text="◉ ГОЛОС — ГОТОВ", fg=GREEN)
                 elif kind == "stt_error":
                     self.metrics["Voice"].config(text="ERROR", fg=RED)
+                    self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
                     self._append("VOICE", "STT: " + event[1])
                 elif kind == "reply":
                     reply = event[1]
