@@ -33,6 +33,7 @@ jobs:
           path: release/JARVIS.exe
           if-no-files-found: error
 # Release build trigger: foundation
+# Manual Windows build trigger
 
       - name: Опубликовать прямой EXE-релиз
         shell: pwsh
