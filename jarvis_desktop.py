@@ -523,10 +523,18 @@ class JarvisDesktop(tk.Tk):
                     self.metrics["Voice"].config(text="ERROR", fg=RED)
                     self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
                     self._append("VOICE", "STT: " + event[1])
+                elif kind == "reply_delta":
+                    self._streaming_reply = getattr(self, "_streaming_reply", "") + str(event[1])
+                    self._set_visual_state("THINKING", 0.7)
+                    self._replace_streaming_reply(self._streaming_reply)
                 elif kind == "reply":
                     reply = event[1]
                     self._set_visual_state("SPEAKING", 0.65)
-                    self._append("JARVIS", reply)
+                    if getattr(self, "_streaming_reply", ""):
+                        self._replace_streaming_reply(reply, final=True)
+                    else:
+                        self._append("JARVIS", reply)
+                    self._streaming_reply = ""
                     self.busy = False
                     self.send_button.config(state="normal")
                     self.attach_button.config(state="normal")
@@ -566,6 +574,20 @@ class JarvisDesktop(tk.Tk):
             self._set_visual_state("IDLE", 0.0)
         except Exception as exc:
             self.events.put(("tts_error", str(exc)))
+
+    def _replace_streaming_reply(self, text, final=False):
+        self.chat.configure(state="normal")
+        if not getattr(self, "_streaming_reply_started", False):
+            self.chat.insert("end", "JARVIS\\n", "who")
+            self._streaming_reply_started = True
+        self.chat.delete("end-1c linestart", "end")
+        self.chat.insert("end", text, "stream_body")
+        if final:
+            self.chat.insert("end", "\\n\\n")
+            self._streaming_reply_started = False
+        self.chat.tag_configure("stream_body", foreground=TEXT)
+        self.chat.see("end")
+        self.chat.configure(state="disabled")
 
     def _append(self, who, text):
         self.chat.configure(state="normal")
@@ -669,10 +691,18 @@ class JarvisDesktop(tk.Tk):
         self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
         self.status.config(text="● PROCESSING",fg=CYAN)
         def work():
+            provider = getattr(self.agent, "provider", None)
             try:
+                if provider is not None and hasattr(provider, "on_delta"):
+                    provider.on_delta = lambda delta: self.events.put(("reply_delta", delta))
                 result=self.agent.handle(prompt, attachment=attachment_payload)
+                if provider is not None and hasattr(provider, "on_delta"):
+                    provider.on_delta = None
                 self.events.put(("reply",result.text))
-            except Exception as exc: self.events.put(("reply","Ошибка: "+str(exc)))
+            except Exception as exc:
+                if provider is not None and hasattr(provider, "on_delta"):
+                    provider.on_delta = None
+                self.events.put(("reply","Ошибка: "+str(exc)))
         self._clear_attachments()
         threading.Thread(target=work,daemon=True).start()
 
