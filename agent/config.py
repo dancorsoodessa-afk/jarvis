@@ -3,6 +3,19 @@ from dataclasses import dataclass
 
 
 SUPPORTED_PROVIDERS = ("openai-compatible", "local-vulkan")
+DEFAULT_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def normalize_chat_url(value: str | None) -> str:
+    """Return a usable remote endpoint; never silently target a dead localhost port."""
+    url = (value or "").strip()
+    if not url:
+        return DEFAULT_CHAT_URL
+    lowered = url.lower()
+    if lowered.startswith(("http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1", "http://0.0.0.0", "https://0.0.0.0")):
+        return DEFAULT_CHAT_URL
+    return url
+
 
 
 def normalize_provider(value: str | None) -> str:
@@ -72,7 +85,7 @@ class Settings:
             threads = 6
         return cls(
             provider=provider,
-            chat_url=os.environ.get("JARVIS_CHAT_URL", "").strip(),
+            chat_url=normalize_chat_url(os.environ.get("JARVIS_CHAT_URL")),
             chat_key=os.environ.get("JARVIS_CHAT_KEY", "") or os.environ.get("OPENROUTER_API_KEY", ""),
             chat_model=os.environ.get("JARVIS_CHAT_MODEL", "openrouter/free").strip() or "openrouter/free",
             fast_model=os.environ.get("JARVIS_FAST_MODEL", os.environ.get("JARVIS_CHAT_MODEL", "openrouter/free")).strip() or "openrouter/free",
