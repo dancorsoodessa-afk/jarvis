@@ -186,7 +186,7 @@ class MainActivity : FlutterActivity() {
                 endpointConfig = EndpointConfig(
                     rule1 = EndpointRule(false, 1.8f, 0.0f),
                     rule2 = EndpointRule(true, 0.8f, 0.0f),
-                    rule3 = EndpointRule(false, 0.0f, 12.0f)
+                    rule3 = EndpointRule(false, 0.0f, 10.0f)
                 ),
                 enableEndpoint = true
             )
