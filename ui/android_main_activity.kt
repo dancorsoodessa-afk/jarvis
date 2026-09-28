@@ -388,7 +388,7 @@ class MainActivity : FlutterActivity() {
                                         if (command != null) {
                                             eventSink?.success("__WAKE__")
                                             if (command.isNotBlank()) {
-                                                eventSink?.success(command)
+                                                eventSink?.success("__COMMAND__:$command")
                                             } else {
                                                 eventSink?.success("__WAKE_ONLY__")
                                             }
