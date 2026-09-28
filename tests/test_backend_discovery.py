@@ -3,7 +3,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from agent.config import Settings, normalize_provider
+from agent.config import DEFAULT_CHAT_URL, Settings, normalize_provider
 from agent.core_router import discover_chat_endpoint
 
 
@@ -15,7 +15,7 @@ class TestBackendDiscovery(unittest.TestCase):
     def test_settings_no_longer_hardcodes_ollama(self):
         settings = Settings.from_env()
         self.assertEqual(settings.provider, "openai-compatible")
-        self.assertEqual(settings.chat_url, "")
+        self.assertEqual(settings.chat_url, DEFAULT_CHAT_URL)
 
     def test_discovers_healthy_endpoint(self):
         class Handler(BaseHTTPRequestHandler):
