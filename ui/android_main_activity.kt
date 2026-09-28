@@ -112,6 +112,7 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "start", "listen_now" -> { voiceLoopEnabled = true; startRecognition(); result.success(true) }
+                "pause" -> { stopRecognition(); result.success(true) }
                 "stop" -> { voiceLoopEnabled = false; stopRecognition(); result.success(true) }
                 "speak" -> { speak(call.argument<String>("text").orEmpty()); result.success(true) }
                 "open_tts_settings" -> { openTtsSettings(); result.success(true) }
