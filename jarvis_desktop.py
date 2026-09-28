@@ -345,54 +345,41 @@ class JarvisDesktop(tk.Tk):
 
     def _draw_orb(self):
         self.canvas.delete("all")
-        w = max(380, self.canvas.winfo_width())
-        h = max(290, self.canvas.winfo_height())
-        cx, cy = w / 2 - 10, h / 2 - 8
-        phase = self._orb_phase
-        state = self._visual_state
-        level = self._visual_level
-        speed = {"IDLE": 0.012, "LISTENING": 0.075, "THINKING": 0.105, "SPEAKING": 0.085, "ERROR": 0.15}.get(state, 0.03)
-        pulse = 1.0 + 0.07 * math.sin(phase * 2.7) + (level * 0.12 if state in ("LISTENING", "SPEAKING") else 0)
-        core = RED if state == "ERROR" else (YELLOW if state == "THINKING" else CYAN)
-        dim = "#1b536b"
-        glow = "#0e3345"
-
-        # Holographic reactor: concentric rings + rotating node network.
-        for rr, width, col in ((118, 1, glow), (96, 1, dim), (73, 1, "#2b7894"), (47, 1, "#3a91aa")):
-            r = rr * pulse
-            self.canvas.create_oval(cx-r, cy-r*0.62, cx+r, cy+r*0.62, outline=col, width=width)
-        nodes = []
-        for i in range(6):
-            a = phase * (0.45 if i % 2 else -0.30) + i * math.pi / 3
-            nx = cx + math.cos(a) * 103
-            ny = cy + math.sin(a) * 62
-            nodes.append((nx, ny))
-        for i, (nx, ny) in enumerate(nodes):
-            self.canvas.create_line(cx, cy, nx, ny, fill="#174b62", width=1)
-            self.canvas.create_oval(nx-13, ny-13, nx+13, ny+13, fill="#07131d", outline=dim, width=1)
-            self.canvas.create_oval(nx-4, ny-4, nx+4, ny+4, fill=core if i % 2 == 0 else "#5c9fb4", outline="")
-        for i in range(36):
-            a = phase * 0.55 + i * math.pi * 2 / 36
-            rr = 88 + 8 * math.sin(a * 3 + phase)
-            x = cx + math.cos(a) * rr
-            y = cy + math.sin(a) * rr * 0.62
-            s = 1.0 + (i % 3) * 0.45
-            self.canvas.create_oval(x-s, y-s, x+s, y+s, fill=core if i % 7 == 0 else dim, outline="")
-
-        core_r = 31 * pulse
-        self.canvas.create_oval(cx-core_r*1.9, cy-core_r*1.9, cx+core_r*1.9, cy+core_r*1.9,
-                                outline="#164a61", width=1)
-        self.canvas.create_oval(cx-core_r, cy-core_r, cx+core_r, cy+core_r, fill="#06121b", outline=core, width=2)
-        self.canvas.create_oval(cx-core_r*.60, cy-core_r*.60, cx+core_r*.60, cy+core_r*.60, fill="#0b3442", outline="")
-        self.canvas.create_text(cx, cy-5, text="J", fill="#f4ffff", font=("Segoe UI", 24, "bold"))
-        self.canvas.create_text(cx, cy+20, text="CORE", fill=core, font=("Segoe UI", 7, "bold"))
-
-        labels = ("ПАМЯТЬ", "ИНСТРУМЕНТЫ", "ГОЛОС", "AI", "ФАЙЛЫ", "СИСТЕМА")
-        for i, (nx, ny) in enumerate(nodes):
-            self.canvas.create_text(nx, ny + 20, text=labels[i], fill="#7398a8", font=("Segoe UI", 6, "bold"))
-        self.canvas.create_text(cx, h-24, text="J A R V I S   //   N E X T   G E N   C O R E", fill=core, font=("Segoe UI", 9, "bold"))
-        self._orb_phase += speed
-        self._orb_after = self.after(55, self._draw_orb)
+        w=max(420,self.canvas.winfo_width()); h=max(300,self.canvas.winfo_height())
+        cx,cy=w/2-8,h/2-18; phase=self._orb_phase
+        state=self._visual_state; level=self._visual_level
+        speed={"IDLE":0.018,"LISTENING":0.105,"THINKING":0.145,"SPEAKING":0.12,"ERROR":0.18}.get(state,0.04)
+        core=RED if state=="ERROR" else (YELLOW if state=="THINKING" else CYAN)
+        dim="#17536a"; faint="#0b2634"
+        # Live tactical reactor: rotating sweep, orbital nodes and reactive waveform.
+        for rr,yy,col in ((150,.61,"#0c3140"),(124,.58,faint),(101,.55,dim),(78,.50,"#24748c")):
+            self.canvas.create_oval(cx-rr,cy-rr*yy,cx+rr,cy+rr*yy,outline=col,width=1)
+        sweep=phase%(math.pi*2); sx=cx+math.cos(sweep)*150; sy=cy+math.sin(sweep)*92
+        self.canvas.create_line(cx,cy,sx,sy,fill=core,width=1)
+        nodes=[]
+        for i in range(8):
+            a=phase*(0.22 if i%2 else -0.14)+i*math.pi/4
+            rx,ry=(150,92) if i%2==0 else (124,70)
+            nx,ny=cx+math.cos(a)*rx,cy+math.sin(a)*ry; nodes.append((nx,ny))
+            self.canvas.create_line(cx,cy,nx,ny,fill=faint,width=1)
+            self.canvas.create_oval(nx-5,ny-5,nx+5,ny+5,fill=core if i in (0,4) else "#143e4e",outline=dim)
+        pulse=1+.10*math.sin(phase*3)+level*.18; r=34*pulse
+        self.canvas.create_oval(cx-r*2,cy-r*2,cx+r*2,cy+r*2,outline="#16485c",width=1)
+        self.canvas.create_oval(cx-r,cy-r,cx+r,cy+r,fill="#06121b",outline=core,width=2)
+        self.canvas.create_oval(cx-r*.58,cy-r*.58,cx+r*.58,cy+r*.58,fill="#0b3442",outline=core)
+        self.canvas.create_text(cx,cy-6,text="J",fill="#f4ffff",font=("Segoe UI",25,"bold"))
+        self.canvas.create_text(cx,cy+19,text=state,fill=core,font=("Segoe UI",7,"bold"))
+        for i in range(32):
+            a=i*math.pi*2/32; amp=5+(10+level*22)*(0.5+0.5*math.sin(phase*2.2+i*.73))
+            x1=cx+math.cos(a)*(r+13); y1=cy+math.sin(a)*(r+13)
+            x2=cx+math.cos(a)*(r+13+amp); y2=cy+math.sin(a)*(r+13+amp)
+            self.canvas.create_line(x1,y1,x2,y2,fill=core if i%3==0 else dim,width=2)
+        labels=("CORE","VOICE","AI","TOOLS","MEMORY","FILES","SYSTEM","NET")
+        for i,(nx,ny) in enumerate(nodes):
+            self.canvas.create_text(nx,ny+(14 if ny<cy else -14),text=labels[i],fill="#7398a8",font=("Segoe UI",6,"bold"))
+        self.canvas.create_text(cx,h-28,text="J A R V I S  //  LIVE TACTICAL CORE  //  "+state,fill=core,font=("Segoe UI",8,"bold"))
+        self._orb_phase+=speed
+        self._orb_after=self.after(45,self._draw_orb)
 
     def _start_agent(self):
         def work():
