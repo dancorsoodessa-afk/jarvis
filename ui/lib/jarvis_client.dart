@@ -258,6 +258,7 @@ class JarvisIpc {
     final messages = <Map<String, dynamic>>[{'role': 'system', 'content': system}, ..._history, {'role': 'user', 'content': activeAttachment == null ? userText : _attachmentParts(activeAttachment, userText)}];
     String answer = '';
     String? lastTool;
+    String responseModel = model;
     for (var round = 0; round < 8; round++) {
       final req = await _httpClient!.postUrl(Uri.parse('$_apiUrl/chat/completions'));
       req.headers.contentType = ContentType.json;
@@ -287,6 +288,7 @@ class JarvisIpc {
       }
       req.write(jsonEncode(requestBody));
       final decoded = await _json(await req.close());
+      responseModel = decoded['model']?.toString() ?? model;
       final choices = decoded['choices'];
       if (choices is! List || choices.isEmpty) throw StateError('AI не вернул choices');
       final first = choices.first;
@@ -315,7 +317,7 @@ class JarvisIpc {
     if (Platform.isAndroid) {
       try { await _channel.invokeMethod('self_feedback', {'user': text, 'assistant': answer}); } catch (_) {}
     }
-    return JarvisReply(answer, decoded['model']?.toString() ?? model, lastTool, false);
+    return JarvisReply(answer, responseModel, lastTool, false);
   }
 
   Future<void> verifyConnection() async {
