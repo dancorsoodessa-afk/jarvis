@@ -322,15 +322,6 @@ class JarvisIpc {
     return JarvisReply(answer, responseModel, lastTool, false);
   }
 
-  Future<JarvisReply> _standaloneSend(String text, {Map<String, dynamic>? attachment}) async {
-    final providers = <Map<String, String>>[
-      {'name': 'Primary', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
-      ..._fallbacks,
-    ].fold<List<Map<String, String>>>(<Map<String, String>>[], (list, p) {
-      final signature = '${p['url']}|${p['key']}|${p['model']}';
-      if (!list.any((x) => '${x['url']}|${x['key']}|${x['model']}' == signature)) list.add(p);
-      return list;
-    });
   bool _fallbackAllowed(Object error) {
     final message = error.toString();
     final match = RegExp(r'AI (\d{3})').firstMatch(message);
