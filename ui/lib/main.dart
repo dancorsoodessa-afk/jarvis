@@ -22,8 +22,8 @@ const kPanel = Color(0xFF0B111B);
 const kLine = Color(0xFF18283A);
 const _defaultAiEndpoint = 'https://api.openai.com/v1';
 const _defaultModel1 = 'gpt-5.6-luna';
-const _defaultModel2 = 'openai/gpt-oss-120b';
-const _defaultModel3 = 'gpt-oss-120b';
+const _defaultModel2 = 'qwen/qwen3.8-27b';
+const _defaultModel3 = 'llama-3.3-70b';
 
 void main() => runApp(const BusyaApp());
 
@@ -153,7 +153,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         'apiKey': _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim(),
         'model1': _model1.text.trim(), 'model2': _model2.text.trim(), 'model3': _model3.text.trim(),
         'key1': _key1.text.trim(), 'key2': _key2.text.trim(), 'key3': _key3.text.trim(),
-        'activeModel': 0,
+        'activeModel': _activeModel,
         'apiHostKey': _apiHostKey.text.trim(),
         'voiceEnabled': _voiceEnabled,
       });
@@ -252,17 +252,27 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   Future<void> _connectAndroid() async {
     await _saveSettings();
-    final endpoint = _endpoint.text.trim();
-    final model = _model1.text.trim();
-    final key = _key1.text.trim();
-    if (endpoint.isEmpty) { if (mounted) setState(() => _status = 'Укажите endpoint AI в настройках'); return; }
+    final primary = _activeModel == 0
+        ? {'name': 'OpenAI', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()}
+        : _activeModel == 1
+            ? {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()}
+            : {'name': 'Cerebras', 'url': 'https://api.cerebras.ai/v1', 'key': _key3.text.trim(), 'model': _model3.text.trim()};
+    if ((primary['url'] ?? '').toString().trim().isEmpty || (primary['key'] ?? '').toString().trim().isEmpty) {
+      if (mounted) setState(() => _status = 'Для выбранного AI не указан API URL или API key');
+      return;
+    }
     try {
       final old = _client; _client = null; await old?.dispose();
-      if (key.isEmpty && _key2.text.trim().isEmpty && _key3.text.trim().isEmpty) throw StateError('API key OpenAI не указан. Можно также задать ключ Groq или Cerebras как резервный.');
-      _client = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model, fallbacks: [
-        {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()},
-        {'name': 'Cerebras', 'url': 'https://api.cerebras.ai/v1', 'key': _key3.text.trim(), 'model': _model3.text.trim()},
-      ]);
+      _client = await JarvisIpc.connectAi(
+        primary['url']!.toString(),
+        apiKey: primary['key']!.toString(),
+        model: primary['model']!.toString(),
+        fallbacks: [
+          {'name': 'OpenAI', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()},
+          {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()},
+          {'name': 'Cerebras', 'url': 'https://api.cerebras.ai/v1', 'key': _key3.text.trim(), 'model': _model3.text.trim()},
+        ],
+      );
       await _client!.verifyConnection();
       await _finishConnect();
     } catch (e) { if (mounted) setState(() => _status = 'Ошибка подключения AI: $e'); }
