@@ -351,7 +351,7 @@ class JarvisIpc {
       ..._fallbacks,
     ];
     Object? lastError;
-    for (final p of providers) {
+    for (final p in providers) {
       final url = (p['url'] ?? '').trim().replaceFirst(RegExp(r'/+$'), '');
       final key = (p['key'] ?? '').trim();
       if (url.isEmpty || key.isEmpty) continue;
