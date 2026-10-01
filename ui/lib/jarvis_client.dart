@@ -13,7 +13,8 @@ class JarvisReply {
 }
 
 class JarvisIpc {
-  JarvisIpc._({Process? process, HttpClient? httpClient, String? apiUrl, String? apiKey, String? model}) : _process = process, _httpClient = httpClient, _apiUrl = apiUrl, _apiKey = apiKey, _model = model;
+  JarvisIpc._({Process? process, HttpClient? httpClient, String? apiUrl, String? apiKey, String? model, List<Map<String, String>> fallbacks = const []})
+      : _process = process, _httpClient = httpClient, _apiUrl = apiUrl, _apiKey = apiKey, _model = model, _fallbacks = fallbacks;
   static const _channel = MethodChannel('jarvis.voice');
 
   static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async => JarvisIpc._(process: await Process.start(executable, args));
