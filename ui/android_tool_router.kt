@@ -7,6 +7,7 @@ import org.json.JSONObject
 
 class AndroidToolRouter(private val context: Context) {
     private val trading = TradingTools(context)
+    private val stockAnalysis = StockAnalysisTools(context)
 
     fun execute(name: String, args: JSONObject): Any {
         return when (name.lowercase()) {
@@ -21,6 +22,9 @@ class AndroidToolRouter(private val context: Context) {
             "okx_public" -> trading.okxPublic(args.optString("path", "/api/v5/market/ticker?instId=BTC-USDT"))
             "okx_account" -> trading.okxAccount(args.optString("path", "/api/v5/account/balance"))
             "okx_order" -> trading.okxOrder(args.optString("body", "{}"), args.optBoolean("confirm", false))
+            "daily_stock_analysis" -> stockAnalysis.request(args.optString("path", "/health"), args.optString("method", "GET"), args.optString("body", "{}"))
+            "dsa_analyze" -> stockAnalysis.analyze(args.optString("stock_code", ""), args.optString("stock_name", ""), args.optString("report_type", "detailed"))
+            "dsa_market_review" -> stockAnalysis.marketReview(args.optString("region", "us"))
             else -> mapOf("ok" to false, "error" to "Инструмент не найден: $name")
         }
     }
