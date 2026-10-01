@@ -1,4 +1,5 @@
 // JARVIS Android UI — OpenAI primary with Groq/Cerebras fallback
+// CI verification after provider-loop fix
 // Android CI build
 // Analyzer fix: model label + response model scope
 // Final CI source cleanup
