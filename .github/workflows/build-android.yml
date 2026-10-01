@@ -29,6 +29,7 @@ jobs:
           set -e
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
           rm -rf test
+          printf '\nandroid.newDsl=false\nandroid.builtInKotlin=false\n' >> android/gradle.properties
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
           echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
@@ -120,6 +121,9 @@ jobs:
                   text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
               else:
                   text = text.rstrip() + '\n\ndependencies {\n    ' + dep + '\n}\n'
+          for extra in (core, appcompat):
+              if extra not in text:
+                  text = text.replace('dependencies {', 'dependencies {\n    ' + extra, 1)
           # The sherpa-onnx AAR contains native libraries for several ABIs.
           # This APK is intentionally arm64-only; remove incompatible extra ABIs.
           if 'jniLibs.excludes' not in text:
