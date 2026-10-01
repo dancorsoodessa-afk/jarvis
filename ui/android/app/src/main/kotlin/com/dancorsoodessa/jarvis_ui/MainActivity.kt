@@ -15,8 +15,8 @@ import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
 
 class MainActivity : FlutterActivity(), RecognitionListener {
-    private val voiceChannel = "busya.voice"
-    private val eventsChannel = "busya.voice.events"
+    private val voiceChannel = "jarvis.voice"
+    private val eventsChannel = "jarvis.voice.events"
     private val recordAudioRequest = 4101
 
     private var methodChannel: MethodChannel? = null
@@ -33,10 +33,12 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "initialize" -> result.success(initializeVoice())
-                "start" -> {
+                "listen_now", "start" -> {
                     startListening()
                     result.success(null)
                 }
+                "load_settings" -> result.success(loadSettings())
+                "save_settings" -> { saveSettings(call); result.success(null) }
                 "stop" -> {
                     stopListening()
                     result.success(null)
@@ -171,10 +173,10 @@ class MainActivity : FlutterActivity(), RecognitionListener {
 
     override fun onReadyForSpeech(params: Bundle?) = Unit
     override fun onBeginningOfSpeech() = Unit
-    override fun onRmsChanged(rmsdB: Float) = Unit
+    override fun onRmsChanged(rmsdB: Float) { eventSink?.success("__MIC_LEVEL__:${rmsdB}") }
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() { eventSink?.success("__END__") }
-    override fun onError(error: Int) { eventSink?.success("__ERROR__") }
+    override fun onError(error: Int) { eventSink?.success("__ERROR__:SpeechRecognizer error $error") }
 
     override fun onResults(results: Bundle?) {
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -184,6 +186,35 @@ class MainActivity : FlutterActivity(), RecognitionListener {
 
     override fun onPartialResults(partialResults: Bundle?) = Unit
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
+
+    private fun loadSettings(): Map<String, Any?> {
+        val p = getSharedPreferences("jarvis_settings", MODE_PRIVATE)
+        return mapOf(
+            "endpoint" to p.getString("endpoint", ""),
+            "model" to p.getString("model", ""),
+            "apiKey" to p.getString("apiKey", ""),
+            "apiHostKey" to p.getString("apiHostKey", ""),
+            "model1" to p.getString("model1", ""),
+            "model2" to p.getString("model2", ""),
+            "model3" to p.getString("model3", ""),
+            "key1" to p.getString("key1", ""),
+            "key2" to p.getString("key2", ""),
+            "key3" to p.getString("key3", ""),
+            "activeModel" to p.getInt("activeModel", 0),
+            "voiceEnabled" to p.getBoolean("voiceEnabled", true),
+        )
+    }
+
+    private fun saveSettings(call: MethodChannel.MethodCall) {
+        val p = getSharedPreferences("jarvis_settings", MODE_PRIVATE).edit()
+        fun s(name: String) { call.argument<String>(name)?.let { p.putString(name, it) } }
+        s("endpoint"); s("model"); s("apiKey"); s("apiHostKey")
+        s("model1"); s("model2"); s("model3")
+        s("key1"); s("key2"); s("key3")
+        call.argument<Int>("activeModel")?.let { p.putInt("activeModel", it) }
+        call.argument<Boolean>("voiceEnabled")?.let { p.putBoolean("voiceEnabled", it) }
+        p.apply()
+    }
 
     override fun onDestroy() {
         releaseVoice()
