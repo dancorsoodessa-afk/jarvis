@@ -1,4 +1,5 @@
 // Busya Android UI/voice validation build
+// Android CI rebuild: OpenRouter fallback + model display fix
 // Android terminal-launcher skin inspired by the linked Jarvis/Aris visual language.
 import 'dart:async';
 import 'dart:convert';
