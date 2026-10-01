@@ -33,6 +33,8 @@ class JarvisIpc {
   final String? _apiUrl;
   final String? _apiKey;
   final String? _model;
+  /// Управление интерфейсом приложения (устанавливается экраном).
+  Future<String> Function(String name, Map<String, dynamic> args)? uiHandler;
   final List<Map<String, dynamic>> _history = [];
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
   final _deltas = StreamController<Map<int, String>>.broadcast();
@@ -118,7 +120,7 @@ class JarvisIpc {
   static Map<String, dynamic> _fn(String name, String description, Map<String, dynamic> props, List<String> required) => {'type': 'function', 'function': {'name': name, 'description': description, 'parameters': {'type': 'object', 'properties': props, 'required': required}}};
 
   List<Map<String, dynamic>> _tools() => [
-    _fn('google_search', 'Основной поиск через Google.com', {'query': {'type': 'string'}, 'limit': {'type': 'integer'}}, ['query']),
+    _fn('google_search', 'Поиск в интернете (DuckDuckGo/Google): новости, факты, всё актуальное', {'query': {'type': 'string'}, 'limit': {'type': 'integer'}}, ['query']),
     _fn('web_get', 'Получить страницу HTTP/HTTPS', {'url': {'type': 'string'}}, ['url']),
     _fn('http_request', 'HTTP API GET/POST/PUT/PATCH/DELETE', {'method': {'type': 'string'}, 'url': {'type': 'string'}, 'body': {'type': 'string'}, 'headers': {'type': 'string'}}, ['url']),
     _fn('download_file', 'Скачать файл в app-specific storage', {'url': {'type': 'string'}, 'filename': {'type': 'string'}}, ['url']),
@@ -140,6 +142,14 @@ class JarvisIpc {
     _fn('open_url', 'Открыть HTTP/HTTPS ссылку', {'url': {'type': 'string'}}, ['url']),
     _fn('clipboard_get', 'Прочитать буфер', {}, []),
     _fn('clipboard_set', 'Записать буфер', {'text': {'type': 'string'}}, ['text']),
+    _fn('ui_set_theme', 'Сменить цвет интерфейса (акцент): название цвета или #RRGGBB', {'color': {'type': 'string'}}, ['color']),
+    _fn('ui_set_text_scale', 'Размер текста интерфейса от 0.8 до 1.6', {'scale': {'type': 'number'}}, ['scale']),
+    _fn('ui_set_orb_height', 'Высота анимированного ядра в пикселях от 160 до 420', {'height': {'type': 'number'}}, ['height']),
+    _fn('ui_set_voice', 'Включить или выключить голосовой режим', {'enabled': {'type': 'boolean'}}, ['enabled']),
+    _fn('ui_set_wake_word', 'Требовать ли обращение «Джарвис» перед командой', {'required': {'type': 'boolean'}}, ['required']),
+    _fn('ui_open_settings', 'Открыть экран настроек', {}, []),
+    _fn('ui_reset', 'Сбросить внешний вид к стандартному', {}, []),
+    _fn('ui_get_state', 'Текущие параметры интерфейса', {}, []),
     _fn('self_improve', 'Изменить постоянное поведение БУСИ', {'instruction': {'type': 'string'}}, ['instruction']),
     _fn('self_learn', 'Сохранить правило/навык/предпочтение', {'category': {'type': 'string'}, 'text': {'type': 'string'}, 'priority': {'type': 'integer'}}, ['text']),
     _fn('self_forget', 'Забыть правило', {'text': {'type': 'string'}}, ['text']),
@@ -149,6 +159,11 @@ class JarvisIpc {
   ];
 
   Future<String> _tool(String name, Map<String, dynamic> args) async {
+    if (name.startsWith('ui_')) {
+      final h = uiHandler;
+      if (h == null) throw StateError('Управление интерфейсом недоступно');
+      return await h(name, args);
+    }
     if (!Platform.isAndroid) throw StateError('Android-инструмент недоступен');
     return (await _channel.invokeMethod<dynamic>('android_tool', {'name': name, 'args': jsonEncode(args)}))?.toString() ?? '';
   }
@@ -254,7 +269,7 @@ class JarvisIpc {
     final attachmentMime = (activeAttachment?['mime']?.toString() ?? '').toLowerCase();
     final model = activeAttachment != null ? 'google/gemma-4-26b-a4b-it:free' : defaultModel;
     final behavior = Platform.isAndroid ? await _tool('self_behavior', {}) : '';
-    final system = 'Ты JARVIS — автономный AI-агент. Отвечай на языке пользователя. Используй инструменты для реальных действий и не выдумывай результат. Отделы: internet (Google.com, HTTP, download, weather), files, database (SQLite), other, self-improvement. Самоулучшение — изменение постоянного поведенческого слоя: правила, навыки, предпочтения, исправления, успешные шаблоны и политики инструментов. Когда пользователь просит улучшить себя — используй self_improve или self_learn. Не заявляй об изменении весов модели или подписанного APK. Активный слой:\n$behavior';
+    final system = 'Ты JARVIS — голосовой AI-ассистент. Отвечай на языке пользователя кратко: 1–3 предложения, если не просят подробно. Для реальных действий используй инструменты, не выдумывай результат. Интернет: google_search (актуальная информация, новости), web_get, weather. Интерфейс: ты сам меняешь экран через ui_* (цвет, размер текста, размер ядра, голос, настройки) — когда просят изменить вид или настройки, вызови нужный ui_*. Самоулучшение — постоянные правила через self_improve/self_learn. Не заявляй об изменении весов модели или APK. Активный слой:\n$behavior';
     final messages = <Map<String, dynamic>>[{'role': 'system', 'content': system}, ..._history, {'role': 'user', 'content': activeAttachment == null ? userText : _attachmentParts(activeAttachment, userText)}];
     String answer = '';
     String? lastTool;
@@ -268,20 +283,17 @@ class JarvisIpc {
         req.headers.set('X-OpenRouter-Title', 'JARVIS Android');
       }
       _auth(req);
-      final models = <String>[
-        model,
-        'openrouter/free',
-        'qwen/qwen3.8-27b:free',
-        'google/gemma-4-26b-a4b-it:free',
-      ].where((m) => m.trim().isNotEmpty).toSet().toList();
+      final models = <String>[model, 'openrouter/free'].where((m) => m.trim().isNotEmpty).toSet().toList();
       final requestBody = <String, dynamic>{
         'messages': messages,
         'tools': _tools(),
         'tool_choice': 'auto',
         'temperature': 0.2,
         'stream': false,
+        'max_tokens': 700,
       };
       if (_apiUrl!.contains('openrouter.ai')) {
+        requestBody['reasoning'] = {'enabled': false};
         requestBody['models'] = models;
       } else {
         requestBody['model'] = model;
@@ -313,7 +325,7 @@ class JarvisIpc {
     answer = answer.trim().isEmpty ? 'Готово.' : answer.trim();
     _history.add({'role': 'user', 'content': userText});
     _history.add({'role': 'assistant', 'content': answer});
-    while (_history.length > 24) _history.removeAt(0);
+    while (_history.length > 12) _history.removeAt(0);
     if (Platform.isAndroid) {
       try { await _channel.invokeMethod('self_feedback', {'user': text, 'assistant': answer}); } catch (_) {}
     }

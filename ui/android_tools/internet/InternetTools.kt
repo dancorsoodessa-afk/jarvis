@@ -13,7 +13,31 @@ import java.nio.charset.StandardCharsets
 class InternetTools(private val context: Context) {
     private val userAgent = "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"
 
+    // Поиск: сначала DuckDuckGo (не требует JS/согласий), Google — запасной вариант.
     fun googleSearch(query: String, limit: Int = 8): String {
+        require(query.isNotBlank()) { "Пустой поисковый запрос" }
+        val n = limit.coerceIn(1, 10)
+        try {
+            val body = "q=" + URLEncoder.encode(query, "UTF-8") + "&kl=ru-ru"
+            val html = request("POST", "https://html.duckduckgo.com/html/", body, mapOf("Content-Type" to "application/x-www-form-urlencoded", "Accept-Language" to "ru,en;q=0.8")).first
+            val links = Regex("<a[^>]*class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>", setOf(RegexOption.DOT_MATCHES_ALL)).findAll(html).toList()
+            val snippets = Regex("<a[^>]*class=\"result__snippet\"[^>]*>(.*?)</a>", setOf(RegexOption.DOT_MATCHES_ALL)).findAll(html).map { cleanHtml(it.groupValues[1]) }.toList()
+            val results = JSONArray()
+            for ((i, m) in links.withIndex()) {
+                var href = m.groupValues[1]
+                if (href.contains("uddg=")) href = java.net.URLDecoder.decode(href.substringAfter("uddg=").substringBefore('&'), "UTF-8")
+                else if (href.startsWith("//")) href = "https:" + href
+                val title = cleanHtml(m.groupValues[2])
+                if (title.length < 2 || !href.startsWith("http")) continue
+                results.put(JSONObject().put("title", title).put("url", href).put("snippet", snippets.getOrElse(i) { "" }))
+                if (results.length() >= n) break
+            }
+            if (results.length() > 0) return JSONObject().put("engine", "duckduckgo").put("query", query).put("results", results).toString()
+        } catch (_: Exception) {}
+        return googleFallback(query, n)
+    }
+
+    private fun googleFallback(query: String, limit: Int): String {
         require(query.isNotBlank()) { "Пустой поисковый запрос" }
         val url = "https://www.google.com/search?q=${URLEncoder.encode(query, "UTF-8")}&hl=ru&num=${limit.coerceIn(1, 10)}"
         val html = request("GET", url, null, emptyMap()).first

@@ -71,6 +71,14 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   DateTime _wakeUntil = DateTime.fromMillisecondsSinceEpoch(0);
   final ValueNotifier<double> _micLevel = ValueNotifier<double>(0);
   bool _speaking = false;
+  // Внешний вид, которым Jarvis управляет сам через ui_* инструменты.
+  double _uiHue = 0, _uiTextScale = 1.0, _uiOrbHeight = 286;
+  bool _wakeRequired = false;
+  static const Map<String, double> _hueByName = {
+    'красный': 0, 'оранжевый': 28, 'жёлтый': 50, 'желтый': 50, 'золотой': 45, 'зелёный': 125, 'зеленый': 125,
+    'бирюзовый': 186, 'голубой': 200, 'синий': 220, 'фиолетовый': 270, 'пурпурный': 300, 'розовый': 320,
+    'red': 0, 'orange': 28, 'yellow': 50, 'gold': 45, 'green': 125, 'cyan': 186, 'blue': 220, 'purple': 270, 'pink': 320,
+  };
   late final AnimationController _orbController;
   String _status = 'JARVIS запускается…', _streamText = '';
   bool get _android => Platform.isAndroid;
@@ -81,6 +89,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (_android) {
         await _loadSettings();
+        await _loadUi();
         await _connectAndroid();
         if (!mounted) return;
         await Future<void>.delayed(const Duration(milliseconds: 700));
@@ -166,6 +175,81 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     } catch (_) {}
   }
 
+  Future<void> _saveUi() async {
+    if (!_android) return;
+    try { await _voice.invokeMethod('save_ui', {'json': jsonEncode({'hue': _uiHue, 'text': _uiTextScale, 'orb': _uiOrbHeight, 'wake': _wakeRequired})}); } catch (_) {}
+  }
+
+  Future<void> _loadUi() async {
+    if (!_android) return;
+    try {
+      final raw = await _voice.invokeMethod<String>('load_ui');
+      if (raw == null || raw.isEmpty) return;
+      final m = jsonDecode(raw);
+      if (m is Map && mounted) {
+        setState(() {
+          _uiHue = (m['hue'] as num?)?.toDouble() ?? 0;
+          _uiTextScale = (m['text'] as num?)?.toDouble() ?? 1.0;
+          _uiOrbHeight = (m['orb'] as num?)?.toDouble() ?? 286;
+          _wakeRequired = m['wake'] == true;
+        });
+      }
+    } catch (_) {}
+  }
+
+  String _uiStateJson() => jsonEncode({'hue_shift': _uiHue, 'text_scale': _uiTextScale, 'orb_height': _uiOrbHeight, 'wake_word_required': _wakeRequired, 'voice_enabled': _voiceEnabled});
+
+  Future<String> _uiTool(String name, Map<String, dynamic> a) async {
+    String done(String message) => jsonEncode({'ok': true, 'message': message, 'state': jsonDecode(_uiStateJson())});
+    if (name == 'ui_set_theme') {
+      final raw = (a['color'] ?? a['accent'] ?? '').toString().trim().toLowerCase();
+      double? target = _hueByName[raw];
+      if (target == null) {
+        final hex = raw.replaceFirst('#', '');
+        if (RegExp(r'^[0-9a-f]{6}$').hasMatch(hex)) target = HSVColor.fromColor(Color(int.parse('FF$hex', radix: 16))).hue;
+      }
+      if (target == null) return jsonEncode({'ok': false, 'error': 'Неизвестный цвет: $raw. Назови цвет (красный, зелёный, синий, фиолетовый, оранжевый, розовый, жёлтый, бирюзовый) или #RRGGBB'});
+      final shift = target - 186.0;
+      if (mounted) setState(() => _uiHue = shift);
+      await _saveUi();
+      return done('Цвет интерфейса изменён');
+    }
+    if (name == 'ui_set_text_scale') {
+      final v = ((a['scale'] as num?)?.toDouble() ?? 1.0).clamp(0.8, 1.6).toDouble();
+      if (mounted) setState(() => _uiTextScale = v);
+      await _saveUi();
+      return done('Размер текста изменён');
+    }
+    if (name == 'ui_set_orb_height') {
+      final v = ((a['height'] as num?)?.toDouble() ?? 286).clamp(160.0, 420.0).toDouble();
+      if (mounted) setState(() => _uiOrbHeight = v);
+      await _saveUi();
+      return done('Размер ядра изменён');
+    }
+    if (name == 'ui_set_wake_word') {
+      final v = a['required'] == true;
+      if (mounted) setState(() => _wakeRequired = v);
+      await _saveUi();
+      return done(v ? 'Теперь команды только после слова Джарвис' : 'Теперь слушаю без слова Джарвис');
+    }
+    if (name == 'ui_set_voice') {
+      final want = a['enabled'] != false;
+      if (want != _voiceEnabled) await _toggleVoice();
+      return done(want ? 'Голос включён' : 'Голос выключен');
+    }
+    if (name == 'ui_open_settings') {
+      Future<void>.delayed(const Duration(milliseconds: 400), () { if (mounted) _settings(); });
+      return done('Открываю настройки');
+    }
+    if (name == 'ui_reset') {
+      if (mounted) setState(() { _uiHue = 0; _uiTextScale = 1.0; _uiOrbHeight = 286; _wakeRequired = false; });
+      await _saveUi();
+      return done('Внешний вид сброшен');
+    }
+    if (name == 'ui_get_state') return done('Текущее состояние');
+    return jsonEncode({'ok': false, 'error': 'Неизвестная команда интерфейса: $name'});
+  }
+
   Future<void> _initNativeVoice() async {
     if (!_android || !mounted) return;
     try {
@@ -240,10 +324,11 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     await _stopNativeListening();
     final phrase = value.trim();
     final wakeMatch = _jarvisWake.matchAsPrefix(phrase);
+    if (mounted) setState(() => _status = 'Услышал: $phrase');
     // Голосовые команды принимаются только после обращения «Jarvis».
     // Никаких хлопков, порогов амплитуды или скрытой активации.
     final inWindow = DateTime.now().isBefore(_wakeUntil);
-    if (wakeMatch == null && !inWindow) {
+    if (_wakeRequired && wakeMatch == null && !inWindow) {
       if (mounted) setState(() => _status = 'Жду команду «Jarvis …»');
       Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); });
       return;
@@ -292,6 +377,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   Future<void> _finishConnect() async {
     final client = _client; if (client == null) return;
+    client.uiHandler = _uiTool;
     final tools = await client.listTools();
     await _partialSub?.cancel();
     _partialSub = client.partials().listen((text) { if (mounted) setState(() => _streamText = text); });
@@ -461,7 +547,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
       animation: _orbController,
       builder: (context, child) {
         return Container(
-          height: 286,
+          height: _uiOrbHeight,
           margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
           decoration: BoxDecoration(
             color: const Color(0xFF080E17),
@@ -705,7 +791,24 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => _themed(context, _buildHome(context));
+
+  Widget _themed(BuildContext context, Widget child) {
+    final r = _uiHue * math.pi / 180;
+    final c = math.cos(r), n = math.sin(r);
+    final m = <double>[
+      0.213 + c * 0.787 - n * 0.213, 0.715 - c * 0.715 - n * 0.715, 0.072 - c * 0.072 + n * 0.928, 0, 0,
+      0.213 - c * 0.213 + n * 0.143, 0.715 + c * 0.285 + n * 0.140, 0.072 - c * 0.072 - n * 0.283, 0, 0,
+      0.213 - c * 0.213 - n * 0.787, 0.715 - c * 0.715 + n * 0.715, 0.072 + c * 0.928 + n * 0.072, 0, 0,
+      0, 0, 0, 1, 0,
+    ];
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(_uiTextScale)),
+      child: _uiHue == 0 ? child : ColorFiltered(colorFilter: ColorFilter.matrix(m), child: child),
+    );
+  }
+
+  Widget _buildHome(BuildContext context) {
     final micColor = _listening ? kGreen : (_voiceReady && _voiceEnabled ? kCyan : kRed);
     final modelLabel = '${_activeModel + 1}/3';
     return Scaffold(

@@ -111,6 +111,11 @@ class MainActivity : FlutterActivity() {
                         .putBoolean(KEY_VOICE_ENABLED, call.argument<Boolean>("voiceEnabled") ?: true).commit()
                     result.success(true)
                 }
+                "load_ui" -> result.success(getSharedPreferences(PREFS, MODE_PRIVATE).getString("ui_state", "{}"))
+                "save_ui" -> {
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("ui_state", call.argument<String>("json") ?: "{}").commit()
+                    result.success(true)
+                }
                 "start", "listen_now" -> { voiceLoopEnabled = true; startRecognition(); result.success(true) }
                 "stop" -> { voiceLoopEnabled = false; stopRecognition(); result.success(true) }
                 "speak" -> { speak(call.argument<String>("text").orEmpty()); result.success(true) }
@@ -184,7 +189,7 @@ class MainActivity : FlutterActivity() {
                 ),
                 endpointConfig = EndpointConfig(
                     rule1 = EndpointRule(false, 1.8f, 0.0f),
-                    rule2 = EndpointRule(true, 0.8f, 0.0f),
+                    rule2 = EndpointRule(true, 0.6f, 0.0f),
                     rule3 = EndpointRule(false, 0.0f, 12.0f)
                 ),
                 enableEndpoint = true
