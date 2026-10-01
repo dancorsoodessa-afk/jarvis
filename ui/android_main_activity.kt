@@ -90,15 +90,15 @@ class MainActivity : FlutterActivity() {
                 "load_settings" -> {
                     val p = getSharedPreferences(PREFS, MODE_PRIVATE)
                     result.success(mapOf(
-                        "endpoint" to p.getString(KEY_ENDPOINT, "https://openrouter.ai/api/v1"),
-                        "model" to p.getString(KEY_MODEL, "openrouter/free"),
+                        "endpoint" to p.getString(KEY_ENDPOINT, "https://api.openai.com/v1"),
+                        "model" to p.getString(KEY_MODEL, "gpt-5.6-luna"),
                         "apiKey" to p.getString(KEY_AI_API_KEY, ""),
-                        "model1" to p.getString(KEY_MODEL1, p.getString(KEY_MODEL, "qwen/qwen3.8-27b:free")),
-                        "model2" to p.getString(KEY_MODEL2, "google/gemma-4-26b-a4b-it:free"),
-                        "model3" to p.getString(KEY_MODEL3, "openrouter/free"),
+                        "model1" to p.getString(KEY_MODEL1, "gpt-5.6-luna"),
+                        "model2" to p.getString(KEY_MODEL2, "openai/gpt-oss-120b"),
+                        "model3" to p.getString(KEY_MODEL3, "openai/gpt-oss-20b"),
                         "key1" to p.getString(KEY_KEY1, p.getString(KEY_AI_API_KEY, "")),
-                        "key2" to p.getString(KEY_KEY2, p.getString(KEY_AI_API_KEY, "")),
-                        "key3" to p.getString(KEY_KEY3, p.getString(KEY_AI_API_KEY, "")),
+                        "key2" to p.getString(KEY_KEY2, ""),
+                        "key3" to p.getString(KEY_KEY3, ""),
                         "activeModel" to p.getInt(KEY_ACTIVE_MODEL, 0),
                         "apiHostKey" to p.getString(KEY_APIHOST, ""),
                         "voiceEnabled" to p.getBoolean(KEY_VOICE_ENABLED, true),
