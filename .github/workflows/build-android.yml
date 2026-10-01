@@ -72,6 +72,7 @@ jobs:
           rm -f /tmp/ru-asr.tar.bz2 /tmp/ru-tts.tar.bz2
 
       - name: Install isolated crypto modules
+        working-directory: ui
         shell: bash
         run: |
           mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/crypto/providers
