@@ -27,9 +27,9 @@ jobs:
         working-directory: ui
         run: |
           set -e
+          rm -rf android
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
           rm -rf test
-          printf '\nandroid.newDsl=false\nandroid.builtInKotlin=false\n' >> android/gradle.properties
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
           echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
@@ -155,7 +155,7 @@ jobs:
           grep -q "microphone_permission_missing" android_main_activity.kt
           grep -q "silero_vad.onnx" android_main_activity.kt
           ! grep -q "WakeClapService\|startWakeService\|WAKE_ACTION" android_main_activity.kt
-          ! grep -q "double clap\|двойной хлоп" -i .
+          ! grep -R -q --exclude-dir=.git "double clap\|двойной хлоп" .
 
       - name: Analyze Dart code
         working-directory: ui
