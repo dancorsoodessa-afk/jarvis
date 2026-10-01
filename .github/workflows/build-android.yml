@@ -1,4 +1,5 @@
 name: Build JARVIS Android APK
+# Verified build trigger
 # rebuild requested: Android APK verification 2026-09-28
 # verified install build
 # CI trigger: build APK after Android source changes
