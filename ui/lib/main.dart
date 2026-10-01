@@ -1,4 +1,4 @@
-// JARVIS Android UI — OpenAI primary with Groq/Cerebras fallback
+// JARVIS Android UI — OpenAI primary with Groq fallback
 // CI verification after provider-loop fix
 // Android CI build
 // Analyzer fix: model label + response model scope
@@ -22,8 +22,8 @@ const kPanel = Color(0xFF0B111B);
 const kLine = Color(0xFF18283A);
 const _defaultAiEndpoint = 'https://api.openai.com/v1';
 const _defaultModel1 = 'gpt-5.6-luna';
-const _defaultModel2 = 'qwen/qwen3.8-27b';
-const _defaultModel3 = 'llama-3.3-70b';
+const _defaultModel2 = 'openai/gpt-oss-120b';
+const _defaultModel3 = 'openai/gpt-oss-120b';
 
 void main() => runApp(const BusyaApp());
 
@@ -114,7 +114,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         _key2.text = key2;
         _key3.text = key3;
         _apiHostKey.text = apiHostKey;
-        if (activeModel is int && activeModel >= 0 && activeModel <= 2) _activeModel = activeModel;
+        if (activeModel is int && activeModel >= 0 && activeModel <= 1) _activeModel = activeModel;
         if (voiceEnabled is bool) _voiceEnabled = voiceEnabled;
       }
     } catch (_) {}
@@ -258,9 +258,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     await _saveSettings();
     final primary = _activeModel == 0
         ? {'name': 'OpenAI', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()}
-        : _activeModel == 1
-            ? {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()}
-            : {'name': 'Cerebras', 'url': 'https://api.cerebras.ai/v1', 'key': _key3.text.trim(), 'model': _model3.text.trim()};
+        : {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()};
     if ((primary['url'] ?? '').toString().trim().isEmpty || (primary['key'] ?? '').toString().trim().isEmpty) {
       if (mounted) setState(() => _status = 'Для выбранного AI не указан API URL или API key');
       return;
@@ -274,7 +272,6 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         fallbacks: [
           {'name': 'OpenAI', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()},
           {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()},
-          {'name': 'Cerebras', 'url': 'https://api.cerebras.ai/v1', 'key': _key3.text.trim(), 'model': _model3.text.trim()},
         ],
       );
       await _client!.verifyConnection();
@@ -308,21 +305,21 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 const Text('AI · ОСНОВНОЙ + РЕЗЕРВ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text('Основной мозг — OpenAI. При ошибке/лимите автоматически: Groq → Cerebras. Ключи хранятся локально на устройстве.', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                const Text('Основной мозг — OpenAI. При ошибке/лимите автоматически: Groq. Ключи хранятся локально на устройстве.', style: TextStyle(color: Colors.white60, fontSize: 11)),
                 const SizedBox(height: 8),
-                for (int i = 0; i < 3; i++) ...[
+                for (int i = 0; i < 2; i++) ...[
                   Card(
                     color: _activeModel == i ? const Color(0xFF0A2421) : kPanel,
                     child: Padding(
                       padding: const EdgeInsets.all(8),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Row(children: [
-                          Expanded(child: Text(i == 0 ? 'OPENAI · ОСНОВНОЙ МОЗГ' : i == 1 ? 'GROQ · БЫСТРЫЙ РЕЗЕРВ' : 'CEREBRAS · РЕЗЕРВ №2', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
+                          Expanded(child: Text(i == 0 ? 'OPENAI · ОСНОВНОЙ МОЗГ' : 'GROQ · БЕСПЛАТНЫЙ РЕЗЕРВ', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
                           Radio<int>(value: i, groupValue: _activeModel, onChanged: (v) { if (v != null) setDialogState(() => _activeModel = v); }),
                         ]),
-                        TextField(controller: i == 0 ? _model1 : i == 1 ? _model2 : _model3, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
+                        TextField(controller: i == 0 ? _model1 : _model2, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
                         const SizedBox(height: 6),
-                        TextField(controller: i == 0 ? _key1 : i == 1 ? _key2 : _key3, obscureText: true, decoration: InputDecoration(labelText: i == 0 ? 'OpenAI API key' : i == 1 ? 'Groq API key' : 'Cerebras API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
+                        TextField(controller: i == 0 ? _key1 : _key2, obscureText: true, decoration: InputDecoration(labelText: i == 0 ? 'OpenAI API key' : 'Groq API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
                       ]),
                     ),
                   ),
