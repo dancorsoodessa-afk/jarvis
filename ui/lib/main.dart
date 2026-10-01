@@ -836,7 +836,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   ..._messages.map((m) => Align(
                     alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft,
                     child: Container(
-                      constraints: const BoxConstraints(maxWidth: 340),
+                      constraints: const BoxConstraints(maxWidth: 520),
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
