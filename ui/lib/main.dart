@@ -57,6 +57,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint),
       _model1 = TextEditingController(text: _defaultModel1), _model2 = TextEditingController(text: _defaultModel2), _model3 = TextEditingController(text: _defaultModel3),
       _key1 = TextEditingController(), _key2 = TextEditingController(), _key3 = TextEditingController(), _apiHostKey = TextEditingController(), _dsaEndpoint = TextEditingController(), _dsaKey = TextEditingController();
+  final _coinglassKey = TextEditingController(), _okxKey = TextEditingController(), _okxSecret = TextEditingController(), _okxPass = TextEditingController(), _okxEndpoint = TextEditingController(text: 'https://www.okx.com');
+  bool _okxDemo = true;
   int _activeModel = 0;
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
