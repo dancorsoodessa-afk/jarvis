@@ -17,8 +17,16 @@ class JarvisReply {
 }
 
 class JarvisIpc {
-  JarvisIpc._(this._process);
-  JarvisIpc._android(this._baseUri, this._apiKey, this._model);
+  JarvisIpc._(Process process)
+      : _process = process,
+        _baseUri = null,
+        _apiKey = null,
+        _model = null;
+  JarvisIpc._android(Uri baseUri, String apiKey, String model)
+      : _process = null,
+        _baseUri = baseUri,
+        _apiKey = apiKey,
+        _model = model;
 
   static Future<JarvisIpc> spawn(String executable,
       [List<String> args = const ['--ipc']]) async {
