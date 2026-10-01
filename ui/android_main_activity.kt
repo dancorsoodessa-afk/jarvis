@@ -665,6 +665,7 @@ class MainActivity : FlutterActivity() {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 try {
                     initRecognizer()
+                    initVad()
                     voiceInitialized = true
                     try { initTts() } catch (e: Exception) { eventSink?.success("__TTS_ERROR__:${e.javaClass.simpleName}:${e.message ?: ""}") }
                     voiceLoopEnabled = true
