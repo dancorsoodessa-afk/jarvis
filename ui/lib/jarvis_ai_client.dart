@@ -32,6 +32,13 @@ class JarvisIpc {
     }
     final fallbackKey = fallbackApiKey.trim().replaceFirst(RegExp(r'^(?:authorization\s*:\s*)?bearer\s+', caseSensitive: false), '').trim();
     return JarvisIpc._(httpClient: client, apiUrl: url, apiKey: key, model: model.trim(), fallbackApiUrl: fallbackUrl.isEmpty ? null : fallbackUrl, fallbackApiKey: fallbackKey, fallbackModel: fallbackModel.trim());
+  }
+
+  final Process? _process;
+  final HttpClient? _httpClient;
+  final String? _apiUrl;
+  final String? _apiKey;
+  final String? _model;
 
   final Process? _process;
   final HttpClient? _httpClient;
