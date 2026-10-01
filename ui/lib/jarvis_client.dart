@@ -148,6 +148,9 @@ class JarvisIpc {
     _fn('self_memory', 'Полная память самоулучшения', {}, []),
     _fn('self_behavior', 'Активный поведенческий слой', {}, []),
     _fn('self_clear', 'Полностью очистить память самоулучшения', {}, []),
+    _fn('daily_stock_analysis', 'Запрос к подключённому Daily Stock Analysis FastAPI.', {'path': {'type': 'string'}, 'method': {'type': 'string'}, 'body': {'type': 'string'}}, ['path']),
+    _fn('dsa_analyze', 'Запустить AI-анализ акции через Daily Stock Analysis.', {'stock_code': {'type': 'string'}, 'stock_name': {'type': 'string'}, 'report_type': {'type': 'string'}}, ['stock_code']),
+    _fn('dsa_market_review', 'Запустить обзор рынка через Daily Stock Analysis.', {'region': {'type': 'string'}}, []),
   ];
 
   Future<String> _tool(String name, Map<String, dynamic> args) async {
