@@ -152,7 +152,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         'apiKey': _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim(),
         'model1': _model1.text.trim(), 'model2': _model2.text.trim(), 'model3': _model3.text.trim(),
         'key1': _key1.text.trim(), 'key2': _key2.text.trim(), 'key3': _key3.text.trim(),
-        'activeModel': _activeModel,
+        'activeModel': 0,
         'apiHostKey': _apiHostKey.text.trim(),
         'voiceEnabled': _voiceEnabled,
       });
@@ -252,9 +252,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   Future<void> _connectAndroid() async {
     await _saveSettings();
     final endpoint = _endpoint.text.trim();
-    final model = _activeModel == 0 ? _model1.text.trim() : _activeModel == 1 ? _model2.text.trim() : _model3.text.trim();
-    final selectedKey = _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim();
-    final key = selectedKey.isNotEmpty ? selectedKey : _key1.text.trim();
+    final model = _model1.text.trim();
+    final key = _key1.text.trim();
     if (endpoint.isEmpty) { if (mounted) setState(() => _status = 'Укажите endpoint AI в настройках'); return; }
     try {
       final old = _client; _client = null; await old?.dispose();
