@@ -359,9 +359,7 @@ class JarvisIpc {
         r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
         r.headers.set('X-API-Key', key);
         await _json(await r.close());
-        _apiUrl = url;
-        _apiKey = key;
-        _model = (p['model'] ?? '').trim();
+        // Keep OpenAI as the configured primary; this check only proves that at least one provider works.
         return;
       } catch (e) {
         lastError = e;
