@@ -17,7 +17,7 @@ class JarvisIpc {
   static const _channel = MethodChannel('jarvis.voice');
 
   static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async => JarvisIpc._(process: await Process.start(executable, args));
-  static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = ''}) async {
+  static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = '', List<Map<String, String>> fallbacks = const []}) async {
     var url = apiUrl.trim().replaceFirst(RegExp(r'/+$'), '');
     for (final suffix in ['/chat/completions', '/models']) {
       if (url.endsWith(suffix)) { url = url.substring(0, url.length - suffix.length); break; }
@@ -25,14 +25,15 @@ class JarvisIpc {
     if (url.isEmpty) throw ArgumentError('AI endpoint не указан');
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 15)..idleTimeout = const Duration(seconds: 60);
     final key = apiKey.trim().replaceFirst(RegExp(r'^(?:authorization\s*:\s*)?bearer\s+', caseSensitive: false), '').trim();
-    return JarvisIpc._(httpClient: client, apiUrl: url, apiKey: key, model: model.trim());
+    return JarvisIpc._(httpClient: client, apiUrl: url, apiKey: key, model: model.trim(), fallbacks: fallbacks);
   }
 
   final Process? _process;
   final HttpClient? _httpClient;
-  final String? _apiUrl;
-  final String? _apiKey;
-  final String? _model;
+  String? _apiUrl;
+  String? _apiKey;
+  String? _model;
+  final List<Map<String, String>> _fallbacks;
   final List<Map<String, dynamic>> _history = [];
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
   final _deltas = StreamController<Map<int, String>>.broadcast();
@@ -241,7 +242,7 @@ class JarvisIpc {
     ];
   }
 
-  Future<JarvisReply> _standaloneSend(String text, {Map<String, dynamic>? attachment}) async {
+  Future<JarvisReply> _standaloneSendOnce(String text, {Map<String, dynamic>? attachment}) async {
     var userText = text;
     Map<String, dynamic>? activeAttachment = attachment;
     if (attachment != null && (attachment['mime']?.toString() ?? '').toLowerCase().startsWith('audio/')) {
@@ -320,13 +321,53 @@ class JarvisIpc {
     return JarvisReply(answer, responseModel, lastTool, false);
   }
 
+  Future<JarvisReply> _standaloneSend(String text, {Map<String, dynamic>? attachment}) async {
+    final providers = <Map<String, String>>[
+      {'name': 'OpenAI', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
+      ..._fallbacks,
+    ];
+    Object? lastError;
+    for (final p in providers) {
+      final url = (p['url'] ?? '').trim();
+      final key = (p['key'] ?? '').trim();
+      if (url.isEmpty || key.isEmpty) continue;
+      _apiUrl = url;
+      _apiKey = key;
+      _model = (p['model'] ?? '').trim();
+      try {
+        return await _standaloneSendOnce(text, attachment: attachment);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw StateError('Все AI-провайдеры недоступны: ${lastError ?? 'нет настроенных ключей'}');
+  }
+
   Future<void> verifyConnection() async {
     if (!_standalone) return;
-    final r = await _httpClient!.getUrl(Uri.parse('$_apiUrl/models'));
-    _auth(r);
-    r.headers.set(HttpHeaders.acceptHeader, 'application/json');
-    await _json(await r.close());
+    final providers = <Map<String, String>>[
+      {'name': 'OpenAI', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
+      ..._fallbacks,
+    ];
+    Object? lastError;
+    for (final p of providers) {
+      final url = (p['url'] ?? '').trim().replaceFirst(RegExp(r'/+$'), '');
+      final key = (p['key'] ?? '').trim();
+      if (url.isEmpty || key.isEmpty) continue;
+      try {
+        final r = await _httpClient!.getUrl(Uri.parse('$url/models'));
+        r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
+        r.headers.set('X-API-Key', key);
+        await _json(await r.close());
+        // Keep OpenAI as the configured primary; this check only proves that at least one provider works.
+        return;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw StateError('Не удалось подключить OpenAI и резервные AI: ${lastError ?? 'нет ключей'}');
   }
+
 
   Future<JarvisReply> sendMessage(String text, {Map<String, dynamic>? attachment}) async {
     if (_standalone) return await _standaloneSend(text, attachment: attachment);

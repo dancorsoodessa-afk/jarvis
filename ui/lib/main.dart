@@ -19,10 +19,10 @@ const kAmber = Color(0xFFFFC857);
 const kBg = Color(0xFF070B12);
 const kPanel = Color(0xFF0B111B);
 const kLine = Color(0xFF18283A);
-const _defaultAiEndpoint = 'https://openrouter.ai/api/v1';
-const _defaultModel1 = 'openrouter/free';
-const _defaultModel2 = 'qwen/qwen3.8-27b:free';
-const _defaultModel3 = 'google/gemma-4-26b-a4b-it:free';
+const _defaultAiEndpoint = 'https://api.openai.com/v1';
+const _defaultModel1 = 'gpt-5.6-luna';
+const _defaultModel2 = 'openai/gpt-oss-120b';
+const _defaultModel3 = 'gpt-oss-120b';
 
 void main() => runApp(const BusyaApp());
 
@@ -152,7 +152,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         'apiKey': _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim(),
         'model1': _model1.text.trim(), 'model2': _model2.text.trim(), 'model3': _model3.text.trim(),
         'key1': _key1.text.trim(), 'key2': _key2.text.trim(), 'key3': _key3.text.trim(),
-        'activeModel': _activeModel,
+        'activeModel': 0,
         'apiHostKey': _apiHostKey.text.trim(),
         'voiceEnabled': _voiceEnabled,
       });
@@ -252,14 +252,16 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   Future<void> _connectAndroid() async {
     await _saveSettings();
     final endpoint = _endpoint.text.trim();
-    final model = _activeModel == 0 ? _model1.text.trim() : _activeModel == 1 ? _model2.text.trim() : _model3.text.trim();
-    final selectedKey = _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim();
-    final key = selectedKey.isNotEmpty ? selectedKey : _key1.text.trim();
+    final model = _model1.text.trim();
+    final key = _key1.text.trim();
     if (endpoint.isEmpty) { if (mounted) setState(() => _status = 'Укажите endpoint AI в настройках'); return; }
     try {
       final old = _client; _client = null; await old?.dispose();
-      if (key.isEmpty) throw StateError('OpenRouter API key не указан для выбранной модели');
-      _client = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model);
+      if (key.isEmpty && _key2.text.trim().isEmpty && _key3.text.trim().isEmpty) throw StateError('API key OpenAI не указан. Можно также задать ключ Groq или Cerebras как резервный.');
+      _client = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model, fallbacks: [
+        {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()},
+        {'name': 'Cerebras', 'url': 'https://api.cerebras.ai/v1', 'key': _key3.text.trim(), 'model': _model3.text.trim()},
+      ]);
       await _client!.verifyConnection();
       await _finishConnect();
     } catch (e) { if (mounted) setState(() => _status = 'Ошибка подключения AI: $e'); }
@@ -289,9 +291,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
             width: 520,
             child: SingleChildScrollView(
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                const Text('API / AI · 3 ПРОФИЛЯ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
+                const Text('AI · ОСНОВНОЙ + РЕЗЕРВ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text('Один OpenRouter API key можно использовать для всех трёх моделей. Если ключ профиля пуст, JARVIS использует API KEY 1.', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                const Text('Основной мозг — OpenAI. При ошибке/лимите автоматически: Groq → Cerebras. Ключи хранятся локально на устройстве.', style: TextStyle(color: Colors.white60, fontSize: 11)),
                 const SizedBox(height: 8),
                 for (int i = 0; i < 3; i++) ...[
                   Card(
@@ -300,7 +302,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                       padding: const EdgeInsets.all(8),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Row(children: [
-                          Expanded(child: Text(i == 0 ? 'API KEY 1 · JARVIS' : i == 1 ? 'API KEY 2 · DEEPSEEK' : 'API KEY 3 · GLM', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
+                          Expanded(child: Text(i == 0 ? 'OPENAI · ОСНОВНОЙ МОЗГ' : i == 1 ? 'GROQ · БЫСТРЫЙ РЕЗЕРВ' : 'CEREBRAS · РЕЗЕРВ №2', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
                           Radio<int>(value: i, groupValue: _activeModel, onChanged: (v) { if (v != null) setDialogState(() => _activeModel = v); }),
                         ]),
                         TextField(controller: i == 0 ? _model1 : i == 1 ? _model2 : _model3, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
@@ -311,7 +313,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   ),
                   const SizedBox(height: 6),
                 ],
-                TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenRouter endpoint', isDense: true)),
+                TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenAI endpoint', isDense: true)),
                 const SizedBox(height: 6),
                 TextField(controller: _apiHostKey, obscureText: true, decoration: const InputDecoration(labelText: 'APIHOST key · голос Леда', isDense: true)),
                 const SizedBox(height: 12),
