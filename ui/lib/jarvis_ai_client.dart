@@ -18,7 +18,8 @@ class JarvisIpc {
 
   static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async => JarvisIpc._(process: await Process.start(executable, args));
   static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = '', String fallbackApiUrl = '', String fallbackModel = '', String fallbackApiKey = ''}) async {
-    var url = apiUrl.trim().replaceFirst(RegExp(r'/+\$'), '');
+    var url = apiUrl.trim();
+    while (url.endsWith('/')) url = url.substring(0, url.length - 1);
     for (final suffix in ['/chat/completions', '/models']) {
       if (url.endsWith(suffix)) { url = url.substring(0, url.length - suffix.length); break; }
     }
@@ -378,7 +379,8 @@ class JarvisIpc {
   Future<void> verifyConnection() async {
     if (!_standalone) return;
     Future<void> check(String url, String key) async {
-      final base = url.replaceFirst(RegExp(r'/+\$'), '');
+      var base = url.trim();
+      while (base.endsWith('/')) base = base.substring(0, base.length - 1);
       final r = await _httpClient!.getUrl(Uri.parse(base + '/models'));
       if (key.trim().isNotEmpty) {
         r.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + key.trim());
@@ -388,44 +390,3 @@ class JarvisIpc {
       await _json(await r.close());
     }
     try {
-      await check(_apiUrl!, _apiKey ?? '');
-    } catch (e) {
-      final msg = e.toString();
-      if (_fallbackApiUrl?.isNotEmpty == true && _fallbackApiKey?.isNotEmpty == true &&
-          (msg.contains('AI 429:') || msg.contains('AI 401:') || msg.contains('AI 403:'))) {
-        await check(_fallbackApiUrl!, _fallbackApiKey!);
-        return;
-      }
-      rethrow;
-    }
-  }
-
-  Future<JarvisReply> sendMessage(String text, {Map<String, dynamic>? attachment}) async {
-    if (_standalone) return await _standaloneSend(text, attachment: attachment);
-    final response = await _ipc({
-      'type': 'message',
-      'text': text,
-      if (attachment != null) 'attachment': attachment,
-    });
-    return JarvisReply.fromJson(response);
-  }
-
-  Future<List<String>> listTools() async {
-    if (!_standalone) {
-      try {
-        final r = await _ipc({'type': 'list_tools'});
-        if (r['tools'] is List) return (r['tools'] as List).map((e) => e.toString()).toList();
-      } catch (_) {}
-      return const [];
-    }
-    return _tools().map((x) => ((x['function'] as Map)['name'] ?? '').toString()).where((x) => x.isNotEmpty).toList();
-  }
-
-  Future<void> dispose() async {
-    for (final c in _pending.values) { if (!c.isCompleted) c.completeError(StateError('Клиент закрыт')); }
-    _pending.clear();
-    await _deltas.close();
-    _httpClient?.close(force: true);
-    _process?.kill();
-  }
-}
