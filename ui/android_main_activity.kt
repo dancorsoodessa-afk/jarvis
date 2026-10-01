@@ -59,6 +59,7 @@ class MainActivity : FlutterActivity() {
     private var recordingThread: Thread? = null
     private var tts: OfflineTts? = null
     private var systemTts: TextToSpeech? = null
+    private var systemTtsReady = false
     private var audioTrack: AudioTrack? = null
     private var monitorRecord: AudioRecord? = null
     private var monitorThread: Thread? = null
@@ -217,39 +218,45 @@ class MainActivity : FlutterActivity() {
         if (systemTts != null) return
         systemTts = TextToSpeech(this) { status ->
             if (status != TextToSpeech.SUCCESS) {
+                systemTtsReady = false
                 eventSink?.success("__TTS_ERROR__:android_tts_init")
                 return@TextToSpeech
             }
-            val language = systemTts?.setLanguage(java.util.Locale("ru", "RU"))
-            systemTts?.setSpeechRate(0.92f)
-            systemTts?.setPitch(0.92f)
+            val engine = systemTts ?: return@TextToSpeech
+            val language = engine.setLanguage(java.util.Locale("ru", "RU"))
+            engine.setSpeechRate(0.92f)
+            engine.setPitch(0.92f)
+            engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    runOnUiThread { eventSink?.success("__TTS_START__") }
+                }
+                override fun onDone(utteranceId: String?) {
+                    runOnUiThread {
+                        ttsPlaying = false
+                        eventSink?.success("__TTS_DONE__")
+                        scheduleRecognition(180)
+                    }
+                }
+                override fun onError(utteranceId: String?) {
+                    runOnUiThread {
+                        ttsPlaying = false
+                        eventSink?.success("__TTS_ERROR__:android_tts_speak")
+                        scheduleRecognition(180)
+                    }
+                }
+            })
             if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+                systemTtsReady = false
                 eventSink?.success("__TTS_ERROR__:android_tts_ru_missing")
             } else {
-                systemTts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {
-                        runOnUiThread { eventSink?.success("__TTS_START__") }
-                    }
-                    override fun onDone(utteranceId: String?) {
-                        runOnUiThread {
-                            ttsPlaying = false
-                            eventSink?.success("__TTS_DONE__")
-                            scheduleRecognition(180)
-                        }
-                    }
-                    override fun onError(utteranceId: String?) {
-                        runOnUiThread {
-                            ttsPlaying = false
-                            eventSink?.success("__TTS_ERROR__:android_tts_speak")
-                            scheduleRecognition(180)
-                        }
-                    }
-                })
+                systemTtsReady = true
                 eventSink?.success("__TTS_READY__")
+                val pending = pendingTts
+                pendingTts = null
+                if (!pending.isNullOrBlank()) speak(pending)
             }
         }
     }
-
     private fun copyAssetTreeAndReturnRoot(path: String): String {
         copyAssetTree(path)
         return File(getExternalFilesDir(null), path).absolutePath
@@ -430,8 +437,9 @@ class MainActivity : FlutterActivity() {
         stopRecognition()
         initTts()
         val engine = systemTts
-        if (engine == null) {
-            eventSink?.success("__TTS_ERROR__:android_tts_unavailable")
+        if (engine == null || !systemTtsReady) {
+            pendingTts = clean
+            initTts()
             return
         }
         ttsPlaying = true
