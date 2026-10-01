@@ -132,6 +132,14 @@ jobs:
           grep -n "sherpa-onnx" android/app/build.gradle.kts android/settings.gradle.kts
           grep -n 'signingConfig = signingConfigs.getByName("debug")' android/app/build.gradle.kts
 
+      - name: Restore tracked Dart sources after Flutter project generation
+        working-directory: ui
+        run: |
+          set -euo pipefail
+          git checkout -- lib/jarvis_client.dart
+          git status --short
+          sed -n '1,35p' lib/jarvis_client.dart
+
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
