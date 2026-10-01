@@ -47,6 +47,12 @@ class MainActivity : FlutterActivity() {
         private const val KEY_KEY3 = "ai_key_3"
         private const val KEY_ACTIVE_MODEL = "ai_active_model"
         private const val KEY_VOICE_ENABLED = "voice_enabled"
+        private const val KEY_CG_KEY = "coinglass_api_key"
+        private const val KEY_OKX_KEY = "okx_api_key"
+        private const val KEY_OKX_SECRET = "okx_secret_key"
+        private const val KEY_OKX_PASS = "okx_passphrase"
+        private const val KEY_OKX_ENDPOINT = "okx_endpoint"
+        private const val KEY_OKX_DEMO = "okx_demo"
     }
 
     private lateinit var tools: AndroidToolRouter
@@ -93,7 +99,13 @@ class MainActivity : FlutterActivity() {
                         "key3" to p.getString(KEY_KEY3, p.getString(KEY_AI_API_KEY, "")),
                         "activeModel" to p.getInt(KEY_ACTIVE_MODEL, 0),
                         "apiHostKey" to p.getString(KEY_APIHOST, ""),
-                        "voiceEnabled" to p.getBoolean(KEY_VOICE_ENABLED, true)
+                        "voiceEnabled" to p.getBoolean(KEY_VOICE_ENABLED, true),
+                        "coinglassApiKey" to p.getString(KEY_CG_KEY, ""),
+                        "okxApiKey" to p.getString(KEY_OKX_KEY, ""),
+                        "okxSecretKey" to p.getString(KEY_OKX_SECRET, ""),
+                        "okxPassphrase" to p.getString(KEY_OKX_PASS, ""),
+                        "okxEndpoint" to p.getString(KEY_OKX_ENDPOINT, "https://www.okx.com"),
+                        "okxDemo" to p.getBoolean(KEY_OKX_DEMO, true)
                     ))
                 }
                 "save_settings" -> {
@@ -109,7 +121,13 @@ class MainActivity : FlutterActivity() {
                         .putString(KEY_KEY3, call.argument<String>("key3").orEmpty().trim())
                         .putInt(KEY_ACTIVE_MODEL, call.argument<Int>("activeModel") ?: 0)
                         .putString(KEY_APIHOST, call.argument<String>("apiHostKey").orEmpty().trim())
-                        .putBoolean(KEY_VOICE_ENABLED, call.argument<Boolean>("voiceEnabled") ?: true).commit()
+                        .putBoolean(KEY_VOICE_ENABLED, call.argument<Boolean>("voiceEnabled") ?: true)
+                        .putString(KEY_CG_KEY, call.argument<String>("coinglassApiKey").orEmpty().trim())
+                        .putString(KEY_OKX_KEY, call.argument<String>("okxApiKey").orEmpty().trim())
+                        .putString(KEY_OKX_SECRET, call.argument<String>("okxSecretKey").orEmpty().trim())
+                        .putString(KEY_OKX_PASS, call.argument<String>("okxPassphrase").orEmpty().trim())
+                        .putString(KEY_OKX_ENDPOINT, call.argument<String>("okxEndpoint").orEmpty().trim())
+                        .putBoolean(KEY_OKX_DEMO, call.argument<Boolean>("okxDemo") ?: true).commit()
                     result.success(true)
                 }
                 "start", "listen_now" -> { voiceLoopEnabled = true; startRecognition(); result.success(true) }
