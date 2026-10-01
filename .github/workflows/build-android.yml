@@ -164,7 +164,7 @@ jobs:
         run: |
           set -euo pipefail
           git checkout -- lib/jarvis_client.dart
-          test "$(git hash-object lib/jarvis_client.dart)" = "5eaafda2c93b6e432e2f04c51f27d97faa86411d"
+          test "$(git hash-object lib/jarvis_client.dart)" = "e0df6c81ff93c23d5305385794e286e57f2cee06"
           grep -n "final Process? _process\|final String? _apiKey\|final String? _apiUrl" lib/jarvis_client.dart
 
       - name: Analyze Dart code
