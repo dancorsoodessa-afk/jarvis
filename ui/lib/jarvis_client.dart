@@ -84,10 +84,10 @@ class JarvisIpc {
 
   void _auth(HttpClientRequest r) {
     final key = _apiKey?.trim() ?? '';
-    if (key.isNotEmpty) {
-      r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
-      r.headers.set('X-API-Key', key);
-    }
+    if (key.isEmpty) return;
+    // OpenAI-compatible providers use Bearer authentication.
+    // Do not send X-API-Key here: some gateways/proxies reject unexpected auth headers.
+    r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
   }
 
   Future<Map<String, dynamic>> _json(HttpClientResponse response) async {
@@ -351,30 +351,32 @@ class JarvisIpc {
   Future<void> verifyConnection() async {
     if (!_standalone) return;
     final providers = <Map<String, String>>[
-      {'name': 'Primary', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
+      {'name': 'OpenAI', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
       ..._fallbacks,
     ].fold<List<Map<String, String>>>(<Map<String, String>>[], (list, p) {
       final signature = '${p['url']}|${p['key']}|${p['model']}';
       if (!list.any((x) => '${x['url']}|${x['key']}|${x['model']}' == signature)) list.add(p);
       return list;
     });
-    Object? lastError;
+    final errors = <String>[];
     for (final p in providers) {
       final url = (p['url'] ?? '').trim().replaceFirst(RegExp(r'/+$'), '');
       final key = (p['key'] ?? '').trim();
+      final model = (p['model'] ?? '').trim();
       if (url.isEmpty || key.isEmpty) continue;
       try {
         final r = await _httpClient!.getUrl(Uri.parse('$url/models'));
         r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
-        r.headers.set('X-API-Key', key);
-        await _json(await r.close());
-        // A successful response proves that at least one configured provider works.
+        final data = await _json(await r.close());
+        if (model.isNotEmpty && data['data'] is List) {
+          final ids = (data['data'] as List).whereType<Map>().map((m) => m['id']?.toString()).whereType<String>().toSet();
+          if (ids.isNotEmpty && !ids.contains(model)) throw StateError('Модель $model недоступна у этого провайдера');
+        }
+        _apiUrl = url; _apiKey = key; _model = model;
         return;
-      } catch (e) {
-        lastError = e;
-      }
+      } catch (e) { errors.add('${p['name'] ?? 'AI'}: $e'); }
     }
-    throw StateError('Не удалось подключить ни основной OpenAI, ни резервный Groq: ${lastError ?? 'нет ключей'}');
+    throw StateError('AI авторизация не прошла. ${errors.join(' | ')}');
   }
 
 
