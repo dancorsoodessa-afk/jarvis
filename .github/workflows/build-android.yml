@@ -159,6 +159,14 @@ jobs:
           ! grep -q "WakeClapService\|startWakeService\|WAKE_ACTION" android_main_activity.kt
           ! grep -q "double clap\|двойной хлоп" -i .
 
+      - name: Finalize tracked Dart client before analyzer
+        working-directory: ui
+        run: |
+          set -euo pipefail
+          git checkout -- lib/jarvis_client.dart
+          test "$(git hash-object lib/jarvis_client.dart)" = "1ce6e18935ed308e922ad0ae1b9b6c20277cc659"
+          grep -n "final Process? _process\|final String? _apiKey\|final String? _apiUrl" lib/jarvis_client.dart
+
       - name: Analyze Dart code
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
