@@ -262,8 +262,30 @@ class JarvisIpc {
       final req = await _httpClient!.postUrl(Uri.parse('$_apiUrl/chat/completions'));
       req.headers.contentType = ContentType.json;
       req.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      if (_apiUrl!.contains('openrouter.ai')) {
+        req.headers.set('HTTP-Referer', 'https://github.com/dancorsoodessa-afk/jarvis');
+        req.headers.set('X-OpenRouter-Title', 'JARVIS Android');
+      }
       _auth(req);
-      req.write(jsonEncode({'model': model, 'messages': messages, 'tools': _tools(), 'tool_choice': 'auto', 'temperature': 0.2, 'stream': false}));
+      final models = <String>[
+        model,
+        'openrouter/free',
+        'qwen/qwen3.8-27b:free',
+        'google/gemma-4-26b-a4b-it:free',
+      ].where((m) => m.trim().isNotEmpty).toSet().toList();
+      final requestBody = <String, dynamic>{
+        'messages': messages,
+        'tools': _tools(),
+        'tool_choice': 'auto',
+        'temperature': 0.2,
+        'stream': false,
+      };
+      if (_apiUrl!.contains('openrouter.ai')) {
+        requestBody['models'] = models;
+      } else {
+        requestBody['model'] = model;
+      }
+      req.write(jsonEncode(requestBody));
       final decoded = await _json(await req.close());
       final choices = decoded['choices'];
       if (choices is! List || choices.isEmpty) throw StateError('AI не вернул choices');
@@ -293,7 +315,7 @@ class JarvisIpc {
     if (Platform.isAndroid) {
       try { await _channel.invokeMethod('self_feedback', {'user': text, 'assistant': answer}); } catch (_) {}
     }
-    return JarvisReply(answer, model, lastTool, false);
+    return JarvisReply(answer, decoded['model']?.toString() ?? model, lastTool, false);
   }
 
   Future<void> verifyConnection() async {
