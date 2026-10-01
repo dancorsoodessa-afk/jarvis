@@ -132,14 +132,6 @@ jobs:
           grep -n "sherpa-onnx" android/app/build.gradle.kts android/settings.gradle.kts
           grep -n 'signingConfig = signingConfigs.getByName("debug")' android/app/build.gradle.kts
 
-      - name: Restore tracked Dart sources after Flutter project generation
-        working-directory: ui
-        run: |
-          set -euo pipefail
-          git checkout -- lib/jarvis_client.dart
-          git status --short
-          sed -n '1,35p' lib/jarvis_client.dart
-
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
@@ -158,14 +150,6 @@ jobs:
           grep -q "silero_vad.onnx" android_main_activity.kt
           ! grep -q "WakeClapService\|startWakeService\|WAKE_ACTION" android_main_activity.kt
           ! grep -q "double clap\|двойной хлоп" -i .
-
-      - name: Finalize tracked Dart client before analyzer
-        working-directory: ui
-        run: |
-          set -euo pipefail
-          git checkout -- lib/jarvis_client.dart
-          test "$(git hash-object lib/jarvis_client.dart)" = "e0df6c81ff93c23d5305385794e286e57f2cee06"
-          grep -n "final Process? _process\|final String? _apiKey\|final String? _apiUrl" lib/jarvis_client.dart
 
       - name: Analyze Dart code
         working-directory: ui
