@@ -1,0 +1,215 @@
+name: Build JARVIS Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [foundation]
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate Android host
+        working-directory: ui
+        run: flutter create --platforms=android --android-language=kotlin --org com.dancorsoodessa --project-name jarvis_ui .
+      - name: Install JARVIS Android host
+        working-directory: ui
+        shell: bash
+        run: |
+          mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
+          cat > android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt <<'KOTLIN'
+          package com.dancorsoodessa.jarvis_ui
+
+          import android.Manifest
+          import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.os.Bundle
+          import android.speech.RecognitionListener
+          import android.speech.RecognizerIntent
+          import android.speech.SpeechRecognizer
+          import android.speech.tts.TextToSpeech
+          import androidx.core.app.ActivityCompat
+          import androidx.core.content.ContextCompat
+          import io.flutter.embedding.android.FlutterActivity
+          import io.flutter.embedding.engine.FlutterEngine
+          import io.flutter.plugin.common.EventChannel
+          import io.flutter.plugin.common.MethodCall
+          import io.flutter.plugin.common.MethodChannel
+          import java.util.Locale
+
+          class MainActivity : FlutterActivity(), TextToSpeech.OnInitListener {
+            private val channelName = "jarvis.voice"
+            private val eventsName = "jarvis.voice.events"
+            private var eventSink: EventChannel.EventSink? = null
+            private var recognizer: SpeechRecognizer? = null
+            private var tts: TextToSpeech? = null
+            private var ready = false
+
+            override fun onCreate(savedInstanceState: Bundle?) {
+              super.onCreate(savedInstanceState)
+              tts = TextToSpeech(this, this)
+              if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1001)
+              }
+            }
+
+            override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+              super.configureFlutterEngine(flutterEngine)
+              EventChannel(flutterEngine.dartExecutor.binaryMessenger, eventsName).setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) { eventSink = sink }
+                override fun onCancel(arguments: Any?) { eventSink = null }
+              })
+              MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
+                when (call.method) {
+                  "initialize" -> {
+                    if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                      result.success(false)
+                    } else {
+                      ready = true
+                      result.success(true)
+                      eventSink?.success("__READY__")
+                      eventSink?.success("__TTS_READY__")
+                    }
+                  }
+                  "listen_now" -> { startListening(); result.success(true) }
+                  "stop" -> { recognizer?.cancel(); result.success(true) }
+                  "speak" -> { speak(call.argument<String>("text") ?: ""); result.success(true) }
+                  "load_settings" -> result.success(loadSettings())
+                  "save_settings" -> { saveSettings(call); result.success(true) }
+                  "android_tool" -> result.success(androidTool(call))
+                  "self_feedback" -> result.success(true)
+                  else -> result.notImplemented()
+                }
+              }
+            }
+
+            private fun loadSettings(): Map<String, Any?> {
+              val p = getSharedPreferences("jarvis", MODE_PRIVATE)
+              return mapOf(
+                "endpoint" to p.getString("endpoint", "https://api.openai.com/v1"),
+                "model" to p.getString("model", "gpt-5.6-luna"),
+                "apiKey" to p.getString("apiKey", ""),
+                "apiHostKey" to p.getString("apiHostKey", ""),
+                "model1" to p.getString("model1", "gpt-5.6-luna"),
+                "model2" to p.getString("model2", "openai/gpt-oss-120b"),
+                "key1" to p.getString("key1", ""),
+                "key2" to p.getString("key2", ""),
+                "activeModel" to p.getInt("activeModel", 0),
+                "voiceEnabled" to p.getBoolean("voiceEnabled", true)
+              )
+            }
+
+            private fun saveSettings(call: MethodCall) {
+              val p = getSharedPreferences("jarvis", MODE_PRIVATE).edit()
+              fun str(name: String): String = call.argument<String>(name) ?: ""
+              p.putString("endpoint", str("endpoint"))
+                .putString("model", str("model"))
+                .putString("apiKey", str("apiKey"))
+                .putString("apiHostKey", str("apiHostKey"))
+                .putString("model1", str("model1"))
+                .putString("model2", str("model2"))
+                .putString("key1", str("key1"))
+                .putString("key2", str("key2"))
+                .putInt("activeModel", call.argument<Int>("activeModel") ?: 0)
+                .putBoolean("voiceEnabled", call.argument<Boolean>("voiceEnabled") ?: true)
+                .apply()
+            }
+
+            private fun androidTool(call: MethodCall): String {
+              return when (call.argument<String>("name") ?: "") {
+                "device_info" -> "Android " + android.os.Build.VERSION.RELEASE + ", " + android.os.Build.MODEL
+                "time_now" -> java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(java.util.Date())
+                "self_memory" -> "{\"version\":1,\"rules\":[]}"
+                "self_behavior" -> "{\"version\":1,\"behavior\":\"JARVIS\"}"
+                "self_improve" -> "{\"version\":1,\"status\":\"applied\"}"
+                "self_learn" -> "{\"version\":1,\"status\":\"saved\"}"
+                "self_forget" -> "{\"version\":1,\"status\":\"forgotten\"}"
+                "self_clear" -> "{\"version\":1,\"status\":\"cleared\"}"
+                else -> ""
+              }
+            }
+
+            private fun startListening() {
+              if (!ready) return
+              if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1001)
+                eventSink?.success("__ERROR__:Нет разрешения на микрофон")
+                return
+              }
+              recognizer?.destroy()
+              recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+              recognizer?.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) { eventSink?.success("__LISTENING__") }
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) { eventSink?.success("__MIC_LEVEL__:" + String.format(Locale.US, "%.1f", rmsdB)) }
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() { eventSink?.success("__END__") }
+                override fun onError(error: Int) { eventSink?.success("__ERROR__:" + error) }
+                override fun onResults(results: Bundle?) {
+                  val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: ""
+                  if (text.isNotBlank()) eventSink?.success(text)
+                }
+                override fun onPartialResults(partialResults: Bundle?) {
+                  val text = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: ""
+                  if (text.isNotBlank()) eventSink?.success("__PARTIAL__:" + text)
+                }
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+              })
+              val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+              }
+              recognizer?.startListening(intent)
+            }
+
+            private fun speak(text: String) {
+              tts?.language = Locale("ru", "RU")
+              tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis")
+            }
+
+            override fun onInit(status: Int) {
+              if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale("ru", "RU")
+                eventSink?.success("__TTS_READY__")
+              }
+            }
+
+            override fun onDestroy() {
+              recognizer?.destroy()
+              tts?.stop()
+              tts?.shutdown()
+              super.onDestroy()
+            }
+          }
+          KOTLIN
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          perms = '  <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
+          if "android.permission.RECORD_AUDIO" not in s:
+              s = s.replace("<application", perms + "<application", 1)
+          p.write_text(s)
+          PY
+      - name: Build release APK
+        working-directory: ui
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter build apk --release
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-Android-release
+          path: ui/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
