@@ -103,9 +103,13 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         final activeModel = raw['activeModel'];
         final voiceEnabled = raw['voiceEnabled'];
         if (endpoint.isNotEmpty) _endpoint.text = endpoint;
-        if (model1.isNotEmpty) _model1.text = model1; else if (model.isNotEmpty) _model1.text = model;
-        if (model2.isNotEmpty) _model2.text = model2;
-        if (model3.isNotEmpty) _model3.text = model3;
+        // Migration: older builds could save a Groq Qwen model into the OpenAI primary slot.
+        final migratedModel1 = model1.startsWith('qwen/') ? _defaultModel1 : (model1.isNotEmpty ? model1 : (model.isNotEmpty ? model : _defaultModel1));
+        final migratedModel2 = model2.isNotEmpty ? model2 : _defaultModel2;
+        final migratedModel3 = model3.isNotEmpty ? model3 : _defaultModel3;
+        _model1.text = migratedModel1;
+        _model2.text = migratedModel2;
+        _model3.text = migratedModel3;
         _key1.text = key1.isNotEmpty ? key1 : apiKey;
         _key2.text = key2;
         _key3.text = key3;
