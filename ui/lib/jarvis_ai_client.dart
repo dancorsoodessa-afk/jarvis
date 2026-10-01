@@ -18,7 +18,7 @@ class JarvisIpc {
 
   static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async => JarvisIpc._(process: await Process.start(executable, args));
   static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = '', String fallbackApiUrl = '', String fallbackModel = '', String fallbackApiKey = ''}) async {
-    var url = apiUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    var url = apiUrl.trim().replaceFirst(RegExp(r'/+\$'), '');
     for (final suffix in ['/chat/completions', '/models']) {
       if (url.endsWith(suffix)) { url = url.substring(0, url.length - suffix.length); break; }
     }
@@ -33,13 +33,6 @@ class JarvisIpc {
     final fallbackKey = fallbackApiKey.trim().replaceFirst(RegExp(r'^(?:authorization\s*:\s*)?bearer\s+', caseSensitive: false), '').trim();
     return JarvisIpc._(httpClient: client, apiUrl: url, apiKey: key, model: model.trim(), fallbackApiUrl: fallbackUrl.isEmpty ? null : fallbackUrl, fallbackApiKey: fallbackKey, fallbackModel: fallbackModel.trim());
   }
-
-  final Process? _process;
-  final HttpClient? _httpClient;
-  final String? _apiUrl;
-  final String? _apiKey;
-  final String? _model;
-
   final Process? _process;
   final HttpClient? _httpClient;
   final String? _apiUrl;
@@ -281,7 +274,6 @@ class JarvisIpc {
     final local = await _local(userText);
     if (local.text.isNotEmpty) return local;
     final defaultModel = await _modelId();
-    final attachmentMime = (activeAttachment?['mime']?.toString() ?? '').toLowerCase();
     final model = activeAttachment != null ? 'google/gemma-4-26b-a4b-it:free' : defaultModel;
     var activeApiUrl = _apiUrl!;
     var activeApiKey = _apiKey ?? '';
@@ -289,43 +281,91 @@ class JarvisIpc {
     var usingFallback = false;
     final behavior = Platform.isAndroid ? await _tool('self_behavior', {}) : '';
     final system = 'Ты JARVIS — голосовой AI-ассистент. Отвечай на языке пользователя кратко: 1–3 предложения, если не просят подробно. Для реальных действий используй инструменты, не выдумывай результат. Интернет: google_search (актуальная информация, новости), web_get, weather. Интерфейс: ты сам меняешь экран через ui_* (цвет, размер текста, размер ядра, голос, настройки) — когда просят изменить вид или настройки, вызови нужный ui_*. Самоулучшение — постоянные правила через self_improve/self_learn. Не заявляй об изменении весов модели или APK. Активный слой:\n$behavior';
-    final messages = <Map<String, dynamic>>[{'role': 'system', 'content': system}, ..._history, {'role': 'user', 'content': activeAttachment == null ? userText : _attachmentParts(activeAttachment, userText)}];
+    final messages = <Map<String, dynamic>>[
+      {'role': 'system', 'content': system},
+      ..._history,
+      {'role': 'user', 'content': activeAttachment == null ? userText : _attachmentParts(activeAttachment, userText)},
+    ];
     String answer = '';
     String? lastTool;
     String responseModel = model;
     for (var round = 0; round < 8; round++) {
-      while (true) {
-        final req = await _httpClient!.postUrl(Uri.parse('${activeApiUrl}/chat/completions'));
-        req.headers.contentType = ContentType.json;
-        req.headers.set(HttpHeaders.acceptHeader, 'application/json');
-        if (activeApiUrl.contains('openrouter.ai')) {
-          req.headers.set('HTTP-Referer', 'https://github.com/dancorsoodessa-afk/jarvis');
-          req.headers.set('X-OpenRouter-Title', 'JARVIS Android');
+      final req = await _httpClient!.postUrl(Uri.parse(activeApiUrl + '/chat/completions'));
+      req.headers.contentType = ContentType.json;
+      req.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      if (activeApiUrl.contains('openrouter.ai')) {
+        req.headers.set('HTTP-Referer', 'https://github.com/dancorsoodessa-afk/jarvis');
+        req.headers.set('X-OpenRouter-Title', 'JARVIS Android');
+      }
+      if (activeApiKey.trim().isNotEmpty) {
+        req.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + activeApiKey.trim());
+        req.headers.set('X-API-Key', activeApiKey.trim());
+      }
+      final models = <String>[activeModel, 'openrouter/free'].where((m) => m.trim().isNotEmpty).toSet().toList();
+      final requestBody = <String, dynamic>{
+        'messages': messages,
+        'tools': _tools(),
+        'tool_choice': 'auto',
+        'temperature': 0.2,
+        'stream': false,
+        'max_tokens': 700,
+      };
+      if (activeApiUrl.contains('openrouter.ai')) {
+        requestBody['reasoning'] = {'enabled': false};
+        requestBody['models'] = models;
+      } else {
+        requestBody['model'] = activeModel;
+      }
+      req.write(jsonEncode(requestBody));
+      try {
+        final decoded = await _json(await req.close());
+        responseModel = decoded['model']?.toString() ?? activeModel;
+        final choices = decoded['choices'];
+        if (choices is! List || choices.isEmpty) throw StateError('AI не вернул choices');
+        final first = choices.first;
+        final message = first is Map ? first['message'] : null;
+        if (message is! Map) throw StateError('AI не вернул message');
+        final content = message['content'];
+        if (content != null) answer = content.toString();
+        final calls = message['tool_calls'];
+        if (calls is List && calls.isNotEmpty) {
+          messages.add({'role': 'assistant', 'content': content, 'tool_calls': calls});
+          for (final call in calls) {
+            if (call is! Map || call['function'] is! Map) continue;
+            final fn = call['function'] as Map;
+            final name = fn['name']?.toString() ?? '';
+            Map<String, dynamic> args = {};
+            try {
+              final a = jsonDecode(fn['arguments']?.toString() ?? '{}');
+              if (a is Map) args = Map<String, dynamic>.from(a);
+            } catch (_) {}
+            String result;
+            try {
+              result = await _tool(name, args);
+              lastTool = name;
+            } catch (e) {
+              result = jsonEncode({'error': e.toString()});
+            }
+            messages.add({'role': 'tool', 'tool_call_id': call['id']?.toString() ?? name, 'content': result});
+          }
+          continue;
         }
-        if (activeApiKey.trim().isNotEmpty) {
-          req.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${activeApiKey.trim()}');
-          req.headers.set('X-API-Key', activeApiKey.trim());
+        break;
+      } catch (e) {
+        final msg = e.toString();
+        final canFallback = !usingFallback && (_fallbackApiUrl?.isNotEmpty == true) && (_fallbackApiKey?.isNotEmpty == true);
+        if (canFallback && (msg.contains('AI 429:') || msg.contains('AI 401:') || msg.contains('AI 403:'))) {
+          activeApiUrl = _fallbackApiUrl!;
+          activeApiKey = _fallbackApiKey!;
+          activeModel = _fallbackModel?.trim().isNotEmpty == true ? _fallbackModel!.trim() : model;
+          usingFallback = true;
+          round--;
+          continue;
         }
-        final models = <String>[activeModel, 'openrouter/free'].where((m) => m.trim().isNotEmpty).toSet().toList();
-        final requestBody = <String, dynamic>{
-          'messages': messages,
-          'tools': _tools(),
-          'tool_choice': 'auto',
-          'temperature': 0.2,
-          'stream': false,
-          'max_tokens': 700,
-        };
-        if (activeApiUrl.contains('openrouter.ai')) {
-          requestBody['reasoning'] = {'enabled': false};
-          requestBody['models'] = models;
-        } else {
-          requestBody['model'] = activeModel;
-        }
-        req.write(jsonEncode(requestBody));
-        try {
-          final decoded = await _json(await req.close());
-          responseModel = decoded['model']?.toString() ?? activeModel;
-        answer = answer.trim().isEmpty ? 'Готово.' : answer.trim();
+        rethrow;
+      }
+    }
+    answer = answer.trim().isEmpty ? 'Готово.' : answer.trim();
     _history.add({'role': 'user', 'content': userText});
     _history.add({'role': 'assistant', 'content': answer});
     while (_history.length > 12) _history.removeAt(0);
@@ -338,9 +378,54 @@ class JarvisIpc {
   Future<void> verifyConnection() async {
     if (!_standalone) return;
     Future<void> check(String url, String key) async {
-      final r = await _httpClient!.getUrl(Uri.parse('${url.replaceFirst(RegExp(r'/+
+      final base = url.replaceFirst(RegExp(r'/+\$'), '');
+      final r = await _httpClient!.getUrl(Uri.parse(base + '/models'));
+      if (key.trim().isNotEmpty) {
+        r.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + key.trim());
+        r.headers.set('X-API-Key', key.trim());
+      }
+      r.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      await _json(await r.close());
+    }
+    try {
+      await check(_apiUrl!, _apiKey ?? '');
+    } catch (e) {
+      final msg = e.toString();
+      if (_fallbackApiUrl?.isNotEmpty == true && _fallbackApiKey?.isNotEmpty == true &&
+          (msg.contains('AI 429:') || msg.contains('AI 401:') || msg.contains('AI 403:'))) {
+        await check(_fallbackApiUrl!, _fallbackApiKey!);
+        return;
+      }
+      rethrow;
+    }
+  }
 
   Future<JarvisReply> sendMessage(String text, {Map<String, dynamic>? attachment}) async {
     if (_standalone) return await _standaloneSend(text, attachment: attachment);
     final response = await _ipc({
       'type': 'message',
+      'text': text,
+      if (attachment != null) 'attachment': attachment,
+    });
+    return JarvisReply.fromJson(response);
+  }
+
+  Future<List<String>> listTools() async {
+    if (!_standalone) {
+      try {
+        final r = await _ipc({'type': 'list_tools'});
+        if (r['tools'] is List) return (r['tools'] as List).map((e) => e.toString()).toList();
+      } catch (_) {}
+      return const [];
+    }
+    return _tools().map((x) => ((x['function'] as Map)['name'] ?? '').toString()).where((x) => x.isNotEmpty).toList();
+  }
+
+  Future<void> dispose() async {
+    for (final c in _pending.values) { if (!c.isCompleted) c.completeError(StateError('Клиент закрыт')); }
+    _pending.clear();
+    await _deltas.close();
+    _httpClient?.close(force: true);
+    _process?.kill();
+  }
+}
