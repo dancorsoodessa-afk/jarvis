@@ -1,29 +1,37 @@
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 enum JarvisVisualState { idle, listening, thinking, speaking, confirmation, error, exiting }
 
 class JarvisReactor extends StatefulWidget {
-  const JarvisReactor({super.key, this.color = const Color(0xFF37D5EE), this.state = JarvisVisualState.idle});
+  const JarvisReactor({super.key, this.color = const Color(0xFF37D5EE), this.state = JarvisVisualState.idle, this.level});
   final Color color;
   final JarvisVisualState state;
+  /// Нормализованный уровень микрофона 0..1 — ядро пульсирует в такт голосу.
+  final ValueListenable<double>? level;
   @override
   State<JarvisReactor> createState() => _JarvisReactorState();
 }
 
 class _JarvisReactorState extends State<JarvisReactor> with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
+  final _Smoother _smoother = _Smoother();
   @override
   void dispose() { _controller.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => RepaintBoundary(
-    child: CustomPaint(painter: _ReactorPainter(_controller, widget.color, widget.state)),
+    child: CustomPaint(painter: _ReactorPainter(_controller, widget.color, widget.state, widget.level, _smoother)),
   );
 }
 
+class _Smoother { double v = 0; }
+
 class _ReactorPainter extends CustomPainter {
-  _ReactorPainter(this.time, this.color, this.state) : super(repaint: time);
+  _ReactorPainter(this.time, this.color, this.state, this.level, this.smoother) : super(repaint: level == null ? time : Listenable.merge([time, level]));
   final Animation<double> time;
+  final ValueListenable<double>? level;
+  final _Smoother smoother;
   final Color color;
   final JarvisVisualState state;
 
@@ -32,7 +40,9 @@ class _ReactorPainter extends CustomPainter {
     final center = size.center(Offset.zero);
     final radius = size.shortestSide / 2;
     final t = time.value * math.pi * 2;
-    final intensity = switch (state) {
+    smoother.v += ((level?.value ?? 0.0) - smoother.v) * 0.22;
+    final lv = smoother.v.clamp(0.0, 1.0).toDouble();
+    final baseIntensity = switch (state) {
       JarvisVisualState.idle => 0.72,
       JarvisVisualState.listening => 1.05,
       JarvisVisualState.thinking => 1.18,
@@ -41,6 +51,7 @@ class _ReactorPainter extends CustomPainter {
       JarvisVisualState.error => 1.25,
       JarvisVisualState.exiting => 0.35,
     };
+    final intensity = baseIntensity + lv * 0.55;
     final speed = switch (state) {
       JarvisVisualState.idle => 0.55,
       JarvisVisualState.listening => 1.15,
@@ -76,9 +87,9 @@ class _ReactorPainter extends CustomPainter {
 
     final breathing = math.sin(t * 0.65) * radius * 0.018;
     final headCenter = Offset(center.dx + math.sin(t * 0.37) * radius * 0.035, center.dy - radius * 0.10 + breathing);
-    final headR = radius * 0.31;
+    final headR = radius * (0.31 + lv * 0.025);
     final talking = state == JarvisVisualState.speaking ? (0.5 + 0.5 * math.sin(t * 5.0)).clamp(0.0, 1.0) : 0.0;
-    final listening = state == JarvisVisualState.listening ? (0.5 + 0.5 * math.sin(t * 3.2)).clamp(0.0, 1.0) : 0.0;
+    final listening = state == JarvisVisualState.listening ? math.max(lv, 0.15 + 0.1 * math.sin(t * 3.2)).clamp(0.0, 1.0) : 0.0;
     final thinking = state == JarvisVisualState.thinking ? (0.5 + 0.5 * math.sin(t * 1.6)).clamp(0.0, 1.0) : 0.0;
 
     final silhouette = Paint()..shader = RadialGradient(
@@ -153,5 +164,5 @@ class _ReactorPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ReactorPainter oldDelegate) => oldDelegate.color != color || oldDelegate.state != state;
+  bool shouldRepaint(_ReactorPainter oldDelegate) => oldDelegate.color != color || oldDelegate.state != state || oldDelegate.level != level;
 }

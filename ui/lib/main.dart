@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 import 'jarvis_client.dart';
+import 'jarvis_reactor.dart';
 
 const kCyan = Color(0xFF08E6FF);
 const kGreen = Color(0xFF45F0B0);
@@ -63,7 +64,13 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   StreamSubscription<dynamic>? _voiceSub;
   StreamSubscription<String>? _partialSub;
   bool _voiceReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
-  static final RegExp _jarvisWake = RegExp(r'^\s*(?:jarvis|джарвис)\s*[,;:.!?-]?\s*', caseSensitive: false);
+  // Русская модель распознавания пишет «Джарвис» по-разному, поэтому принимаем варианты.
+  static final RegExp _jarvisWake = RegExp(r'^\s*(?:jarvis|jarvice|джарвис|джарвиз|джарвес|джервис|жарвис|жарвез|чарвис|харвис|джа\s?рвис|дж[ае]рв[иеы]с)\s*[,;:.!?-]?\s*', caseSensitive: false, unicode: true);
+  // После обращения «Jarvis» или ответа ассистента команды принимаются без повторного обращения.
+  static const Duration _conversationWindow = Duration(seconds: 20);
+  DateTime _wakeUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  final ValueNotifier<double> _micLevel = ValueNotifier<double>(0);
+  bool _speaking = false;
   late final AnimationController _orbController;
   String _status = 'JARVIS запускается…', _streamText = '';
   bool get _android => Platform.isAndroid;
@@ -200,7 +207,20 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
     if (value.startsWith('__TTS_ERROR__')) { if (mounted) setState(() => _status = 'Ошибка TTS: ${value.substring(12)}'); return; }
     if (value == '__MIC_SOURCE_READY__') { if (mounted) setState(() => _status = 'Микрофон подключён · проверяю сигнал…'); return; }
-    if (value.startsWith('__MIC_LEVEL__:')) { if (mounted) setState(() => _status = 'Микрофон работает · сигнал ${value.substring(14)}'); return; }
+    if (value.startsWith('__MIC_LEVEL__:')) {
+      // Уровень идёт только в анимацию (без setState), чтобы ядро реагировало на голос вживую.
+      final rms = double.tryParse(value.substring(14)) ?? 0;
+      _micLevel.value = (rms * 7).clamp(0.0, 1.0).toDouble();
+      return;
+    }
+    if (value == '__TTS_START__') { _speaking = true; if (mounted) setState(() {}); return; }
+    if (value == '__TTS_DONE__' || value == '__TTS_INTERRUPTED__') {
+      _speaking = false;
+      _wakeUntil = DateTime.now().add(_conversationWindow);
+      if (mounted) setState(() {});
+      return;
+    }
+    if (value == '__VAD_SPEECH_BEGIN__' || value == '__VAD_SPEECH_END__' || value == '__VAD_READY__') return;
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
     if (value.startsWith('__ERROR__:')) {
       _listening = false;
@@ -213,18 +233,23 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
       if (_voiceEnabled && !_busy) Future<void>.delayed(const Duration(milliseconds: 450), () { if (mounted) _startNativeListening(); });
       return;
     }
+    // Любые служебные события вида __NAME__ — не речь пользователя. Раньше они
+    // попадали сюда и перезапускали микрофон посреди фразы.
+    if (value.startsWith('__')) return;
     _listening = false;
     await _stopNativeListening();
     final phrase = value.trim();
     final wakeMatch = _jarvisWake.matchAsPrefix(phrase);
     // Голосовые команды принимаются только после обращения «Jarvis».
     // Никаких хлопков, порогов амплитуды или скрытой активации.
-    if (wakeMatch == null) {
+    final inWindow = DateTime.now().isBefore(_wakeUntil);
+    if (wakeMatch == null && !inWindow) {
       if (mounted) setState(() => _status = 'Жду команду «Jarvis …»');
       Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); });
       return;
     }
-    final command = phrase.substring(wakeMatch.end).trim();
+    final command = wakeMatch == null ? phrase : phrase.substring(wakeMatch.end).trim();
+    _wakeUntil = DateTime.now().add(_conversationWindow);
     _awaitingCommand = false;
     if (command.isEmpty) {
       if (mounted) setState(() => _status = 'Jarvis активирован · слушаю команду');
@@ -400,6 +425,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   @override void dispose() {
     _orbController.dispose();
+    _micLevel.dispose();
     _voiceSub?.cancel(); _partialSub?.cancel();
     if (_android) { _voice.invokeMethod('stop'); _voice.invokeMethod('dispose'); }
     _client?.dispose(); _input.dispose(); _endpoint.dispose(); _model1.dispose(); _model2.dispose(); _model3.dispose(); _key1.dispose(); _key2.dispose(); _key3.dispose(); _apiHostKey.dispose(); _scroll.dispose(); super.dispose();
@@ -430,11 +456,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     final listening = _listening;
     final ready = _voiceReady && _voiceEnabled;
     final accent = listening ? kGreen : (ready ? kCyan : kRed);
+    final visualState = _speaking ? JarvisVisualState.speaking : _busy ? JarvisVisualState.thinking : listening ? JarvisVisualState.listening : JarvisVisualState.idle;
     return AnimatedBuilder(
       animation: _orbController,
       builder: (context, child) {
-        final phase = _orbController.value * 6.283185307;
-        final pulse = 0.94 + 0.06 * (0.5 + 0.5 * math.sin(phase));
         return Container(
           height: 286,
           margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
@@ -462,41 +487,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   ),
                 ],
               )),
-              for (final size in [198.0 * pulse, 166.0 * pulse, 132.0 * pulse])
-                Container(
-                  width: size,
-                  height: size,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: accent.withOpacity(.16), width: 1),
-                  ),
-                ),
-              Container(
-                width: 108 * pulse,
-                height: 108 * pulse,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0E3440), Color(0xFF09202A)]),
-                  border: Border.all(color: accent.withOpacity(.8)),
-                  boxShadow: [BoxShadow(color: accent.withOpacity(.22), blurRadius: 30)],
-                ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    for (final h in [13.0, 24.0, 34.0, 20.0, 29.0])
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 450),
-                          width: 4,
-                          height: h * pulse,
-                          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(3), boxShadow: [BoxShadow(color: accent, blurRadius: 7)]),
-                        ),
-                      ),
-                  ]),
-                  const SizedBox(height: 8),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                ]),
-              ),
+              Positioned(top: 34, bottom: 76, left: 24, right: 24, child: JarvisReactor(color: accent, state: visualState, level: _micLevel)),
               Positioned(bottom: 36, left: 16, right: 16, child: Column(children: [
                 RichText(textAlign: TextAlign.center, text: TextSpan(children: [
                   TextSpan(text: listening ? 'СЛУШАЕТ ПОТОК ' : 'JARVIS ', style: const TextStyle(color: Colors.white, fontSize: 20, fontFamily: 'serif', fontWeight: FontWeight.w700)),

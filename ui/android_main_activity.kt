@@ -348,7 +348,7 @@ class MainActivity : FlutterActivity() {
                             sum += sample * sample
                         }
                         levelCounter++
-                        if (levelCounter >= 10) {
+                        if (levelCounter >= 1) {
                             val rms = sqrt(sum / n)
                             runOnUiThread { eventSink?.success("__MIC_LEVEL__:" + "%.4f".format(java.util.Locale.US, rms)) }
                             levelCounter = 0
@@ -631,6 +631,7 @@ class MainActivity : FlutterActivity() {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 try {
                     initRecognizer()
+                    initVad()
                     voiceInitialized = true
                     try { initTts() } catch (e: Exception) { eventSink?.success("__TTS_ERROR__:${e.javaClass.simpleName}:${e.message ?: ""}") }
                     voiceLoopEnabled = true
