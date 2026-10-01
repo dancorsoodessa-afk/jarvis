@@ -102,6 +102,12 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         final key3 = raw['key3']?.toString() ?? '';
         final activeModel = raw['activeModel'];
         final voiceEnabled = raw['voiceEnabled'];
+        final coinglassApiKey = raw['coinglassApiKey']?.toString() ?? '';
+        final okxApiKey = raw['okxApiKey']?.toString() ?? '';
+        final okxSecretKey = raw['okxSecretKey']?.toString() ?? '';
+        final okxPassphrase = raw['okxPassphrase']?.toString() ?? '';
+        final okxEndpoint = raw['okxEndpoint']?.toString() ?? '';
+        final okxDemo = raw['okxDemo'];
         if (endpoint.isNotEmpty) _endpoint.text = endpoint;
         // Migration: older builds could save a Groq Qwen model into the OpenAI primary slot.
         final migratedModel1 = model1.startsWith('qwen/') ? _defaultModel1 : (model1.isNotEmpty ? model1 : (model.isNotEmpty ? model : _defaultModel1));
@@ -114,6 +120,12 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         _key2.text = key2;
         _key3.text = key3;
         _apiHostKey.text = apiHostKey;
+        _coinglassKey.text = coinglassApiKey;
+        _okxKey.text = okxApiKey;
+        _okxSecret.text = okxSecretKey;
+        _okxPass.text = okxPassphrase;
+        if (okxEndpoint.isNotEmpty) _okxEndpoint.text = okxEndpoint;
+        if (okxDemo is bool) _okxDemo = okxDemo;
         if (activeModel is int && activeModel >= 0 && activeModel <= 1) _activeModel = activeModel;
         if (voiceEnabled is bool) _voiceEnabled = voiceEnabled;
       }
@@ -160,6 +172,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         'activeModel': _activeModel,
         'apiHostKey': _apiHostKey.text.trim(),
         'voiceEnabled': _voiceEnabled,
+        'coinglassApiKey': _coinglassKey.text.trim(), 'okxApiKey': _okxKey.text.trim(),
+        'okxSecretKey': _okxSecret.text.trim(), 'okxPassphrase': _okxPass.text.trim(),
+        'okxEndpoint': _okxEndpoint.text.trim(), 'okxDemo': _okxDemo,
       });
     } catch (_) {}
   }
@@ -329,6 +344,21 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 const SizedBox(height: 6),
                 TextField(controller: _apiHostKey, obscureText: true, decoration: const InputDecoration(labelText: 'APIHOST key · голос Леда', isDense: true)),
                 const SizedBox(height: 12),
+                const Text('COINGLASS + OKX · ТОРГОВЫЙ КОНТУР', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                const Text('Ключи остаются локально. По умолчанию OKX работает в DEMO. Реальная торговля включается отдельно.', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                const SizedBox(height: 7),
+                TextField(controller: _coinglassKey, obscureText: true, decoration: const InputDecoration(labelText: 'CoinGlass API Key', isDense: true)),
+                const SizedBox(height: 6),
+                TextField(controller: _okxKey, obscureText: true, decoration: const InputDecoration(labelText: 'OKX API Key', isDense: true)),
+                const SizedBox(height: 6),
+                TextField(controller: _okxSecret, obscureText: true, decoration: const InputDecoration(labelText: 'OKX Secret Key', isDense: true)),
+                const SizedBox(height: 6),
+                TextField(controller: _okxPass, obscureText: true, decoration: const InputDecoration(labelText: 'OKX Passphrase', isDense: true)),
+                const SizedBox(height: 6),
+                TextField(controller: _okxEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OKX API endpoint', isDense: true)),
+                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _okxDemo, onChanged: (v) => setDialogState(() => _okxDemo = v), title: const Text('OKX DEMO Trading'), subtitle: const Text('Рекомендуется оставить включённым для первого теста.')),
+                const SizedBox(height: 12),
                 const Text('ГОЛОС / МИКРОФОН', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Локальный русский STT. Микрофон работает только при открытом приложении.')),
                 const SizedBox(height: 12),
@@ -416,7 +446,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     _orbController.dispose();
     _voiceSub?.cancel(); _partialSub?.cancel();
     if (_android) { _voice.invokeMethod('stop'); _voice.invokeMethod('dispose'); }
-    _client?.dispose(); _input.dispose(); _endpoint.dispose(); _model1.dispose(); _model2.dispose(); _model3.dispose(); _key1.dispose(); _key2.dispose(); _key3.dispose(); _apiHostKey.dispose(); _scroll.dispose(); super.dispose();
+    _client?.dispose(); _input.dispose(); _endpoint.dispose(); _model1.dispose(); _model2.dispose(); _model3.dispose(); _key1.dispose(); _key2.dispose(); _key3.dispose(); _apiHostKey.dispose(); _coinglassKey.dispose(); _okxKey.dispose(); _okxSecret.dispose(); _okxPass.dispose(); _okxEndpoint.dispose(); _scroll.dispose(); super.dispose();
   }
 
   Widget _terminalLine(String text, {Color color = kGreen, bool dim = false}) {
