@@ -121,6 +121,8 @@ jobs:
                   text = text.replace('dependencies {', 'dependencies {\n    ' + dep, 1)
               else:
                   text = text.rstrip() + '\n\ndependencies {\n    ' + dep + '\n}\n'
+          core = 'implementation("androidx.core:core-ktx:1.12.0")'
+          appcompat = 'implementation("androidx.appcompat:appcompat:1.6.1")'
           for extra in (core, appcompat):
               if extra not in text:
                   text = text.replace('dependencies {', 'dependencies {\n    ' + extra, 1)
