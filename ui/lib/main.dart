@@ -1,4 +1,4 @@
-// JARVIS Android UI — OpenAI primary with Groq fallback
+// JARVIS Android UI — selected provider first, transient-failure fallback
 // CI verification after provider-loop fix
 // Android CI build
 // Analyzer fix: model label + response model scope
@@ -133,7 +133,12 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         if (okxDemo is bool) _okxDemo = okxDemo;
         _dsaEndpoint.text = dsaEndpoint;
         _dsaKey.text = dsaApiKey;
-        if (activeModel is int && activeModel >= 0 && activeModel <= 1) _activeModel = activeModel;
+        if (activeModel is int && activeModel >= 0 && activeModel <= 1) {
+          _activeModel = activeModel;
+          // Older installs could retain the default OpenAI slot while the only
+          // configured key was Groq. Keep the working provider selected after restart.
+          if (_activeModel == 0 && key1.trim().isEmpty && key2.trim().isNotEmpty) _activeModel = 1;
+        }
         if (voiceEnabled is bool) _voiceEnabled = voiceEnabled;
       }
     } catch (_) {}
@@ -292,10 +297,13 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         primary['url']!.toString(),
         apiKey: primary['key']!.toString(),
         model: primary['model']!.toString(),
-        fallbacks: [
-          {'name': 'OpenAI', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()},
-          {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()},
-        ],
+        fallbacks: _activeModel == 0
+            ? [
+                {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()},
+              ]
+            : [
+                {'name': 'OpenAI', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()},
+              ],
       );
       await _client!.verifyConnection();
       await _finishConnect();
@@ -328,7 +336,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 const Text('AI · ОСНОВНОЙ + РЕЗЕРВ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text('Основной мозг — OpenAI. При ошибке/лимите автоматически: Groq. Ключи хранятся локально на устройстве.', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                const Text('Выбранный AI используется первым. Резерв подключается только при временной ошибке или лимите; 401/403 не скрываются переключением.', style: TextStyle(color: Colors.white60, fontSize: 11)),
                 const SizedBox(height: 8),
                 for (int i = 0; i < 2; i++) ...[
                   Card(
@@ -337,7 +345,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                       padding: const EdgeInsets.all(8),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Row(children: [
-                          Expanded(child: Text(i == 0 ? 'OPENAI · ОСНОВНОЙ МОЗГ' : 'GROQ · БЕСПЛАТНЫЙ РЕЗЕРВ', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
+                          Expanded(child: Text(i == 0 ? 'OPENAI · AI 1' : 'GROQ · AI 2', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
                           Radio<int>(value: i, groupValue: _activeModel, onChanged: (v) { if (v != null) setDialogState(() => _activeModel = v); }),
                         ]),
                         TextField(controller: i == 0 ? _model1 : _model2, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
