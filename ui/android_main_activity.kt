@@ -99,7 +99,7 @@ class MainActivity : FlutterActivity() {
                         "key1" to p.getString(KEY_KEY1, p.getString(KEY_AI_API_KEY, "")),
                         "key2" to p.getString(KEY_KEY2, ""),
                         "key3" to p.getString(KEY_KEY3, ""),
-                        "activeModel" to p.getInt(KEY_ACTIVE_MODEL, 0),
+                        "activeModel" to p.getInt(KEY_ACTIVE_MODEL, 1),
                         "apiHostKey" to p.getString(KEY_APIHOST, ""),
                         "voiceEnabled" to p.getBoolean(KEY_VOICE_ENABLED, true),
                         "coinglassApiKey" to p.getString(KEY_CG_KEY, ""),
@@ -123,7 +123,7 @@ class MainActivity : FlutterActivity() {
                         .putString(KEY_KEY1, call.argument<String>("key1").orEmpty().trim())
                         .putString(KEY_KEY2, call.argument<String>("key2").orEmpty().trim())
                         .putString(KEY_KEY3, call.argument<String>("key3").orEmpty().trim())
-                        .putInt(KEY_ACTIVE_MODEL, call.argument<Int>("activeModel") ?: 0)
+                        .putInt(KEY_ACTIVE_MODEL, call.argument<Int>("activeModel") ?: 1)
                         .putString(KEY_APIHOST, call.argument<String>("apiHostKey").orEmpty().trim())
                         .putBoolean(KEY_VOICE_ENABLED, call.argument<Boolean>("voiceEnabled") ?: true)
                         .putString(KEY_CG_KEY, call.argument<String>("coinglassApiKey").orEmpty().trim())
