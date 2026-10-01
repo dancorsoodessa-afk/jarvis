@@ -71,6 +71,13 @@ jobs:
           test -s android/app/src/main/assets/vits-piper-ru_RU-irina-medium/ru_RU-irina-medium.onnx
           rm -f /tmp/ru-asr.tar.bz2 /tmp/ru-tts.tar.bz2
 
+      - name: Install isolated crypto modules
+        shell: bash
+        run: |
+          mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/crypto/providers
+          cp crypto/*.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/crypto/
+          cp crypto/providers/*.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/crypto/providers/
+
       - name: Configure Android permissions and sherpa-onnx
         working-directory: ui
         run: |
