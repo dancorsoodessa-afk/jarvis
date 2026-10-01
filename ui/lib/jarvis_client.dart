@@ -324,9 +324,13 @@ class JarvisIpc {
 
   Future<JarvisReply> _standaloneSend(String text, {Map<String, dynamic>? attachment}) async {
     final providers = <Map<String, String>>[
-      {'name': 'OpenAI', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
+      {'name': 'Primary', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
       ..._fallbacks,
-    ];
+    ].fold<List<Map<String, String>>>(<Map<String, String>>[], (list, p) {
+      final signature = '${p['url']}|${p['key']}|${p['model']}';
+      if (!list.any((x) => '${x['url']}|${x['key']}|${x['model']}' == signature)) list.add(p);
+      return list;
+    });
     Object? lastError;
     for (final p in providers) {
       final url = (p['url'] ?? '').trim();
@@ -347,9 +351,13 @@ class JarvisIpc {
   Future<void> verifyConnection() async {
     if (!_standalone) return;
     final providers = <Map<String, String>>[
-      {'name': 'OpenAI', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
+      {'name': 'Primary', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
       ..._fallbacks,
-    ];
+    ].fold<List<Map<String, String>>>(<Map<String, String>>[], (list, p) {
+      final signature = '${p['url']}|${p['key']}|${p['model']}';
+      if (!list.any((x) => '${x['url']}|${x['key']}|${x['model']}' == signature)) list.add(p);
+      return list;
+    });
     Object? lastError;
     for (final p in providers) {
       final url = (p['url'] ?? '').trim().replaceFirst(RegExp(r'/+$'), '');
@@ -360,13 +368,13 @@ class JarvisIpc {
         r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
         r.headers.set('X-API-Key', key);
         await _json(await r.close());
-        // Keep OpenAI as the configured primary; this check only proves that at least one provider works.
+        // A successful response proves that at least one configured provider works.
         return;
       } catch (e) {
         lastError = e;
       }
     }
-    throw StateError('Не удалось подключить OpenAI и резервные AI: ${lastError ?? 'нет ключей'}');
+    throw StateError('Не удалось подключить ни основной OpenAI, ни резервный Groq: ${lastError ?? 'нет ключей'}');
   }
 
 
