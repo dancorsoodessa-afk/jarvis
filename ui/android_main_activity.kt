@@ -324,9 +324,11 @@ class MainActivity : FlutterActivity() {
             recognitionStream = rec.createStream()
             val min = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             require(min > 0) { "Invalid microphone buffer size: $min" }
+            // Prefer the plain microphone on EMUI/Huawei, then speech-specific sources.
             val sources = intArrayOf(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 MediaRecorder.AudioSource.DEFAULT
             )
             var record: AudioRecord? = null
