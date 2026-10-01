@@ -10,7 +10,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
-import 'jarvis_client.dart';
+import 'jarvis_ai_client.dart';
 import 'jarvis_reactor.dart';
 
 const kCyan = Color(0xFF08E6FF);
