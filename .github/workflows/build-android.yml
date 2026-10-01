@@ -51,6 +51,7 @@ jobs:
           mkdir -p "$root"
           cp android_main_activity.kt "$root/MainActivity.kt"
           cp android_tools/AndroidToolRouter.kt "$root/AndroidToolRouter.kt"
+          cp android_tools/TradingTools.kt "$root/TradingTools.kt"
           mkdir -p "$root/database" "$root/files" "$root/internet" "$root/other" "$root/selfimprovement"
           cp android_tools/database/DatabaseTools.kt "$root/database/DatabaseTools.kt"
           cp android_tools/files/FileTools.kt "$root/files/FileTools.kt"
