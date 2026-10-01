@@ -53,6 +53,8 @@ class MainActivity : FlutterActivity() {
         private const val KEY_OKX_PASS = "okx_passphrase"
         private const val KEY_OKX_ENDPOINT = "okx_endpoint"
         private const val KEY_OKX_DEMO = "okx_demo"
+        private const val KEY_DSA_ENDPOINT = "dsa_endpoint"
+        private const val KEY_DSA_KEY = "dsa_api_key"
     }
 
     private lateinit var tools: AndroidToolRouter
@@ -105,7 +107,9 @@ class MainActivity : FlutterActivity() {
                         "okxSecretKey" to p.getString(KEY_OKX_SECRET, ""),
                         "okxPassphrase" to p.getString(KEY_OKX_PASS, ""),
                         "okxEndpoint" to p.getString(KEY_OKX_ENDPOINT, "https://www.okx.com"),
-                        "okxDemo" to p.getBoolean(KEY_OKX_DEMO, true)
+                        "okxDemo" to p.getBoolean(KEY_OKX_DEMO, true),
+                        "dsaEndpoint" to p.getString(KEY_DSA_ENDPOINT, ""),
+                        "dsaApiKey" to p.getString(KEY_DSA_KEY, "")
                     ))
                 }
                 "save_settings" -> {
@@ -127,7 +131,9 @@ class MainActivity : FlutterActivity() {
                         .putString(KEY_OKX_SECRET, call.argument<String>("okxSecretKey").orEmpty().trim())
                         .putString(KEY_OKX_PASS, call.argument<String>("okxPassphrase").orEmpty().trim())
                         .putString(KEY_OKX_ENDPOINT, call.argument<String>("okxEndpoint").orEmpty().trim())
-                        .putBoolean(KEY_OKX_DEMO, call.argument<Boolean>("okxDemo") ?: true).commit()
+                        .putBoolean(KEY_OKX_DEMO, call.argument<Boolean>("okxDemo") ?: true)
+                        .putString(KEY_DSA_ENDPOINT, call.argument<String>("dsaEndpoint").orEmpty().trim())
+                        .putString(KEY_DSA_KEY, call.argument<String>("dsaApiKey").orEmpty().trim()).commit()
                     result.success(true)
                 }
                 "start", "listen_now" -> { voiceLoopEnabled = true; startRecognition(); result.success(true) }
