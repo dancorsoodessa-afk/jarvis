@@ -331,8 +331,34 @@ class JarvisIpc {
       if (!list.any((x) => '${x['url']}|${x['key']}|${x['model']}' == signature)) list.add(p);
       return list;
     });
+  bool _fallbackAllowed(Object error) {
+    final message = error.toString();
+    final match = RegExp(r'AI (\\d{3})').firstMatch(message);
+    if (match != null) {
+      final code = int.tryParse(match.group(1)!) ?? 0;
+      // Never hide bad credentials, bad requests, or invalid model IDs by
+      // silently switching providers. Fallback is for transient failures.
+      return code == 408 || code == 409 || code == 425 || code == 429 || code >= 500;
+    }
+    return error is SocketException ||
+        error is TimeoutException ||
+        message.contains('Connection reset') ||
+        message.contains('Connection closed') ||
+        message.contains('timed out');
+  }
+
+  Future<JarvisReply> _standaloneSend(String text, {Map<String, dynamic>? attachment}) async {
+    final providers = <Map<String, String>>[
+      {'name': 'Primary', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
+      ..._fallbacks,
+    ].fold<List<Map<String, String>>>(<Map<String, String>>[], (list, p) {
+      final signature = '${p['url']}|${p['key']}|${p['model']}';
+      if (!list.any((x) => '${x['url']}|${x['key']}|${x['model']}' == signature)) list.add(p);
+      return list;
+    });
     Object? lastError;
-    for (final p in providers) {
+    for (var i = 0; i < providers.length; i++) {
+      final p = providers[i];
       final url = (p['url'] ?? '').trim();
       final key = (p['key'] ?? '').trim();
       if (url.isEmpty || key.isEmpty) continue;
@@ -343,40 +369,32 @@ class JarvisIpc {
         return await _standaloneSendOnce(text, attachment: attachment);
       } catch (e) {
         lastError = e;
+        if (i == providers.length - 1 || !_fallbackAllowed(e)) rethrow;
       }
     }
-    throw StateError('Все AI-провайдеры недоступны: ${lastError ?? 'нет настроенных ключей'}');
+    throw StateError('AI-провайдеры недоступны: ${lastError ?? 'нет настроенных ключей'}');
   }
 
   Future<void> verifyConnection() async {
     if (!_standalone) return;
-    final providers = <Map<String, String>>[
-      {'name': 'OpenAI', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
-      ..._fallbacks,
-    ].fold<List<Map<String, String>>>(<Map<String, String>>[], (list, p) {
-      final signature = '${p['url']}|${p['key']}|${p['model']}';
-      if (!list.any((x) => '${x['url']}|${x['key']}|${x['model']}' == signature)) list.add(p);
-      return list;
-    });
-    final errors = <String>[];
-    for (final p in providers) {
-      final url = (p['url'] ?? '').trim().replaceFirst(RegExp(r'/+$'), '');
-      final key = (p['key'] ?? '').trim();
-      final model = (p['model'] ?? '').trim();
-      if (url.isEmpty || key.isEmpty) continue;
-      try {
-        final r = await _httpClient!.getUrl(Uri.parse('$url/models'));
-        r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
-        final data = await _json(await r.close());
-        if (model.isNotEmpty && data['data'] is List) {
-          final ids = (data['data'] as List).whereType<Map>().map((m) => m['id']?.toString()).whereType<String>().toSet();
-          if (ids.isNotEmpty && !ids.contains(model)) throw StateError('Модель $model недоступна у этого провайдера');
-        }
-        _apiUrl = url; _apiKey = key; _model = model;
-        return;
-      } catch (e) { errors.add('${p['name'] ?? 'AI'}: $e'); }
+    final url = (_apiUrl ?? '').trim().replaceFirst(RegExp(r'/+$'), '');
+    final key = (_apiKey ?? '').trim();
+    final model = (_model ?? '').trim();
+    if (url.isEmpty) throw ArgumentError('AI endpoint не указан');
+    if (key.isEmpty) throw ArgumentError('API key не указан');
+    final r = await _httpClient!.getUrl(Uri.parse('$url/models'));
+    r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
+    final data = await _json(await r.close());
+    if (model.isNotEmpty && data['data'] is List) {
+      final ids = (data['data'] as List)
+          .whereType<Map>()
+          .map((m) => m['id']?.toString())
+          .whereType<String>()
+          .toSet();
+      if (ids.isNotEmpty && !ids.contains(model)) {
+        throw StateError('Модель $model недоступна у выбранного провайдера');
+      }
     }
-    throw StateError('AI авторизация не прошла. ${errors.join(' | ')}');
   }
 
 
