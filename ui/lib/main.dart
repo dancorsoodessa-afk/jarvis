@@ -714,7 +714,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     final micColor = _listening ? kGreen : (_voiceReady && _voiceEnabled ? kCyan : kRed);
-    final modelLabel = '
+    final modelLabel = '${_activeModel + 1}/3';
     return Scaffold(
       backgroundColor: kBg,
       drawer: _buildDrawer(),
