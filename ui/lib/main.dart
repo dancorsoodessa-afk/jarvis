@@ -112,7 +112,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         final okxDemo = raw['okxDemo'];
         final dsaEndpoint = raw['dsaEndpoint']?.toString() ?? '';
         final dsaApiKey = raw['dsaApiKey']?.toString() ?? '';
-        if (endpoint.isNotEmpty) _endpoint.text = endpoint;
+        if (endpoint.isNotEmpty && !endpoint.contains('openrouter.ai')) _endpoint.text = endpoint;
+        else _endpoint.text = _defaultAiEndpoint;
         // Migration: older builds could save a Groq Qwen model into the OpenAI primary slot.
         final migratedModel1 = model1.startsWith('qwen/') ? _defaultModel1 : (model1.isNotEmpty ? model1 : (model.isNotEmpty ? model : _defaultModel1));
         final migratedModel2 = model2.isNotEmpty ? model2 : _defaultModel2;
@@ -341,7 +342,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                         ]),
                         TextField(controller: i == 0 ? _model1 : _model2, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
                         const SizedBox(height: 6),
-                        TextField(controller: i == 0 ? _key1 : _key2, obscureText: true, decoration: InputDecoration(labelText: i == 0 ? 'OpenAI API key' : 'Groq API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
+                        TextField(controller: i == 0 ? _key1 : _key2, obscureText: false, decoration: InputDecoration(labelText: i == 0 ? 'OpenAI API key' : 'Groq API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
                       ]),
                     ),
                   ),
