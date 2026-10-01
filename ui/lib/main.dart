@@ -65,7 +65,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   _Attachment? _attachment;
   StreamSubscription<dynamic>? _voiceSub;
   StreamSubscription<String>? _partialSub;
-  bool _voiceReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
+  bool _voiceReady = false, _ttsReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
   static final RegExp _jarvisWake = RegExp(r'^\s*(?:jarvis|джарвис)\s*[,;:.!?-]?\s*', caseSensitive: false);
   late final AnimationController _orbController;
   String _status = 'JARVIS запускается…', _streamText = '';
@@ -223,10 +223,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     final value = event?.toString().trim() ?? '';
     if (value.isEmpty) return;
     if (value == '__READY__') { _voiceReady = true; _listening = false; if (mounted) setState(() => _status = 'Русский голосовой контур готов · слушаю'); if (_voiceEnabled) Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); }); return; }
-    if (value == '__TTS_READY__') { if (mounted) setState(() => _status = 'Локальный русский голос готов'); return; }
+    if (value == '__TTS_READY__') { _ttsReady = true; if (mounted) setState(() => _status = 'Локальный русский голос готов'); return; }
     if (value == '__LOADING_VOICE__') { if (mounted) setState(() => _status = 'Загрузка локальной модели речи…'); return; }
     if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
-    if (value.startsWith('__TTS_ERROR__')) { if (mounted) setState(() => _status = 'Ошибка TTS: ${value.substring(12)}'); return; }
+    if (value.startsWith('__TTS_ERROR__')) { _ttsReady = false; if (mounted) setState(() => _status = 'Ошибка TTS: ${value.substring(12)}'); return; }
     if (value == '__MIC_SOURCE_READY__') { if (mounted) setState(() => _status = 'Микрофон подключён · проверяю сигнал…'); return; }
     if (value.startsWith('__MIC_LEVEL__:')) { if (mounted) setState(() => _status = 'Микрофон работает · сигнал ${value.substring(14)}'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
@@ -776,7 +776,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     final micColor = _listening ? kGreen : (_voiceReady && _voiceEnabled ? kCyan : kRed);
-    final modelLabel = '${_activeModel + 1}/3';
+    final modelLabel = '${_activeModel + 1}/2';
     return Scaffold(
       backgroundColor: kBg,
       drawer: _buildDrawer(),
@@ -806,20 +806,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             child: Row(children: [
-              _statusCard(Icons.memory_rounded, 'МОДЕЛЬ', modelLabel, kCyan),
-              _statusCard(Icons.mic_rounded, 'STT', _voiceReady ? 'RU · ГОТОВ' : 'OFFLINE', kGreen),
-              _statusCard(Icons.volume_up_rounded, 'TTS', _voiceReady ? 'RU · ГОТОВ' : 'OFFLINE', kAmber),
+
             ]),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(9, 7, 9, 2),
-            child: Row(children: [
-              _quickAction(Icons.terminal_rounded, 'КОМАНДЫ', _openCommandCenter),
-              _quickAction(Icons.camera_alt_rounded, 'СКРИН', () => _send('screenshot')),
-              _quickAction(Icons.monitor_heart_rounded, 'СТАТУС', () => _send('status')),
-              _quickAction(Icons.search_rounded, 'ПОИСК', () => _send('поиск')),
-            ]),
-          ),
+          const SizedBox(height: 4),
           Expanded(
             child: Container(
               margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -830,7 +820,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 children: [
                   Row(children: [
                     const Expanded(child: Text('ЖУРНАЛ / ДИАЛОГ', style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1))),
-                    Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: _listening ? kGreen : Colors.white38, fontSize: 8, fontFamily: 'monospace')),
+                    Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: _listening ? kGreen : Colors.white38, fontSize: 8, fontFamily: 'monospace')), if (_ttsReady) const Icon(Icons.volume_up_rounded, size: 13, color: kGreen),
                     if (_busy) const Padding(padding: EdgeInsets.only(left: 8), child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: kCyan))),
                   ]),
                   const SizedBox(height: 8),
@@ -848,7 +838,20 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(m.isUser ? 'КОМАНДА' : 'JARVIS', style: TextStyle(color: m.isUser ? kCyan : kGreen, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
                         const SizedBox(height: 3),
-                        Text(m.text, style: TextStyle(color: m.isUser ? Colors.white : Colors.white70, fontSize: 12.5, height: 1.3)),
+                        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Expanded(child: SelectableText(m.text, style: TextStyle(color: m.isUser ? Colors.white : Colors.white70, fontSize: 13, height: 1.35))),
+                          IconButton(
+                            tooltip: 'Копировать',
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                            icon: const Icon(Icons.copy_rounded, size: 17, color: Colors.white54),
+                            onPressed: () async {
+                              await Clipboard.setData(ClipboardData(text: m.text));
+                              if (mounted) setState(() => _status = 'Текст скопирован');
+                            },
+                          ),
+                        ]),
                       ]),
                     ),
                   )),
@@ -879,16 +882,18 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
               Expanded(
                 child: TextField(
                   controller: _input,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (value) { _input.clear(); _send(value); },
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  minLines: 2,
+                  maxLines: 7,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.35),
                   cursorColor: kCyan,
                   decoration: InputDecoration(
                     hintText: 'Введите команду JARVIS…',
                     hintStyle: const TextStyle(color: Colors.white30),
                     filled: true,
                     fillColor: kPanel,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide(color: kLine.withOpacity(.8))),
                     enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide(color: kLine.withOpacity(.8))),
                     focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: kCyan)),
