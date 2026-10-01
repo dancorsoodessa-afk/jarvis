@@ -1,5 +1,5 @@
-// Busya Android UI/voice validation build
-// Android CI rebuild: OpenRouter fallback + model display fix
+// JARVIS Android UI — OpenAI primary with Groq/Cerebras fallback
+// Android CI build
 // Analyzer fix: model label + response model scope
 // Final CI source cleanup
 // Android terminal-launcher skin inspired by the linked Jarvis/Aris visual language.
@@ -307,7 +307,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                         ]),
                         TextField(controller: i == 0 ? _model1 : i == 1 ? _model2 : _model3, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
                         const SizedBox(height: 6),
-                        TextField(controller: i == 0 ? _key1 : i == 1 ? _key2 : _key3, obscureText: true, decoration: InputDecoration(labelText: 'OpenRouter API key ${i + 1}', hintText: 'sk-or-v1-…', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
+                        TextField(controller: i == 0 ? _key1 : i == 1 ? _key2 : _key3, obscureText: true, decoration: InputDecoration(labelText: i == 0 ? 'OpenAI API key' : i == 1 ? 'Groq API key' : 'Cerebras API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
                       ]),
                     ),
                   ),
