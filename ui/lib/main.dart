@@ -76,11 +76,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     });
   }
 
-  bool _looksLikeOpenRouterKey(String value) {
-    final key = value.trim();
-    return RegExp(r'^sk-or-v1-[A-Za-z0-9_-]{20,}$').hasMatch(key);
-  }
-
   Future<void> _initVoice() async {
     if (!_android || _voiceReady) return;
     try {
@@ -221,16 +216,16 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _initAndroid() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _endpoint.text = prefs.getString('endpoint') ?? 'https://openrouter.ai/api/v1';
+      _endpoint.text = prefs.getString('endpoint') ?? 'https://api.openai.com/v1';
       _model.text = prefs.getString('model')?.trim() ?? 'gpt-4o-mini';
       _apiKey.text = prefs.getString('api_key')?.trim() ?? '';
-      _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? 'https://openrouter.ai/api/v1';
+      _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? '';
       _fallbackKey.text = prefs.getString('fallback_key')?.trim() ?? '';
       _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? '';
       await _initVoice();
       if (!mounted) return;
       if (_apiKey.text.isEmpty) {
-        setState(() => _status = 'Введите API key OpenRouter в Настройках');
+        setState(() => _status = 'Введите AI URL, API key и Model в Настройках');
       } else {
         await _connectAndroid();
       }
@@ -261,14 +256,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _setVisual(JarvisVisualState.error);
       return;
     }
-    if (!_looksLikeOpenRouterKey(key)) {
-      if (mounted) setState(() => _status = 'Неверный API key: нужен ключ sk-or-v1-…');
-      _setVisual(JarvisVisualState.error);
-      return;
-    }
     try {
       await _saveSettings();
-      if (mounted) setState(() => _status = 'Проверяю OpenRouter и API key…');
+      if (mounted) setState(() => _status = 'Проверяю AI и API key…');
       _setVisual(JarvisVisualState.thinking);
       await _jarvis?.dispose();
       _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model, fallbackUrl: _fallbackEndpoint.text.trim(), fallbackKey: _fallbackKey.text.trim(), fallbackModel: _fallbackModel.text.trim());
@@ -298,7 +288,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     if (_jarvis == null) return;
     final tools = _android ? const <String>[] : await _jarvis!.listTools();
     if (!mounted) return;
-    setState(() => _status = _android ? 'OpenRouter · Qwen Free · JARVIS активен' : 'JARVIS подключён · инструментов: ${tools.length}');
+    setState(() => _status = _android ? 'AI подключён · JARVIS активен' : 'JARVIS подключён · инструментов: ${tools.length}');
     _setVisual(JarvisVisualState.confirmation);
     _returnToIdle(const Duration(milliseconds: 1100));
     await _partialSub?.cancel();
@@ -379,7 +369,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         _setVisual(JarvisVisualState.error);
         setState(() => _status = 'Ошибка AI: $e');
       }
-      if (speakReply) await _speak('Произошла ошибка. Проверьте подключение к OpenRouter.');
+      if (speakReply) await _speak('Произошла ошибка. Проверьте AI URL, API key и Model.');
     } finally {
       if (mounted) setState(() { _busy = false; _streamText = ''; });
       if (_voiceRunning && !_ttsSpeaking) _scheduleVoiceRestart(const Duration(milliseconds: 500));
