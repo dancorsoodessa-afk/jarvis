@@ -5,7 +5,8 @@ import 'dart:math';
 import 'dart:typed_data';
 
 class _DnsResolver {
-  static const _servers = ['1.1.1.1', '8.8.8.8'];
+  static const _dohServers = ['1.1.1.1', '8.8.8.8'];
+  static const _dohHosts = ['cloudflare-dns.com', 'dns.google'];
   static final Map<String, List<InternetAddress>> _cache = {};
   static final Map<String, DateTime> _cacheTime = {};
 
@@ -17,9 +18,9 @@ class _DnsResolver {
         now.difference(cachedAt) < const Duration(minutes: 5)) {
       return cached;
     }
-    for (final server in _servers) {
+    for (var i = 0; i < _dohServers.length; i++) {
       try {
-        final result = await _query(server, host);
+        final result = await _queryDoh(_dohServers[i], _dohHosts[i], host);
         if (result.isNotEmpty) {
           _cache[host] = result;
           _cacheTime[host] = now;
@@ -27,85 +28,61 @@ class _DnsResolver {
         }
       } catch (_) {}
     }
-    throw SocketException('DNS lookup failed for $host');
+    throw SocketException('DNS-over-HTTPS lookup failed for $host');
   }
 
-  static Future<List<InternetAddress>> _query(String server, String host) async {
-    final id = Random().nextInt(0x10000);
-    final packet = <int>[
-      id >> 8, id & 0xff, 0x01, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0
-    ];
-    for (final label in host.split('.')) {
-      final bytes = utf8.encode(label);
-      packet.add(bytes.length);
-      packet.addAll(bytes);
-    }
-    packet.add(0);
-    packet.addAll([0, 1, 0, 1]);
-
-    final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+  static Future<List<InternetAddress>> _queryDoh(
+    String serverIp, String serverHost, String host) async {
+    final socket = await SecureSocket.connect(
+      serverIp, 443,
+      timeout: const Duration(seconds: 8),
+      supportedProtocols: const ['http/1.1'],
+    );
     try {
-      socket.send(Uint8List.fromList(packet), InternetAddress(server), 53);
-      final completer = Completer<Uint8List>();
-      late StreamSubscription<RawSocketEvent> sub;
-      Timer? timer;
-      sub = socket.listen((event) {
-        if (event != RawSocketEvent.read) return;
-        final dg = socket.receive();
-        if (dg == null || dg.data.length < 12) return;
-        final data = Uint8List.fromList(dg.data);
-        final responseId = (data[0] << 8) | data[1];
-        if (responseId == id && !completer.isCompleted) {
-          completer.complete(data);
-        }
-      });
-      timer = Timer(const Duration(seconds: 3), () {
-        if (!completer.isCompleted) {
-          completer.completeError(TimeoutException('DNS timeout'));
-        }
-      });
-      try {
-        final data = await completer.future;
-        final answers = <InternetAddress>[];
-        final qd = (data[4] << 8) | data[5];
-        final an = (data[6] << 8) | data[7];
-        var offset = 12;
-
-        int skipName(int at) {
-          while (at < data.length) {
-            final len = data[at];
-            if (len == 0) return at + 1;
-            if ((len & 0xc0) == 0xc0) return at + 2;
-            at += len + 1;
-          }
-          return at;
-        }
-
-        for (var i = 0; i < qd; i++) {
-          offset = skipName(offset) + 4;
-        }
-        for (var i = 0; i < an && offset + 10 <= data.length; i++) {
-          offset = skipName(offset);
-          if (offset + 10 > data.length) break;
-          final type = (data[offset] << 8) | data[offset + 1];
-          final rdLength = (data[offset + 8] << 8) | data[offset + 9];
-          offset += 10;
-          if (offset + rdLength > data.length) break;
-          if (type == 1 && rdLength == 4) {
-            answers.add(InternetAddress(
-              '${data[offset]}.${data[offset + 1]}.${data[offset + 2]}.${data[offset + 3]}',
-            ));
-          }
-          offset += rdLength;
-        }
-        return answers;
-      } finally {
-        timer.cancel();
-        await sub.cancel();
+      final path = '/dns-query?name=\${Uri.encodeQueryComponent(host)}&type=A';
+      socket.write(
+        'GET $path HTTP/1.1\\r\\n'
+        'Host: $serverHost\\r\\n'
+        'Accept: application/dns-json\\r\\n'
+        'Connection: close\\r\\n\\r\\n',
+      );
+      await socket.flush();
+      final bytes = <int>[];
+      await for (final chunk in socket) {
+        bytes.addAll(chunk);
       }
+      final separator = _findHeaderEnd(bytes);
+      if (separator < 0) throw const FormatException('Invalid DoH response');
+      final header = ascii.decode(bytes.sublist(0, separator));
+      final body = utf8.decode(bytes.sublist(separator + 4), allowMalformed: true);
+      if (!header.startsWith('HTTP/1.1 200') && !header.startsWith('HTTP/2 200')) {
+        throw SocketException('DoH HTTP error');
+      }
+      final json = jsonDecode(body);
+      if (json is! Map || json['Answer'] is! List) return const [];
+      final answers = <InternetAddress>[];
+      for (final item in json['Answer']) {
+        if (item is Map && item['type'] == 1 && item['data'] is String) {
+          final value = item['data'].toString();
+          if (RegExp(r'^\\d{1,3}(?:\\.\\d{1,3}){3}$').hasMatch(value)) {
+            answers.add(InternetAddress(value));
+          }
+        }
+      }
+      return answers;
     } finally {
-      socket.close();
+      socket.destroy();
     }
+  }
+
+  static int _findHeaderEnd(List<int> bytes) {
+    for (var i = 0; i + 3 < bytes.length; i++) {
+      if (bytes[i] == 13 && bytes[i + 1] == 10 &&
+          bytes[i + 2] == 13 && bytes[i + 3] == 10) {
+        return i;
+      }
+    }
+    return -1;
   }
 }
 
