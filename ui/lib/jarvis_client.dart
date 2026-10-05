@@ -61,7 +61,7 @@ class _DnsResolver {
       });
       timer = Timer(const Duration(seconds: 3), () {
         if (!completer.isCompleted) {
-          completer.completeError(const TimeoutException('DNS timeout'));
+          completer.completeError(TimeoutException('DNS timeout'));
         }
       });
       try {
@@ -188,14 +188,14 @@ class JarvisIpc {
     if (url.isEmpty) throw ArgumentError('AI URL не указан');
     if (apiKey.trim().isEmpty) throw ArgumentError('API key не указан');
 
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 15)
-      ..idleTimeout = const Duration(seconds: 90)
-      ..findProxy = (_) => 'DIRECT'
-      ..connectionFactory = (uri, proxyHost, proxyPort) {
-        final future = _connectWithoutSystemDns(uri);
-        return ConnectionTask.fromSocket(future, () {});
-      };
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 15);
+    client.idleTimeout = const Duration(seconds: 90);
+    client.findProxy = (_) => 'DIRECT';
+    client.connectionFactory = (uri, proxyHost, proxyPort) {
+      final future = _connectWithoutSystemDns(uri);
+      return ConnectionTask.fromSocket(future, () {});
+    };
 
     return JarvisIpc._(
       client: client,
