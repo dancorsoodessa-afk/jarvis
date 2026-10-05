@@ -477,3 +477,4 @@ class JarvisIpc {
     _httpClient?.close(force: true);
   }
 }
+
