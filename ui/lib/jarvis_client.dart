@@ -1,6 +1,107 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
+
+
+class _DnsResolver {
+  static const _servers = ['1.1.1.1', '8.8.8.8'];
+  static final Map<String, List<InternetAddress>> _cache = {};
+  static final Map<String, DateTime> _cacheTime = {};
+
+  static Future<List<InternetAddress>> lookup(String host) async {
+    final now = DateTime.now();
+    final cached = _cache[host];
+    final cachedAt = _cacheTime[host];
+    if (cached != null && cachedAt != null &&
+        now.difference(cachedAt) < const Duration(minutes: 5)) {
+      return cached;
+    }
+    Object? lastError;
+    for (final server in _servers) {
+      try {
+        final result = await _query(server, host);
+        if (result.isNotEmpty) {
+          _cache[host] = result;
+          _cacheTime[host] = now;
+          return result;
+        }
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw SocketException('DNS lookup failed for $host');
+  }
+
+  static Future<List<InternetAddress>> _query(String server, String host) async {
+    final id = Random().nextInt(0x10000);
+    final packet = <int>[id >> 8, id & 0xff, 0x01, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0];
+    for (final label in host.split('.')) {
+      final bytes = utf8.encode(label);
+      packet.add(bytes.length);
+      packet.addAll(bytes);
+    }
+    packet.add(0);
+    packet.addAll([0, 1, 0, 1]);
+
+    final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+    try {
+      socket.send(Uint8List.fromList(packet), InternetAddress(server), 53);
+      final completer = Completer<Uint8List>();
+      late StreamSubscription<RawSocketEvent> sub;
+      Timer? timer;
+      sub = socket.listen((event) {
+        if (event != RawSocketEvent.read) return;
+        final dg = socket.receive();
+        if (dg == null || dg.data.length < 12) return;
+        final data = Uint8List.fromList(dg.data);
+        final responseId = (data[0] << 8) | data[1];
+        if (responseId == id && !completer.isCompleted) completer.complete(data);
+      });
+      timer = Timer(const Duration(seconds: 3), () {
+        if (!completer.isCompleted) completer.completeError(const TimeoutException('DNS timeout'));
+      });
+      try {
+        final data = await completer.future;
+        final answers = <InternetAddress>[];
+        final qd = (data[4] << 8) | data[5];
+        final an = (data[6] << 8) | data[7];
+        var offset = 12;
+
+        int skipName(int at) {
+          while (at < data.length) {
+            final len = data[at];
+            if (len == 0) return at + 1;
+            if ((len & 0xc0) == 0xc0) return at + 2;
+            at += len + 1;
+          }
+          return at;
+        }
+
+        for (var i = 0; i < qd; i++) offset = skipName(offset) + 4;
+        for (var i = 0; i < an && offset + 10 <= data.length; i++) {
+          offset = skipName(offset);
+          if (offset + 10 > data.length) break;
+          final type = (data[offset] << 8) | data[offset + 1];
+          final rdLength = (data[offset + 8] << 8) | data[offset + 9];
+          offset += 10;
+          if (offset + rdLength > data.length) break;
+          if (type == 1 && rdLength == 4) {
+            answers.add(InternetAddress('${data[offset]}.${data[offset + 1]}.${data[offset + 2]}.${data[offset + 3]}'));
+          }
+          offset += rdLength;
+        }
+        return answers;
+      } finally {
+        timer.cancel();
+        await sub.cancel();
+      }
+    } finally {
+      socket.close();
+    }
+  }
+}
 
 class JarvisReply {
   JarvisReply(this.text, this.provider, this.toolUsed, this.needsConfirmation);
@@ -28,6 +129,23 @@ class JarvisIpc {
   static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async =>
       JarvisIpc._(process: await Process.start(executable, args));
 
+  static Future<Socket> _connectWithoutSystemDns(Uri uri) async {
+    final addresses = await _DnsResolver.lookup(uri.host);
+    Object? lastError;
+    for (final address in addresses) {
+      Socket? socket;
+      try {
+        socket = await Socket.connect(address, uri.hasPort ? uri.port : 443, timeout: const Duration(seconds: 12));
+        if (uri.scheme == 'https') return await SecureSocket.secure(socket, host: uri.host);
+        return socket;
+      } catch (e) {
+        lastError = e;
+        socket?.destroy();
+      }
+    }
+    throw SocketException('Не удалось подключиться к ${uri.host}');
+  }
+
   static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = '',
       String fallbackUrl = '', String fallbackKey = '', String fallbackModel = ''}) async {
     final url = _normalize(apiUrl);
@@ -35,7 +153,12 @@ class JarvisIpc {
     if (apiKey.trim().isEmpty) throw ArgumentError('API key не указан');
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15)
-      ..idleTimeout = const Duration(seconds: 90);
+      ..idleTimeout = const Duration(seconds: 90)
+      ..findProxy = (_) => 'DIRECT'
+      ..connectionFactory = (uri, proxyHost, proxyPort) {
+        final future = _connectWithoutSystemDns(uri);
+        return ConnectionTask.fromSocket(future, () {});
+      };
     return JarvisIpc._(client: client, url: url, key: apiKey.trim(), model: model.trim(),
       fallbackUrl: _normalize(fallbackUrl), fallbackKey: fallbackKey.trim(), fallbackModel: fallbackModel.trim());
   }
@@ -73,7 +196,7 @@ class JarvisIpc {
     if (s.contains('Failed host lookup') || s.contains('No address associated with hostname')) {
       try {
         final host = Uri.parse(base).host;
-        return 'Сеть: не удалось найти сервер ' + host + ' через DNS. Проверьте интернет/VPN/DNS или используйте резервный AI.';
+        return 'Сеть: системный DNS недоступен. JARVIS использует встроенное DNS-подключение; проверьте наличие интернета.';
       } catch (_) {
         return 'Сеть: не удалось найти сервер AI через DNS. Проверьте интернет/VPN/DNS или используйте резервный AI.';
       }
