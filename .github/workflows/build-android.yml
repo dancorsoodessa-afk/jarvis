@@ -40,8 +40,15 @@ jobs:
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text(encoding="utf-8")
           if "android.permission.INTERNET" not in s:
-              s = s.replace("<manifest", '<manifest', 1)
-              s = s.replace(">", ">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />", 1)
+              lines = s.splitlines()
+          for i, line in enumerate(lines):
+              if line.lstrip().startswith("<manifest "):
+                  lines[i + 1:i + 1] = [
+                      '    <uses-permission android:name="android.permission.INTERNET" />',
+                      '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
+                  ]
+                  break
+          s = "\n".join(lines) + "\n"
           p.write_text(s, encoding="utf-8")
           PY
 
