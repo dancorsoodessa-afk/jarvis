@@ -172,7 +172,7 @@ class JarvisIpc {
 
   bool _retryable(Object e) {
     final s = e.toString();
-    return RegExp(r'HTTP (408|409|425|429|500|502|503|504)').hasMatch(s) ||
+    return RegExp(r'HTTP (400|401|402|403|404|408|409|425|429|500|502|503|504)').hasMatch(s) ||
         s.contains('SocketException') || s.contains('TimeoutException') || s.contains('Connection closed');
   }
 
