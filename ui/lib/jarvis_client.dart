@@ -194,7 +194,9 @@ class JarvisIpc {
     client.findProxy = (_) => 'DIRECT';
     client.connectionFactory = (uri, proxyHost, proxyPort) {
       final future = _connectWithoutSystemDns(uri);
-      return ConnectionTask.fromSocket(future, () {});
+      return Future<ConnectionTask<Socket>>.value(
+        ConnectionTask.fromSocket(future, () {}),
+      );
     };
 
     return JarvisIpc._(
