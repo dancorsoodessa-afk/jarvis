@@ -11,7 +11,9 @@ import 'jarvis_reactor.dart';
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
-const kFreeModel = 'qwen/qwen3-235b-a22b-2507:free';
+const kFreeModel = 'openai/gpt-oss-20b';
+const kGroqEndpoint = 'https://api.groq.com/openai/v1';
+const kDefaultEndpoint = 'https://api.openai.com/v1';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -217,8 +219,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _initAndroid() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _endpoint.text = prefs.getString('endpoint') ?? 'https://api.openai.com/v1';
-      _model.text = prefs.getString('model')?.trim() ?? 'gpt-4o-mini';
+      final savedEndpoint = prefs.getString('endpoint')?.trim() ?? '';
+      final savedModel = prefs.getString('model')?.trim() ?? '';
+      final useGroqDefaults = savedEndpoint.isEmpty ||
+          (savedEndpoint == kDefaultEndpoint &&
+              (savedModel.isEmpty || savedModel == 'gpt-4o-mini'));
+      _endpoint.text = useGroqDefaults ? kGroqEndpoint : savedEndpoint;
+      _model.text = useGroqDefaults ? kFreeModel : (savedModel.isEmpty ? kFreeModel : savedModel);
       _apiKey.text = _cleanApiKey(prefs.getString('api_key') ?? '');
       _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? '';
       _fallbackKey.text = _cleanApiKey(prefs.getString('fallback_key') ?? '');
@@ -259,7 +266,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final model = _model.text.trim();
     final key = _apiKey.text.trim();
     if (endpoint.isEmpty || key.isEmpty) {
-      if (mounted) setState(() => _status = 'Введите API key OpenRouter в Настройках');
+      if (mounted) setState(() => _status = 'Введите API key Groq в Настройках');
       _setVisual(JarvisVisualState.error);
       return;
     }
@@ -322,9 +329,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Align(alignment: Alignment.centerLeft, child: Text('Основной AI', style: TextStyle(fontWeight: FontWeight.bold))),
-          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'AI URL', hintText: 'https://api.openai.com/v1')),
+          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'AI URL', hintText: 'https://api.groq.com/openai/v1')),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'gpt-4o-mini')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'openai/gpt-oss-20b')),
           const SizedBox(height: 12),
           const Align(alignment: Alignment.centerLeft, child: Text('Резервный AI · при 429/5xx/сбое', style: TextStyle(fontWeight: FontWeight.bold))),
           TextField(controller: _fallbackEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Резервный AI URL')),
