@@ -80,9 +80,17 @@ jobs:
           set -e
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('android/app/build.gradle.kts'); t=p.read_text(); t=t.replace('applicationId = "com.dancorsoodessa.jarvis_ui"','applicationId = "com.dancorsoodessa.jarvis"')
-          for dep in ['implementation(files("libs/sherpa-onnx-1.13.8.aar"))
-    implementation(files("libs/sherpa-onnx-jvm-1.13.8.jar"))','implementation("androidx.core:core-ktx:1.12.0")','implementation("androidx.appcompat:appcompat:1.6.1")']:
+          p=Path('android/settings.gradle.kts')
+          t=p.read_text()
+          if 'https://jitpack.io' not in t:
+              marker='repositories {'
+              t=t.replace(marker, marker+'\n        maven { url = uri("https://jitpack.io") }',1)
+          p.write_text(t)
+          p=Path('android/app/build.gradle.kts')
+          t=p.read_text()
+          t=t.replace('applicationId = "com.dancorsoodessa.jarvis_ui"','applicationId = "com.dancorsoodessa.jarvis"')
+          t=t.replace('implementation(files("libs/sherpa-onnx-1.13.8.aar"))\n    implementation(files("libs/sherpa-onnx-jvm-1.13.8.jar"))','implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")')
+          for dep in ['implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")','implementation("androidx.core:core-ktx:1.12.0")','implementation("androidx.appcompat:appcompat:1.6.1")']:
               if dep not in t: t=t.replace('dependencies {','dependencies {\n    '+dep,1)
           p.write_text(t)
           p=Path('pubspec.yaml'); p.write_text(p.read_text().replace('version: 0.1.0','version: 0.1.2',1))
