@@ -55,6 +55,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   StreamSubscription<String>? _partialSub;
   Timer? _visualTimer;
   Timer? _voiceRestartTimer;
+  int _speechSession = 0;
   bool _busy = false;
   bool _voiceReady = false;
   bool _voiceRunning = false;
@@ -74,11 +75,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       if (!mounted) return;
       _android ? _initAndroid() : _connectDesktop();
     });
-  }
-
-  bool _looksLikeOpenRouterKey(String value) {
-    final key = value.trim();
-    return RegExp(r'^sk-or-v1-[A-Za-z0-9_-]{20,}$').hasMatch(key);
   }
 
   Future<void> _initVoice() async {
@@ -132,7 +128,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     try {
       await _speech.stop();
       await _speech.listen(
-        onResult: _onSpeechResult,
+        onResult: (result) => _onSpeechResult(result, _speechSession),
         listenFor: const Duration(minutes: 1),
         pauseFor: const Duration(seconds: 4),
         partialResults: true,
@@ -170,7 +166,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     return command.isEmpty ? '' : command;
   }
 
-  Future<void> _onSpeechResult(dynamic result) async {
+  Future<void> _onSpeechResult(dynamic result, int session) async {
+    if (session != _speechSession) return;
     final text = result.recognizedWords?.toString().trim() ?? '';
     final isFinal = result.finalResult == true;
     if (text.isEmpty || !mounted) return;
@@ -185,6 +182,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _voiceRestartTimer?.cancel();
 
     if (wakeCommand != null) {
+      _speechSession++;
       if (wakeCommand.isEmpty) {
         _wakeArmed = true;
         await _speech.stop();
@@ -198,6 +196,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
 
     if (_wakeArmed) {
+      _speechSession++;
       _wakeArmed = false;
       await _speech.stop();
       await _send(text, speakReply: true);
@@ -221,7 +220,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _initAndroid() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _endpoint.text = prefs.getString('endpoint') ?? 'https://openrouter.ai/api/v1';
+      _endpoint.text = prefs.getString('endpoint') ?? 'https://api.openai.com/v1';
       _model.text = prefs.getString('model')?.trim() ?? 'gpt-4o-mini';
       _apiKey.text = prefs.getString('api_key')?.trim() ?? '';
       _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? 'https://openrouter.ai/api/v1';
@@ -230,7 +229,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       await _initVoice();
       if (!mounted) return;
       if (_apiKey.text.isEmpty) {
-        setState(() => _status = 'Введите API key OpenRouter в Настройках');
+        setState(() => _status = 'Введите API key в Настройках');
       } else {
         await _connectAndroid();
       }
@@ -257,18 +256,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final model = _model.text.trim();
     final key = _apiKey.text.trim();
     if (endpoint.isEmpty || key.isEmpty) {
-      if (mounted) setState(() => _status = 'Введите API key OpenRouter в Настройках');
-      _setVisual(JarvisVisualState.error);
-      return;
-    }
-    if (!_looksLikeOpenRouterKey(key)) {
-      if (mounted) setState(() => _status = 'Неверный API key: нужен ключ sk-or-v1-…');
+      if (mounted) setState(() => _status = 'Введите AI URL и API key в Настройках');
       _setVisual(JarvisVisualState.error);
       return;
     }
     try {
       await _saveSettings();
-      if (mounted) setState(() => _status = 'Проверяю OpenRouter и API key…');
+      if (mounted) setState(() => _status = 'Проверяю основной и резервный AI…');
       _setVisual(JarvisVisualState.thinking);
       await _jarvis?.dispose();
       _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model, fallbackUrl: _fallbackEndpoint.text.trim(), fallbackKey: _fallbackKey.text.trim(), fallbackModel: _fallbackModel.text.trim());
@@ -298,7 +292,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     if (_jarvis == null) return;
     final tools = _android ? const <String>[] : await _jarvis!.listTools();
     if (!mounted) return;
-    setState(() => _status = _android ? 'OpenRouter · Qwen Free · JARVIS активен' : 'JARVIS подключён · инструментов: ${tools.length}');
+    setState(() => _status = _android ? 'AI подключён · JARVIS активен' : 'JARVIS подключён · инструментов: ${tools.length}');
     _setVisual(JarvisVisualState.confirmation);
     _returnToIdle(const Duration(milliseconds: 1100));
     await _partialSub?.cancel();
@@ -316,6 +310,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _settings() async {
     if (!_android) return;
+    _speechSession++;
     await _speech.stop();
     _voiceRunning = false;
     _wakeArmed = false;
@@ -379,7 +374,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         _setVisual(JarvisVisualState.error);
         setState(() => _status = 'Ошибка AI: $e');
       }
-      if (speakReply) await _speak('Произошла ошибка. Проверьте подключение к OpenRouter.');
+      if (speakReply) await _speak('Произошла ошибка. Проверьте подключение к AI.');
     } finally {
       if (mounted) setState(() { _busy = false; _streamText = ''; });
       if (_voiceRunning && !_ttsSpeaking) _scheduleVoiceRestart(const Duration(milliseconds: 500));
