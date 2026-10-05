@@ -82,9 +82,12 @@ jobs:
           from pathlib import Path
           p=Path('android/settings.gradle.kts')
           t=p.read_text()
-          if 'https://jitpack.io' not in t:
-              marker='repositories {'
-              t=t.replace(marker, marker+'\n        maven { url = uri("https://jitpack.io") }',1)
+          t=t.replace('maven { url = uri("https://jitpack.io") }', '')
+          marker='dependencyResolutionManagement {'
+          if marker in t and 'https://jitpack.io' not in t:
+              t=t.replace('repositories {', 'repositories {\n        maven { url = uri("https://jitpack.io") }', 2)[-1] if False else t
+              import re
+              t=re.sub(r'(dependencyResolutionManagement \\{.*?repositories \\{)', r'\\1\n        maven { url = uri("https://jitpack.io") }', t, count=1, flags=re.S)
           p.write_text(t)
           p=Path('android/app/build.gradle.kts')
           t=p.read_text()
