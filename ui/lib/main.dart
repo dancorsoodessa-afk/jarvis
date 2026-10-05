@@ -12,7 +12,10 @@ import 'jarvis_reactor.dart';
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
-const kFreeModel = 'qwen/qwen3-235b-a22b-2507:free';
+const kFreePrimaryUrl = 'https://api.groq.com/openai/v1';
+const kFreePrimaryModel = 'openai/gpt-oss-20b';
+const kFreeFallbackUrl = 'https://api.cerebras.ai/v1';
+const kFreeFallbackModel = 'zai-glm-4.7';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -245,12 +248,34 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _initAndroid() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _endpoint.text = prefs.getString('endpoint') ?? 'https://api.openai.com/v1';
-      _model.text = prefs.getString('model')?.trim() ?? 'gpt-4o-mini';
-      _apiKey.text = prefs.getString('api_key')?.trim() ?? '';
-      _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? 'https://openrouter.ai/api/v1';
+      final storedEndpoint = prefs.getString('endpoint')?.trim() ?? '';
+      final storedModel = prefs.getString('model')?.trim() ?? '';
+      final storedKey = prefs.getString('api_key')?.trim() ?? '';
+      final storedFallbackEndpoint = prefs.getString('fallback_endpoint')?.trim() ?? '';
+      final storedFallbackModel = prefs.getString('fallback_model')?.trim() ?? '';
+
+      // JARVIS is free-first. Migrate the old OpenAI default to Groq so an
+      // empty OpenAI balance can never be the default route.
+      final usingOldPaidDefault = storedEndpoint.isEmpty ||
+          storedEndpoint == 'https://api.openai.com/v1';
+      if (usingOldPaidDefault) {
+        _endpoint.text = kFreePrimaryUrl;
+        _model.text = kFreePrimaryModel;
+        // An OpenAI key must never be sent to Groq.
+        _apiKey.text = storedEndpoint == 'https://api.openai.com/v1' ? '' : storedKey;
+      } else {
+        _endpoint.text = storedEndpoint;
+        _model.text = storedModel;
+        _apiKey.text = storedKey;
+      }
+
+      _fallbackEndpoint.text = storedFallbackEndpoint.isEmpty
+          ? kFreeFallbackUrl
+          : storedFallbackEndpoint;
       _fallbackKey.text = prefs.getString('fallback_key')?.trim() ?? '';
-      _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? '';
+      _fallbackModel.text = storedFallbackModel.isEmpty
+          ? kFreeFallbackModel
+          : storedFallbackModel;
       // Do not initialize native microphone/speech services during startup.
       // Voice is initialized only after the main UI is visible, preventing
       // device-specific native speech-service crashes from closing JARVIS.
@@ -350,16 +375,21 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       builder: (ctx) => AlertDialog(
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Align(alignment: Alignment.centerLeft, child: Text('Основной AI', style: TextStyle(fontWeight: FontWeight.bold))),
-          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'AI URL', hintText: 'https://api.openai.com/v1')),
-          TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'gpt-4o-mini')),
+          const Align(alignment: Alignment.centerLeft, child: Text('Основной AI · бесплатно', style: TextStyle(fontWeight: FontWeight.bold))),
+          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'AI URL', hintText: 'https://api.groq.com/openai/v1')),
+          TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API Key · Groq')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'openai/gpt-oss-20b')),
           const SizedBox(height: 12),
-          const Align(alignment: Alignment.centerLeft, child: Text('Резервный AI · при 429/5xx/сбое', style: TextStyle(fontWeight: FontWeight.bold))),
+          const Align(alignment: Alignment.centerLeft, child: Text('Резервный AI · бесплатно · при 429/сбое', style: TextStyle(fontWeight: FontWeight.bold))),
           TextField(controller: _fallbackEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Резервный AI URL')),
           TextField(controller: _fallbackKey, obscureText: true, decoration: const InputDecoration(labelText: 'Резервный API Key')),
-          TextField(controller: _fallbackModel, decoration: const InputDecoration(labelText: 'Резервная Model')),
+          TextField(controller: _fallbackModel, decoration: const InputDecoration(labelText: 'Резервная Model · Cerebras')),
           const SizedBox(height: 8),
+          const Text(
+            'Бесплатная схема: Groq → Cerebras. OpenAI можно указать вручную, но он не используется по умолчанию.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 4),
           const Text('Голос: автоматическое ожидание «Джарвис».', style: TextStyle(fontSize: 12)),
         ])),
         actions: [
