@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -43,6 +44,10 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   final _endpoint = TextEditingController();
   final _apiKey = TextEditingController();
   final _model = TextEditingController();
+  final _fallbackEndpoint = TextEditingController();
+  final _fallbackKey = TextEditingController();
+  final _fallbackModel = TextEditingController();
+  static const _platform = MethodChannel('com.dancorsoodessa.jarvis/timer');
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -217,15 +222,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     try {
       final prefs = await SharedPreferences.getInstance();
       _endpoint.text = prefs.getString('endpoint') ?? 'https://openrouter.ai/api/v1';
-      final savedModel = prefs.getString('model')?.trim() ?? '';
-      if (savedModel.isEmpty || savedModel == 'openrouter/free' || savedModel == 'deepseek/deepseek-v4-flash:free') {
-        _model.text = kFreeModel;
-      } else {
-        _model.text = savedModel;
-      }
-      final savedKey = prefs.getString('api_key')?.trim() ?? '';
-      _apiKey.text = _looksLikeOpenRouterKey(savedKey) ? savedKey : '';
-      if (!_apiKey.text.isNotEmpty && savedKey.isNotEmpty) await prefs.remove('api_key');
+      _model.text = prefs.getString('model')?.trim() ?? 'gpt-4o-mini';
+      _apiKey.text = prefs.getString('api_key')?.trim() ?? '';
+      _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? 'https://openrouter.ai/api/v1';
+      _fallbackKey.text = prefs.getString('fallback_key')?.trim() ?? '';
+      _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? '';
       await _initVoice();
       if (!mounted) return;
       if (_apiKey.text.isEmpty) {
@@ -246,6 +247,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     await prefs.setString('endpoint', _endpoint.text.trim());
     await prefs.setString('model', _model.text.trim());
     await prefs.setString('api_key', _apiKey.text.trim());
+    await prefs.setString('fallback_endpoint', _fallbackEndpoint.text.trim());
+    await prefs.setString('fallback_key', _fallbackKey.text.trim());
+    await prefs.setString('fallback_model', _fallbackModel.text.trim());
   }
 
   Future<void> _connectAndroid() async {
@@ -267,7 +271,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       if (mounted) setState(() => _status = 'Проверяю OpenRouter и API key…');
       _setVisual(JarvisVisualState.thinking);
       await _jarvis?.dispose();
-      _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model);
+      _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model, fallbackUrl: _fallbackEndpoint.text.trim(), fallbackKey: _fallbackKey.text.trim(), fallbackModel: _fallbackModel.text.trim());
       await _jarvis!.checkConnection();
       await _finishConnect();
     } catch (e) {
@@ -320,11 +324,17 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       builder: (ctx) => AlertDialog(
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Endpoint', hintText: 'https://openrouter.ai/api/v1')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: kFreeModel)),
-          Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => setState(() => _model.text = kFreeModel), icon: const Icon(Icons.auto_awesome), label: const Text('Выбрать бесплатную модель'))),
-          TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API key', hintText: 'sk-or-v1-...')),
-          const Text('Голос: автоматическое ожидание «Джарвис». Можно сказать «Джарвис» отдельно, затем команду.', style: TextStyle(fontSize: 12)),
+          const Align(alignment: Alignment.centerLeft, child: Text('Основной AI', style: TextStyle(fontWeight: FontWeight.bold))),
+          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'AI URL', hintText: 'https://api.openai.com/v1')),
+          TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'gpt-4o-mini')),
+          const SizedBox(height: 12),
+          const Align(alignment: Alignment.centerLeft, child: Text('Резервный AI · при 429/5xx/сбое', style: TextStyle(fontWeight: FontWeight.bold))),
+          TextField(controller: _fallbackEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Резервный AI URL')),
+          TextField(controller: _fallbackKey, obscureText: true, decoration: const InputDecoration(labelText: 'Резервный API Key')),
+          TextField(controller: _fallbackModel, decoration: const InputDecoration(labelText: 'Резервная Model')),
+          const SizedBox(height: 8),
+          const Text('Голос: автоматическое ожидание «Джарвис».', style: TextStyle(fontSize: 12)),
         ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
@@ -342,6 +352,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _send(String text, {bool speakReply = false}) async {
     text = text.trim();
     if (text.isEmpty || _jarvis == null || _busy) return;
+    if (await _handleTimer(text)) { _input.clear(); return; }
     _input.clear();
     setState(() {
       _messages.add(_Msg(text, isUser: true));
@@ -388,6 +399,34 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     });
   }
 
+  Future<Duration?> _parseTimer(String text) async {
+    final s = text.toLowerCase();
+    final m = RegExp(r'(?:таймер|напомни|напоминание)\\s*(?:на|через)?\\s*(\\d+(?:[.,]\\d+)?)\\s*(сек|секунд(?:у|ы)?|s|мин|минут(?:у|ы)?|m|ч|час(?:а|ов)?|h)').firstMatch(s);
+    if (m == null) return null;
+    final value = double.tryParse(m.group(1)!.replaceAll(',', '.'));
+    if (value == null || value <= 0) return null;
+    final u = m.group(2)!;
+    if (u == 's' || u.startsWith('сек')) return Duration(milliseconds: (value * 1000).round());
+    if (u == 'm' || u.startsWith('мин')) return Duration(milliseconds: (value * 60000).round());
+    return Duration(milliseconds: (value * 3600000).round());
+  }
+
+  Future<bool> _handleTimer(String text) async {
+    if (!_android) return false;
+    final d = await _parseTimer(text);
+    if (d == null) return false;
+    try {
+      await _platform.invokeMethod('scheduleTimer', {'delayMs': d.inMilliseconds, 'label': text});
+      final mins = d.inMinutes;
+      final reply = mins > 0 ? 'Таймер установлен на $mins минут.' : 'Таймер установлен на ${d.inSeconds} секунд.';
+      if (mounted) setState(() => _messages.add(_Msg(reply, isUser: false)));
+      await _speak(reply);
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Ошибка таймера: $e');
+    }
+    return true;
+  }
+
   @override
   void dispose() {
     _partialSub?.cancel();
@@ -400,6 +439,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _endpoint.dispose();
     _apiKey.dispose();
     _model.dispose();
+    _fallbackEndpoint.dispose();
+    _fallbackKey.dispose();
+    _fallbackModel.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -412,11 +454,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0), itemBuilder: (context, index) {
           if (_streamText.isNotEmpty && index == _messages.length) return Align(alignment: Alignment.centerLeft, child: Text(_streamText));
           final m = _messages[index];
-          return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: m.isUser ? kPanel : kBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kCyan.withValues(alpha: 0.25))), child: Text(m.text)));
+          return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: m.isUser ? kPanel : kBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kCyan.withValues(alpha: 0.25))), child: Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Flexible(child: SelectableText(m.text)), if (!m.isUser) IconButton(onPressed: () { Clipboard.setData(ClipboardData(text: m.text)); setState(() => _status = 'Текст скопирован'); }, icon: const Icon(Icons.copy, size: 18))])));
         })),
         if (_android && _heardText.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('🎙 $_heardText', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))),
         Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
-          Expanded(child: TextField(controller: _input, textInputAction: TextInputAction.send, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Спросите JARVIS…'))),
+          Expanded(child: TextField(controller: _input, minLines: 2, maxLines: 5, textInputAction: TextInputAction.newline, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Введите команду или вопрос…', border: OutlineInputBorder()))),
           IconButton(onPressed: _busy ? null : () => _send(_input.text), icon: const Icon(Icons.send)),
         ])),
         Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(_status, style: const TextStyle(fontSize: 12))),
