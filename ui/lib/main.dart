@@ -38,6 +38,7 @@ class _Msg {
   final bool isUser;
 }
 
+// Android stability: normalized API keys and timer parsing.
 class _JarvisHomePageState extends State<JarvisHomePage> {
   JarvisIpc? _jarvis;
   final _input = TextEditingController();
