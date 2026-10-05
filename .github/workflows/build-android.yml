@@ -38,23 +38,21 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p = Path("android/app/src/main/AndroidManifest.xml")
-          s = p.read_text(encoding="utf-8")
-          if "android.permission.INTERNET" not in s:
-              lines = s.splitlines()
-          for i, line in enumerate(lines):
-              if line.lstrip().startswith("<manifest "):
-                  lines[i + 1:i + 1] = [
-                      '    <uses-permission android:name="android.permission.INTERNET" />',
-                      '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
-                      '    <queries>',
-                      '        <intent>',
-                      '            <action android:name="android.speech.RecognitionService" />',
-                      '        </intent>',
-                      '    </queries>',
-                  ]
-                  break
-          s = "\n".join(lines) + "\n"
-          p.write_text(s, encoding="utf-8")
+          lines = p.read_text(encoding="utf-8").splitlines()
+          if not any("android.permission.INTERNET" in line for line in lines):
+              for i, line in enumerate(lines):
+                  if line.lstrip().startswith("<manifest "):
+                      lines[i + 1:i + 1] = [
+                          '    <uses-permission android:name="android.permission.INTERNET" />',
+                          '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
+                          '    <queries>',
+                          '        <intent>',
+                          '            <action android:name="android.speech.RecognitionService" />',
+                          '        </intent>',
+                          '    </queries>',
+                      ]
+                      break
+          p.write_text("\n".join(lines) + "\n", encoding="utf-8")
           PY
 
       - name: Get dependencies
