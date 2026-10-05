@@ -107,14 +107,24 @@ class JarvisIpc {
 
   Future<void> checkConnection() async {
     if (!_standalone) return;
+    // Connection validation is intentionally best-effort. Some compatible
+    // providers do not expose /models even though chat/completions works.
     try {
       await _check(_apiUrl!, _apiKey!, 'Основной AI');
-    } catch (e) {
+      return;
+    } catch (primary) {
       if ((_fallbackUrl ?? '').isNotEmpty && (_fallbackKey ?? '').isNotEmpty) {
-        await _check(_fallbackUrl!, _fallbackKey!, 'Резервный AI');
-      } else {
-        rethrow;
+        try {
+          await _check(_fallbackUrl!, _fallbackKey!, 'Резервный AI');
+          return;
+        } catch (fallback) {
+          throw StateError('Основной AI недоступен: $primary. Резервный AI недоступен: $fallback');
+        }
       }
+      // Do not block a configured provider solely because /models is absent
+      // or temporarily rate-limited. The real chat request will decide.
+      if (_retryable(primary)) return;
+      rethrow;
     }
   }
 
