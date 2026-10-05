@@ -218,9 +218,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       final prefs = await SharedPreferences.getInstance();
       _endpoint.text = prefs.getString('endpoint') ?? 'https://api.openai.com/v1';
       _model.text = prefs.getString('model')?.trim() ?? 'gpt-4o-mini';
-      _apiKey.text = prefs.getString('api_key')?.trim() ?? '';
+      _apiKey.text = _cleanApiKey(prefs.getString('api_key') ?? '');
       _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? '';
-      _fallbackKey.text = prefs.getString('fallback_key')?.trim() ?? '';
+      _fallbackKey.text = _cleanApiKey(prefs.getString('fallback_key') ?? '');
       _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? '';
       await _initVoice();
       if (!mounted) return;
@@ -237,13 +237,19 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
   }
 
+  String _cleanApiKey(String value) {
+    var key = value.trim();
+    if (key.toLowerCase().startsWith('bearer ')) key = key.substring(7).trim();
+    return key;
+  }
+
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('endpoint', _endpoint.text.trim());
     await prefs.setString('model', _model.text.trim());
-    await prefs.setString('api_key', _apiKey.text.trim());
+    await prefs.setString('api_key', _cleanApiKey(_apiKey.text));
     await prefs.setString('fallback_endpoint', _fallbackEndpoint.text.trim());
-    await prefs.setString('fallback_key', _fallbackKey.text.trim());
+    await prefs.setString('fallback_key', _cleanApiKey(_fallbackKey.text));
     await prefs.setString('fallback_model', _fallbackModel.text.trim());
   }
 
