@@ -40,6 +40,8 @@ jobs:
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
           echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
+          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-jvm-1.13.8.jar -o android/app/libs/sherpa-onnx-jvm-1.13.8.jar
+          echo "77b7b047fade4eadada96b568eb92615049aaf1dc317c7244e46c1ea38b9a63b  android/app/libs/sherpa-onnx-jvm-1.13.8.jar" | sha256sum -c -
           test ! -e test/widget_test.dart
       - name: Install native Android voice engine
         working-directory: ui
@@ -79,7 +81,8 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p=Path('android/app/build.gradle.kts'); t=p.read_text(); t=t.replace('applicationId = "com.dancorsoodessa.jarvis_ui"','applicationId = "com.dancorsoodessa.jarvis"')
-          for dep in ['implementation(files("libs/sherpa-onnx-1.13.8.aar"))','implementation("androidx.core:core-ktx:1.12.0")','implementation("androidx.appcompat:appcompat:1.6.1")']:
+          for dep in ['implementation(files("libs/sherpa-onnx-1.13.8.aar"))
+    implementation(files("libs/sherpa-onnx-jvm-1.13.8.jar"))','implementation("androidx.core:core-ktx:1.12.0")','implementation("androidx.appcompat:appcompat:1.6.1")']:
               if dep not in t: t=t.replace('dependencies {','dependencies {\n    '+dep,1)
           p.write_text(t)
           p=Path('pubspec.yaml'); p.write_text(p.read_text().replace('version: 0.1.0','version: 0.1.2',1))
