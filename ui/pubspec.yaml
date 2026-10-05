@@ -1,7 +1,7 @@
 name: jarvis_ui
-description: Jarvis Android assistant UI with reactor HUD and OpenAI-compatible AI
+description: JARVIS Android assistant
 publish_to: "none"
-version: 0.2.0
+version: 0.3.0
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
