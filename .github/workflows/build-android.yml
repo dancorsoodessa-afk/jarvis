@@ -1,4 +1,5 @@
 name: Build JARVIS Android APK
+# CI trigger: force APK verification after provider fix 2026-10-05
 
 on:
   push:
@@ -57,7 +58,6 @@ jobs:
           p.write_text(text, encoding='utf-8')
           PY
 
-
       - name: Add native Android timer and notification service
         working-directory: ui
         run: |
@@ -76,10 +76,8 @@ jobs:
           receiver = '''        <receiver
             android:name=".JarvisAlarmReceiver"
             android:exported="false" />'''
-          if 'android:name=".JarvisAlarmReceiver"' not in text:
-              text = text.replace('</application>', receiver + '\\n    </application>')
+          text = text.replace('</application>', receiver + '\\n    </application>')
           manifest.write_text(text, encoding='utf-8')
-
           main = Path('android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt')
           main.parent.mkdir(parents=True, exist_ok=True)
           main.write_text(r'''package com.dancorsoodessa.jarvis_ui
@@ -141,7 +139,6 @@ class MainActivity : FlutterActivity() {
     }
 }
 ''', encoding='utf-8')
-
           receiver = Path('android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/JarvisAlarmReceiver.kt')
           receiver.write_text(r'''package com.dancorsoodessa.jarvis_ui
 
