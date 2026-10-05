@@ -4,6 +4,7 @@ name: Build JARVIS Android APK
 # rebuild requested: Android APK verification 2026-09-28
 # verified install build
 # CI trigger: build APK after Android source changes
+# CI dispatch-safe build: explicit workflow_dispatch input
 # rebuild: 2026-10-06 APK verification
 
 on:
@@ -12,6 +13,11 @@ on:
   pull_request:
     branches: [foundation, standalone-pc-android]
   workflow_dispatch:
+    inputs:
+      reason:
+        description: "APK build verification"
+        required: false
+        default: "manual verification"
 
 jobs:
   build-android:
