@@ -397,7 +397,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<Duration?> _parseTimer(String text) async {
     final s = text.toLowerCase();
-    final m = RegExp(r'(?:таймер|напомни|напоминание)\\s*(?:на|через)?\\s*(\\d+(?:[.,]\\d+)?)\\s*(сек|секунд(?:у|ы)?|s|мин|минут(?:у|ы)?|m|ч|час(?:а|ов)?|h)').firstMatch(s);
+    final m = RegExp(r'(?:таймер|напомни|напоминание)\s*(?:на|через)?\s*(\d+(?:[.,]\d+)?)\s*(сек|секунд(?:у|ы)?|s|мин|минут(?:у|ы)?|m|ч|час(?:а|ов)?|h)').firstMatch(s);
     if (m == null) return null;
     final value = double.tryParse(m.group(1)!.replaceAll(',', '.'));
     if (value == null || value <= 0) return null;
