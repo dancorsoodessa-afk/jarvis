@@ -33,18 +33,26 @@ class _DnsResolver {
 
   static Future<List<InternetAddress>> _queryDoh(
     String serverIp, String serverHost, String host) async {
-    final socket = await SecureSocket.connect(
-      serverIp, 443,
-      timeout: const Duration(seconds: 8),
-      supportedProtocols: const ['http/1.1'],
-    );
+    Socket? raw;
+    SecureSocket? socket;
     try {
-      final path = '/dns-query?name=\${Uri.encodeQueryComponent(host)}&type=A';
+      raw = await Socket.connect(
+        InternetAddress(serverIp),
+        443,
+        timeout: const Duration(seconds: 8),
+      );
+      socket = await SecureSocket.secure(
+        raw,
+        host: serverHost,
+        supportedProtocols: const ['http/1.1'],
+      );
+      final path = '/dns-query?name=${Uri.encodeQueryComponent(host)}&type=A';
       socket.write(
-        'GET $path HTTP/1.1\\r\\n'
-        'Host: $serverHost\\r\\n'
-        'Accept: application/dns-json\\r\\n'
-        'Connection: close\\r\\n\\r\\n',
+        'GET $path HTTP/1.1\r\n'
+        'Host: $serverHost\r\n'
+        'Accept: application/dns-json\r\n'
+        'Connection: close\r\n'
+        '\r\n',
       );
       await socket.flush();
       final bytes = <int>[];
@@ -54,9 +62,13 @@ class _DnsResolver {
       final separator = _findHeaderEnd(bytes);
       if (separator < 0) throw const FormatException('Invalid DoH response');
       final header = ascii.decode(bytes.sublist(0, separator));
-      final body = utf8.decode(bytes.sublist(separator + 4), allowMalformed: true);
-      if (!header.startsWith('HTTP/1.1 200') && !header.startsWith('HTTP/2 200')) {
-        throw SocketException('DoH HTTP error');
+      final body = utf8.decode(
+        bytes.sublist(separator + 4),
+        allowMalformed: true,
+      );
+      final statusLine = header.split('\r\n').first;
+      if (!statusLine.contains(' 200 ')) {
+        throw SocketException('DoH HTTP error: $statusLine');
       }
       final json = jsonDecode(body);
       if (json is! Map || json['Answer'] is! List) return const [];
@@ -64,14 +76,15 @@ class _DnsResolver {
       for (final item in json['Answer']) {
         if (item is Map && item['type'] == 1 && item['data'] is String) {
           final value = item['data'].toString();
-          if (RegExp(r'^\\d{1,3}(?:\\.\\d{1,3}){3}$').hasMatch(value)) {
+          if (RegExp(r'^\d{1,3}(?:\.\d{1,3}){3}$').hasMatch(value)) {
             answers.add(InternetAddress(value));
           }
         }
       }
       return answers;
     } finally {
-      socket.destroy();
+      socket?.destroy();
+      if (socket == null) raw?.destroy();
     }
   }
 
@@ -85,7 +98,6 @@ class _DnsResolver {
     return -1;
   }
 }
-
 class JarvisReply {
   JarvisReply(this.text, this.provider, this.toolUsed, this.needsConfirmation);
   factory JarvisReply.fromJson(Map<String, dynamic> j) => JarvisReply(
