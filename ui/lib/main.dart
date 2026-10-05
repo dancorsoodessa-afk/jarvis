@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'jarvis_client.dart';
 import 'jarvis_reactor.dart';
 
@@ -80,6 +81,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _initVoice() async {
     if (!_android || _voiceReady) return;
     try {
+      final mic = await Permission.microphone.request();
+      if (!mic.isGranted) {
+        if (mounted) setState(() => _status = mic.isPermanentlyDenied
+            ? 'Микрофон заблокирован. Разрешите микрофон в настройках Android.'
+            : 'Нужно разрешение на микрофон.');
+        return;
+      }
       // Voice startup is non-fatal: a broken native speech/TTS engine
       // must never prevent the main JARVIS UI from opening.
       final available = await _speech.initialize(
@@ -130,6 +138,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _startVoiceLoop() async {
     if (!_android || !_voiceReady || _voiceStarting || _ttsSpeaking || _busy) return;
+    final mic = await Permission.microphone.status;
+    if (!mic.isGranted) {
+      if (mounted) setState(() => _status = 'Нет разрешения на микрофон');
+      return;
+    }
     _voiceStarting = true;
     try {
       await _speech.stop();
@@ -210,10 +223,16 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Future<void> _speak(String text) async {
-    if (!_android || text.trim().isEmpty || !_voiceReady) return;
+    if (!_android || text.trim().isEmpty) return;
     try {
       _ttsSpeaking = true;
       await _tts.stop();
+      if (!_voiceReady) {
+        await _tts.setLanguage('ru-RU');
+        await _tts.setSpeechRate(0.48);
+        await _tts.setVolume(1.0);
+        await _tts.setPitch(1.0);
+      }
       _setVisual(JarvisVisualState.speaking);
       await _tts.speak(text.trim());
     } catch (e) {
@@ -468,7 +487,31 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           Expanded(child: TextField(controller: _input, minLines: 2, maxLines: 5, textInputAction: TextInputAction.newline, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Введите команду или вопрос…', border: OutlineInputBorder()))),
           IconButton(onPressed: _busy ? null : () => _send(_input.text), icon: const Icon(Icons.send)),
         ])),
-        Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(_status, style: const TextStyle(fontSize: 12))),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            if (_android)
+              IconButton(
+                tooltip: _voiceRunning ? 'Остановить микрофон' : 'Включить голос',
+                onPressed: _busy ? null : () async {
+                  if (_voiceRunning) {
+                    _speechSession++;
+                    _voiceRunning = false;
+                    await _speech.stop();
+                    if (mounted) setState(() => _status = 'Голос остановлен');
+                  } else {
+                    if (!_voiceReady) await _initVoice();
+                    if (_voiceReady && mounted) {
+                      _voiceRunning = true;
+                      await _startVoiceLoop();
+                    }
+                  }
+                },
+                icon: Icon(_voiceRunning ? Icons.mic : Icons.mic_off),
+              ),
+            Flexible(child: Text(_status, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))),
+          ]),
+        ),
       ]),
     );
   }
