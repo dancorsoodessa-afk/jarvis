@@ -68,6 +68,21 @@ class JarvisIpc {
     'X-Title': 'JARVIS Android',
   };
 
+  String _networkError(Object error, String base) {
+    final s = error.toString();
+    if (s.contains('Failed host lookup') || s.contains('No address associated with hostname')) {
+      try {
+        final host = Uri.parse(base).host;
+        return 'Сеть: не удалось найти сервер ' + host + ' через DNS. Проверьте интернет/VPN/DNS или используйте резервный AI.';
+      } catch (_) {
+        return 'Сеть: не удалось найти сервер AI через DNS. Проверьте интернет/VPN/DNS или используйте резервный AI.';
+      }
+    }
+    if (s.contains('SocketException')) return 'Сеть: не удалось соединиться с AI-сервером. Проверьте интернет/VPN или резервный AI.';
+    if (s.contains('TimeoutException')) return 'Сеть: истекло время ожидания AI-сервера. Проверьте интернет/VPN или резервный AI.';
+    return s;
+  }
+
   String _error(int code, String body) {
     try {
       final j = jsonDecode(body);
@@ -183,11 +198,23 @@ class JarvisIpc {
       if (_history.length > 40) _history.removeRange(0, _history.length - 40);
       return r;
     } catch (e) {
-      if ((_fallbackUrl ?? '').isEmpty || (_fallbackKey ?? '').isEmpty || !_retryable(e)) rethrow;
-      final r = await _call(_fallbackUrl!, _fallbackKey!, _fallbackModel ?? '', text);
-      _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': r.text});
-      if (_history.length > 40) _history.removeRange(0, _history.length - 40);
-      return r;
+      if ((_fallbackUrl ?? '').isEmpty || (_fallbackKey ?? '').isEmpty || !_retryable(e)) {
+        if (e is SocketException || e.toString().contains('Failed host lookup') || e.toString().contains('TimeoutException')) {
+          throw StateError(_networkError(e, _apiUrl!));
+        }
+        rethrow;
+      }
+      try {
+        final r = await _call(_fallbackUrl!, _fallbackKey!, _fallbackModel ?? '', text);
+        _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': r.text});
+        if (_history.length > 40) _history.removeRange(0, _history.length - 40);
+        return r;
+      } catch (fallbackError) {
+        if (fallbackError is SocketException || fallbackError.toString().contains('Failed host lookup') || fallbackError.toString().contains('TimeoutException')) {
+          throw StateError('Основной и резервный AI недоступны по сети. ' + _networkError(fallbackError, _fallbackUrl!));
+        }
+        rethrow;
+      }
     }
   }
 
