@@ -80,6 +80,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _initVoice() async {
     if (!_android || _voiceReady) return;
     try {
+      // Voice startup is non-fatal: a broken native speech/TTS engine
+      // must never prevent the main JARVIS UI from opening.
       final available = await _speech.initialize(
         onStatus: (status) {
           debugPrint('JARVIS speech status: $status');
@@ -96,10 +98,14 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         debugLogging: false,
       );
       if (!available) throw StateError('Распознавание речи недоступно на устройстве');
-      await _tts.setLanguage('ru-RU');
-      await _tts.setSpeechRate(0.48);
-      await _tts.setVolume(1.0);
-      await _tts.setPitch(1.0);
+      try {
+        await _tts.setLanguage('ru-RU');
+        await _tts.setSpeechRate(0.48);
+        await _tts.setVolume(1.0);
+        await _tts.setPitch(1.0);
+      } catch (e) {
+        debugPrint('JARVIS TTS init warning: $e');
+      }
       _tts.setStartHandler(() {
         _ttsSpeaking = true;
         if (mounted) _setVisual(JarvisVisualState.speaking);
@@ -226,7 +232,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? 'https://openrouter.ai/api/v1';
       _fallbackKey.text = prefs.getString('fallback_key')?.trim() ?? '';
       _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? '';
-      await _initVoice();
+      // Do not block application startup on native voice services.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (mounted) await _initVoice();
       if (!mounted) return;
       if (_apiKey.text.isEmpty) {
         setState(() => _status = 'Введите API key в Настройках');
@@ -302,9 +310,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         if (text.isNotEmpty) _visualState = JarvisVisualState.speaking;
       });
     });
-    if (_android && _voiceReady) {
+    if (_android && _voiceReady && mounted) {
       _voiceRunning = true;
-      _startVoiceLoop();
+      Future<void>.delayed(const Duration(milliseconds: 700), () {
+        if (mounted && _voiceRunning && !_busy && !_ttsSpeaking) {
+          _startVoiceLoop();
+        }
+      });
     }
   }
 
