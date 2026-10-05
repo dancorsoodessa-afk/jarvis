@@ -137,3 +137,5 @@ jobs:
             ui/apk.sha256
             ui/apk-manifest.txt
           if-no-files-found: error
+
+# CI verification trigger 2026-10-06T21:00Z
