@@ -251,9 +251,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? 'https://openrouter.ai/api/v1';
       _fallbackKey.text = prefs.getString('fallback_key')?.trim() ?? '';
       _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? '';
-      // Do not block application startup on native voice services.
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      if (mounted) await _initVoice();
+      // Do not initialize native microphone/speech services during startup.
+      // Voice is initialized only after the main UI is visible, preventing
+      // device-specific native speech-service crashes from closing JARVIS.
       if (!mounted) return;
       if (_apiKey.text.isEmpty) {
         setState(() => _status = 'Введите API key в Настройках');
