@@ -164,7 +164,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   String? _extractWakeCommand(String text) {
     final normalized = text.toLowerCase().replaceAll(RegExp(r'[,.!?;:]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-    final match = RegExp(r'\bджарвис\b').firstMatch(normalized);
+    final match = RegExp(r'\b(?:джарвис|jarvis)\b').firstMatch(normalized);
     if (match == null) return null;
     final command = normalized.substring(match.end).trim();
     return command.isEmpty ? '' : command;
