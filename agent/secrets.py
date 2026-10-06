@@ -29,13 +29,13 @@ def _dpapi_protect(value: str) -> str:
     blob_out = _DATA_BLOB()
     crypt = ctypes.windll.crypt32.CryptProtectData
     crypt.argtypes = [
-        ctypes.POINTER(ctypes.wintypes.DATA_BLOB),
+        ctypes.POINTER(_DATA_BLOB),
         ctypes.wintypes.LPCWSTR,
-        ctypes.POINTER(ctypes.wintypes.DATA_BLOB),
+        ctypes.POINTER(_DATA_BLOB),
         ctypes.wintypes.LPVOID,
         ctypes.wintypes.LPVOID,
         ctypes.wintypes.DWORD,
-        ctypes.POINTER(ctypes.wintypes.DATA_BLOB),
+        ctypes.POINTER(_DATA_BLOB),
     ]
     crypt.restype = ctypes.wintypes.BOOL
     if not crypt(ctypes.byref(blob_in), "JARVIS settings", None, None, None, 0, ctypes.byref(blob_out)):
@@ -51,20 +51,20 @@ def _dpapi_unprotect(value: str) -> str:
     encoded = value[len(_PREFIX):]
     encrypted = base64.b64decode(encoded)
     in_buf = ctypes.create_string_buffer(encrypted)
-    blob_in = ctypes.wintypes.DATA_BLOB(
+    blob_in = _DATA_BLOB(
         len(encrypted),
         ctypes.cast(in_buf, ctypes.POINTER(ctypes.c_byte)),
     )
-    blob_out = ctypes.wintypes.DATA_BLOB()
+    blob_out = _DATA_BLOB()
     crypt = ctypes.windll.crypt32.CryptUnprotectData
     crypt.argtypes = [
-        ctypes.POINTER(ctypes.wintypes.DATA_BLOB),
+        ctypes.POINTER(_DATA_BLOB),
         ctypes.POINTER(ctypes.wintypes.LPWSTR),
-        ctypes.POINTER(ctypes.wintypes.DATA_BLOB),
+        ctypes.POINTER(_DATA_BLOB),
         ctypes.wintypes.LPVOID,
         ctypes.wintypes.LPVOID,
         ctypes.wintypes.DWORD,
-        ctypes.POINTER(ctypes.wintypes.DATA_BLOB),
+        ctypes.POINTER(_DATA_BLOB),
     ]
     crypt.restype = ctypes.wintypes.BOOL
     if not crypt(ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out)):
