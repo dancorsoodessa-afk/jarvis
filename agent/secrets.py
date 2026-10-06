@@ -7,6 +7,13 @@ import ctypes.wintypes
 import os
 
 
+class _DATA_BLOB(ctypes.Structure):
+    _fields_ = [
+        ("cbData", ctypes.wintypes.DWORD),
+        ("pbData", ctypes.POINTER(ctypes.c_byte)),
+    ]
+
+
 _PREFIX = "DPAPI1:"
 
 
@@ -15,11 +22,11 @@ def _dpapi_protect(value: str) -> str:
         return ""
     raw = value.encode("utf-8")
     in_buf = ctypes.create_string_buffer(raw)
-    blob_in = ctypes.wintypes.DATA_BLOB(
+    blob_in = _DATA_BLOB(
         ctypes.sizeof(in_buf),
         ctypes.cast(in_buf, ctypes.POINTER(ctypes.c_byte)),
     )
-    blob_out = ctypes.wintypes.DATA_BLOB()
+    blob_out = _DATA_BLOB()
     crypt = ctypes.windll.crypt32.CryptProtectData
     crypt.argtypes = [
         ctypes.POINTER(ctypes.wintypes.DATA_BLOB),
