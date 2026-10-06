@@ -70,7 +70,7 @@ def _dpapi_unprotect(value: str) -> str:
     if not crypt(ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out)):
         raise ctypes.WinError()
     try:
-        return ctypes.string_at(blob_out.pbData, blob_out.cbData).decode("utf-8")
+        return ctypes.string_at(blob_out.pbData, blob_out.cbData).decode("utf-8").rstrip("\x00")
     finally:
         ctypes.windll.kernel32.LocalFree(blob_out.pbData)
 
