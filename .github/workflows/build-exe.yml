@@ -4,6 +4,17 @@ on:
   workflow_dispatch:
   push:
     branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928]
+    paths:
+      - "agent/**"
+      - "docs/**"
+      - "scripts/build_exe.ps1"
+      - "jarvis_desktop.py"
+      - "jarvis_desktop.spec"
+      - "pyproject.toml"
+      - "poetry.lock"
+      - "tests/**"
+      - "vendor/**"
+      - ".github/workflows/build-exe.yml"
 
 permissions:
   contents: write
@@ -32,8 +43,6 @@ jobs:
           name: JARVIS-Windows-x64
           path: release/JARVIS.exe
           if-no-files-found: error
-# Release build trigger: foundation
-# Manual Windows build trigger
 
       - name: Опубликовать прямой EXE-релиз
         shell: pwsh
@@ -41,4 +50,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "windows-${{ github.run_number }}"
-          gh release create $tag release/JARVIS.exe --title "JARVIS Windows ${{ github.run_number }}" --notes "Финальная Windows x64 сборка JARVIS. Прямой исполняемый файл без ZIP." --latest
+          gh release create $tag release/JARVIS.exe --title "JARVIS Windows ${{ github.run_number }}" --notes "Проверенная Windows x64 сборка JARVIS." --latest
