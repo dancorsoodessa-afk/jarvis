@@ -16,6 +16,10 @@ on:
       - "vendor/**"
       - ".github/workflows/build-exe.yml"
 
+concurrency:
+  group: jarvis-windows-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
