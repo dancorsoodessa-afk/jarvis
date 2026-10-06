@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 import 'jarvis_client.dart';
+import 'jarvis_avatar.dart';
 
 const kCyan = Color(0xFF08E6FF);
 const kGreen = Color(0xFF45F0B0);
@@ -65,7 +66,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   _Attachment? _attachment;
   StreamSubscription<dynamic>? _voiceSub;
   StreamSubscription<String>? _partialSub;
-  bool _voiceReady = false, _ttsReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
+  bool _voiceReady = false, _ttsReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false, _speaking = false;
   static final RegExp _jarvisWake = RegExp(r'^\s*(?:jarvis|джарвис)\s*[,;:.!?-]?\s*', caseSensitive: false);
   late final AnimationController _orbController;
   String _status = 'JARVIS запускается…', _streamText = '';
@@ -229,6 +230,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     if (value.isEmpty) return;
     if (value == '__READY__') { _voiceReady = true; _listening = false; if (mounted) setState(() => _status = 'Русский голосовой контур готов · слушаю'); if (_voiceEnabled) Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); }); return; }
     if (value == '__TTS_READY__') { _ttsReady = true; if (mounted) setState(() => _status = 'Локальный русский голос готов'); return; }
+    if (value == '__TTS_START__') { _speaking = true; if (mounted) setState(() => _status = 'JARVIS говорит…'); return; }
+    if (value == '__TTS_DONE__') { _speaking = false; if (mounted) setState(() => _status = _listening ? 'Слушаю…' : 'Готов'); return; }
     if (value == '__LOADING_VOICE__') { if (mounted) setState(() => _status = 'Загрузка локальной модели речи…'); return; }
     if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
     if (value.startsWith('__TTS_ERROR__')) { _ttsReady = false; if (mounted) setState(() => _status = 'Ошибка TTS: ${value.substring(12)}'); return; }
@@ -497,12 +500,11 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   Widget _coreVisual() {
     final listening = _listening;
     final ready = _voiceReady && _voiceEnabled;
-    final accent = listening ? kGreen : (ready ? kCyan : kRed);
+    final accent = _speaking ? kGreen : (listening ? kGreen : (ready ? kCyan : kRed));
     return AnimatedBuilder(
       animation: _orbController,
       builder: (context, child) {
-        final phase = _orbController.value * 6.283185307;
-        final pulse = 0.94 + 0.06 * (0.5 + 0.5 * math.sin(phase));
+        final phase = _orbController.value;
         return Container(
           height: 286,
           margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
@@ -515,271 +517,38 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Positioned(top: 10, left: 12, right: 12, child: Row(
-                children: [
-                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 8)])),
-                  const SizedBox(width: 7),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 2)),
-                  const SizedBox(width: 7),
-                  const Text('V4.2 // ONLINE', style: TextStyle(color: Colors.white38, fontSize: 8, fontFamily: 'monospace')),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: accent.withOpacity(.08), border: Border.all(color: accent.withOpacity(.35)), borderRadius: BorderRadius.circular(3)),
-                    child: Text(listening ? 'JARVIS ACTIVE' : (ready ? 'READY' : 'OFFLINE'), style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                  ),
-                ],
-              )),
-              for (final size in [198.0 * pulse, 166.0 * pulse, 132.0 * pulse])
+              Positioned(top: 10, left: 12, right: 12, child: Row(children: [
+                Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 8)])),
+                const SizedBox(width: 7),
+                const Text('JARVIS AVATAR', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                const SizedBox(width: 7),
+                const Text('LOCAL // 2D', style: TextStyle(color: Colors.white38, fontSize: 8, fontFamily: 'monospace')),
+                const Spacer(),
                 Container(
-                  width: size,
-                  height: size,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: accent.withOpacity(.16), width: 1),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: accent.withOpacity(.08), border: Border.all(color: accent.withOpacity(.35)), borderRadius: BorderRadius.circular(3)),
+                  child: Text(_speaking ? 'SPEAKING' : (listening ? 'LISTENING' : (ready ? 'READY' : 'OFFLINE')), style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
                 ),
-              Container(
-                width: 108 * pulse,
-                height: 108 * pulse,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0E3440), Color(0xFF09202A)]),
-                  border: Border.all(color: accent.withOpacity(.8)),
-                  boxShadow: [BoxShadow(color: accent.withOpacity(.22), blurRadius: 30)],
-                ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    for (final h in [13.0, 24.0, 34.0, 20.0, 29.0])
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 450),
-                          width: 4,
-                          height: h * pulse,
-                          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(3), boxShadow: [BoxShadow(color: accent, blurRadius: 7)]),
-                        ),
-                      ),
-                  ]),
-                  const SizedBox(height: 8),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                ]),
-              ),
-              Positioned(bottom: 36, left: 16, right: 16, child: Column(children: [
-                RichText(textAlign: TextAlign.center, text: TextSpan(children: [
-                  TextSpan(text: listening ? 'СЛУШАЕТ ПОТОК ' : 'JARVIS ', style: const TextStyle(color: Colors.white, fontSize: 20, fontFamily: 'serif', fontWeight: FontWeight.w700)),
-                  TextSpan(text: listening ? 'DUPLEX' : 'CORE', style: TextStyle(color: const Color(0xFF061016), backgroundColor: accent, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                ])),
-                const SizedBox(height: 4),
-                Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 9, fontFamily: 'monospace')),
               ])),
+              Positioned.fill(
+                top: 28,
+                bottom: 20,
+                child: JarvisAvatar(phase: phase, listening: listening, speaking: _speaking, ready: ready),
+              ),
+              Positioned(
+                bottom: 12,
+                left: 16,
+                right: 16,
+                child: Text(_speaking ? 'ГОВОРИТ' : (listening ? 'СЛУШАЕТ' : (ready ? 'ГОТОВ' : 'ОЖИДАЕТ')),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: accent, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 2)),
+              ),
             ],
           ),
         );
       },
     );
   }
-
-  Widget _quickAction(IconData icon, String label, VoidCallback onTap) => Expanded(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3),
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 16),
-        label: Text(label, style: const TextStyle(fontSize: 10)),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: kCyan,
-          side: const BorderSide(color: kLine),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 5),
-        ),
-      ),
-    ),
-  );
-
-  Widget _statusCard(IconData icon, String title, String value, Color color) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: kPanel,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(.18)),
-        ),
-        child: Row(children: [
-          Icon(icon, color: color, size: 21),
-          const SizedBox(width: 9),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(color: Colors.white54, fontSize: 9)),
-            const SizedBox(height: 2),
-            Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
-          ])),
-        ]),
-      ),
-    );
-  }
-
-
-  Future<void> _runMenuAction(String label, Future<void> Function() action) async {
-    if (!mounted) return;
-    Navigator.of(context).maybePop();
-    await Future<void>.delayed(const Duration(milliseconds: 120));
-    if (mounted) await action();
-  }
-
-  Widget _drawerSection(String title) => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-    child: Text(title, style: const TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1.4)),
-  );
-
-  Widget _drawerItem(IconData icon, String title, Future<void> Function() action, {bool selected = false, Color? color}) {
-    final c = color ?? (selected ? kCyan : Colors.white70);
-    return ListTile(
-      dense: true,
-      visualDensity: const VisualDensity(vertical: -1),
-      leading: Icon(icon, size: 19, color: c),
-      title: Text(title, style: TextStyle(color: c, fontSize: 12, fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-      tileColor: selected ? const Color(0xFF0A2424) : Colors.transparent,
-      onTap: () => _runMenuAction(title, action),
-    );
-  }
-
-  Widget _buildDrawer() {
-    return Drawer(
-      backgroundColor: const Color(0xFF050B12),
-      width: 292,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 14, 12),
-              child: Row(children: [
-                Container(
-                  width: 42, height: 42,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const RadialGradient(colors: [Color(0xFF16453F), Color(0xFF07100F)]),
-                    border: Border.all(color: kCyan.withOpacity(.45)),
-                  ),
-                  child: const Icon(Icons.auto_awesome, color: kCyan, size: 22),
-                ),
-                const SizedBox(width: 11),
-                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-                  Text('COMMAND CENTER', style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1.2)),
-                ])),
-                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white38, size: 19)),
-              ]),
-            ),
-            Container(height: 1, color: kLine),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                children: [
-                  _drawerSection('СИСТЕМА'),
-                  _drawerItem(Icons.dashboard_rounded, 'Главная', () async => _scrollToBottom(), selected: true),
-                  _drawerItem(Icons.mic_rounded, 'Голос', () async => _toggleVoice()),
-                  _drawerItem(Icons.psychology_rounded, 'AI / Модели', () async => _settings()),
-                  _drawerItem(Icons.tune_rounded, 'Команды', () async => _openCommandCenter()),
-                  _drawerItem(Icons.folder_rounded, 'Файлы', () async => _send('список файлов')),
-                  _drawerItem(Icons.apps_rounded, 'Программы', () async => _send('покажи установленные программы')),
-                  _drawerItem(Icons.memory_rounded, 'Процессы', () async => _send('ps')),
-                  _drawerItem(Icons.monitor_heart_rounded, 'Система', () async => _send('status')),
-                  _drawerSection('ИНСТРУМЕНТЫ'),
-                  _drawerItem(Icons.search_rounded, 'OSINT / Поиск', () async => _send('поиск')),
-                  _drawerItem(Icons.extension_rounded, 'MCP', () async => _send('покажи доступные MCP инструменты')),
-                  _drawerItem(Icons.psychology_alt_rounded, 'Память', () async => _send('покажи память')),
-                  _drawerItem(Icons.task_alt_rounded, 'Задачи', () async => _send('напомни мне мои задачи')),
-                  _drawerSection('БЫСТРЫЕ ДЕЙСТВИЯ'),
-                  _drawerItem(Icons.camera_alt_rounded, 'Скриншот', () async => _send('screenshot')),
-                  _drawerItem(Icons.volume_up_rounded, 'Громкость', () async => _send('volume')),
-                  _drawerItem(Icons.cloud_rounded, 'Погода', () async => _send('weather')),
-                  _drawerItem(Icons.access_time_rounded, 'Время', () async => _send('now')),
-                  _drawerItem(Icons.calculate_rounded, 'Калькулятор', () async => _send('calc')),
-                  _drawerItem(Icons.settings_rounded, 'Настройки', () async => _settings()),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
-              child: Container(
-                padding: const EdgeInsets.all(11),
-                decoration: BoxDecoration(color: const Color(0xFF071411), border: Border.all(color: kGreen.withOpacity(.16)), borderRadius: BorderRadius.circular(7)),
-                child: Row(children: [
-                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: _voiceReady ? kGreen : kRed, boxShadow: [BoxShadow(color: _voiceReady ? kGreen : kRed, blurRadius: 7)])),
-                  const SizedBox(width: 9),
-                  Expanded(child: Text(_voiceReady ? 'ГОЛОСОВОЙ КОНТУР ГОТОВ' : 'ГОЛОСОВОЙ КОНТУР НЕ ГОТОВ', style: TextStyle(color: _voiceReady ? kGreen : kRed, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .7))),
-                ]),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openCommandCenter() async {
-    if (!mounted) return;
-    final commands = <Map<String, Object>>[
-      {'name': '/status', 'icon': Icons.monitor_heart_rounded, 'command': 'status'},
-      {'name': '/ps', 'icon': Icons.memory_rounded, 'command': 'ps'},
-      {'name': '/screenshot', 'icon': Icons.camera_alt_rounded, 'command': 'screenshot'},
-      {'name': '/volume', 'icon': Icons.volume_up_rounded, 'command': 'volume'},
-      {'name': '/weather', 'icon': Icons.cloud_rounded, 'command': 'weather'},
-      {'name': '/now', 'icon': Icons.access_time_rounded, 'command': 'now'},
-      {'name': '/calc', 'icon': Icons.calculate_rounded, 'command': 'calc'},
-      {'name': '/search', 'icon': Icons.search_rounded, 'command': 'поиск'},
-      {'name': '/remember', 'icon': Icons.bookmark_add_rounded, 'command': 'запомни'},
-      {'name': '/recall', 'icon': Icons.bookmarks_rounded, 'command': 'вспомни'},
-      {'name': '/forget', 'icon': Icons.delete_sweep_rounded, 'command': 'забудь'},
-      {'name': '/reminders', 'icon': Icons.alarm_rounded, 'command': 'напоминания'},
-      {'name': '/tools', 'icon': Icons.build_circle_rounded, 'command': 'покажи инструменты'},
-      {'name': '/help', 'icon': Icons.help_outline_rounded, 'command': 'help'},
-    ];
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: const Color(0xFF050B12),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 16),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              const Icon(Icons.terminal_rounded, color: kCyan, size: 20),
-              const SizedBox(width: 8),
-              const Expanded(child: Text('ЦЕНТР КОМАНД JARVIS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 1))),
-              IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close, color: Colors.white38)),
-            ]),
-            const SizedBox(height: 5),
-            const Text('Команды выполняются через подключённый AI-контур.', style: TextStyle(color: Colors.white38, fontSize: 10)),
-            const SizedBox(height: 10),
-            Flexible(
-              child: GridView.builder(
-                shrinkWrap: true,
-                itemCount: commands.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisExtent: 56, crossAxisSpacing: 8, mainAxisSpacing: 8),
-                itemBuilder: (context, index) {
-                  final item = commands[index];
-                  return OutlinedButton.icon(
-                    onPressed: _busy ? null : () {
-                      Navigator.pop(ctx);
-                      _send(item['command']! as String);
-                    },
-                    icon: Icon(item['icon']! as IconData, size: 17),
-                    label: Text(item['name']! as String, style: const TextStyle(fontFamily: 'monospace', fontSize: 10)),
-                    style: OutlinedButton.styleFrom(foregroundColor: kCyan, side: const BorderSide(color: kLine), alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 10)),
-                  );
-                },
-              ),
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-
 
   @override
   Widget build(BuildContext context) {
