@@ -13,6 +13,8 @@ class TestSecrets(unittest.TestCase):
         protected = protect_secret(value)
         self.assertTrue(protected)
         self.assertEqual(unprotect_secret(protected), value)
+        if os.name == "nt":
+            self.assertTrue(protected.startswith("DPAPI1:"))
 
     def test_empty_secret_stays_empty(self):
         self.assertEqual(protect_secret(""), "")
