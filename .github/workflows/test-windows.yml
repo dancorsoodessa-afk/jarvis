@@ -1,0 +1,47 @@
+name: JARVIS Windows tests
+
+on:
+  push:
+    branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928]
+    paths:
+      - "agent/**"
+      - "tests/**"
+      - "jarvis_desktop.py"
+      - "pyproject.toml"
+      - "poetry.lock"
+      - ".github/workflows/test-windows.yml"
+  pull_request:
+    branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928]
+    paths:
+      - "agent/**"
+      - "tests/**"
+      - "jarvis_desktop.py"
+      - "pyproject.toml"
+      - "poetry.lock"
+      - ".github/workflows/test-windows.yml"
+
+concurrency:
+  group: jarvis-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -e ".[all]"
+          python -m pip install "pytest>=9,<10"
+      - name: Run tests
+        shell: pwsh
+        run: pytest tests/ -q
+      - name: Desktop import
+        shell: pwsh
+        run: python -c "import jarvis_desktop; print('JARVIS desktop import OK')"
