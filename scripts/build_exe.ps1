@@ -1,24 +1,26 @@
-# Build the JARVIS core and desktop EXEs on Windows.
+# Build and verify the native JARVIS Windows x64 application.
 # Run from the project root:
 #   powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 $ErrorActionPreference = "Stop"
 
 python -m pip install --upgrade pip
 python -m pip install -e ".[all]"
-python -m pip install --upgrade pyinstaller pytest faster-whisper huggingface-hub
+python -m pip install --upgrade "pyinstaller>=6.22,<7" pytest faster-whisper huggingface-hub
 
-Write-Host "== JARVIS: prepare bundled offline STT (faster-whisper base) ==" -ForegroundColor Cyan
+Write-Host "== JARVIS: unit tests before large model downloads ==" -ForegroundColor Cyan
+pytest tests/ -q
+if ($LASTEXITCODE -ne 0) { throw "Tests failed; release build aborted before downloading bundled assets." }
+
+Write-Host "== JARVIS: prepare bundled offline STT (faster-whisper small, CPU INT8) ==" -ForegroundColor Cyan
 $sttDir = Join-Path $PWD "vendor\stt_model"
 Remove-Item $sttDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $sttDir | Out-Null
 
-# Hugging Face can temporarily answer 429 when several GitHub runners hit the
-# same model at once. Retry with backoff instead of failing the whole build.
 $sttReady = $false
 for ($attempt = 1; $attempt -le 5; $attempt++) {
     try {
-        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='Systran/faster-whisper-base', local_dir=r'vendor/stt_model')"
-        if (Test-Path "$sttDir\model.bin") {
+        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='Systran/faster-whisper-small', local_dir=r'vendor/stt_model')"
+        if ((Test-Path "$sttDir\model.bin") -and (Test-Path "$sttDir\config.json") -and (Test-Path "$sttDir\tokenizer.json")) {
             $sttReady = $true
             break
         }
@@ -31,7 +33,7 @@ for ($attempt = 1; $attempt -le 5; $attempt++) {
         Start-Sleep -Seconds $delay
     }
 }
-if (-not $sttReady) { throw "Offline faster-whisper model download failed after 5 attempts." }
+if (-not $sttReady) { throw "Offline faster-whisper small model download failed after 5 attempts." }
 
 Write-Host "== JARVIS: prepare bundled male voice ==" -ForegroundColor Cyan
 $piperUrl = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip"
@@ -54,12 +56,10 @@ Invoke-WebRequest -Uri "$voiceBase/ru_RU-dmitri-medium.onnx.json" -OutFile "$ven
 if (-not (Test-Path "$vendorPiper\piper.exe")) { throw "Bundled Piper verification failed." }
 if (-not (Test-Path "$vendorPiper\ru_RU-dmitri-medium.onnx")) { throw "Bundled Dmitri voice verification failed." }
 
-Write-Host "== JARVIS: tests ==" -ForegroundColor Cyan
-pytest tests/ -q
-if ($LASTEXITCODE -ne 0) { throw "Tests failed; release build aborted." }
+Write-Host "== JARVIS: desktop import check ==" -ForegroundColor Cyan
 python -c "import jarvis_desktop; print('JARVIS desktop import OK')"
 
-Write-Host "== JARVIS: единственный Windows EXE ==" -ForegroundColor Cyan
+Write-Host "== JARVIS: build single Windows EXE ==" -ForegroundColor Cyan
 pyinstaller jarvis_desktop.spec --clean --noconfirm
 if ($LASTEXITCODE -ne 0) { throw "JARVIS.exe build failed." }
 
@@ -72,9 +72,9 @@ Copy-Item "dist\jarvis_desktop.exe" "$release\JARVIS.exe"
 JARVIS — Windows x64
 
 JARVIS.exe — единственное пользовательское приложение с графическим интерфейсом, голосом, памятью и инструментами.
-STT: faster-whisper base, локально на CPU.
+STT: faster-whisper small, локально на CPU, INT8.
 TTS: Piper + русский мужской голос Dmitri Medium.
-Все голосовые компоненты входят в пакет и работают без облачного TTS.
+Все обязательные голосовые компоненты входят в пакет и работают без облачного TTS.
 
 Конфигурация сохраняется в %APPDATA%\JARVIS\settings.json.
 "@ | Set-Content -Path "$release\README.txt" -Encoding UTF8
@@ -83,4 +83,3 @@ Write-Host ""
 Write-Host "Release ready:" -ForegroundColor Green
 Write-Host "  $release\JARVIS.exe"
 Write-Host ("  Размер: {0:N1} MB" -f ((Get-Item "$release\JARVIS.exe").Length / 1MB))
-Write-Host "  Прямой EXE: release\JARVIS.exe"
