@@ -14,6 +14,7 @@ import mimetypes
 
 from agent.runtime import build_agent
 from agent import tts, voice, stt
+from agent.secrets import protect_secret, unprotect_secret
 from agent.tools_catalog import TOOLS
 
 BG = "#081522"
@@ -45,12 +46,36 @@ def _safe_endpoint(value: str | None) -> str:
 
 
 
+_SECRET_SETTING_KEYS = {
+    "api_key",
+    "openrouter_api_key",
+    "deepseek_key",
+    "glm_key",
+    "elevenlabs_api_key",
+}
+
+def _transform_settings_secrets(value, transform):
+    if isinstance(value, dict):
+        return {
+            key: transform(item) if key in _SECRET_SETTING_KEYS and isinstance(item, str)
+            else _transform_settings_secrets(item, transform)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_transform_settings_secrets(item, transform) for item in value]
+    return value
+
+
 def _load_saved_settings() -> dict:
     try:
         data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            return {}
+        return _transform_settings_secrets(data, unprotect_secret)
     except (OSError, ValueError):
         return {}
+
+
 
 
 class JarvisDesktop(tk.Tk):
@@ -147,7 +172,11 @@ class JarvisDesktop(tk.Tk):
 
     def _save_settings(self):
         APP_DIR.mkdir(parents=True, exist_ok=True)
-        SETTINGS_FILE.write_text(json.dumps(self.settings, ensure_ascii=False, indent=2), encoding="utf-8")
+        safe = _transform_settings_secrets(self.settings, protect_secret)
+        SETTINGS_FILE.write_text(
+            json.dumps(safe, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     def _build_style(self):
         style = ttk.Style(self)
