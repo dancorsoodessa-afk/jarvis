@@ -1,7 +1,7 @@
-"""TTS JARVIS: локальный мужской голос по умолчанию + ElevenLabs как опция.
+"""TTS JARVIS: локальный Piper + опциональный ElevenLabs.
 
-Локальный Piper не зависит от интернет-лимитов и подходит для непрерывного
-разговора весь день. ElevenLabs можно включить вручную через JARVIS_TTS=elevenlabs.
+Локальный Piper является основным движком. Каждый ответ получает отдельный
+временный WAV, а воспроизведение защищено от гонок при перебивании.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from pathlib import Path
 
 _PLAYBACK_LOCK = threading.Lock()
 _PLAYBACK_ACTIVE = False
+_PLAYBACK_TOKEN = 0
 DEFAULT_ELEVEN_VOICE = "srULqtwUV9XZPg1ZCO5w"
 DEFAULT_ELEVEN_MODEL = "eleven_flash_v2_5"
 DEFAULT_ELEVEN_FORMAT = "pcm_22050"
@@ -97,7 +98,6 @@ def current_engine() -> str:
     if mode == "off":
         return "off"
     if mode == "auto":
-        # Backward-compatible alias, but local is preferred to avoid cloud quotas.
         return "piper" if "piper" in available_engines() else (
             "elevenlabs" if "elevenlabs" in available_engines() else "off"
         )
@@ -105,7 +105,7 @@ def current_engine() -> str:
 
 
 def stop() -> None:
-    global _PLAYBACK_ACTIVE
+    global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN
     if sys.platform == "win32":
         try:
             import winsound
@@ -113,6 +113,7 @@ def stop() -> None:
         except Exception:
             pass
     with _PLAYBACK_LOCK:
+        _PLAYBACK_TOKEN += 1
         _PLAYBACK_ACTIVE = False
 
 
@@ -121,11 +122,17 @@ def is_playing() -> bool:
         return _PLAYBACK_ACTIVE
 
 
+def _temp_wav(prefix: str) -> Path:
+    fd, name = tempfile.mkstemp(prefix=prefix, suffix=".wav")
+    os.close(fd)
+    return Path(name)
+
+
 def _speak_piper(text: str) -> Path:
     piper, voice = _piper_paths()
-    out = Path(tempfile.gettempdir()) / "jarvis_tts.wav"
+    out = _temp_wav("jarvis_tts_")
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    with open(out, "wb") as wav:
+    try:
         subprocess.run(
             [piper, "--model", str(voice), "--output_file", str(out)],
             input=text.encode("utf-8"),
@@ -135,6 +142,12 @@ def _speak_piper(text: str) -> Path:
             timeout=60,
             creationflags=flags,
         )
+    except Exception:
+        try:
+            out.unlink()
+        except OSError:
+            pass
+        raise
     return out
 
 
@@ -176,12 +189,19 @@ def _speak_elevenlabs(text: str) -> Path:
         raise RuntimeError(f"ElevenLabs HTTP {exc.code}: {detail}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"ElevenLabs сеть недоступна: {exc.reason}") from exc
-    out = Path(tempfile.gettempdir()) / "jarvis_tts_eleven.wav"
-    with wave.open(str(out), "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(22050)
-        wav.writeframes(pcm)
+    out = _temp_wav("jarvis_tts_eleven_")
+    try:
+        with wave.open(str(out), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(22050)
+            wav.writeframes(pcm)
+    except Exception:
+        try:
+            out.unlink()
+        except OSError:
+            pass
+        raise
     return out
 
 
@@ -189,7 +209,6 @@ def speak(text: str) -> Path:
     text = " ".join(str(text).split())
     if not text:
         raise RuntimeError("Пустой текст для озвучки.")
-    # No conversational/session limit; keep only a per-response safety bound.
     text = text[:4000]
     engine = current_engine()
     if engine == "elevenlabs":
@@ -205,7 +224,7 @@ def speak(text: str) -> Path:
 
 
 def speak_and_play(text: str) -> Path:
-    global _PLAYBACK_ACTIVE
+    global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN
     path = speak(text)
     if sys.platform != "win32":
         return path
@@ -221,6 +240,7 @@ def speak_and_play(text: str) -> Path:
         duration = 0.0
 
     with _PLAYBACK_LOCK:
+        token = _PLAYBACK_TOKEN
         _PLAYBACK_ACTIVE = True
 
     winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)
@@ -230,7 +250,12 @@ def speak_and_play(text: str) -> Path:
         if duration > 0:
             time.sleep(duration + 0.05)
         with _PLAYBACK_LOCK:
-            _PLAYBACK_ACTIVE = False
+            if _PLAYBACK_TOKEN == token:
+                _PLAYBACK_ACTIVE = False
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
     threading.Thread(target=_clear_after_playback, daemon=True).start()
     return path
