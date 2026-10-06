@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -23,12 +24,14 @@ class TestVoiceStackRegressions(unittest.TestCase):
         fake_fw = types.SimpleNamespace(WhisperModel=lambda *a, **k: FakeModel())
         old_model = stt._MODEL
         stt._MODEL = None
-        with mock.patch.dict(sys.modules, {"faster_whisper": fake_fw}):
-            with mock.patch.dict(os.environ, {"JARVIS_STT": "faster-whisper"}):
-                with mock.patch.object(stt, "_model_dir", return_value=Path("/missing")):
-                    stt._get_model()
-                    stt._MODEL.transcribe("x.wav", vad_filter=False)
-        stt._MODEL = old_model
+        try:
+            with mock.patch.dict(sys.modules, {"faster_whisper": fake_fw}):
+                with mock.patch.dict(os.environ, {"JARVIS_STT": "faster-whisper"}):
+                    with mock.patch.object(stt, "_model_dir", return_value=Path("/missing")):
+                        with tempfile.NamedTemporaryFile(suffix=".wav") as audio:
+                            stt.transcribe(audio.name)
+        finally:
+            stt._MODEL = old_model
         self.assertIs(calls["kwargs"]["vad_filter"], False)
 
     def test_piper_creates_unique_output_paths(self):
