@@ -2,8 +2,10 @@
 
 Единственный STT-движок: faster-whisper.
 Модель поставляется вместе с Windows-сборкой, поэтому сеть для STT не нужна.
+Сегментацию речи выполняет agent.voice; Whisper не запускает второй VAD.
 """
 from __future__ import annotations
+
 import os
 import sys
 import threading
@@ -11,6 +13,7 @@ from pathlib import Path
 
 _MODEL = None
 _MODEL_LOCK = threading.Lock()
+
 
 def _model_dir() -> Path:
     override = os.environ.get("JARVIS_STT_MODEL_PATH", "").strip()
@@ -20,6 +23,7 @@ def _model_dir() -> Path:
         return Path(sys._MEIPASS) / "stt_model"
     return Path(__file__).resolve().parent.parent / "vendor" / "stt_model"
 
+
 def available_engines() -> list[str]:
     try:
         import faster_whisper  # noqa: F401
@@ -27,11 +31,13 @@ def available_engines() -> list[str]:
     except ImportError:
         return []
 
+
 def current_engine() -> str:
     mode = os.environ.get("JARVIS_STT", "faster-whisper").strip().lower()
     if mode == "off":
         return "off"
     return "faster-whisper" if "faster-whisper" in available_engines() else "off"
+
 
 def _get_model():
     global _MODEL
@@ -52,8 +58,9 @@ def _get_model():
             )
     return _MODEL
 
+
 def warmup() -> None:
-    """Загрузить модель в память заранее, чтобы первая голосовая команда не тормозила."""
+    """Загрузить модель заранее, чтобы первая команда не тормозила."""
     if current_engine() != "off":
         _get_model()
 
@@ -71,8 +78,8 @@ def transcribe(audio_path: str) -> str:
         beam_size=1,
         best_of=1,
         temperature=0.0,
-        vad_filter=True,
-        vad_parameters={"min_silence_duration_ms": 300, "speech_pad_ms": 100},
+        # agent.voice already segments speech and removes trailing silence.
+        vad_filter=False,
         condition_on_previous_text=False,
     )
     return " ".join(segment.text.strip() for segment in segments).strip()
