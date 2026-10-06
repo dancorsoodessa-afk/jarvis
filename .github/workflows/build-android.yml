@@ -1,17 +1,16 @@
 name: Build JARVIS Android APK
-# Provider persistence + voice verification build
-# Verified build trigger
-# rebuild requested: Android APK verification 2026-09-28
-# verified install build
-# CI trigger: build APK after Android source changes
-# CI dispatch-safe build: explicit workflow_dispatch input
-# rebuild: 2026-10-06 APK verification
 
 on:
   push:
     branches: ["**"]
+    paths:
+      - "ui/**"
+      - ".github/workflows/build-android.yml"
   pull_request:
     branches: [foundation, standalone-pc-android]
+    paths:
+      - "ui/**"
+      - ".github/workflows/build-android.yml"
   workflow_dispatch:
     inputs:
       reason:
@@ -83,11 +82,8 @@ jobs:
           p=Path('android/settings.gradle.kts')
           t=p.read_text()
           t=t.replace('maven { url = uri("https://jitpack.io") }', '')
-          marker='dependencyResolutionManagement {'
-          if marker in t and 'https://jitpack.io' not in t:
-              t=t.replace('repositories {', 'repositories {\n        maven { url = uri("https://jitpack.io") }', 2)[-1] if False else t
-              import re
-              t=re.sub(r'(dependencyResolutionManagement \\{.*?repositories \\{)', r'\\1\n        maven { url = uri("https://jitpack.io") }', t, count=1, flags=re.S)
+          import re
+          t=re.sub(r'(dependencyResolutionManagement \{.*?repositories \{)', r'\1\n        maven { url = uri("https://jitpack.io") }', t, count=1, flags=re.S)
           p.write_text(t)
           p=Path('android/app/build.gradle.kts')
           t=p.read_text()
@@ -97,10 +93,11 @@ jobs:
               if dep not in t: t=t.replace('dependencies {','dependencies {\n    '+dep,1)
           p.write_text(t)
           p=Path('pubspec.yaml'); p.write_text(p.read_text().replace('version: 0.1.0','version: 0.1.2',1))
-          p=Path('android/app/src/main/AndroidManifest.xml'); t=p.read_text(); e=t.find('>',t.find('<manifest ')); h,tail=t[:e+1],t[e+1:]
+          p=Path('android/app/src/main/AndroidManifest.xml'); t=p.read_text()
           for n in ['android.permission.INTERNET','android.permission.RECORD_AUDIO','android.permission.MODIFY_AUDIO_SETTINGS','android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_MICROPHONE','android.permission.POST_NOTIFICATIONS']:
               if n not in t:
-                  t=h+f'\n    <uses-permission android:name="{n}" />'+tail; e=t.find('>',t.find('<manifest ')); h,tail=t[:e+1],t[e+1:]
+                  marker='</manifest>'
+                  t=t.replace(marker, f'    <uses-permission android:name="{n}" />\n'+marker, 1)
           p.write_text(t)
           PY
       - name: Get dependencies
@@ -151,7 +148,3 @@ jobs:
             ui/apk.sha256
             ui/apk-manifest.txt
           if-no-files-found: error
-
-# CI verification trigger 2026-10-06T21:00Z
-
-# rebuild verification trigger 2026-10-06T21:00Z
