@@ -104,7 +104,7 @@ class JarvisDesktop(tk.Tk):
         if not isinstance(profiles, dict):
             profiles = {}
         active = int(self.settings.get("active_agent", 0) or 0)
-        active = max(0, min(2, active))
+        active = max(0, min(1, active))
         legacy = {
             "name": "JARVIS",
             "provider": self.settings.get("provider") or os.environ.get("JARVIS_PROVIDER") or DEFAULT_PROVIDER,
@@ -114,8 +114,7 @@ class JarvisDesktop(tk.Tk):
         }
         defaults = {
             "0": legacy,
-            "1": {"name": "DeepSeek", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "deepseek/deepseek-chat:free", "api_key": legacy["api_key"]},
-            "2": {"name": "GLM", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "z-ai/glm-5.2:free", "api_key": legacy["api_key"]},
+            "1": {"name": "JARVIS CODE", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "deepseek/deepseek-chat:free", "api_key": legacy["api_key"]},
         }
         merged = {}
         for key, default in defaults.items():
@@ -135,18 +134,17 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
         os.environ["OPENROUTER_API_KEY"] = profile["api_key"]
         os.environ["JARVIS_CHAT_MODEL"] = profile["model"]
+        # Two selectable assistants share one OpenRouter endpoint and API key.
         os.environ["JARVIS_FAST_MODEL"] = merged["0"]["model"]
         os.environ["JARVIS_REASONING_MODEL"] = merged["1"]["model"]
-        os.environ["JARVIS_CODING_MODEL"] = merged["2"]["model"]
-        os.environ["JARVIS_ADDITIONAL_MODEL"] = self.settings.get("additional_model") or os.environ.get("JARVIS_ADDITIONAL_MODEL") or merged["0"]["model"]
-        # Independent consultant providers. Keep secrets out of the repository;
-        # they live only in the user's settings/environment.
-        os.environ["JARVIS_DEEPSEEK_URL"] = self.settings.get("deepseek_url", os.environ.get("JARVIS_DEEPSEEK_URL", ""))
-        os.environ["JARVIS_DEEPSEEK_KEY"] = self.settings.get("deepseek_key", os.environ.get("JARVIS_DEEPSEEK_KEY", ""))
-        os.environ["JARVIS_DEEPSEEK_MODEL"] = self.settings.get("deepseek_model", os.environ.get("JARVIS_DEEPSEEK_MODEL", "deepseek/deepseek-chat:free"))
-        os.environ["JARVIS_GLM_URL"] = self.settings.get("glm_url", os.environ.get("JARVIS_GLM_URL", ""))
-        os.environ["JARVIS_GLM_KEY"] = self.settings.get("glm_key", os.environ.get("JARVIS_GLM_KEY", ""))
-        os.environ["JARVIS_GLM_MODEL"] = self.settings.get("glm_model", os.environ.get("JARVIS_GLM_MODEL", "z-ai/glm-5.2:free"))
+        os.environ["JARVIS_CODING_MODEL"] = merged["1"]["model"]
+        os.environ["JARVIS_ADDITIONAL_MODEL"] = merged["0"]["model"]
+        os.environ["JARVIS_DEEPSEEK_URL"] = ""
+        os.environ["JARVIS_DEEPSEEK_KEY"] = ""
+        os.environ["JARVIS_DEEPSEEK_MODEL"] = merged["1"]["model"]
+        os.environ["JARVIS_GLM_URL"] = ""
+        os.environ["JARVIS_GLM_KEY"] = ""
+        os.environ["JARVIS_GLM_MODEL"] = merged["1"]["model"]
         disabled = self.settings.get("disabled_tools", [])
         if not isinstance(disabled, list):
             disabled = []
@@ -1022,11 +1020,11 @@ class JarvisDesktop(tk.Tk):
         if not isinstance(profiles, dict):
             profiles = {}
         active = int(self.settings.get("active_agent", 0) or 0)
-        names = ("FAST / Обычные", "REASONING / Рассуждения", "CODING / Код")
+        active = max(0, min(1, active))
+        names = ("JARVIS / ОСНОВНОЙ", "JARVIS CODE / ПРОГРАММИРОВАНИЕ")
         defaults = (
             ("openai-compatible", DEFAULT_URL, "openrouter/free"),
             ("openai-compatible", DEFAULT_URL, "deepseek/deepseek-chat:free"),
-            ("openai-compatible", DEFAULT_URL, "z-ai/glm-5.2:free"),
         )
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
@@ -1035,37 +1033,7 @@ class JarvisDesktop(tk.Tk):
         shared_key.insert(0, str(self.settings.get("openrouter_api_key") or profiles.get("0", {}).get("api_key", "") or os.environ.get("OPENROUTER_API_KEY", "")))
         shared_key.pack(fill="x", padx=14, pady=(0, 12), ipady=7)
 
-        additional_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
-        additional_row.pack(fill="x", pady=(2, 10))
-        tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
-        additional_model = tk.Entry(additional_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
-        additional_model.insert(0, str(self.settings.get("additional_model", "openrouter/free")))
-        additional_model.pack(fill="x", padx=14, pady=(0, 12), ipady=6)
-
-        consultant_frame = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
-        consultant_frame.pack(fill="x", pady=(2, 10))
-        tk.Label(consultant_frame, text="НЕЗАВИСИМЫЕ КОНСУЛЬТАНТЫ", bg="#091b29", fg=CYAN,
-                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 3))
-        tk.Label(consultant_frame,
-                 text="Если указать собственные ключи, DeepSeek и GLM работают напрямую, а не через OpenRouter.",
-                 bg="#091b29", fg=MUTED, font=("Segoe UI", 8), wraplength=760, justify="left").pack(anchor="w", padx=14, pady=(0, 7))
-        consultant_fields = {}
-        consultant_defaults = (
-            ("DeepSeek URL", "deepseek_url", self.settings.get("deepseek_url", ""), False),
-            ("DeepSeek API-ключ", "deepseek_key", self.settings.get("deepseek_key", ""), True),
-            ("DeepSeek модель", "deepseek_model", self.settings.get("deepseek_model", "deepseek/deepseek-chat:free"), False),
-            ("GLM URL", "glm_url", self.settings.get("glm_url", ""), False),
-            ("GLM API-ключ", "glm_key", self.settings.get("glm_key", ""), True),
-            ("GLM модель", "glm_model", self.settings.get("glm_model", "z-ai/glm-5.2:free"), False),
-        )
-        for label, key, default, secret in consultant_defaults:
-            row = tk.Frame(consultant_frame, bg="#091b29")
-            row.pack(fill="x", padx=14, pady=3)
-            tk.Label(row, text=label, width=20, anchor="w", bg="#091b29", fg=MUTED).pack(side="left")
-            e = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•" if secret else "", exportselection=False)
-            e.insert(0, str(default))
-            e.pack(side="left", fill="x", expand=True, ipady=6)
-            consultant_fields[key] = e
+        # Only two assistant profiles are shown; both use the shared OpenRouter key.
 
         entries = []
         for i, title in enumerate(names):
@@ -1130,9 +1098,11 @@ class JarvisDesktop(tk.Tk):
                 new_profiles[str(i)]["name"] = names[i]
             self.settings["agents"] = new_profiles
             self.settings["openrouter_api_key"] = shared_key.get().strip()
-            self.settings["additional_model"] = additional_model.get().strip() or "openrouter/free"
-            for k, e in consultant_fields.items():
-                self.settings[k] = e.get().strip()
+            self.settings["additional_model"] = new_profiles["0"]["model"]
+            for k in ("deepseek_url", "deepseek_key", "glm_url", "glm_key"):
+                self.settings[k] = ""
+            self.settings["deepseek_model"] = new_profiles["1"]["model"]
+            self.settings["glm_model"] = new_profiles["1"]["model"]
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
