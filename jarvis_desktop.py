@@ -777,7 +777,12 @@ class JarvisDesktop(tk.Tk):
                 result=self.agent.handle(prompt, attachment=attachment_payload)
                 if provider is not None and hasattr(provider, "on_delta"):
                     provider.on_delta = None
-                self.events.put(("reply",result.text))
+                # JarvisAgent converts provider exceptions into an AgentResult string.
+                # Detect that error explicitly instead of showing it as a successful reply.
+                if str(result.text).startswith("Ошибка провайдера:"):
+                    self.events.put(("request_error", str(result.text).partition(":")[2].strip()))
+                else:
+                    self.events.put(("reply",result.text))
             except Exception as exc:
                 if provider is not None and hasattr(provider, "on_delta"):
                     provider.on_delta = None
