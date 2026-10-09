@@ -81,3 +81,9 @@ def test_desktop_does_not_claim_api_online_before_first_request():
     assert 'self.status.config(text="● ГОТОВ", fg=YELLOW)' in ready_handler
     assert "API: проверка при запросе" in ready_handler
     assert 'self.status.config(text="● ONLINE", fg=GREEN)' not in ready_handler
+
+
+def test_desktop_treats_agent_provider_error_result_as_api_failure():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert 'str(result.text).startswith("Ошибка провайдера:")' in source
+    assert 'self.events.put(("request_error", str(result.text).partition(":")[2].strip()))' in source
