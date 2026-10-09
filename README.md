@@ -189,8 +189,8 @@ Get-ChildItem
 
 Запустить Desktop:
 
-~~~
-.\\JARVIS Desktop.exe
+~~~~
+.\\JARVIS.exe
 ~~~
 
 Проверить, что EXE существует:
