@@ -18,19 +18,18 @@ AI strategy:
 - Model is replaceable; Jarvis is not tied to one runtime
 - If `JARVIS_CHAT_MODEL` is empty, the OpenAI-compatible provider discovers the first model exposed by `/v1/models`
 
-## Build jarvis.exe (Windows x64)
+## Build JARVIS Desktop (Windows x64)
 
-On your Windows PC, from the project root:
+From the project root, run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\\build_exe.ps1
+powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 ```
 
-The build script installs the project with all Windows extras, runs the full unittest suite, and then creates `dist\\jarvis.exe`.
+The script installs dependencies, runs `pytest tests/ -q`, downloads the offline STT model and Russian Piper voice, checks the desktop import, and builds the GUI application with `jarvis_desktop.spec`. The current script copies the resulting application to `release\JARVIS.exe`.
 
-Result: `dist\\jarvis.exe` — single console exe, with the optional Windows audio and screenshot dependencies bundled.
+GitHub Actions also builds the Windows application on pushes to `foundation`; the workflow uploads the single `release/JARVIS.exe` file as the `JARVIS-Windows-x64` artifact and publishes a Windows release.
 
-GitHub Actions also builds the Windows executables on pushes and pull requests targeting `foundation`; the resulting package is uploaded as a workflow artifact.
 
 
 ## Быстрый старт для Windows
@@ -54,10 +53,10 @@ GitHub Actions also builds the Windows executables on pushes and pull requests t
 
 ~~~
 powershell -ExecutionPolicy Bypass -File scripts\\build_exe.ps1
-.\\release\\JARVIS Desktop.exe
+.\\release\\JARVIS.exe
 ~~~
 
-После сборки папка \`release\\\` является готовым комплектом. Скрипт сборки также создаёт \`JARVIS-Windows-x64.zip\`.
+После сборки графическое приложение находится по пути \`release\\JARVIS.exe\`.
 
 ### Flutter UI
 
