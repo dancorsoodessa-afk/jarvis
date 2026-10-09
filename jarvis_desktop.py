@@ -368,81 +368,114 @@ class JarvisDesktop(tk.Tk):
         self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
 
     def _draw_orb(self):
-        """Высокопроизводительный псевдо-3D ARC Reactor: глубина, орбиты, сетка и реакция на голос/AI."""
+        """Draw a live, projected neural sphere using Tk Canvas (no external assets)."""
         self.canvas.delete("all")
-        w=max(430,self.canvas.winfo_width()); h=max(300,self.canvas.winfo_height())
-        cx,cy=w*0.43,h*0.48
-        phase=self._orb_phase; state=self._visual_state; level=self._visual_level
-        speed={"IDLE":0.014,"LISTENING":0.085,"THINKING":0.12,"SPEAKING":0.10,"ERROR":0.17}.get(state,0.03)
-        core=RED if state=="ERROR" else (YELLOW if state=="THINKING" else CYAN)
-        dark="#06121c"; faint="#0a2837"; dim="#17566d"; bright="#49cfe8"
+        w = max(430, self.canvas.winfo_width())
+        h = max(300, self.canvas.winfo_height())
+        cx, cy = w * 0.5, h * 0.47
+        phase = self._orb_phase
+        state = self._visual_state
+        level = self._visual_level
+        speed = {"IDLE": 0.012, "LISTENING": 0.075, "THINKING": 0.11,
+                 "SPEAKING": 0.085, "ERROR": 0.14}.get(state, 0.025)
+        core = RED if state == "ERROR" else (YELLOW if state == "THINKING" else CYAN)
+        dim = "#123e55"
+        bright = "#72f4ff"
+        radius = min(w, h) * 0.315
 
-        # Perspective grid behind the reactor.
-        horizon=cy+h*.08
-        for i in range(9):
-            y=horizon+i*i*2.2
-            self.canvas.create_line(0,y,w,y,fill="#0b2431",width=1)
-        for i in range(-8,9):
-            self.canvas.create_line(cx+i*34,horizon,cx+i*105,h,fill="#0a202c",width=1)
+        # Generate a stable Fibonacci sphere and its local-neighbour graph once.
+        if not hasattr(self, "_neural_nodes"):
+            count = 126
+            points = []
+            golden_angle = math.pi * (3.0 - math.sqrt(5.0))
+            for i in range(count):
+                y = 1.0 - 2.0 * (i + 0.5) / count
+                r = math.sqrt(max(0.0, 1.0 - y * y))
+                a = golden_angle * i
+                points.append((math.cos(a) * r, y, math.sin(a) * r))
+            edges = []
+            for i, p in enumerate(points):
+                for j in range(i + 1, count):
+                    q = points[j]
+                    d2 = sum((p[k] - q[k]) ** 2 for k in range(3))
+                    if d2 < 0.115:
+                        edges.append((i, j))
+            self._neural_nodes = points
+            self._neural_edges = edges
 
-        # Depth particles orbiting the reactor.
-        for i in range(46):
-            a=phase*(0.10+(i%5)*0.018)+i*math.tau/46
-            depth=0.45+0.55*(0.5+0.5*math.sin(a*1.7+i))
-            rx=118+62*depth; ry=52+34*depth
-            x=cx+math.cos(a)*rx; y=cy+math.sin(a)*ry
-            size=0.7+2.0*depth*(0.5+0.5*level)
-            self.canvas.create_oval(x-size,y-size,x+size,y+size,fill=bright if i%11==0 else dim,outline="")
+        # Rotate the sphere in 3D, then project it onto the desktop canvas.
+        angle_y = phase * 0.42
+        angle_x = math.sin(phase * 0.17) * 0.24
+        cyaw, syaw = math.cos(angle_y), math.sin(angle_y)
+        cpitch, spitch = math.cos(angle_x), math.sin(angle_x)
+        projected = []
+        for i, (x, y, z) in enumerate(self._neural_nodes):
+            xr = x * cyaw + z * syaw
+            zr = -x * syaw + z * cyaw
+            yr = y * cpitch - zr * spitch
+            zr = y * spitch + zr * cpitch
+            perspective = 1.0 / max(0.62, 1.75 - zr * 0.32)
+            px = cx + xr * radius * perspective
+            py = cy + yr * radius * perspective
+            activity = 0.18 + 0.22 * (0.5 + 0.5 * math.sin(phase * 2.2 + i * 1.73))
+            activity = min(1.0, activity + level * (0.35 + 0.65 * (i % 7) / 6))
+            projected.append((px, py, zr, activity))
 
-        # Tilted orbital rings create the 3D illusion.
-        for idx,(rx,ry,tilt,rot) in enumerate(((168,78,.0,.12),(145,64,.38,-.18),(116,48,-.52,.25),(88,36,.72,-.31))):
-            a0=phase*rot+tilt
-            pts=[]
-            for j in range(73):
-                a=a0+math.tau*j/72
-                x=cx+math.cos(a)*rx
-                y=cy+math.sin(a)*ry
-                # slight vertical perspective wobble
-                y += math.sin(a+tilt)*10*(idx+1)/4
-                pts.append((x,y))
-            for j in range(len(pts)-1):
-                self.canvas.create_line(*pts[j],*pts[j+1],fill=("#257f98" if idx<2 else faint),width=1)
+        # Connections first, so nodes remain crisp on top.
+        for i, j in self._neural_edges:
+            ax, ay, az, aa = projected[i]
+            bx, by, bz, ba = projected[j]
+            depth = (az + bz) * 0.5
+            if depth < -0.35:
+                continue
+            color = bright if max(aa, ba) > 0.78 else (dim if depth < 0.2 else "#267d96")
+            self.canvas.create_line(ax, ay, bx, by, fill=color, width=1)
 
-        # Rotating scanner beam and radial energy spokes.
-        sweep=phase%math.tau
-        sx=cx+math.cos(sweep)*175; sy=cy+math.sin(sweep)*92
-        self.canvas.create_line(cx,cy,sx,sy,fill=core,width=2)
-        for i in range(18):
-            a=sweep+i*math.tau/18
-            r1=58+8*math.sin(phase+i); r2=112+22*level+12*math.sin(phase*1.4+i*.7)
-            self.canvas.create_line(cx+math.cos(a)*r1,cy+math.sin(a)*r1*.58,
-                                    cx+math.cos(a)*r2,cy+math.sin(a)*r2*.58,
-                                    fill=core if i%3==0 else dim,width=1)
+        # Subtle outer shell and rotating latitude rings.
+        shell_r = radius * 0.98
+        self.canvas.create_oval(cx-shell_r, cy-shell_r, cx+shell_r, cy+shell_r,
+                                outline="#0c2b3b", width=1)
+        for ring_index, flatten in enumerate((0.34, 0.62, 0.86)):
+            points = []
+            rot = phase * (0.16 if ring_index % 2 == 0 else -0.13)
+            for step in range(73):
+                a = math.tau * step / 72 + rot
+                points.append((cx + math.cos(a) * radius * 0.98,
+                               cy + math.sin(a) * radius * flatten))
+            for j in range(len(points) - 1):
+                self.canvas.create_line(*points[j], *points[j+1],
+                                        fill="#10394b", width=1)
 
-        # Central reactor with layered glow.
-        pulse=1+.08*math.sin(phase*3.0)+level*.22
-        for mul,col in ((2.9,"#0c3040"),(2.25,"#10485b"),(1.65,dim),(1.15,core)):
-            rr=38*pulse*mul
-            self.canvas.create_oval(cx-rr,cy-rr*.62,cx+rr,cy+rr*.62,outline=col,width=1)
-        rr=35*pulse
-        self.canvas.create_oval(cx-rr,cy-rr,cx+rr,cy+rr,fill=dark,outline=core,width=2)
-        self.canvas.create_oval(cx-rr*.62,cy-rr*.62,cx+rr*.62,cy+rr*.62,fill="#0b3a4a",outline=bright,width=2)
-        self.canvas.create_oval(cx-rr*.28,cy-rr*.28,cx+rr*.28,cy+rr*.28,fill=core,outline="")
-        self.canvas.create_text(cx,cy-4,text="J",fill="#f5ffff",font=("Segoe UI",25,"bold"))
-        self.canvas.create_text(cx,cy+19,text=state,fill=core,font=("Consolas",7,"bold"))
+        # Neural nodes pulse independently; front-facing nodes are brighter.
+        for i, (px, py, depth, activity) in enumerate(projected):
+            if depth < -0.48:
+                continue
+            r = 1.1 + activity * (1.8 + max(0.0, depth) * 1.7)
+            color = core if activity > 0.78 else (bright if depth > 0.35 else "#2787a0")
+            self.canvas.create_oval(px-r, py-r, px+r, py+r,
+                                    fill=color, outline="")
+            if activity > 0.88:
+                self.canvas.create_oval(px-r*2.1, py-r*2.1, px+r*2.1, py+r*2.1,
+                                        outline="#1c6478", width=1)
 
-        labels=("CORE","VOICE","AI","TOOLS","MEMORY","FILES","SYSTEM","NET")
-        for i in range(8):
-            a=phase*(.16 if i%2 else -.11)+i*math.tau/8
-            rx,ry=(168,78) if i%2==0 else (145,64)
-            nx,ny=cx+math.cos(a)*rx,cy+math.sin(a)*ry
-            self.canvas.create_oval(nx-5,ny-5,nx+5,ny+5,fill=core if i in (0,4) else "#123d4e",outline=dim)
-            self.canvas.create_text(nx,ny+(16 if ny<cy else -16),text=labels[i],fill="#82aebe",font=("Consolas",6,"bold"))
+        # Core label stays centered while the surrounding graph remains in motion.
+        pulse = 1.0 + 0.07 * math.sin(phase * 2.6) + level * 0.16
+        core_r = max(14, radius * 0.22 * pulse)
+        self.canvas.create_oval(cx-core_r*1.7, cy-core_r*1.7, cx+core_r*1.7, cy+core_r*1.7,
+                                outline="#155269", width=2)
+        self.canvas.create_oval(cx-core_r, cy-core_r, cx+core_r, cy+core_r,
+                                fill="#071724", outline=core, width=2)
+        self.canvas.create_oval(cx-core_r*0.58, cy-core_r*0.58, cx+core_r*0.58, cy+core_r*0.58,
+                                fill="#0c3d50", outline=bright, width=1)
+        self.canvas.create_text(cx, cy-3, text="J", fill="#f5ffff",
+                                font=("Segoe UI", max(15, int(core_r * 0.65)), "bold"))
+        self.canvas.create_text(cx, cy+core_r+12, text=state, fill=core,
+                                font=("Consolas", 8, "bold"))
+        self.canvas.create_text(cx, h-14, text="JARVIS  //  LIVE NEURAL NETWORK",
+                                fill="#5f9caf", font=("Consolas", 8, "bold"))
 
-        self.canvas.create_text(cx,h-18,text="J A R V I S  //  A.R.C. 3D REACTOR  //  "+state,
-                                fill=core,font=("Consolas",8,"bold"))
-        self._orb_phase+=speed
-        self._orb_after=self.after(50,self._draw_orb)
+        self._orb_phase += speed
+        self._orb_after = self.after(50, self._draw_orb)
 
     def _start_agent(self):
         # Ignore stale results when settings are saved/reloaded more than once.
