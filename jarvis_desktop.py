@@ -34,16 +34,9 @@ DEFAULT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def _safe_endpoint(value: str | None) -> str:
-    """Reject stale local endpoints that cause WinError 10061 on normal cloud setup."""
+    """Preserve explicitly configured OpenAI-compatible endpoints, including localhost."""
     url = (value or "").strip()
-    if not url:
-        return DEFAULT_URL
-    lowered = url.lower()
-    blocked = ("localhost", "127.0.0.1", "0.0.0.0")
-    if any(lowered.startswith(f"{scheme}{host}") for scheme in ("http://", "https://") for host in blocked):
-        return DEFAULT_URL
-    return url
-
+    return url or DEFAULT_URL
 
 
 _SECRET_SETTING_KEYS = {
