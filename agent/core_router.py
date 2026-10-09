@@ -87,9 +87,20 @@ class RoleRouterProvider:
         decision = classify_role(prompt)
         ordered = [decision.role] + [r for r in self.fallback_order if r != decision.role]
         errors = []
+        failed_backends = set()
         for role in ordered:
             provider = self.providers.get(role)
             if provider is None:
+                continue
+            # Several role profiles often point to the same URL/key. A DNS,
+            # connection, authentication, or exhausted-credit error cannot be
+            # fixed by retrying that same backend with three different models.
+            backend = (
+                str(getattr(provider, "url", "") or "").strip().rstrip("/"),
+                str(getattr(provider, "api_key", "") or "").strip(),
+            )
+            if backend in failed_backends:
+                errors.append(f"{role}: пропущен — этот API уже сообщил об ошибке подключения/доступа")
                 continue
             try:
                 provider.tool_executor = self.tool_executor
@@ -99,6 +110,19 @@ class RoleRouterProvider:
                 return result
             except Exception as exc:
                 errors.append(f"{role}: {exc}")
+                message = str(exc).lower()
+                backend_unavailable = (
+                    "не удалось подключиться к ии" in message
+                    or "не удалось подключиться к серверу моделей" in message
+                    or "http 401" in message
+                    or "http 403" in message
+                    or (
+                        "http 429" in message
+                        and any(term in message for term in ("no credits", "credits", "quota", "billing", "rate limit"))
+                    )
+                )
+                if backend_unavailable:
+                    failed_backends.add(backend)
         raise RuntimeError("Все AI-модели недоступны. " + " | ".join(errors))
     @property
     def history(self):
