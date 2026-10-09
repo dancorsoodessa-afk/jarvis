@@ -7,14 +7,15 @@ DEFAULT_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def normalize_chat_url(value: str | None) -> str:
-    """Return a usable remote endpoint; never silently target a dead localhost port."""
+    """Use the configured OpenAI-compatible endpoint, including local servers.
+
+    An empty setting gets the default cloud endpoint. Explicit localhost/loopback
+    URLs must be preserved so Ollama, LM Studio, and llama.cpp server can be used.
+    Connection failures should be reported by the provider, not hidden by
+    silently redirecting requests to a different service.
+    """
     url = (value or "").strip()
-    if not url:
-        return DEFAULT_CHAT_URL
-    lowered = url.lower()
-    if lowered.startswith(("http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1", "http://0.0.0.0", "https://0.0.0.0")):
-        return DEFAULT_CHAT_URL
-    return url
+    return url or DEFAULT_CHAT_URL
 
 
 
