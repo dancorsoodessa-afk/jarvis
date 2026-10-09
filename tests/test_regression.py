@@ -36,3 +36,16 @@ def test_desktop_passes_attachment_to_agent():
     source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
     assert "attachment=attachment_payload" in source
     assert "_build_attachment_payload" in source
+
+
+
+def test_desktop_preserves_explicit_local_api_endpoint():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert 'return url or DEFAULT_URL' in source
+    assert 'blocked = ("localhost", "127.0.0.1", "0.0.0.0")' not in source
+
+
+def test_voice_zero_start_timeout_does_not_immediately_return():
+    source = (ROOT / "agent" / "voice.py").read_text(encoding="utf-8")
+    assert "timeout_blocks = max(0, int(start_timeout / BLOCK_SECONDS))" in source
+    assert "elif timeout_blocks and idle_blocks >= timeout_blocks:" in source
