@@ -79,6 +79,8 @@ class JarvisDesktop(tk.Tk):
         self.minsize(1180, 740)
         self.configure(bg=BG)
         self.agent = None
+        self._agent_generation = 0
+        self._agent_start_pending = False
         self.busy = False
         self.events = queue.Queue()
         self.tool_names = []
@@ -443,14 +445,28 @@ class JarvisDesktop(tk.Tk):
         self._orb_after=self.after(50,self._draw_orb)
 
     def _start_agent(self):
+        # Ignore stale results when settings are saved/reloaded more than once.
+        self._agent_generation += 1
+        generation = self._agent_generation
+        self._agent_start_pending = True
+        self.after(30000, lambda token=generation: self._agent_start_timeout(token))
+
         def work():
             try:
                 agent = build_agent()
-                self.events.put(("ready", agent))
-                threading.Thread(target=self._warmup_stt, daemon=True).start()
+                self.events.put(("ready", agent, generation))
+                if generation == self._agent_generation:
+                    threading.Thread(target=self._warmup_stt, daemon=True).start()
             except Exception as exc:
-                self.events.put(("agent_error", str(exc)))
+                self.events.put(("agent_error", str(exc), generation))
         threading.Thread(target=work, daemon=True).start()
+
+    def _agent_start_timeout(self, generation):
+        if generation != self._agent_generation or not self._agent_start_pending:
+            return
+        self._agent_start_pending = False
+        self.status.config(text="● ЗАПУСК ЗАВИС", fg=RED)
+        self._append("SYSTEM", "Ядро не запустилось за 30 секунд. Повторите запуск; подробности могут быть в журнале JARVIS.")
 
     def _warmup_stt(self):
         try:
@@ -553,6 +569,9 @@ class JarvisDesktop(tk.Tk):
                 kind = event[0]
                 try:
                     if kind == "ready":
+                        if len(event) > 2 and event[2] != self._agent_generation:
+                            continue
+                        self._agent_start_pending = False
                         self.agent = event[1]
                         self.tool_names = list(self.agent.tools.names())
                         provider = getattr(self.agent.provider, "name", "unknown").upper()
@@ -624,6 +643,9 @@ class JarvisDesktop(tk.Tk):
                         self.attach_button.config(state="normal")
                         self._streaming_reply = ""
                     elif kind == "agent_error":
+                        if len(event) > 2 and event[2] != self._agent_generation:
+                            continue
+                        self._agent_start_pending = False
                         self._set_visual_state("ERROR")
                         self.status.config(text="● ERROR", fg=RED)
                         self._append("SYSTEM", "Не удалось запустить ядро: " + event[1])
