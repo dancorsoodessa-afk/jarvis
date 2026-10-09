@@ -556,9 +556,10 @@ class JarvisDesktop(tk.Tk):
                         self.agent = event[1]
                         self.tool_names = list(self.agent.tools.names())
                         provider = getattr(self.agent.provider, "name", "unknown").upper()
-                        self.status.config(text="● ONLINE", fg=GREEN)
-                        self.hud_text.config(text="Ядро активно\nAI: " + provider)
-                        self.metrics["Core"].config(text="ONLINE", fg=GREEN)
+                        # Building the local agent does not prove that the remote API is reachable.
+                        self.status.config(text="● ГОТОВ", fg=YELLOW)
+                        self.hud_text.config(text="Ядро готово\nAI: " + provider + "\nAPI: проверка при запросе")
+                        self.metrics["Core"].config(text="READY", fg=YELLOW)
                         self.metrics["AI Provider"].config(text=provider)
                         self.metrics["Memory"].config(text="ACTIVE", fg=GREEN)
                         self.metrics["Tools"].config(text=str(len(self.tool_names)), fg=GREEN)
