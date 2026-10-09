@@ -71,3 +71,13 @@ def test_desktop_event_pump_survives_handler_exceptions():
     source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
     assert "A malformed UI event must not stop all future replies/events." in source
     assert "finally:\n            try:\n                self.after(80, self._drain_events)" in source
+
+
+def test_desktop_does_not_claim_api_online_before_first_request():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    ready_start = source.index('if kind == "ready":')
+    ready_end = source.index('elif kind == "stt_ready":', ready_start)
+    ready_handler = source[ready_start:ready_end]
+    assert 'self.status.config(text="● ГОТОВ", fg=YELLOW)' in ready_handler
+    assert "API: проверка при запросе" in ready_handler
+    assert 'self.status.config(text="● ONLINE", fg=GREEN)' not in ready_handler
