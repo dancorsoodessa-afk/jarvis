@@ -137,6 +137,7 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "start", "listen_now" -> { voiceLoopEnabled = true; startRecognition(); result.success(true) }
+                "pause" -> { stopRecognition(); result.success(true) }
                 "stop" -> { voiceLoopEnabled = false; stopRecognition(); result.success(true) }
                 "speak" -> { speak(call.argument<String>("text").orEmpty()); result.success(true) }
                 "open_tts_settings" -> { openTtsSettings(); result.success(true) }
@@ -210,7 +211,7 @@ class MainActivity : FlutterActivity() {
                 endpointConfig = EndpointConfig(
                     rule1 = EndpointRule(false, 1.8f, 0.0f),
                     rule2 = EndpointRule(true, 0.8f, 0.0f),
-                    rule3 = EndpointRule(false, 0.0f, 12.0f)
+                    rule3 = EndpointRule(false, 0.0f, 10.0f)
                 ),
                 enableEndpoint = true
             )
@@ -297,6 +298,15 @@ class MainActivity : FlutterActivity() {
             return
         }
         for (child in children) copyAssetTree("$path/$child")
+    }
+
+    private fun extractJarvisCommand(raw: String): String? {
+        val text = raw.trim()
+        if (text.isBlank()) return null
+        val normalized = text.lowercase(java.util.Locale("ru", "RU")).replace('ё', 'е')
+        val match = Regex("(?i)(?:jarvis|джарвис)").find(normalized) ?: return null
+        val end = match.range.last + 1
+        return text.substring(end).trim().trim(',', '.', ':', ';', '!', '?', '—', '-')
     }
 
     private fun startRecognition() {
@@ -406,7 +416,21 @@ class MainActivity : FlutterActivity() {
                                 runOnUiThread { eventSink?.success("__PARTIAL__:$text") }
                             }
                             if (rec.isEndpoint(stream)) {
-                                if (text.isNotBlank()) runOnUiThread { eventSink?.success(text) }
+                                if (text.isNotBlank()) {
+                                    val command = extractJarvisCommand(text)
+                                    runOnUiThread {
+                                        if (command != null) {
+                                            eventSink?.success("__WAKE__")
+                                            if (command.isNotBlank()) {
+                                                eventSink?.success("__COMMAND__:$command")
+                                            } else {
+                                                eventSink?.success("__WAKE_ONLY__")
+                                            }
+                                        } else {
+                                            eventSink?.success("__WAKE_IGNORED__")
+                                        }
+                                    }
+                                }
                                 rec.reset(stream)
                                 lastPartial = ""
                             }
