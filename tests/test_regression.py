@@ -49,3 +49,49 @@ def test_voice_zero_start_timeout_does_not_immediately_return():
     source = (ROOT / "agent" / "voice.py").read_text(encoding="utf-8")
     assert "timeout_blocks = max(0, int(start_timeout / BLOCK_SECONDS))" in source
     assert "elif timeout_blocks and idle_blocks >= timeout_blocks:" in source
+
+
+def test_desktop_tts_worker_does_not_touch_tk_widgets():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    start = source.index("    def _speak_reply(self, text):")
+    end = source.index("    def _replace_streaming_reply", start)
+    worker = source[start:end]
+    assert "tts.speak_and_play(text)" in worker
+    assert "self._set_visual_state" not in worker
+
+
+def test_desktop_request_failures_are_not_reported_as_online_replies():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert 'self.events.put(("request_error", str(exc)))' in source
+    assert 'self.status.config(text="● API ERROR", fg=RED)' in source
+    assert 'self._append("AI", "Запрос не выполнен: " + event[1])' in source
+
+
+def test_desktop_event_pump_survives_handler_exceptions():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert "A malformed UI event must not stop all future replies/events." in source
+    assert "finally:\n            try:\n                self.after(80, self._drain_events)" in source
+
+
+def test_desktop_does_not_claim_api_online_before_first_request():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    ready_start = source.index('if kind == "ready":')
+    ready_end = source.index('elif kind == "stt_ready":', ready_start)
+    ready_handler = source[ready_start:ready_end]
+    assert 'self.status.config(text="● ГОТОВ", fg=YELLOW)' in ready_handler
+    assert "API: проверка при запросе" in ready_handler
+    assert 'self.status.config(text="● ONLINE", fg=GREEN)' not in ready_handler
+
+
+def test_desktop_treats_agent_provider_error_result_as_api_failure():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert 'str(result.text).startswith("Ошибка провайдера:")' in source
+    assert 'self.events.put(("request_error", str(result.text).partition(":")[2].strip()))' in source
+
+
+def test_desktop_agent_reload_ignores_stale_results_and_has_timeout():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert "self._agent_generation += 1" in source
+    assert 'event[2] != self._agent_generation' in source
+    assert "def _agent_start_timeout(self, generation):" in source
+    assert "Ядро не запустилось за 30 секунд" in source
