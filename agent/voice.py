@@ -102,12 +102,13 @@ def listen_for_phrase(
 
     block_size = max(160, int(samplerate * BLOCK_SECONDS))
     silence_blocks = max(1, int(silence_seconds / BLOCK_SECONDS))
-    timeout_blocks = max(1, int(start_timeout / BLOCK_SECONDS))
+    timeout_blocks = max(0, int(start_timeout / BLOCK_SECONDS))
     max_blocks = max(1, int(max_seconds / BLOCK_SECONDS))
     chunks = []
     started = False
     silent = 0
     spoken_blocks = 0
+    idle_blocks = 0
 
     try:
         with sd.InputStream(
@@ -117,21 +118,25 @@ def listen_for_phrase(
             noise = _calibrate(stream, 6, block_size)
             speech_threshold = max(0.006, noise * 1.8)
             end_threshold = max(0.004, noise * 1.15)
-            for i in range(timeout_blocks + max_blocks):
+            # A zero start timeout means wait for speech, not "give up after one block".
+            while True:
                 data, overflow = stream.read(block_size)
                 if overflow:
                     continue
                 block = np.asarray(data[:, 0], dtype=np.int16).copy()
                 level = _rms(block)
                 if not started:
+                    idle_blocks += 1
                     if level >= speech_threshold:
                         started = True
                         chunks.append(block)
                         spoken_blocks = 1
                         if on_speech_start:
-                            try: on_speech_start()
-                            except Exception: pass
-                    elif i >= timeout_blocks:
+                            try:
+                                on_speech_start()
+                            except Exception:
+                                pass
+                    elif timeout_blocks and idle_blocks >= timeout_blocks:
                         return ""
                     continue
                 chunks.append(block)
