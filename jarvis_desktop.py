@@ -350,7 +350,7 @@ class JarvisDesktop(tk.Tk):
                       highlightthickness=1).pack(fill="x",padx=10,pady=3)
         tk.Label(right,text="AI-МАРШРУТИЗАЦИЯ",bg="#070d16",fg=MUTED,
                  font=("Consolas",8,"bold")).pack(anchor="w",padx=14,pady=(15,5))
-        tk.Label(right,text="Основной • Reasoning • Coding\nDeepSeek / GLM — дополнительные\nОффлайн: локальные инструменты и голос",
+        tk.Label(right,text="JARVIS — основной AI\nJARVIS CODE — программирование\nОдин OpenRouter API-ключ\nЛокально: инструменты и голос",
                  bg="#070d16",fg="#8297a5",justify="left",font=("Segoe UI",8),wraplength=235).pack(anchor="w",padx=14)
     def _set_visual_state(self, state, level=None):
         self._visual_state = state
@@ -520,6 +520,7 @@ class JarvisDesktop(tk.Tk):
             wake_words = ("jarvis", "джарвис")
             while self._voice_loop_running and self.settings.get("voice_enabled", True):
                 try:
+                    self.events.put(("voice_listening", None))
                     # Keep the microphone open while waiting for the wake word.
                     # A 2-second start timeout repeatedly closed the mic and missed speech.
                     heard = voice.listen_for_phrase(
@@ -551,7 +552,7 @@ class JarvisDesktop(tk.Tk):
                         command = normalized
                     else:
                         continue
-                    if command in {"стоп", "режим ожидания", "перейди в режим ожидания", "спасибо джарвис", "спасибо джарвис"}:
+                    if command in {"стоп", "режим ожидания", "перейди в режим ожидания", "спасибо джарвис"}:
                         self._voice_armed_until = 0.0
                         self.events.put(("voice_status", "Голосовой режим: ожидание. Скажите «Джарвис», чтобы продолжить."))
                         continue
@@ -635,7 +636,6 @@ class JarvisDesktop(tk.Tk):
                         self._replace_streaming_reply(self._streaming_reply)
                     elif kind == "reply":
                         reply = event[1]
-                        self._set_visual_state("SPEAKING", 0.65)
                         if getattr(self, "_streaming_reply", ""):
                             self._replace_streaming_reply(reply, final=True)
                         else:
@@ -645,9 +645,12 @@ class JarvisDesktop(tk.Tk):
                         self.send_button.config(state="normal")
                         self.attach_button.config(state="normal")
                         self.status.config(text="● ONLINE", fg=GREEN)
-                        self._set_visual_state("IDLE", 0.0)
                         if self.settings.get("tts_enabled", True):
                             threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
+                        else:
+                            self._set_visual_state("IDLE", 0.0)
+                    elif kind == "voice_listening":
+                        self._set_visual_state("LISTENING", 0.25)
                     elif kind == "voice_text":
                         self._set_visual_state("LISTENING", 0.75)
                         if self.busy:
@@ -663,6 +666,12 @@ class JarvisDesktop(tk.Tk):
                         self.metrics["Voice"].config(text="ERROR", fg=RED)
                         self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
                         self._append("VOICE", "Прослушивание остановлено: " + event[1] + " Нажмите «Голос», чтобы повторить запуск.")
+                    elif kind == "tts_started":
+                        self._set_visual_state("SPEAKING", 0.65)
+                        self.metrics["TTS"].config(text="SPEAKING", fg=CYAN)
+                    elif kind == "tts_finished":
+                        self._set_visual_state("IDLE", 0.0)
+                        self._update_voice_status()
                     elif kind == "tts_error":
                         self._set_visual_state("ERROR")
                         self.metrics["TTS"].config(text="ERROR", fg=RED)
@@ -703,11 +712,17 @@ class JarvisDesktop(tk.Tk):
 
     def _speak_reply(self, text):
         # This function runs on a worker thread. Never call Tk widgets here:
-        # Tkinter is not thread-safe and a UI exception used to prevent TTS itself.
+        # Tkinter is not thread-safe. UI state is updated through the event queue.
+        self.events.put(("tts_started", None))
+        failed = False
         try:
             tts.speak_and_play(text)
         except Exception as exc:
+            failed = True
             self.events.put(("tts_error", str(exc)))
+        finally:
+            if not failed:
+                self.events.put(("tts_finished", None))
 
     def _replace_streaming_reply(self, text, final=False):
         self.chat.configure(state="normal")
