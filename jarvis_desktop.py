@@ -520,10 +520,12 @@ class JarvisDesktop(tk.Tk):
             wake_words = ("jarvis", "джарвис")
             while self._voice_loop_running and self.settings.get("voice_enabled", True):
                 try:
+                    # Keep the microphone open while waiting for the wake word.
+                    # A 2-second start timeout repeatedly closed the mic and missed speech.
                     heard = voice.listen_for_phrase(
                         silence_seconds=0.55,
                         max_seconds=10.0,
-                        start_timeout=2.0,
+                        start_timeout=0.0,
                         on_speech_start=on_speech_start,
                     )
                     if not heard or not self._voice_loop_running:
