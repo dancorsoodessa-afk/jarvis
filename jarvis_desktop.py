@@ -551,79 +551,102 @@ class JarvisDesktop(tk.Tk):
             while True:
                 event = self.events.get_nowait()
                 kind = event[0]
-                if kind == "ready":
-                    self.agent = event[1]
-                    self.tool_names = list(self.agent.tools.names())
-                    provider = getattr(self.agent.provider, "name", "unknown").upper()
-                    self.status.config(text="● ONLINE", fg=GREEN)
-                    self.hud_text.config(text="Ядро активно\nAI: " + provider)
-                    self.metrics["Core"].config(text="ONLINE", fg=GREEN)
-                    self.metrics["AI Provider"].config(text=provider)
-                    self.metrics["Memory"].config(text="ACTIVE", fg=GREEN)
-                    self.metrics["Tools"].config(text=str(len(self.tool_names)), fg=GREEN)
-                    self.tools_button.config(text=f"⌁  Модули ({len(self.tool_names)}/{len(TOOLS)})")
-                    self.enabled_label.config(text=f"Активно модулей: {len(self.tool_names)} из {len(TOOLS)}\nОтключено: {len(TOOLS)-len(self.tool_names)}")
-                    self._update_voice_status()
-                    self.side_core.config(text="● CORE  —  ACTIVE", fg=GREEN)
-                    self._append("JARVIS", f"Система готова. Активных модулей: {len(self.tool_names)} из {len(TOOLS)}.")
-                    if self.settings.get("voice_enabled", True):
-                        self._start_voice_loop()
-                elif kind == "stt_ready":
-                    self.metrics["Voice"].config(text="READY", fg=GREEN)
-                    self.side_voice.config(text="◉ ГОЛОС — ГОТОВ", fg=GREEN)
-                elif kind == "stt_error":
-                    self.metrics["Voice"].config(text="ERROR", fg=RED)
-                    self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
-                    self._append("VOICE", "STT: " + event[1])
-                elif kind == "reply_delta":
-                    self._streaming_reply = getattr(self, "_streaming_reply", "") + str(event[1])
-                    self._set_visual_state("THINKING", 0.7)
-                    self._replace_streaming_reply(self._streaming_reply)
-                elif kind == "reply":
-                    reply = event[1]
-                    self._set_visual_state("SPEAKING", 0.65)
-                    if getattr(self, "_streaming_reply", ""):
-                        self._replace_streaming_reply(reply, final=True)
-                    else:
-                        self._append("JARVIS", reply)
-                    self._streaming_reply = ""
-                    self.busy = False
-                    self.send_button.config(state="normal")
-                    self.attach_button.config(state="normal")
-                    self.status.config(text="● ONLINE", fg=GREEN)
-                    self._set_visual_state("IDLE", 0.0)
-                    if self.settings.get("tts_enabled", True):
-                        threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
-                elif kind == "voice_text":
-                    self._set_visual_state("LISTENING", 0.75)
-                    if self.busy:
-                        continue
-                    self.input.delete(0, "end")
-                    self.input.insert(0, event[1])
-                    self.send(event[1])
-                elif kind == "voice_status":
-                    self._append("VOICE", event[1])
-                elif kind == "voice_error":
-                    self._set_visual_state("ERROR")
-                    self._append("VOICE", "Ошибка: " + event[1])
-                elif kind == "tts_error":
-                    self._append("VOICE", "ElevenLabs недоступен — автоматически использую локальный мужской голос Piper.")
-                    self.metrics["TTS"].config(fg=RED)
-                elif kind == "agent_error":
-                    self._set_visual_state("ERROR")
-                    self.status.config(text="● ERROR", fg=RED)
-                    self._append("SYSTEM", "Не удалось запустить ядро: " + event[1])
-                    self.busy = False
-                    self.send_button.config(state="normal")
+                try:
+                    if kind == "ready":
+                        self.agent = event[1]
+                        self.tool_names = list(self.agent.tools.names())
+                        provider = getattr(self.agent.provider, "name", "unknown").upper()
+                        self.status.config(text="● ONLINE", fg=GREEN)
+                        self.hud_text.config(text="Ядро активно\nAI: " + provider)
+                        self.metrics["Core"].config(text="ONLINE", fg=GREEN)
+                        self.metrics["AI Provider"].config(text=provider)
+                        self.metrics["Memory"].config(text="ACTIVE", fg=GREEN)
+                        self.metrics["Tools"].config(text=str(len(self.tool_names)), fg=GREEN)
+                        self.tools_button.config(text=f"⌁  Модули ({len(self.tool_names)}/{len(TOOLS)})")
+                        self.enabled_label.config(text=f"Активно модулей: {len(self.tool_names)} из {len(TOOLS)}\nОтключено: {len(TOOLS)-len(self.tool_names)}")
+                        self._update_voice_status()
+                        self.side_core.config(text="● CORE  —  ACTIVE", fg=GREEN)
+                        self._append("JARVIS", f"Система готова. Активных модулей: {len(self.tool_names)} из {len(TOOLS)}.")
+                        if self.settings.get("voice_enabled", True):
+                            self._start_voice_loop()
+                    elif kind == "stt_ready":
+                        self.metrics["Voice"].config(text="READY", fg=GREEN)
+                        self.side_voice.config(text="◉ ГОЛОС — ГОТОВ", fg=GREEN)
+                    elif kind == "stt_error":
+                        self.metrics["Voice"].config(text="ERROR", fg=RED)
+                        self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
+                        self._append("VOICE", "STT: " + event[1])
+                    elif kind == "reply_delta":
+                        self._streaming_reply = getattr(self, "_streaming_reply", "") + str(event[1])
+                        self._set_visual_state("THINKING", 0.7)
+                        self._replace_streaming_reply(self._streaming_reply)
+                    elif kind == "reply":
+                        reply = event[1]
+                        self._set_visual_state("SPEAKING", 0.65)
+                        if getattr(self, "_streaming_reply", ""):
+                            self._replace_streaming_reply(reply, final=True)
+                        else:
+                            self._append("JARVIS", reply)
+                        self._streaming_reply = ""
+                        self.busy = False
+                        self.send_button.config(state="normal")
+                        self.attach_button.config(state="normal")
+                        self.status.config(text="● ONLINE", fg=GREEN)
+                        self._set_visual_state("IDLE", 0.0)
+                        if self.settings.get("tts_enabled", True):
+                            threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
+                    elif kind == "voice_text":
+                        self._set_visual_state("LISTENING", 0.75)
+                        if self.busy:
+                            continue
+                        self.input.delete(0, "end")
+                        self.input.insert(0, event[1])
+                        self.send(event[1])
+                    elif kind == "voice_status":
+                        self._append("VOICE", event[1])
+                    elif kind == "voice_error":
+                        self._set_visual_state("ERROR")
+                        self._append("VOICE", "Ошибка: " + event[1])
+                    elif kind == "tts_error":
+                        self._set_visual_state("ERROR")
+                        self.metrics["TTS"].config(text="ERROR", fg=RED)
+                        self._append("VOICE", "Не удалось озвучить ответ: " + event[1])
+                    elif kind == "request_error":
+                        self._set_visual_state("ERROR")
+                        self.status.config(text="● API ERROR", fg=RED)
+                        self._append("AI", "Запрос не выполнен: " + event[1])
+                        self.busy = False
+                        self.send_button.config(state="normal")
+                        self.attach_button.config(state="normal")
+                        self._streaming_reply = ""
+                    elif kind == "agent_error":
+                        self._set_visual_state("ERROR")
+                        self.status.config(text="● ERROR", fg=RED)
+                        self._append("SYSTEM", "Не удалось запустить ядро: " + event[1])
+                        self.busy = False
+                        self.send_button.config(state="normal")
+                        self.attach_button.config(state="normal")
+
+                except Exception as exc:
+                    # A malformed UI event must not stop all future replies/events.
+                    try:
+                        self.status.config(text="● UI ERROR", fg=RED)
+                        self._append("SYSTEM", "Ошибка обработки события: " + str(exc))
+                    except Exception:
+                        pass
         except queue.Empty:
             pass
-        self.after(80, self._drain_events)
+        finally:
+            try:
+                self.after(80, self._drain_events)
+            except tk.TclError:
+                pass
 
     def _speak_reply(self, text):
+        # This function runs on a worker thread. Never call Tk widgets here:
+        # Tkinter is not thread-safe and a UI exception used to prevent TTS itself.
         try:
-            self._set_visual_state("SPEAKING", 0.8)
             tts.speak_and_play(text)
-            self._set_visual_state("IDLE", 0.0)
         except Exception as exc:
             self.events.put(("tts_error", str(exc)))
 
@@ -754,7 +777,7 @@ class JarvisDesktop(tk.Tk):
             except Exception as exc:
                 if provider is not None and hasattr(provider, "on_delta"):
                     provider.on_delta = None
-                self.events.put(("reply","Ошибка: "+str(exc)))
+                self.events.put(("request_error", str(exc)))
         self._clear_attachments()
         threading.Thread(target=work,daemon=True).start()
 
