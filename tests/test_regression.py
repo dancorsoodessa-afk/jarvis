@@ -49,3 +49,25 @@ def test_voice_zero_start_timeout_does_not_immediately_return():
     source = (ROOT / "agent" / "voice.py").read_text(encoding="utf-8")
     assert "timeout_blocks = max(0, int(start_timeout / BLOCK_SECONDS))" in source
     assert "elif timeout_blocks and idle_blocks >= timeout_blocks:" in source
+
+
+def test_desktop_tts_worker_does_not_touch_tk_widgets():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    start = source.index("    def _speak_reply(self, text):")
+    end = source.index("    def _replace_streaming_reply", start)
+    worker = source[start:end]
+    assert "tts.speak_and_play(text)" in worker
+    assert "self._set_visual_state" not in worker
+
+
+def test_desktop_request_failures_are_not_reported_as_online_replies():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert 'self.events.put(("request_error", str(exc)))' in source
+    assert 'self.status.config(text="● API ERROR", fg=RED)' in source
+    assert 'self._append("AI", "Запрос не выполнен: " + event[1])' in source
+
+
+def test_desktop_event_pump_survives_handler_exceptions():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert "A malformed UI event must not stop all future replies/events." in source
+    assert "finally:\n            try:\n                self.after(80, self._drain_events)" in source
