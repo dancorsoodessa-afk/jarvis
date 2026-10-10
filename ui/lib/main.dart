@@ -21,7 +21,7 @@ const kBg = Color(0xFF070B12);
 const kPanel = Color(0xFF0B111B);
 const kLine = Color(0xFF18283A);
 const _defaultAiEndpoint = 'https://api.openai.com/v1';
-const _defaultModel1 = 'gpt-5.6-luna';
+const _defaultModel1 = 'gpt-4.1-mini';
 const _defaultModel2 = 'openai/gpt-oss-120b';
 const _defaultModel3 = 'openai/gpt-oss-120b';
 
@@ -112,8 +112,13 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         final okxDemo = raw['okxDemo'];
         final dsaEndpoint = raw['dsaEndpoint']?.toString() ?? '';
         final dsaApiKey = raw['dsaApiKey']?.toString() ?? '';
-        if (endpoint.isNotEmpty && !endpoint.contains('openrouter.ai')) _endpoint.text = endpoint;
-        else _endpoint.text = _defaultAiEndpoint;
+        // Preserve every explicitly configured OpenAI-compatible endpoint,
+        // including OpenRouter; silently replacing it breaks saved provider settings.
+        if (endpoint.isNotEmpty) {
+          _endpoint.text = endpoint;
+        } else {
+          _endpoint.text = _defaultAiEndpoint;
+        }
         // Migration: older builds could save a Groq Qwen model into the OpenAI primary slot.
         final migratedModel1 = model1.startsWith('qwen/') ? _defaultModel1 : (model1.isNotEmpty ? model1 : (model.isNotEmpty ? model : _defaultModel1));
         final migratedModel2 = model2.isNotEmpty ? model2 : _defaultModel2;
