@@ -5,8 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jarvis_ui/jarvis_client.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
   late HttpServer primary;
   late HttpServer fallback;
   late JarvisIpc client;
