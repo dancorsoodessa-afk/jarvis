@@ -2,6 +2,19 @@ name: Build JARVIS для Windows
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [foundation]
+    paths:
+      - "agent/**"
+      - "docs/**"
+      - "scripts/build_exe.ps1"
+      - "jarvis_desktop.py"
+      - "jarvis_desktop.spec"
+      - "pyproject.toml"
+      - "poetry.lock"
+      - "tests/**"
+      - "vendor/**"
+      - ".github/workflows/build-exe.yml"
   push:
     branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928, feature/aetherial-neural-core]
     paths:
