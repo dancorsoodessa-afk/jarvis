@@ -39,7 +39,7 @@ jobs:
           set -e
           rm -rf android
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
-          rm -rf test
+          rm -f test/widget_test.dart
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
           echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
@@ -92,7 +92,7 @@ jobs:
           p=Path('android/app/build.gradle.kts')
           t=p.read_text()
           t=t.replace('applicationId = "com.dancorsoodessa.jarvis_ui"','applicationId = "com.dancorsoodessa.jarvis"')
-          t=t.replace('implementation(files("libs/sherpa-onnx-1.13.8.aar"))\n    implementation(files("libs/sherpa-onnx-jvm-1.13.8.jar"))','implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")')
+          t=t.replace('implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")', 'implementation(files("libs/sherpa-onnx-1.13.8.aar"))\\n    implementation(files("libs/sherpa-onnx-jvm-1.13.8.jar"))')
           for dep in ['implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")','implementation("androidx.core:core-ktx:1.12.0")','implementation("androidx.appcompat:appcompat:1.6.1")']:
               if dep not in t: t=t.replace('dependencies {','dependencies {\n    '+dep,1)
           p.write_text(t)
@@ -107,11 +107,14 @@ jobs:
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
+      - name: Run Dart regression tests
+        working-directory: ui
+        run: flutter test
       - name: Verify voice contracts
         working-directory: ui
         run: |
           set -euo pipefail
-          grep -q "await _send(text)" lib/main.dart
+          grep -q "await _send(command, fromVoice: true)" lib/main.dart
           grep -q "__MIC_SOURCE_READY__" lib/main.dart
           grep -q "__MIC_LEVEL__" lib/main.dart
           grep -q "__MIC_LEVEL__" android_main_activity.kt
