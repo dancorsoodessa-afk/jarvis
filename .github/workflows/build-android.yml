@@ -92,7 +92,7 @@ jobs:
           p=Path('android/app/build.gradle.kts')
           t=p.read_text()
           t=t.replace('applicationId = "com.dancorsoodessa.jarvis_ui"','applicationId = "com.dancorsoodessa.jarvis"')
-          t=t.replace('implementation(files("libs/sherpa-onnx-1.13.8.aar"))\n    implementation(files("libs/sherpa-onnx-jvm-1.13.8.jar"))','implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")')
+          t=t.replace('implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")', 'implementation(files("libs/sherpa-onnx-1.13.8.aar"))\\n    implementation(files("libs/sherpa-onnx-jvm-1.13.8.jar"))')
           for dep in ['implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")','implementation("androidx.core:core-ktx:1.12.0")','implementation("androidx.appcompat:appcompat:1.6.1")']:
               if dep not in t: t=t.replace('dependencies {','dependencies {\n    '+dep,1)
           p.write_text(t)
