@@ -86,4 +86,13 @@ void main() {
     expect(primaryCalls, 1);
     expect(fallbackCalls, 1);
   });
+
+  test('uses fallback when the primary server returns 500', () async {
+    primaryStatusCode = HttpStatus.internalServerError;
+    final reply = await client.sendMessage('request during primary server failure');
+
+    expect(reply.text, 'backup answer 1');
+    expect(primaryCalls, 1);
+    expect(fallbackCalls, 1);
+  });
 }
