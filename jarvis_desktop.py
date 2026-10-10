@@ -504,7 +504,7 @@ class JarvisDesktop(tk.Tk):
                         if normalized.startswith(word):
                             activated = True
                             command = normalized[len(word):].strip(" ,.!")
-                            self._voice_armed_until = float("inf")
+                            self._voice_armed_until = time.monotonic() + 10.0
                             break
                     if activated and not command:
                         self.events.put(("voice_status", "Jarvis активирован. Слушаю вас."))
@@ -523,7 +523,10 @@ class JarvisDesktop(tk.Tk):
                         self.events.put(("voice_status", "Голосовой режим: ожидание. Скажите «Джарвис», чтобы продолжить."))
                         continue
                     if command and self._voice_loop_running:
-                        self._voice_armed_until = float("inf")
+                        # One wake word authorizes one command only. Require a
+                        # fresh "Jarvis" for the next command instead of leaving
+                        # the microphone permanently armed after first activation.
+                        self._voice_armed_until = 0.0
                         self.events.put(("voice_text", command))
                 except Exception as exc:
                     self.events.put(("voice_error", str(exc)))
