@@ -324,7 +324,7 @@ class JarvisIpc {
 
   bool _fallbackAllowed(Object error) {
     final message = error.toString();
-    final match = RegExp(r'AI (\\d{3})').firstMatch(message);
+    final match = RegExp(r'AI (\d{3})').firstMatch(message);
     if (match != null) {
       final code = int.tryParse(match.group(1)!) ?? 0;
       // Try explicitly configured alternate credentials/providers after auth
