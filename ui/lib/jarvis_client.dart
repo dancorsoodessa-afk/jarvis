@@ -324,12 +324,13 @@ class JarvisIpc {
 
   bool _fallbackAllowed(Object error) {
     final message = error.toString();
-    final match = RegExp(r'AI (\d{3})').firstMatch(message);
+    final match = RegExp(r'AI (\\d{3})').firstMatch(message);
     if (match != null) {
       final code = int.tryParse(match.group(1)!) ?? 0;
-      // Never hide bad credentials, bad requests, or invalid model IDs by
-      // silently switching providers. Fallback is for transient failures.
-      return code == 408 || code == 409 || code == 425 || code == 429 || code >= 500;
+      // Try explicitly configured alternate credentials/providers after auth
+      // failures too; never retry the same provider indefinitely.
+      return code == 401 || code == 403 || code == 408 || code == 409 ||
+          code == 425 || code == 429 || code >= 500;
     }
     return error is SocketException ||
         error is TimeoutException ||
@@ -339,8 +340,15 @@ class JarvisIpc {
   }
 
   Future<JarvisReply> _standaloneSend(String text, {Map<String, dynamic>? attachment}) async {
+    // Keep the configured primary provider immutable across messages. The
+    // request helper reads these fields, so restore them after every attempt;
+    // otherwise a successful fallback silently becomes the next message's
+    // primary provider and can corrupt later fallback ordering.
+    final primaryUrl = _apiUrl;
+    final primaryKey = _apiKey;
+    final primaryModel = _model;
     final providers = <Map<String, String>>[
-      {'name': 'Primary', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
+      {'name': 'Primary', 'url': primaryUrl ?? '', 'key': primaryKey ?? '', 'model': primaryModel ?? ''},
       ..._fallbacks,
     ].fold<List<Map<String, String>>>(<Map<String, String>>[], (list, p) {
       final signature = '${p['url']}|${p['key']}|${p['model']}';
@@ -353,14 +361,18 @@ class JarvisIpc {
       final url = (p['url'] ?? '').trim();
       final key = (p['key'] ?? '').trim();
       if (url.isEmpty || key.isEmpty) continue;
-      _apiUrl = url;
-      _apiKey = key;
-      _model = (p['model'] ?? '').trim();
       try {
+        _apiUrl = url;
+        _apiKey = key;
+        _model = (p['model'] ?? '').trim();
         return await _standaloneSendOnce(text, attachment: attachment);
       } catch (e) {
         lastError = e;
         if (i == providers.length - 1 || !_fallbackAllowed(e)) rethrow;
+      } finally {
+        _apiUrl = primaryUrl;
+        _apiKey = primaryKey;
+        _model = primaryModel;
       }
     }
     throw StateError('AI-провайдеры недоступны: ${lastError ?? 'нет настроенных ключей'}');
