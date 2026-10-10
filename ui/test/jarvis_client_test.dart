@@ -12,15 +12,17 @@ void main() {
   late JarvisIpc client;
   var primaryCalls = 0;
   var fallbackCalls = 0;
+  var primaryStatusCode = HttpStatus.unauthorized;
 
   setUp(() async {
     primaryCalls = 0;
     fallbackCalls = 0;
+    primaryStatusCode = HttpStatus.unauthorized;
 
     primary = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     primary.listen((request) async {
       primaryCalls++;
-      request.response.statusCode = HttpStatus.unauthorized;
+      request.response.statusCode = primaryStatusCode;
       request.response.headers.contentType = ContentType.json;
       request.response.write(jsonEncode({
         'error': {'message': 'invalid primary key'},
@@ -76,5 +78,14 @@ void main() {
     expect(reply.text, 'backup answer 2');
     expect(primaryCalls, 2);
     expect(fallbackCalls, 2);
+  });
+
+  test('uses fallback when the primary endpoint or model returns 404', () async {
+    primaryStatusCode = HttpStatus.notFound;
+    final reply = await client.sendMessage('request with missing primary route');
+
+    expect(reply.text, 'backup answer 1');
+    expect(primaryCalls, 1);
+    expect(fallbackCalls, 1);
   });
 }
