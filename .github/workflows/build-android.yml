@@ -109,7 +109,7 @@ jobs:
         run: flutter pub get
       - name: Run Dart regression tests
         working-directory: ui
-        run: flutter test
+        run: dart test
       - name: Verify voice contracts
         working-directory: ui
         run: |
