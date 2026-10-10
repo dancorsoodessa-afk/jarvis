@@ -23,7 +23,6 @@ const kLine = Color(0xFF18283A);
 const _defaultAiEndpoint = 'https://api.openai.com/v1';
 const _defaultModel1 = 'gpt-4.1-mini';
 const _defaultModel2 = 'openai/gpt-oss-120b';
-const _defaultModel3 = 'openai/gpt-oss-120b';
 
 void main() => runApp(const BusyaApp());
 
@@ -55,8 +54,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   static const _voiceEvents = EventChannel('jarvis.voice.events');
   JarvisIpc? _client;
   final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint),
-      _model1 = TextEditingController(text: _defaultModel1), _model2 = TextEditingController(text: _defaultModel2), _model3 = TextEditingController(text: _defaultModel3),
-      _key1 = TextEditingController(), _key2 = TextEditingController(), _key3 = TextEditingController(), _apiHostKey = TextEditingController(), _dsaEndpoint = TextEditingController(), _dsaKey = TextEditingController();
+      _model1 = TextEditingController(text: _defaultModel1), _model2 = TextEditingController(text: _defaultModel2),
+      _key1 = TextEditingController(), _key2 = TextEditingController(), _apiHostKey = TextEditingController(), _dsaEndpoint = TextEditingController(), _dsaKey = TextEditingController();
   final _coinglassKey = TextEditingController(), _okxKey = TextEditingController(), _okxSecret = TextEditingController(), _okxPass = TextEditingController(), _okxEndpoint = TextEditingController(text: 'https://www.okx.com');
   bool _okxDemo = true;
   int _activeModel = 0;
@@ -98,10 +97,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         final apiHostKey = raw['apiHostKey']?.toString() ?? '';
         final model1 = raw['model1']?.toString().trim() ?? '';
         final model2 = raw['model2']?.toString().trim() ?? '';
-        final model3 = raw['model3']?.toString().trim() ?? '';
         final key1 = raw['key1']?.toString() ?? '';
         final key2 = raw['key2']?.toString() ?? '';
-        final key3 = raw['key3']?.toString() ?? '';
         final activeModel = raw['activeModel'];
         final voiceEnabled = raw['voiceEnabled'];
         final coinglassApiKey = raw['coinglassApiKey']?.toString() ?? '';
@@ -122,13 +119,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         // Migration: older builds could save a Groq Qwen model into the OpenAI primary slot.
         final migratedModel1 = model1.startsWith('qwen/') ? _defaultModel1 : (model1.isNotEmpty ? model1 : (model.isNotEmpty ? model : _defaultModel1));
         final migratedModel2 = model2.isNotEmpty ? model2 : _defaultModel2;
-        final migratedModel3 = model3.isNotEmpty ? model3 : _defaultModel3;
         _model1.text = migratedModel1;
         _model2.text = migratedModel2;
-        _model3.text = migratedModel3;
         _key1.text = key1.isNotEmpty ? key1 : apiKey;
         _key2.text = key2;
-        _key3.text = key3;
         _apiHostKey.text = apiHostKey;
         _coinglassKey.text = coinglassApiKey;
         _okxKey.text = okxApiKey;
@@ -182,10 +176,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     try {
       await _voice.invokeMethod('save_settings', {
         'endpoint': _endpoint.text.trim(),
-        'model': _activeModel == 0 ? _model1.text.trim() : _activeModel == 1 ? _model2.text.trim() : _model3.text.trim(),
-        'apiKey': _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim(),
-        'model1': _model1.text.trim(), 'model2': _model2.text.trim(), 'model3': _model3.text.trim(),
-        'key1': _key1.text.trim(), 'key2': _key2.text.trim(), 'key3': _key3.text.trim(),
+        'model': _activeModel == 0 ? _model1.text.trim() : _model2.text.trim(),
+        'apiKey': _activeModel == 0 ? _key1.text.trim() : _key2.text.trim(),
+        'model1': _model1.text.trim(), 'model2': _model2.text.trim(),
+        'key1': _key1.text.trim(), 'key2': _key2.text.trim(),
         'activeModel': _activeModel,
         'apiHostKey': _apiHostKey.text.trim(),
         'voiceEnabled': _voiceEnabled,
@@ -341,7 +335,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 const Text('AI · ОСНОВНОЙ + РЕЗЕРВ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text('Выбранный AI используется первым. Резерв подключается только при временной ошибке или лимите; 401/403 не скрываются переключением.', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                const Text('Выбранный AI используется первым. Резерв подключается только при временной ошибке или лимите; 401/403/404 и сетевые ошибки запускают резервный AI; если оба провайдера недоступны, приложение покажет ошибку.', style: TextStyle(color: Colors.white60, fontSize: 11)),
                 const SizedBox(height: 8),
                 for (int i = 0; i < 2; i++) ...[
                   Card(
@@ -361,7 +355,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   ),
                   const SizedBox(height: 6),
                 ],
-                TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenAI endpoint', isDense: true)),
+                TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenAI-compatible API endpoint', isDense: true)),
                 const SizedBox(height: 6),
                 TextField(controller: _apiHostKey, obscureText: false, decoration: const InputDecoration(labelText: 'APIHOST key · голос Леда', isDense: true)),
                 const SizedBox(height: 12),
@@ -475,7 +469,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     _orbController.dispose();
     _voiceSub?.cancel(); _partialSub?.cancel();
     if (_android) { _voice.invokeMethod('stop'); _voice.invokeMethod('dispose'); }
-    _client?.dispose(); _input.dispose(); _endpoint.dispose(); _model1.dispose(); _model2.dispose(); _model3.dispose(); _key1.dispose(); _key2.dispose(); _key3.dispose(); _apiHostKey.dispose(); _coinglassKey.dispose(); _okxKey.dispose(); _okxSecret.dispose(); _okxPass.dispose(); _okxEndpoint.dispose(); _dsaEndpoint.dispose(); _dsaKey.dispose(); _scroll.dispose(); super.dispose();
+    _client?.dispose(); _input.dispose(); _endpoint.dispose(); _model1.dispose(); _model2.dispose(); _key1.dispose(); _key2.dispose(); _apiHostKey.dispose(); _coinglassKey.dispose(); _okxKey.dispose(); _okxSecret.dispose(); _okxPass.dispose(); _okxEndpoint.dispose(); _dsaEndpoint.dispose(); _dsaKey.dispose(); _scroll.dispose(); super.dispose();
   }
 
   Widget _terminalLine(String text, {Color color = kGreen, bool dim = false}) {
