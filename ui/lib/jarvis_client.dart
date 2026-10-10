@@ -329,7 +329,7 @@ class JarvisIpc {
       final code = int.tryParse(match.group(1)!) ?? 0;
       // Try explicitly configured alternate credentials/providers after auth
       // failures too; never retry the same provider indefinitely.
-      return code == 401 || code == 403 || code == 408 || code == 409 ||
+      return code == 401 || code == 403 || code == 404 || code == 408 || code == 409 ||
           code == 425 || code == 429 || code >= 500;
     }
     return error is SocketException ||
