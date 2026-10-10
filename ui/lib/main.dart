@@ -335,7 +335,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 const Text('AI · ОСНОВНОЙ + РЕЗЕРВ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text('Выбранный AI используется первым. Резерв подключается только при временной ошибке или лимите; 401/403/404 и сетевые ошибки запускают резервный AI; если оба провайдера недоступны, приложение покажет ошибку.', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                const Text('Выбранный AI используется первым. При сетевых ошибках, 401/403/404 или лимите пробуется резервный AI. Если оба провайдера недоступны, приложение покажет ошибку.', style: TextStyle(color: Colors.white60, fontSize: 11)),
                 const SizedBox(height: 8),
                 for (int i = 0; i < 2; i++) ...[
                   Card(
@@ -344,12 +344,12 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                       padding: const EdgeInsets.all(8),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Row(children: [
-                          Expanded(child: Text(i == 0 ? 'OPENAI · AI 1' : 'GROQ · AI 2', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
+                          Expanded(child: Text(i == 0 ? 'OPENAI-COMPATIBLE · AI 1' : 'GROQ · AI 2', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
                           Radio<int>(value: i, groupValue: _activeModel, onChanged: (v) { if (v != null) setDialogState(() => _activeModel = v); }),
                         ]),
                         TextField(controller: i == 0 ? _model1 : _model2, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
                         const SizedBox(height: 6),
-                        TextField(controller: i == 0 ? _key1 : _key2, obscureText: false, decoration: InputDecoration(labelText: i == 0 ? 'OpenAI API key' : 'Groq API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
+                        TextField(controller: i == 0 ? _key1 : _key2, obscureText: false, decoration: InputDecoration(labelText: i == 0 ? 'Primary AI API key' : 'Groq API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
                       ]),
                     ),
                   ),
