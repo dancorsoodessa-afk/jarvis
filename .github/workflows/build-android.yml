@@ -114,7 +114,7 @@ jobs:
         working-directory: ui
         run: |
           set -euo pipefail
-          grep -q "await _send(text)" lib/main.dart
+          grep -q "await _send(command, fromVoice: true)" lib/main.dart
           grep -q "__MIC_SOURCE_READY__" lib/main.dart
           grep -q "__MIC_LEVEL__" lib/main.dart
           grep -q "__MIC_LEVEL__" android_main_activity.kt
