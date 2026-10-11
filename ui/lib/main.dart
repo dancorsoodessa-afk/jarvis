@@ -31,7 +31,7 @@ class BusyaApp extends StatelessWidget {
   const BusyaApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'JARVIS', debugShowCheckedModeBanner: false,
+    title: 'SUPERMAN', debugShowCheckedModeBanner: false,
     theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: kBg,
       colorScheme: ColorScheme.fromSeed(seedColor: kCyan, brightness: Brightness.dark), useMaterial3: true,
       inputDecorationTheme: const InputDecorationTheme(filled: true, fillColor: Color(0xFF050B0C), border: OutlineInputBorder(borderSide: BorderSide(color: kLine)), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: kLine)), focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: kCyan))) ),
@@ -534,7 +534,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     try {
       final reply = await client.sendMessage(clean, attachment: attachment == null ? null : {'name': attachment.name, 'mime': attachment.mime, 'data': attachment.data});
       if (!mounted) return;
-      setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'JARVIS · голосовой канал' : 'Готов'); });
+      setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'SUPERMAN · голосовой канал' : 'Готов'); });
       _scrollToBottom();
       if (_android && _voiceEnabled) await _speak(reply.text);
     } catch (e) {
@@ -613,7 +613,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(color: accent.withOpacity(.08), border: Border.all(color: accent.withOpacity(.35)), borderRadius: BorderRadius.circular(3)),
-                    child: Text(listening ? 'JARVIS ACTIVE' : (ready ? 'READY' : 'OFFLINE'), style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                    child: Text(listening ? 'SUPERMAN ACTIVE' : (ready ? 'READY' : 'OFFLINE'), style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
                   ),
                 ],
               )),
@@ -654,7 +654,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
               ),
               Positioned(bottom: 36, left: 16, right: 16, child: Column(children: [
                 RichText(textAlign: TextAlign.center, text: TextSpan(children: [
-                  TextSpan(text: listening ? 'СЛУШАЕТ ПОТОК ' : 'JARVIS ', style: const TextStyle(color: Colors.white, fontSize: 20, fontFamily: 'serif', fontWeight: FontWeight.w700)),
+                  TextSpan(text: listening ? 'СЛУШАЕТ ПОТОК ' : 'SUPERMAN ', style: const TextStyle(color: Colors.white, fontSize: 20, fontFamily: 'serif', fontWeight: FontWeight.w700)),
                   TextSpan(text: listening ? 'DUPLEX' : 'CORE', style: TextStyle(color: const Color(0xFF061016), backgroundColor: accent, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
                 ])),
                 const SizedBox(height: 4),
@@ -753,7 +753,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 ),
                 const SizedBox(width: 11),
                 const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                  Text('SUPERMAN', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
                   Text('COMMAND CENTER', style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1.2)),
                 ])),
                 IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white38, size: 19)),
@@ -836,7 +836,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
             Row(children: [
               const Icon(Icons.terminal_rounded, color: kCyan, size: 20),
               const SizedBox(width: 8),
-              const Expanded(child: Text('ЦЕНТР КОМАНД JARVIS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 1))),
+              const Expanded(child: Text('ЦЕНТР КОМАНД SUPERMAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 1))),
               IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close, color: Colors.white38)),
             ]),
             const SizedBox(height: 5),
@@ -880,7 +880,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: Builder(builder: (ctx) => IconButton(
-          tooltip: 'Меню JARVIS',
+          tooltip: 'Меню SUPERMAN',
           onPressed: () => Scaffold.of(ctx).openDrawer(),
           icon: const Icon(Icons.menu_rounded, color: kCyan),
         )),
@@ -931,7 +931,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                         border: Border.all(color: (m.isUser ? kCyan : kGreen).withOpacity(.18)),
                       ),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(m.isUser ? 'КОМАНДА' : 'JARVIS', style: TextStyle(color: m.isUser ? kCyan : kGreen, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                        Text(m.isUser ? 'КОМАНДА' : 'SUPERMAN', style: TextStyle(color: m.isUser ? kCyan : kGreen, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
                         const SizedBox(height: 3),
                         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Expanded(child: SelectableText(m.text, style: TextStyle(color: m.isUser ? Colors.white : Colors.white70, fontSize: 13, height: 1.35))),
@@ -958,7 +958,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   if (_messages.isEmpty && _streamText.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 32),
-                      child: Center(child: Text('СИСТЕМА ГОТОВА\nОткройте меню или скажите команду JARVIS.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.5))),
+                      child: Center(child: Text('СИСТЕМА ГОТОВА\nОткройте меню или скажите «Джарвис».', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.5))),
                     ),
                   if (_attachment != null) Row(children: [
                     const Icon(Icons.attach_file_rounded, color: kCyan, size: 17),
@@ -984,7 +984,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.35),
                   cursorColor: kCyan,
                   decoration: InputDecoration(
-                    hintText: 'Введите команду JARVIS…',
+                    hintText: 'Введите команду или скажите «Джарвис»…',
                     hintStyle: const TextStyle(color: Colors.white30),
                     filled: true,
                     fillColor: kPanel,
