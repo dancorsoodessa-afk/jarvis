@@ -90,6 +90,9 @@ def available_engines() -> list[str]:
 
 
 def current_engine() -> str:
+    from .connectivity import internet_available
+    if not internet_available():
+        return "off"
     mode = _engine_setting()
     if mode == "elevenlabs":
         return "elevenlabs" if "elevenlabs" in available_engines() else "piper"
@@ -206,6 +209,9 @@ def _speak_elevenlabs(text: str) -> Path:
 
 
 def speak(text: str) -> Path:
+    from .connectivity import internet_available
+    if not internet_available():
+        raise RuntimeError("Интернет недоступен: голосовой ответ отключён. Используйте текстовый режим.")
     text = " ".join(str(text).split())
     if not text:
         raise RuntimeError("Пустой текст для озвучки.")
