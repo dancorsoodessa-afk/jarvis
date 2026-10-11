@@ -93,13 +93,22 @@ jobs:
           t=p.read_text()
           t=t.replace('applicationId = "com.dancorsoodessa.jarvis_ui"','applicationId = "com.dancorsoodessa.jarvis"')
           t=t.replace('implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")', '')
-          for dep in ['implementation("androidx.core:core-ktx:1.12.0")','implementation("androidx.appcompat:appcompat:1.6.1")']:
-              if dep not in t: t=t.replace('dependencies {','dependencies {\n    '+dep,1)
-          t=t.replace('dependencies {', 'dependencies {\n    implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))\n    implementation(files("$projectDir/libs/sherpa-onnx-jvm-1.13.8.jar"))', 1)
-          if 'implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))' not in t:
-              raise SystemExit("Sherpa AAR dependency was not inserted into app/build.gradle.kts")
-          if 'implementation(files("$projectDir/libs/sherpa-onnx-jvm-1.13.8.jar"))' not in t:
-              raise SystemExit("Sherpa JVM dependency was not inserted into app/build.gradle.kts")
+          deps = [
+              'implementation("androidx.core:core-ktx:1.12.0")',
+              'implementation("androidx.appcompat:appcompat:1.6.1")',
+              'implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))',
+              'implementation(files("$projectDir/libs/sherpa-onnx-jvm-1.13.8.jar"))',
+          ]
+          for dep in deps:
+              if dep in t:
+                  continue
+              if 'dependencies {' in t:
+                  t=t.replace('dependencies {', 'dependencies {\n    '+dep, 1)
+              else:
+                  t += '\n\ndependencies {\n    '+dep+'\n}\n'
+          for dep in deps:
+              if dep not in t:
+                  raise SystemExit('Android dependency was not inserted: '+dep)
           p.write_text(t)
           p=Path('pubspec.yaml'); p.write_text(p.read_text().replace('version: 0.1.0','version: 0.1.2',1))
           p=Path('android/app/src/main/AndroidManifest.xml'); t=p.read_text()
