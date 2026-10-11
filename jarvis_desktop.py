@@ -696,6 +696,7 @@ class JarvisDesktop(tk.Tk):
                                 self.after(0, self._start_voice_loop)
                         else:
                             tts.stop()
+                            stt.unload()
                             self.voice_button.config(state="disabled", text="🎙 НЕТ СЕТИ")
                             self.voice_control.config(text="🔇  Голос: НЕТ СЕТИ")
                             self.metrics["Voice"].config(text="OFFLINE", fg=YELLOW)
