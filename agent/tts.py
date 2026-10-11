@@ -1,7 +1,7 @@
-"""TTS JARVIS: локальный Piper + опциональный ElevenLabs.
+"""SUPERMAN TTS: Piper plus optional ElevenLabs, gated by online-only voice policy.
 
-Локальный Piper является основным движком. Каждый ответ получает отдельный
-временный WAV, а воспроизведение защищено от гонок при перебивании.
+Speech generation and playback are disabled when internet connectivity is lost.
+Each reply gets its own temporary WAV; playback is protected against interruption races.
 """
 from __future__ import annotations
 
