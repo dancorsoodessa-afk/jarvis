@@ -71,11 +71,11 @@ def _set_busya_identity(agent) -> None:
         target.system_prompt = LEGACY_SYSTEM_PROMPT
     if hasattr(target, "name"):
         try:
-            target.name = "Буся ИИ"
+            target.name = "СУПЕРМЕН"
         except Exception:
             pass
     if isinstance(provider, ThreeAgentProvider):
-        provider.name = "Джарвис · 3 агента"
+        provider.name = "СУПЕРМЕН · 3 агента"
 
 
 def main():
