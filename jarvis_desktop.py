@@ -1,4 +1,4 @@
-"""Native Windows desktop UI for JARVIS with live module controls."""
+"""Native Windows desktop UI for SUPERMAN with live module controls."""
 
 import json
 import base64
@@ -110,7 +110,7 @@ class JarvisDesktop(tk.Tk):
         active = int(self.settings.get("active_agent", 0) or 0)
         active = max(0, min(1, active))
         legacy = {
-            "name": "JARVIS",
+            "name": "SUPERMAN",
             "provider": self.settings.get("provider") or os.environ.get("JARVIS_PROVIDER") or DEFAULT_PROVIDER,
             "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
             "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "openrouter/free",
@@ -118,7 +118,7 @@ class JarvisDesktop(tk.Tk):
         }
         defaults = {
             "0": legacy,
-            "1": {"name": "JARVIS CODE", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "deepseek/deepseek-chat:free", "api_key": legacy["api_key"]},
+            "1": {"name": "SUPERMAN CODE", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "deepseek/deepseek-chat:free", "api_key": legacy["api_key"]},
         }
         merged = {}
         for key, default in defaults.items():
@@ -354,7 +354,7 @@ class JarvisDesktop(tk.Tk):
                       highlightthickness=1).pack(fill="x",padx=10,pady=3)
         tk.Label(right,text="AI-МАРШРУТИЗАЦИЯ",bg="#070d16",fg=MUTED,
                  font=("Consolas",8,"bold")).pack(anchor="w",padx=14,pady=(15,5))
-        tk.Label(right,text="JARVIS — основной AI\nJARVIS CODE — программирование\nОдин OpenRouter API-ключ\nЛокально: инструменты и голос",
+        tk.Label(right,text="SUPERMAN — основной AI\nSUPERMAN CODE — программирование\nОдин OpenRouter API-ключ\nЛокально: инструменты и голос",
                  bg="#070d16",fg="#8297a5",justify="left",font=("Segoe UI",8),wraplength=235).pack(anchor="w",padx=14)
     def _set_visual_state(self, state, level=None):
         self._visual_state = state
@@ -367,7 +367,7 @@ class JarvisDesktop(tk.Tk):
             "SPEAKING": "ОТВЕЧАЮ",
             "ERROR": "ОШИБКА",
         }
-        self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
+        self.hud_text.config(text=labels.get(state, state) + "\nSUPERMAN CORE")
 
     def _draw_orb(self):
         """Draw a live, projected neural sphere using Tk Canvas (no external assets)."""
@@ -473,7 +473,7 @@ class JarvisDesktop(tk.Tk):
                                 font=("Segoe UI", max(15, int(core_r * 0.65)), "bold"))
         self.canvas.create_text(cx, cy+core_r+12, text=state, fill=core,
                                 font=("Consolas", 8, "bold"))
-        self.canvas.create_text(cx, h-14, text="JARVIS  //  LIVE NEURAL NETWORK",
+        self.canvas.create_text(cx, h-14, text="SUPERMAN  //  LIVE NEURAL NETWORK",
                                 fill="#5f9caf", font=("Consolas", 8, "bold"))
 
         self._orb_phase += speed
@@ -501,7 +501,7 @@ class JarvisDesktop(tk.Tk):
             return
         self._agent_start_pending = False
         self.status.config(text="● ЗАПУСК ЗАВИС", fg=RED)
-        self._append("SYSTEM", "Ядро не запустилось за 30 секунд. Повторите запуск; подробности могут быть в журнале JARVIS.")
+        self._append("SYSTEM", "Ядро не запустилось за 30 секунд. Повторите запуск; подробности могут быть в журнале SUPERMAN.")
 
     def _warmup_stt(self):
         try:
@@ -650,7 +650,7 @@ class JarvisDesktop(tk.Tk):
                         self.enabled_label.config(text=f"Активно модулей: {len(self.tool_names)} из {len(TOOLS)}\nОтключено: {len(TOOLS)-len(self.tool_names)}")
                         self._update_voice_status()
                         self.side_core.config(text="● CORE  —  ACTIVE", fg=GREEN)
-                        self._append("JARVIS", f"Система готова. Активных модулей: {len(self.tool_names)} из {len(TOOLS)}.")
+                        self._append("SUPERMAN", f"Система готова. Активных модулей: {len(self.tool_names)} из {len(TOOLS)}.")
                         if self.settings.get("voice_enabled", True):
                             self._start_voice_loop()
                     elif kind == "stt_ready":
@@ -669,7 +669,7 @@ class JarvisDesktop(tk.Tk):
                         if getattr(self, "_streaming_reply", ""):
                             self._replace_streaming_reply(reply, final=True)
                         else:
-                            self._append("JARVIS", reply)
+                            self._append("SUPERMAN", reply)
                         self._streaming_reply = ""
                         self.busy = False
                         self.send_button.config(state="normal")
@@ -785,7 +785,7 @@ class JarvisDesktop(tk.Tk):
     def _replace_streaming_reply(self, text, final=False):
         self.chat.configure(state="normal")
         if not getattr(self, "_streaming_reply_started", False):
-            self.chat.insert("end", "JARVIS\\n", "who")
+            self.chat.insert("end", "SUPERMAN\\n", "who")
             self._streaming_reply_started = True
         self.chat.delete("end-1c linestart", "end")
         self.chat.insert("end", text, "stream_body")
@@ -812,7 +812,7 @@ class JarvisDesktop(tk.Tk):
         female_phrases = ("голос на женский", "женский голос", "сделай голос женским", "поставь женский голос", "включи женский голос")
         if any(phrase in normalized for phrase in male_phrases):
             gender = "male"
-            message = "Готово. Установил мужской голос JARVIS."
+            message = "Готово. Установил мужской голос SUPERMAN."
         elif any(phrase in normalized for phrase in female_phrases):
             self.events.put(("reply", "В этой сборке доступен русский мужской голос Dmitri."))
             return True
@@ -978,7 +978,7 @@ class JarvisDesktop(tk.Tk):
             except Exception:
                 items = []
         if not items: items = [(name, desc)]
-        win = tk.Toplevel(self); win.title("JARVIS — " + title); win.configure(bg=BG); win.geometry("820x650")
+        win = tk.Toplevel(self); win.title("SUPERMAN — " + title); win.configure(bg=BG); win.geometry("820x650")
         tk.Label(win, text=title, bg=BG, fg=CYAN, font=("Segoe UI", 18, "bold")).pack(anchor="w", padx=20, pady=(18, 4))
         tk.Label(win, text=("● АКТИВЕН" if enabled else "● ВЫКЛЮЧЕН"), bg=BG, fg=GREEN if enabled else RED, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20)
         tk.Label(win, text="Полный перечень: " + str(len(items)), bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=8)
@@ -989,7 +989,7 @@ class JarvisDesktop(tk.Tk):
         ttk.Button(win, text="ЗАКРЫТЬ", command=win.destroy).pack(anchor="e", padx=20, pady=(0, 14))
     def show_tools(self):
         win = tk.Toplevel(self)
-        win.title("JARVIS — Управление модулями")
+        win.title("SUPERMAN — Управление модулями")
         win.configure(bg=BG)
         win.geometry("1120x760")
         win.minsize(920, 600)
@@ -1001,7 +1001,7 @@ class JarvisDesktop(tk.Tk):
         self.tool_status_label = tk.Label(header, text="", bg=BG, fg=GREEN,
                                           font=("Segoe UI", 10, "bold"))
         self.tool_status_label.pack(side="right")
-        tk.Label(win, text="Нажми на модуль, чтобы открыть его. Переключатель «АКТИВЕН» включает или отключает функцию. JARVIS сам выбирает нужный инструмент по вашей задаче — команды вводить не нужно.",
+        tk.Label(win, text="Нажми на модуль, чтобы открыть его. Переключатель «АКТИВЕН» включает или отключает функцию. SUPERMAN сам выбирает нужный инструмент по вашей задаче — команды вводить не нужно.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9), wraplength=1040, justify="left").pack(anchor="w", padx=22, pady=(0, 10))
 
         outer = tk.Frame(win, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
@@ -1070,13 +1070,13 @@ class JarvisDesktop(tk.Tk):
 
     def show_settings(self):
         win = tk.Toplevel(self)
-        win.title("JARVIS — Центр управления")
+        win.title("SUPERMAN — Центр управления")
         win.configure(bg=PANEL)
         win.geometry("900x780")
         win.minsize(820, 700)
         win.transient(self)
         win.grab_set()
-        tk.Label(win, text="ЦЕНТР УПРАВЛЕНИЯ JARVIS", bg=PANEL, fg=CYAN,
+        tk.Label(win, text="ЦЕНТР УПРАВЛЕНИЯ SUPERMAN", bg=PANEL, fg=CYAN,
                  font=("Segoe UI", 19, "bold")).pack(anchor="w", padx=24, pady=(22, 4))
         tk.Label(win, text="Один OpenRouter API-ключ для всех моделей. Меняйте модель — ключ остаётся один.",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(0, 16))
@@ -1097,7 +1097,7 @@ class JarvisDesktop(tk.Tk):
             profiles = {}
         active = int(self.settings.get("active_agent", 0) or 0)
         active = max(0, min(1, active))
-        names = ("JARVIS / ОСНОВНОЙ", "JARVIS CODE / ПРОГРАММИРОВАНИЕ")
+        names = ("SUPERMAN / ОСНОВНОЙ", "SUPERMAN CODE / ПРОГРАММИРОВАНИЕ")
         defaults = (
             ("openai-compatible", DEFAULT_URL, "openrouter/free"),
             ("openai-compatible", DEFAULT_URL, "deepseek/deepseek-chat:free"),
@@ -1143,7 +1143,7 @@ class JarvisDesktop(tk.Tk):
 
         voice_frame = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         voice_frame.pack(fill="x", pady=10)
-        tk.Label(voice_frame, text="ГОЛОС JARVIS / ELEVENLABS + PIPER", bg="#091b29", fg=CYAN,
+        tk.Label(voice_frame, text="ГОЛОС SUPERMAN / ELEVENLABS + PIPER", bg="#091b29", fg=CYAN,
                  font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 6))
         voice_fields = {}
         for label, key, default, secret in (
