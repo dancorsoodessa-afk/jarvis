@@ -7,6 +7,7 @@ signed source files.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -15,6 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BACKUP_ROOT = ROOT / ".jarvis_backups"
+_BACKUP_NAME = re.compile(r"^\d{8}_\d{6}_\d{6}_(?P<rel>.+)$")
 ALLOWED_SUFFIXES = {
     ".py", ".dart", ".kt", ".java", ".xml", ".yaml", ".yml", ".json",
     ".md", ".toml", ".ps1", ".txt", ".html", ".css", ".js", ".ts",
@@ -82,12 +84,12 @@ def git_status() -> str:
 
 def rollback_last_backup() -> str:
     """Restore the newest backup created by write_source."""
-    backups = sorted(BACKUP_ROOT.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    backups = sorted((p for p in BACKUP_ROOT.glob("*") if _BACKUP_NAME.match(p.name)),
+                     key=lambda p: p.name, reverse=True)
     if not backups:
         raise FileNotFoundError("Резервных копий нет")
     backup = backups[0]
-    marker = backup.name.split("_", 2)[-1]
-    relative = marker.replace("__", "/")
+    relative = _BACKUP_NAME.match(backup.name).group("rel").replace("__", "/")
     target = _safe_path(relative)
     target.write_text(backup.read_text(encoding="utf-8"), encoding="utf-8")
     return f"Восстановлено: {target.relative_to(ROOT)} из {backup.relative_to(ROOT)}"

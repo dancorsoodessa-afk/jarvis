@@ -5,10 +5,12 @@ import base64
 import math
 import os
 import queue
+import socket
 import threading
 import time
 import tkinter as tk
 from pathlib import Path
+from urllib.parse import urlparse
 from tkinter import filedialog, messagebox, ttk
 import mimetypes
 
@@ -33,15 +35,35 @@ DEFAULT_PROVIDER = "openai-compatible"
 DEFAULT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+
+
+def _local_endpoint_alive(url: str) -> bool:
+    """True if a local server is really listening on the URL's host:port."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    if host == "0.0.0.0":
+        host = "127.0.0.1"
+    try:
+        with socket.create_connection((host, port), timeout=0.4):
+            return True
+    except OSError:
+        return False
+
+
 def _safe_endpoint(value: str | None) -> str:
-    """Reject stale local endpoints that cause WinError 10061 on normal cloud setup."""
+    """Keep a working local endpoint (Ollama etc.); replace only a dead one.
+
+    A stale local URL causes WinError 10061, so it falls back to the cloud default.
+    A local server that is actually running is left alone.
+    """
     url = (value or "").strip()
     if not url:
         return DEFAULT_URL
-    lowered = url.lower()
-    blocked = ("localhost", "127.0.0.1", "0.0.0.0")
-    if any(lowered.startswith(f"{scheme}{host}") for scheme in ("http://", "https://") for host in blocked):
-        return DEFAULT_URL
+    parsed = urlparse(url)
+    if parsed.scheme in ("http", "https") and (parsed.hostname or "").lower() in _LOCAL_HOSTS:
+        return url if _local_endpoint_alive(url) else DEFAULT_URL
     return url
 
 
@@ -319,6 +341,16 @@ class JarvisDesktop(tk.Tk):
         self.attach_button.grid(row=0,column=2,padx=3,ipadx=7,ipady=3)
         self.send_button = ttk.Button(compose, text="▶  ВЫПОЛНИТЬ", style="Accent.TButton", command=self.send)
         self.send_button.grid(row=0,column=3,padx=(3,0),ipadx=8,ipady=3)
+        toggles = tk.Frame(compose, bg="#050912")
+        toggles.grid(row=1, column=0, columnspan=4, sticky="e", pady=(6, 0))
+        self.voice_control = ttk.Button(
+            toggles, command=self.toggle_voice,
+            text=("🔊  Голос: ВКЛ" if self.settings.get("voice_enabled", True) else "🔇  Голос: ВЫКЛ"))
+        self.voice_control.pack(side="left", padx=3, ipadx=7, ipady=2)
+        self.tts_control = ttk.Button(
+            toggles, command=self.toggle_tts,
+            text=("🗣  TTS: ВКЛ" if self.settings.get("tts_enabled", True) else "🗣  TTS: ВЫКЛ"))
+        self.tts_control.pack(side="left", padx=3, ipadx=7, ipady=2)
 
         self.attachment_label = tk.Label(center, text="Вложений нет", bg="#050912", fg=MUTED,
                                          anchor="w", font=("Consolas",8))

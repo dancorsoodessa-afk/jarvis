@@ -135,7 +135,7 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("status",system.status,description="Показать статус системы (ОС, CPU, RAM, диски). Не принимает аргументов.")
     tools.register("search",files.search,description="Найти файлы по маске в папке.",parameters={"pattern":"маска, например *.txt","folder":"папка для поиска"})
     tools.register("delete",files.delete,confirm=True,description="Удалить файл. ОПАСНО: требует подтверждения.",parameters={"path":"путь к файлу"})
-    tools.register("launch",apps.launch,confirm=False,description="Запустить приложение без подтверждения.",parameters={"name":"имя приложения или путь"})
+    tools.register("launch",apps.launch,confirm_if=apps.launch_needs_confirmation,description="Запустить приложение по имени (notepad, calc). Путь к файлу или команда с аргументами требует подтверждения.",parameters={"name":"имя приложения или путь"})
     tools.register("open_path",apps.open_path,description="Открыть локальный файл или папку в Windows Explorer.",parameters={"path":"полный локальный путь"})
     tools.register("open_url",apps.open_url,description="Открыть веб-страницу в браузере.",parameters={"url":"полный HTTP(S) адрес"})
     tools.register("volume",audio.get_volume,description="Показать текущую громкость.")

@@ -18,6 +18,7 @@ class ToolEntry:
     confirm: bool = False
     description: str = ""
     parameters: dict[str, str] = field(default_factory=dict)
+    confirm_if: Callable[..., bool] | None = None
 
 
 def _disabled_tools() -> set[str]:
@@ -40,13 +41,15 @@ class ToolRegistry:
 
     def register(self, name: str, fn: Callable[..., object], confirm: bool = False,
                  description: str | None = None,
-                 parameters: dict[str, str] | None = None) -> None:
+                 parameters: dict[str, str] | None = None,
+                 confirm_if: Callable[..., bool] | None = None) -> None:
         """Register a callable unless its switch is currently disabled."""
         if name in _disabled_tools():
             return
         self._tools[name] = ToolEntry(
             fn=fn, confirm=confirm,
-            description=description or "", parameters=parameters or {})
+            description=description or "", parameters=parameters or {},
+            confirm_if=confirm_if)
 
     def names(self):
         return tuple(self._tools)
@@ -74,12 +77,13 @@ class ToolRegistry:
     def specs(self):
         return [self.spec(n) for n, e in self._tools.items() if e.description]
 
-    def call(self, name: str, *args, _confirmed: bool = False,
+    def call(self, name: str, /, *args, _confirmed: bool = False,
              **kwargs) -> object:
         entry = self._tools.get(name)
         if entry is None:
             raise KeyError(name)
-        if entry.confirm and not _confirmed:
+        needs_confirm = entry.confirm or bool(entry.confirm_if and entry.confirm_if(*args, **kwargs))
+        if needs_confirm and not _confirmed:
             raise ConfirmationRequired(name)
         if args and len(args) > 1 and len(entry.parameters) == 1 and not kwargs:
             args = (" ".join(map(str, args)),)

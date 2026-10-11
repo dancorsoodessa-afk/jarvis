@@ -17,6 +17,7 @@ class TestSTT(unittest.TestCase):
         os.environ["JARVIS_STT"] = "off"
         with self.assertRaises(RuntimeError):
             stt.transcribe("nonexistent.wav")
+    @unittest.skipIf(stt.current_engine() == "off", "faster-whisper не установлен")
     def test_missing_file_raises(self):
         os.environ["JARVIS_STT"] = "faster-whisper"
         with self.assertRaises(ValueError):

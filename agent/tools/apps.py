@@ -1,9 +1,20 @@
 """Application launching and safe URL/path opening."""
 
+import re
 import shlex
 import subprocess
 import sys
 from pathlib import Path
+
+
+_BARE_APP_NAME = re.compile(r"^[A-Za-z0-9_\-]{1,40}$")
+
+
+def launch_needs_confirmation(*args, **kwargs) -> bool:
+    """A bare app name (notepad, calc, chrome) is safe; paths, scripts and
+    anything with arguments must be confirmed by the user."""
+    target = args[0] if args else (kwargs.get("command") or kwargs.get("name") or "")
+    return not _BARE_APP_NAME.match(str(target).strip())
 
 
 def launch(command: str = "", name: str = "") -> str:

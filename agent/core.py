@@ -92,7 +92,7 @@ class JarvisAgent:
         return AgentResult(reply, self.provider.name,
                            needs_confirmation=self._pending_tool is not None)
 
-    def _run_tool(self, name: str, *args, remember: str | None = None,
+    def _run_tool(self, name: str, /, *args, remember: str | None = None,
                   confirmed: bool = False, ask_confirmation: bool = True,
                   **kwargs) -> AgentResult:
         try:
