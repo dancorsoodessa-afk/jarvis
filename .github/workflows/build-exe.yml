@@ -1,9 +1,9 @@
-name: Build JARVIS для Windows
+name: Build SUPERMAN для Windows
 
 on:
   workflow_dispatch:
   push:
-    branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928]
+    branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928, feature/aetherial-neural-core, unified-superman]
     paths:
       - "agent/**"
       - "docs/**"
@@ -44,11 +44,12 @@ jobs:
       - name: Загрузить готовый Windows-пакет
         uses: actions/upload-artifact@v7
         with:
-          name: JARVIS-Windows-x64
+          name: SUPERMAN-Windows-x64
           path: release/JARVIS.exe
           if-no-files-found: error
 
-      - name: Опубликовать прямой EXE-релиз
+      - name: Опубликовать прямой EXE-релиз только из foundation
+        if: github.ref == 'refs/heads/foundation'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

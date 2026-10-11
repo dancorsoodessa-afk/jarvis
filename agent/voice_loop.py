@@ -1,8 +1,7 @@
-"""Непрерывный голосовой цикл JARVIS: одно пробуждение — дальше свободный диалог.
+"""Голосовой цикл SUPERMAN: слово «Джарвис» активирует одну команду.
 
-Без хлопков и без короткого лимита сессии. После слова «Джарвис» помощник
-остаётся в активном режиме и принимает следующие реплики без повторного wake-word.
-Команда выхода: «стоп», «режим ожидания», «спасибо, Джарвис».
+После ответа помощник снова ждёт ключевое слово. Нет хлопков и непрерывного
+прослушивания команд без активации. Голосовой ввод запускается только при наличии сети.
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ import time
 from pathlib import Path
 
 from .logging_setup import get as get_log
-from . import stt, tts, voice
+from . import tts, voice
 
 DEFAULT_WAKE_WORDS = ("джарвис", "jarvis")
 STOP_PHRASES = (
@@ -66,7 +65,7 @@ class Recorder:
 
 
 class VoiceLoop:
-    """Continuous conversation after one wake word."""
+    """One wake word, one command, one response, then wait again."""
 
     def __init__(self, agent, recorder: Recorder | None = None,
                  wake_words=None, wake_enabled: bool | None = None,
@@ -97,7 +96,6 @@ class VoiceLoop:
         return normalized in {p.replace(",", "") for p in STOP_PHRASES}
 
     def _listen(self, timeout: float = 0.0) -> str:
-        # timeout=0 means no conversational timeout: wait indefinitely.
         return voice.listen_for_phrase(
             silence_seconds=0.55,
             max_seconds=float(os.environ.get("JARVIS_VOICE_UTTERANCE_MAX", "120")),
@@ -115,30 +113,26 @@ class VoiceLoop:
                 return command
 
     def step(self, text: str):
-        """Synchronous compatibility adapter for tests and text-driven callers.
-
-        The live microphone path uses run(); this method preserves the old API
-        while following the new one-wake continuous-dialog behavior.
-        """
+        """Text adapter matching the one-activation/one-command voice contract."""
         text = " ".join(str(text).lower().split())
         if not text:
             return None
 
-        if self.is_stop(text):
-            self.active = False
-            return "Ожидаю."
-
-        if self.wake_enabled and not self.active:
+        if self.wake_enabled:
             command = self.strip_wake(text, self.wake_words)
             if command is None:
                 return None
             if not command:
-                self.active = True
-                return "Слушаю."
+                self.active = False
+                return "Слушаю. Скажите команду."
         else:
             command = text
 
-        self.active = True
+        if self.is_stop(command):
+            self.active = False
+            return "Ожидаю."
+
+        self.active = False
         result = self.agent.handle(command)
         return str(getattr(result, "text", result) or "").strip()
 
@@ -146,28 +140,31 @@ class VoiceLoop:
         if not voice.available():
             raise RuntimeError("Голосовой ввод недоступен: установите sounddevice и numpy")
 
-        self.log.info("Голосовой режим включён: без хлопков, непрерывный диалог")
+        self.log.info("SUPERMAN: голосовой режим; одно ключевое слово — одна команда")
 
         while True:
             try:
-                command = self._wait_for_wake() if self.wake_enabled and not self.active else self._listen()
+                command = self._wait_for_wake() if self.wake_enabled else self._listen()
+
+                # Если пользователь произнёс только «Джарвис», принимаем следующую
+                # реплику как одну команду, затем возвращаемся к ожиданию ключевого слова.
+                if self.wake_enabled and not command:
+                    tts.speak_and_play("Слушаю. Скажите команду.")
+                    command = self._listen()
 
                 if not command:
                     continue
 
                 if self.is_stop(command):
-                    self.active = False
                     tts.stop()
-                    self.log.info("Голосовой режим: ожидание")
+                    self.log.info("Голосовой режим: ожидание ключевого слова")
                     continue
 
-                self.active = True
                 result = self.agent.handle(command)
                 answer = str(result.text or "").strip()
                 self.log.info("Голос: %r -> %r", command, answer[:80])
 
                 if answer:
-                    # Playback is interruptible by the next speech-start callback.
                     tts.speak_and_play(answer)
 
             except KeyboardInterrupt:

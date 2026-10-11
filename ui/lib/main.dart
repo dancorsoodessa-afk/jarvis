@@ -20,10 +20,9 @@ const kAmber = Color(0xFFFFC857);
 const kBg = Color(0xFF070B12);
 const kPanel = Color(0xFF0B111B);
 const kLine = Color(0xFF18283A);
-const _defaultAiEndpoint = 'https://api.openai.com/v1';
-const _defaultModel1 = 'gpt-5.6-luna';
-const _defaultModel2 = 'openai/gpt-oss-120b';
-const _defaultModel3 = 'openai/gpt-oss-120b';
+const _defaultAiEndpoint = 'https://openrouter.ai/api/v1';
+const _defaultModel1 = 'openrouter/free';
+const _defaultModel2 = 'openrouter/free';
 
 void main() => runApp(const BusyaApp());
 
@@ -31,7 +30,7 @@ class BusyaApp extends StatelessWidget {
   const BusyaApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'JARVIS', debugShowCheckedModeBanner: false,
+    title: 'SUPERMAN', debugShowCheckedModeBanner: false,
     theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: kBg,
       colorScheme: ColorScheme.fromSeed(seedColor: kCyan, brightness: Brightness.dark), useMaterial3: true,
       inputDecorationTheme: const InputDecorationTheme(filled: true, fillColor: Color(0xFF050B0C), border: OutlineInputBorder(borderSide: BorderSide(color: kLine)), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: kLine)), focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: kCyan))) ),
@@ -55,10 +54,13 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   static const _voiceEvents = EventChannel('jarvis.voice.events');
   JarvisIpc? _client;
   final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint),
-      _model1 = TextEditingController(text: _defaultModel1), _model2 = TextEditingController(text: _defaultModel2), _model3 = TextEditingController(text: _defaultModel3),
-      _key1 = TextEditingController(), _key2 = TextEditingController(), _key3 = TextEditingController(), _apiHostKey = TextEditingController(), _dsaEndpoint = TextEditingController(), _dsaKey = TextEditingController();
+      _model1 = TextEditingController(text: _defaultModel1), _model2 = TextEditingController(text: _defaultModel2),
+      _key1 = TextEditingController(), _key2 = TextEditingController(), _apiHostKey = TextEditingController(), _dsaEndpoint = TextEditingController(), _dsaKey = TextEditingController();
   final _coinglassKey = TextEditingController(), _okxKey = TextEditingController(), _okxSecret = TextEditingController(), _okxPass = TextEditingController(), _okxEndpoint = TextEditingController(text: 'https://www.okx.com');
   bool _okxDemo = true;
+  Timer? _networkTimer;
+  bool _checkingInternet = false;
+  bool? _internetOnline;
   int _activeModel = 0;
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
@@ -68,12 +70,14 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   bool _voiceReady = false, _ttsReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
   static final RegExp _jarvisWake = RegExp(r'^\s*(?:jarvis|джарвис)\s*[,;:.!?-]?\s*', caseSensitive: false);
   late final AnimationController _orbController;
-  String _status = 'JARVIS запускается…', _streamText = '';
+  String _status = 'SUPERMAN запускается…', _streamText = '';
   bool get _android => Platform.isAndroid;
 
   @override void initState() {
     super.initState();
     _orbController = AnimationController(vsync: this, duration: const Duration(seconds: 7))..repeat();
+    _networkTimer = Timer.periodic(const Duration(seconds: 3), (_) => _checkInternetStatus());
+    _checkInternetStatus();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (_android) {
         await _loadSettings();
@@ -98,10 +102,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         final apiHostKey = raw['apiHostKey']?.toString() ?? '';
         final model1 = raw['model1']?.toString().trim() ?? '';
         final model2 = raw['model2']?.toString().trim() ?? '';
-        final model3 = raw['model3']?.toString().trim() ?? '';
         final key1 = raw['key1']?.toString() ?? '';
         final key2 = raw['key2']?.toString() ?? '';
-        final key3 = raw['key3']?.toString() ?? '';
         final activeModel = raw['activeModel'];
         final voiceEnabled = raw['voiceEnabled'];
         final coinglassApiKey = raw['coinglassApiKey']?.toString() ?? '';
@@ -112,18 +114,20 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         final okxDemo = raw['okxDemo'];
         final dsaEndpoint = raw['dsaEndpoint']?.toString() ?? '';
         final dsaApiKey = raw['dsaApiKey']?.toString() ?? '';
-        if (endpoint.isNotEmpty && !endpoint.contains('openrouter.ai')) _endpoint.text = endpoint;
-        else _endpoint.text = _defaultAiEndpoint;
+        // Preserve every explicitly configured OpenAI-compatible endpoint,
+        // including OpenRouter; silently replacing it breaks saved provider settings.
+        if (endpoint.isNotEmpty && endpoint != 'https://api.openai.com/v1') {
+          _endpoint.text = endpoint;
+        } else {
+          _endpoint.text = _defaultAiEndpoint;
+        }
         // Migration: older builds could save a Groq Qwen model into the OpenAI primary slot.
-        final migratedModel1 = model1.startsWith('qwen/') ? _defaultModel1 : (model1.isNotEmpty ? model1 : (model.isNotEmpty ? model : _defaultModel1));
-        final migratedModel2 = model2.isNotEmpty ? model2 : _defaultModel2;
-        final migratedModel3 = model3.isNotEmpty ? model3 : _defaultModel3;
+        final migratedModel1 = (model1.isEmpty || model1.startsWith('qwen/') || model1 == 'gpt-4.1-mini' || model1 == 'gpt-5.6-luna') ? _defaultModel1 : model1;
+        final migratedModel2 = (model2.isEmpty || model2 == 'openai/gpt-oss-120b' || model2 == 'qwen/qwen3-32b' || model2 == 'qwen/qwen3.8-27b:free') ? _defaultModel2 : model2;
         _model1.text = migratedModel1;
         _model2.text = migratedModel2;
-        _model3.text = migratedModel3;
         _key1.text = key1.isNotEmpty ? key1 : apiKey;
         _key2.text = key2;
-        _key3.text = key3;
         _apiHostKey.text = apiHostKey;
         _coinglassKey.text = coinglassApiKey;
         _okxKey.text = okxApiKey;
@@ -177,10 +181,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     try {
       await _voice.invokeMethod('save_settings', {
         'endpoint': _endpoint.text.trim(),
-        'model': _activeModel == 0 ? _model1.text.trim() : _activeModel == 1 ? _model2.text.trim() : _model3.text.trim(),
-        'apiKey': _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim(),
-        'model1': _model1.text.trim(), 'model2': _model2.text.trim(), 'model3': _model3.text.trim(),
-        'key1': _key1.text.trim(), 'key2': _key2.text.trim(), 'key3': _key3.text.trim(),
+        'model': _activeModel == 0 ? _model1.text.trim() : _model2.text.trim(),
+        'apiKey': _activeModel == 0 ? _key1.text.trim() : _key2.text.trim(),
+        'model1': _model1.text.trim(), 'model2': _model2.text.trim(),
+        'key1': _key1.text.trim(), 'key2': _key2.text.trim(),
         'activeModel': _activeModel,
         'apiHostKey': _apiHostKey.text.trim(),
         'voiceEnabled': _voiceEnabled,
@@ -194,6 +198,18 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   Future<void> _initNativeVoice() async {
     if (!_android || !mounted) return;
+    if (_internetOnline != true) {
+      final online = await _probeInternet();
+      if (!online) {
+        await _applyInternetState(false);
+        return;
+      }
+      final wasKnown = _internetOnline != null;
+      _internetOnline = true;
+      if (mounted) setState(() => _status = wasKnown
+          ? 'Интернет восстановлен · голос доступен'
+          : 'Интернет доступен · голос готов');
+    }
     try {
       await _voiceSub?.cancel();
       _voiceSub = _voiceEvents.receiveBroadcastStream().listen(_onNativeVoiceEvent,
@@ -207,6 +223,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   Future<void> _startNativeListening() async {
     if (!_android || !_voiceReady || !_voiceEnabled || _busy || _listening) return;
+    if (_internetOnline != true) {
+      await _checkInternetStatus();
+      return;
+    }
     try {
       _listening = true;
       await _voice.invokeMethod('listen_now');
@@ -223,8 +243,68 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     _listening = false;
   }
 
+  Future<bool> _probeInternet() async {
+    for (final endpoint in <String>[
+      'https://www.cloudflare.com/cdn-cgi/trace',
+      'https://www.google.com/generate_204',
+    ]) {
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+      try {
+        final request = await client.getUrl(Uri.parse(endpoint)).timeout(const Duration(seconds: 2));
+        final response = await request.close().timeout(const Duration(seconds: 2));
+        await response.drain<void>();
+        if (response.statusCode >= 200 && response.statusCode < 500) return true;
+      } catch (_) {
+        // Try the next public HTTPS endpoint.
+      } finally {
+        client.close(force: true);
+      }
+    }
+    return false;
+  }
+
+  Future<void> _checkInternetStatus() async {
+    if (_checkingInternet || !mounted) return;
+    _checkingInternet = true;
+    try {
+      await _applyInternetState(await _probeInternet());
+    } finally {
+      _checkingInternet = false;
+    }
+  }
+
+  Future<void> _applyInternetState(bool online) async {
+    if (_internetOnline == online) return;
+    final previous = _internetOnline;
+    _internetOnline = online;
+    if (!online) {
+      await _stopNativeListening();
+      try { await _voice.invokeMethod('stop_speech'); } catch (_) {}
+      if (mounted) setState(() {
+        _listening = false;
+        _status = 'Нет интернета · текстовый режим';
+      });
+      return;
+    }
+    if (mounted) setState(() {
+      _status = previous == null
+          ? 'Интернет доступен · голос готов'
+          : 'Интернет восстановлен · голос доступен';
+    });
+    if (_android && _voiceEnabled && previous != null) {
+      Future<void>.delayed(const Duration(milliseconds: 250), () {
+        if (!mounted || _internetOnline != true || !_voiceEnabled) return;
+        if (_voiceReady) {
+          _startNativeListening();
+        } else {
+          _initNativeVoice();
+        }
+      });
+    }
+  }
+
   Future<void> _onNativeVoiceEvent(dynamic event) async {
-    if (!_android || !_voiceEnabled || !mounted) return;
+    if (!_android || !_voiceEnabled || !mounted || _internetOnline != true) return;
     final value = event?.toString().trim() ?? '';
     if (value.isEmpty) return;
     if (value == '__READY__') { _voiceReady = true; _listening = false; if (mounted) setState(() => _status = 'Русский голосовой контур готов · слушаю'); if (_voiceEnabled) Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); }); return; }
@@ -269,7 +349,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   }
 
   Future<void> _speak(String text) async {
-    if (!_android || !mounted || text.trim().isEmpty) return;
+    if (!_android || !mounted || _internetOnline != true || text.trim().isEmpty) return;
     try { await _voice.invokeMethod('speak', {'text': text.trim()}); } catch (_) {}
   }
 
@@ -285,7 +365,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   Future<void> _connectAndroid() async {
     await _saveSettings();
     final primary = _activeModel == 0
-        ? {'name': 'OpenAI', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()}
+        ? {'name': 'OpenRouter', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()}
         : {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()};
     if ((primary['url'] ?? '').toString().trim().isEmpty || (primary['key'] ?? '').toString().trim().isEmpty) {
       if (mounted) setState(() => _status = 'Для выбранного AI не указан API URL или API key');
@@ -302,7 +382,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()},
               ]
             : [
-                {'name': 'OpenAI', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()},
+                {'name': 'OpenRouter', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()},
               ],
       );
       await _client!.verifyConnection();
@@ -336,7 +416,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 const Text('AI · ОСНОВНОЙ + РЕЗЕРВ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text('Выбранный AI используется первым. Резерв подключается только при временной ошибке или лимите; 401/403 не скрываются переключением.', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                const Text('Выбранный AI используется первым. При сетевых ошибках, 401/403/404 или лимите пробуется резервный AI. Если оба провайдера недоступны, приложение покажет ошибку.', style: TextStyle(color: Colors.white60, fontSize: 11)),
                 const SizedBox(height: 8),
                 for (int i = 0; i < 2; i++) ...[
                   Card(
@@ -345,18 +425,18 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                       padding: const EdgeInsets.all(8),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Row(children: [
-                          Expanded(child: Text(i == 0 ? 'OPENAI · AI 1' : 'GROQ · AI 2', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
+                          Expanded(child: Text(i == 0 ? 'OPENROUTER · AI 1' : 'GROQ · AI 2', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
                           Radio<int>(value: i, groupValue: _activeModel, onChanged: (v) { if (v != null) setDialogState(() => _activeModel = v); }),
                         ]),
                         TextField(controller: i == 0 ? _model1 : _model2, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
                         const SizedBox(height: 6),
-                        TextField(controller: i == 0 ? _key1 : _key2, obscureText: false, decoration: InputDecoration(labelText: i == 0 ? 'OpenAI API key' : 'Groq API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
+                        TextField(controller: i == 0 ? _key1 : _key2, obscureText: false, decoration: InputDecoration(labelText: i == 0 ? 'OpenRouter API key' : 'Groq API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
                       ]),
                     ),
                   ),
                   const SizedBox(height: 6),
                 ],
-                TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenAI endpoint', isDense: true)),
+                TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenRouter API endpoint', isDense: true)),
                 const SizedBox(height: 6),
                 TextField(controller: _apiHostKey, obscureText: false, decoration: const InputDecoration(labelText: 'APIHOST key · голос Леда', isDense: true)),
                 const SizedBox(height: 12),
@@ -384,7 +464,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 TextField(controller: _dsaKey, obscureText: false, decoration: const InputDecoration(labelText: 'API key / Bearer token (если нужен)', isDense: true)),
                 const SizedBox(height: 12),
                 const Text('ГОЛОС / МИКРОФОН', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
-                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Локальный русский STT. Микрофон работает только при открытом приложении.')),
+                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Голос доступен только при подключённом интернете. Без сети микрофон и озвучивание отключаются; остаётся текстовый режим.')),
                 const SizedBox(height: 12),
                 const Text('ИНСТРУМЕНТЫ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 Wrap(spacing: 6, runSpacing: 6, children: [
@@ -429,6 +509,11 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   Future<void> _toggleVoice() async {
     if (!_android) return;
+    if (!_voiceEnabled && _internetOnline != true) {
+      if (mounted) setState(() => _status = 'Нет интернета · голос пока недоступен');
+      await _checkInternetStatus();
+      return;
+    }
     if (!_voiceReady) { await _initNativeVoice(); return; }
     _voiceEnabled = !_voiceEnabled; _awaitingCommand = false; await _saveSettings();
     if (!_voiceEnabled) { await _stopNativeListening(); if (mounted) setState(() => _status = 'Голос выключен'); return; }
@@ -448,7 +533,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     try {
       final reply = await client.sendMessage(clean, attachment: attachment == null ? null : {'name': attachment.name, 'mime': attachment.mime, 'data': attachment.data});
       if (!mounted) return;
-      setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'JARVIS · голосовой канал' : 'Готов'); });
+      setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'SUPERMAN · голосовой канал' : 'Готов'); });
       _scrollToBottom();
       if (_android && _voiceEnabled) await _speak(reply.text);
     } catch (e) {
@@ -467,10 +552,11 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   void _scrollToBottom() { WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut); }); }
 
   @override void dispose() {
+    _networkTimer?.cancel();
     _orbController.dispose();
     _voiceSub?.cancel(); _partialSub?.cancel();
     if (_android) { _voice.invokeMethod('stop'); _voice.invokeMethod('dispose'); }
-    _client?.dispose(); _input.dispose(); _endpoint.dispose(); _model1.dispose(); _model2.dispose(); _model3.dispose(); _key1.dispose(); _key2.dispose(); _key3.dispose(); _apiHostKey.dispose(); _coinglassKey.dispose(); _okxKey.dispose(); _okxSecret.dispose(); _okxPass.dispose(); _okxEndpoint.dispose(); _dsaEndpoint.dispose(); _dsaKey.dispose(); _scroll.dispose(); super.dispose();
+    _client?.dispose(); _input.dispose(); _endpoint.dispose(); _model1.dispose(); _model2.dispose(); _key1.dispose(); _key2.dispose(); _apiHostKey.dispose(); _coinglassKey.dispose(); _okxKey.dispose(); _okxSecret.dispose(); _okxPass.dispose(); _okxEndpoint.dispose(); _dsaEndpoint.dispose(); _dsaKey.dispose(); _scroll.dispose(); super.dispose();
   }
 
   Widget _terminalLine(String text, {Color color = kGreen, bool dim = false}) {
@@ -496,85 +582,71 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   Widget _coreVisual() {
     final listening = _listening;
-    final ready = _voiceReady && _voiceEnabled;
+    final ready = _internetOnline == true && _voiceReady && _voiceEnabled;
     final accent = listening ? kGreen : (ready ? kCyan : kRed);
     return AnimatedBuilder(
       animation: _orbController,
       builder: (context, child) {
-        final phase = _orbController.value * 6.283185307;
+        final phase = _orbController.value * math.pi * 2;
         final pulse = 0.94 + 0.06 * (0.5 + 0.5 * math.sin(phase));
         return Container(
-          height: 286,
-          margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+          height: 300,
+          margin: const EdgeInsets.fromLTRB(10, 8, 10, 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF080E17),
-            border: Border.all(color: const Color(0xFF18283A)),
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(.35), blurRadius: 24)],
+            gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: [Color(0xFF0B1626), Color(0xFF050911), Color(0xFF09131C)]),
+            border: Border.all(color: accent.withOpacity(.25)),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: accent.withOpacity(.06), blurRadius: 28, spreadRadius: 1)],
           ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Positioned(top: 10, left: 12, right: 12, child: Row(
-                children: [
-                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 8)])),
-                  const SizedBox(width: 7),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 2)),
-                  const SizedBox(width: 7),
-                  const Text('V4.2 // ONLINE', style: TextStyle(color: Colors.white38, fontSize: 8, fontFamily: 'monospace')),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: accent.withOpacity(.08), border: Border.all(color: accent.withOpacity(.35)), borderRadius: BorderRadius.circular(3)),
-                    child: Text(listening ? 'JARVIS ACTIVE' : (ready ? 'READY' : 'OFFLINE'), style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                  ),
-                ],
-              )),
-              for (final size in [198.0 * pulse, 166.0 * pulse, 132.0 * pulse])
-                Container(
-                  width: size,
-                  height: size,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: accent.withOpacity(.16), width: 1),
-                  ),
-                ),
-              Container(
-                width: 108 * pulse,
-                height: 108 * pulse,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0E3440), Color(0xFF09202A)]),
-                  border: Border.all(color: accent.withOpacity(.8)),
-                  boxShadow: [BoxShadow(color: accent.withOpacity(.22), blurRadius: 30)],
-                ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    for (final h in [13.0, 24.0, 34.0, 20.0, 29.0])
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 450),
-                          width: 4,
-                          height: h * pulse,
-                          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(3), boxShadow: [BoxShadow(color: accent, blurRadius: 7)]),
-                        ),
-                      ),
-                  ]),
-                  const SizedBox(height: 8),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                ]),
+          child: Stack(alignment: Alignment.center, children: [
+            Positioned(top: 13, left: 15, right: 15, child: Row(children: [
+              Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 8)])),
+              const SizedBox(width: 8),
+              const Text('SUPERMAN', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 2.2)),
+              const Spacer(),
+              Text('ИИ-АГЕНТ  /  V1', style: TextStyle(color: accent.withOpacity(.75), fontSize: 8, fontFamily: 'monospace', letterSpacing: 1)),
+            ])),
+            Transform.rotate(
+              angle: phase * .32,
+              child: Container(width: 202 * pulse, height: 202 * pulse,
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: accent.withOpacity(.22), width: 1)),
+                child: Align(alignment: Alignment.topCenter, child: Container(width: 7, height: 7, margin: const EdgeInsets.only(top: 5),
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 9)]))),
               ),
-              Positioned(bottom: 36, left: 16, right: 16, child: Column(children: [
-                RichText(textAlign: TextAlign.center, text: TextSpan(children: [
-                  TextSpan(text: listening ? 'СЛУШАЕТ ПОТОК ' : 'JARVIS ', style: const TextStyle(color: Colors.white, fontSize: 20, fontFamily: 'serif', fontWeight: FontWeight.w700)),
-                  TextSpan(text: listening ? 'DUPLEX' : 'CORE', style: TextStyle(color: const Color(0xFF061016), backgroundColor: accent, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                ])),
-                const SizedBox(height: 4),
-                Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 9, fontFamily: 'monospace')),
-              ])),
-            ],
-          ),
+            ),
+            Transform.rotate(
+              angle: -phase * .48,
+              child: Container(width: 164, height: 164,
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: accent.withOpacity(.38), width: 1.2)),
+                child: Align(alignment: Alignment.bottomRight, child: Container(width: 6, height: 6, margin: const EdgeInsets.only(right: 10, bottom: 13),
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: kGreen, boxShadow: [BoxShadow(color: kGreen.withOpacity(.8), blurRadius: 7)]))),
+              ),
+            ),
+            Container(
+              width: 122 * pulse, height: 122 * pulse,
+              decoration: BoxDecoration(shape: BoxShape.circle,
+                gradient: RadialGradient(center: const Alignment(-.3, -.35), radius: .95,
+                  colors: [accent.withOpacity(.30), const Color(0xFF0B2031), const Color(0xFF050B14)], stops: const [0, .55, 1]),
+                border: Border.all(color: accent.withOpacity(.8), width: 1.4),
+                boxShadow: [BoxShadow(color: accent.withOpacity(.20), blurRadius: 30, spreadRadius: 2)],
+              ),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.hub_rounded, color: accent, size: 40),
+                const SizedBox(height: 5),
+                const Text('CORE', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 3)),
+                const SizedBox(height: 3),
+                Text(ready ? 'ONLINE' : 'TEXT MODE', style: TextStyle(color: accent, fontSize: 7, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+              ]),
+            ),
+            Positioned(bottom: 14, left: 14, right: 14, child: Column(children: [
+              Text(listening ? 'СЛУШАЮ КОМАНДУ' : (_busy ? 'ОБРАБАТЫВАЮ ЗАПРОС' : 'СУПЕРМЕН ГОТОВ'),
+                textAlign: TextAlign.center, style: TextStyle(color: accent, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+              const SizedBox(height: 4),
+              Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white54, fontSize: 9, fontFamily: 'monospace')),
+            ])),
+          ]),
         );
       },
     );
@@ -666,7 +738,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 ),
                 const SizedBox(width: 11),
                 const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                  Text('SUPERMAN', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
                   Text('COMMAND CENTER', style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1.2)),
                 ])),
                 IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white38, size: 19)),
@@ -707,9 +779,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 padding: const EdgeInsets.all(11),
                 decoration: BoxDecoration(color: const Color(0xFF071411), border: Border.all(color: kGreen.withOpacity(.16)), borderRadius: BorderRadius.circular(7)),
                 child: Row(children: [
-                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: _voiceReady ? kGreen : kRed, boxShadow: [BoxShadow(color: _voiceReady ? kGreen : kRed, blurRadius: 7)])),
+                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: _internetOnline == true && _voiceReady ? kGreen : kRed, boxShadow: [BoxShadow(color: _internetOnline == true && _voiceReady ? kGreen : kRed, blurRadius: 7)])),
                   const SizedBox(width: 9),
-                  Expanded(child: Text(_voiceReady ? 'ГОЛОСОВОЙ КОНТУР ГОТОВ' : 'ГОЛОСОВОЙ КОНТУР НЕ ГОТОВ', style: TextStyle(color: _voiceReady ? kGreen : kRed, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .7))),
+                  Expanded(child: Text(_voiceReady ? 'ГОЛОСОВОЙ КОНТУР ГОТОВ' : 'ГОЛОСОВОЙ КОНТУР НЕ ГОТОВ', style: TextStyle(color: _internetOnline == true && _voiceReady ? kGreen : kRed, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .7))),
                 ]),
               ),
             ),
@@ -749,7 +821,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
             Row(children: [
               const Icon(Icons.terminal_rounded, color: kCyan, size: 20),
               const SizedBox(width: 8),
-              const Expanded(child: Text('ЦЕНТР КОМАНД JARVIS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 1))),
+              const Expanded(child: Text('ЦЕНТР КОМАНД SUPERMAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 1))),
               IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close, color: Colors.white38)),
             ]),
             const SizedBox(height: 5),
@@ -793,13 +865,13 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: Builder(builder: (ctx) => IconButton(
-          tooltip: 'Меню JARVIS',
+          tooltip: 'Меню SUPERMAN',
           onPressed: () => Scaffold.of(ctx).openDrawer(),
           icon: const Icon(Icons.menu_rounded, color: kCyan),
         )),
         titleSpacing: 0,
         title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+          Text('SUPERMAN', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
           Text('COMMAND CENTER', style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1.1)),
         ]),
         actions: [
@@ -844,7 +916,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                         border: Border.all(color: (m.isUser ? kCyan : kGreen).withOpacity(.18)),
                       ),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(m.isUser ? 'КОМАНДА' : 'JARVIS', style: TextStyle(color: m.isUser ? kCyan : kGreen, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                        Text(m.isUser ? 'КОМАНДА' : 'SUPERMAN', style: TextStyle(color: m.isUser ? kCyan : kGreen, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
                         const SizedBox(height: 3),
                         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Expanded(child: SelectableText(m.text, style: TextStyle(color: m.isUser ? Colors.white : Colors.white70, fontSize: 13, height: 1.35))),
@@ -871,7 +943,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   if (_messages.isEmpty && _streamText.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 32),
-                      child: Center(child: Text('СИСТЕМА ГОТОВА\nОткройте меню или скажите команду JARVIS.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.5))),
+                      child: Center(child: Text('СИСТЕМА ГОТОВА\nОткройте меню или скажите «Джарвис».', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.5))),
                     ),
                   if (_attachment != null) Row(children: [
                     const Icon(Icons.attach_file_rounded, color: kCyan, size: 17),
@@ -897,7 +969,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.35),
                   cursorColor: kCyan,
                   decoration: InputDecoration(
-                    hintText: 'Введите команду JARVIS…',
+                    hintText: 'Введите команду или скажите «Джарвис»…',
                     hintStyle: const TextStyle(color: Colors.white30),
                     filled: true,
                     fillColor: kPanel,

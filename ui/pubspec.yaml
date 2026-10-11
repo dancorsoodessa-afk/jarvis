@@ -1,5 +1,5 @@
 name: jarvis_ui
-description: JARVIS Android UI with standalone Android voice activation and AI connection
+description: SUPERMAN companion app with internet-gated voice and shared AI access
 publish_to: "none"
 version: 0.1.2
 
@@ -15,6 +15,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  test: ^1.26.3
 
 flutter:
   uses-material-design: true
