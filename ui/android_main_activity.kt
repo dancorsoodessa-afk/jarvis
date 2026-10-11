@@ -91,9 +91,9 @@ class MainActivity : FlutterActivity() {
                     val p = getSharedPreferences(PREFS, MODE_PRIVATE)
                     result.success(mapOf(
                         "endpoint" to p.getString(KEY_ENDPOINT, "https://api.openai.com/v1"),
-                        "model" to p.getString(KEY_MODEL, "gpt-5.6-luna"),
+                        "model" to p.getString(KEY_MODEL, "gpt-4.1-mini"),
                         "apiKey" to p.getString(KEY_AI_API_KEY, ""),
-                        "model1" to p.getString(KEY_MODEL1, "gpt-5.6-luna"),
+                        "model1" to p.getString(KEY_MODEL1, "gpt-4.1-mini"),
                         "model2" to p.getString(KEY_MODEL2, "openai/gpt-oss-120b"),
                         "model3" to p.getString(KEY_MODEL3, "openai/gpt-oss-20b"),
                         "key1" to p.getString(KEY_KEY1, p.getString(KEY_AI_API_KEY, "")),
@@ -321,7 +321,9 @@ class MainActivity : FlutterActivity() {
                 initVad()
                 voiceInitialized = true
             } catch (e: Exception) {
+                synchronized(voiceLock) { voiceActive = false }
                 eventSink?.success("__ERROR__:local_stt_init_" + e.javaClass.simpleName + ":" + (e.message ?: ""))
+                scheduleRecognition(1500)
                 return
             }
         }
