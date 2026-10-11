@@ -678,6 +678,31 @@ class JarvisDesktop(tk.Tk):
                             threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
                         else:
                             self._set_visual_state("IDLE", 0.0)
+                    elif kind == "network_status":
+                        online = bool(event[1])
+                        if online:
+                            self.voice_button.config(state="normal", text="🎙 ГОЛОС")
+                            self.voice_control.config(text=("🔊  Голос: ВКЛ" if self.settings.get("voice_enabled", True) else "🔇  Голос: ВЫКЛ"))
+                            if not self.busy:
+                                self.status.config(text="● ONLINE", fg=GREEN)
+                            self._update_voice_status()
+                            self._append("SYSTEM", "Интернет восстановлен. Голосовые функции доступны.")
+                            if self.settings.get("voice_enabled", True) and not self._voice_loop_running:
+                                self.after(0, self._start_voice_loop)
+                        else:
+                            self._voice_loop_running = False
+                            tts.stop()
+                            self.voice_button.config(state="disabled", text="🎙 НЕТ СЕТИ")
+                            self.voice_control.config(text="🔇  Голос: НЕТ СЕТИ")
+                            self.metrics["Voice"].config(text="OFFLINE", fg=YELLOW)
+                            self.metrics["TTS"].config(text="OFFLINE", fg=YELLOW)
+                            self.side_voice.config(text="◉ ГОЛОС — НЕТ СЕТИ", fg=YELLOW)
+                            self.status.config(text="● OFFLINE · ТЕКСТОВЫЙ РЕЖИМ", fg=YELLOW)
+                            self._set_visual_state("IDLE", 0.0)
+                            self._append("SYSTEM", "Интернет недоступен: микрофон и озвучивание отключены. Можно пользоваться текстовым интерфейсом; сетевой AI временно недоступен.")
+                    elif kind == "stt_offline":
+                        self.metrics["Voice"].config(text="OFFLINE", fg=YELLOW)
+                        self._append("VOICE", "Интернета нет — распознавание речи не запускается.")
                     elif kind == "voice_listening":
                         self._set_visual_state("LISTENING", 0.25)
                     elif kind == "voice_text":
@@ -1178,6 +1203,7 @@ class JarvisDesktop(tk.Tk):
         self._start_agent()
 
     def _close(self):
+        self._network_monitor_running = False
         self._voice_loop_running = False
         tts.stop()
         if self._orb_after:
