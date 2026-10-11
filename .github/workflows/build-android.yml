@@ -131,10 +131,7 @@ jobs:
           echo '--- Sherpa AAR classes.jar entries ---'
           unzip -p android/app/libs/sherpa-onnx-1.13.8.aar classes.jar > /tmp/sherpa-classes.jar
           jar tf /tmp/sherpa-classes.jar | grep -E 'com/k2fsa/sherpa/onnx/(OnlineRecognizer|Vad|OfflineTts)' | head -40 || true
-          echo '--- Resolved compile classpath ---'
-          cd android
-          ./gradlew :app:dependencies --configuration debugCompileClasspath --no-daemon | grep -E 'sherpa|debugCompileClasspath' || true
-          cd ..
+          echo 'Classpath resolution will be validated by the release build step.'
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
