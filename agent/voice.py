@@ -1,7 +1,7 @@
-"""Надёжный локальный голосовой ввод JARVIS: VAD + faster-whisper, без хлопков.
+"""SUPERMAN voice input: adaptive VAD + faster-whisper, with online-only gating.
 
-Микрофон открывается на один цикл прослушивания, калибровка короткая,
-порог адаптивный. Устройство можно задать через JARVIS_AUDIO_DEVICE.
+The microphone opens for one listening cycle. Voice is intentionally disabled
+when internet connectivity is unavailable. Configure the device with JARVIS_AUDIO_DEVICE.
 """
 from __future__ import annotations
 
