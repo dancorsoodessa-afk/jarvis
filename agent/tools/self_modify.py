@@ -96,11 +96,14 @@ def rollback_last_backup() -> str:
             continue
         match = _BACKUP_NAME.match(candidate.name)
         if match:
-            backups.append((candidate.stat().st_mtime_ns, candidate, match.group(2)))
+            backups.append((candidate.stat().st_mtime_ns, candidate, unquote(match.group(2))))
+            continue
+        legacy = re.match(r"^(\\d{8}_\\d{6}_\\d{6})_(.+)$", candidate.name)
+        if legacy:
+            backups.append((candidate.stat().st_mtime_ns, candidate, legacy.group(2).replace("__", "/")))
     if not backups:
         raise FileNotFoundError("Нет резервных копий с поддерживаемым именем")
-    _, backup, encoded_path = max(backups, key=lambda item: item[0])
-    relative = unquote(encoded_path)
+    _, backup, relative = max(backups, key=lambda item: item[0])
     target = _safe_path(relative)
     if not target.exists():
         raise FileNotFoundError(f"Нельзя откатить: исходный файл отсутствует: {relative}")
