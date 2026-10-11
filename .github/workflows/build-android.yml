@@ -95,7 +95,11 @@ jobs:
           t=t.replace('implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")', '')
           for dep in ['implementation("androidx.core:core-ktx:1.12.0")','implementation("androidx.appcompat:appcompat:1.6.1")']:
               if dep not in t: t=t.replace('dependencies {','dependencies {\n    '+dep,1)
-          t=t.replace('dependencies {', 'dependencies {\n    implementation(files("libs/sherpa-onnx-1.13.8.aar"))\n    implementation(files("libs/sherpa-onnx-jvm-1.13.8.jar"))', 1)
+          t=t.replace('dependencies {', 'dependencies {\n    implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))\n    implementation(files("$projectDir/libs/sherpa-onnx-jvm-1.13.8.jar"))', 1)
+          if 'implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))' not in t:
+              raise SystemExit("Sherpa AAR dependency was not inserted into app/build.gradle.kts")
+          if 'implementation(files("$projectDir/libs/sherpa-onnx-jvm-1.13.8.jar"))' not in t:
+              raise SystemExit("Sherpa JVM dependency was not inserted into app/build.gradle.kts")
           p.write_text(t)
           p=Path('pubspec.yaml'); p.write_text(p.read_text().replace('version: 0.1.0','version: 0.1.2',1))
           p=Path('android/app/src/main/AndroidManifest.xml'); t=p.read_text()
@@ -105,6 +109,23 @@ jobs:
                   t=t.replace(marker, f'    <uses-permission android:name="{n}" />\n'+marker, 1)
           p.write_text(t)
           PY
+      - name: Verify Sherpa Android dependencies
+        working-directory: ui
+        run: |
+          set -euo pipefail
+          test -s android/app/libs/sherpa-onnx-1.13.8.aar
+          test -s android/app/libs/sherpa-onnx-jvm-1.13.8.jar
+          grep -F 'implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))' android/app/build.gradle.kts
+          grep -F 'implementation(files("$projectDir/libs/sherpa-onnx-jvm-1.13.8.jar"))' android/app/build.gradle.kts
+          echo '--- Sherpa JAR class entries ---'
+          jar tf android/app/libs/sherpa-onnx-jvm-1.13.8.jar | grep -E 'com/k2fsa/sherpa/onnx/(OnlineRecognizer|Vad|OfflineTts)' | head -40 || true
+          echo '--- Sherpa AAR classes.jar entries ---'
+          unzip -p android/app/libs/sherpa-onnx-1.13.8.aar classes.jar > /tmp/sherpa-classes.jar
+          jar tf /tmp/sherpa-classes.jar | grep -E 'com/k2fsa/sherpa/onnx/(OnlineRecognizer|Vad|OfflineTts)' | head -40 || true
+          echo '--- Resolved compile classpath ---'
+          cd android
+          ./gradlew :app:dependencies --configuration debugCompileClasspath --no-daemon | grep -E 'sherpa|debugCompileClasspath' || true
+          cd ..
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
