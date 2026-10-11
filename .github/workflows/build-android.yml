@@ -1,4 +1,4 @@
-name: Build JARVIS Android APK
+name: Build SUPERMAN Android APK
 
 on:
   push:
@@ -98,6 +98,7 @@ jobs:
           p.write_text(t)
           p=Path('pubspec.yaml'); p.write_text(p.read_text().replace('version: 0.1.0','version: 0.1.2',1))
           p=Path('android/app/src/main/AndroidManifest.xml'); t=p.read_text()
+          t=re.sub(r'android:label="[^"]+"', 'android:label="SUPERMAN"', t, count=1)
           for n in ['android.permission.INTERNET','android.permission.RECORD_AUDIO','android.permission.MODIFY_AUDIO_SETTINGS','android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_MICROPHONE','android.permission.POST_NOTIFICATIONS']:
               if n not in t:
                   marker='</manifest>'
@@ -143,10 +144,10 @@ jobs:
           grep -q "versionName='0.1.2'" apk-manifest.txt
           "$AAPT" dump permissions "$apk" | grep -q "android.permission.RECORD_AUDIO"
           sha256sum "$apk" | tee apk.sha256
-      - name: Upload JARVIS APK
+      - name: Upload SUPERMAN APK
         uses: actions/upload-artifact@v4
         with:
-          name: jarvis-android-apk
+          name: superman-android-apk
           path: |
             ui/build/app/outputs/flutter-apk/app-release.apk
             ui/apk.sha256
