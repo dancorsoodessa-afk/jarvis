@@ -13,6 +13,8 @@ import urllib.request
 _CACHE_TTL_SECONDS = 2.0
 _PROBE_TIMEOUT_SECONDS = 1.0
 _PROBE_URLS = (
+    "https://openrouter.ai",
+    "https://api.groq.com",
     "https://www.cloudflare.com/cdn-cgi/trace",
     "https://www.google.com/generate_204",
 )
@@ -38,7 +40,7 @@ def internet_available(force: bool = False) -> bool:
             request = urllib.request.Request(
                 url,
                 headers={"User-Agent": "SUPERMAN/1.0"},
-                method="GET",
+                method="HEAD",
             )
             try:
                 with urllib.request.urlopen(request, timeout=_PROBE_TIMEOUT_SECONDS) as response:
