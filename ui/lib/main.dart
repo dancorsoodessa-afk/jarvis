@@ -59,6 +59,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
       _key1 = TextEditingController(), _key2 = TextEditingController(), _key3 = TextEditingController(), _apiHostKey = TextEditingController(), _dsaEndpoint = TextEditingController(), _dsaKey = TextEditingController();
   final _coinglassKey = TextEditingController(), _okxKey = TextEditingController(), _okxSecret = TextEditingController(), _okxPass = TextEditingController(), _okxEndpoint = TextEditingController(text: 'https://www.okx.com');
   bool _okxDemo = true;
+  Timer? _networkTimer;
+  bool _checkingInternet = false;
+  bool? _internetOnline;
   int _activeModel = 0;
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
@@ -68,12 +71,14 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   bool _voiceReady = false, _ttsReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
   static final RegExp _jarvisWake = RegExp(r'^\s*(?:jarvis|джарвис)\s*[,;:.!?-]?\s*', caseSensitive: false);
   late final AnimationController _orbController;
-  String _status = 'JARVIS запускается…', _streamText = '';
+  String _status = 'SUPERMAN запускается…', _streamText = '';
   bool get _android => Platform.isAndroid;
 
   @override void initState() {
     super.initState();
     _orbController = AnimationController(vsync: this, duration: const Duration(seconds: 7))..repeat();
+    _networkTimer = Timer.periodic(const Duration(seconds: 3), (_) => _checkInternetStatus());
+    _checkInternetStatus();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (_android) {
         await _loadSettings();
@@ -194,6 +199,11 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   Future<void> _initNativeVoice() async {
     if (!_android || !mounted) return;
+    if (_internetOnline != true) {
+      final online = await _probeInternet();
+      await _applyInternetState(online);
+      if (!online || !mounted) return;
+    }
     try {
       await _voiceSub?.cancel();
       _voiceSub = _voiceEvents.receiveBroadcastStream().listen(_onNativeVoiceEvent,
@@ -207,6 +217,10 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   Future<void> _startNativeListening() async {
     if (!_android || !_voiceReady || !_voiceEnabled || _busy || _listening) return;
+    if (_internetOnline != true) {
+      await _checkInternetStatus();
+      return;
+    }
     try {
       _listening = true;
       await _voice.invokeMethod('listen_now');
@@ -223,8 +237,68 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     _listening = false;
   }
 
+  Future<bool> _probeInternet() async {
+    for (final endpoint in <String>[
+      'https://www.cloudflare.com/cdn-cgi/trace',
+      'https://www.google.com/generate_204',
+    ]) {
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+      try {
+        final request = await client.getUrl(Uri.parse(endpoint)).timeout(const Duration(seconds: 2));
+        final response = await request.close().timeout(const Duration(seconds: 2));
+        await response.drain<void>();
+        if (response.statusCode >= 200 && response.statusCode < 500) return true;
+      } catch (_) {
+        // Try the next public HTTPS endpoint.
+      } finally {
+        client.close(force: true);
+      }
+    }
+    return false;
+  }
+
+  Future<void> _checkInternetStatus() async {
+    if (_checkingInternet || !mounted) return;
+    _checkingInternet = true;
+    try {
+      await _applyInternetState(await _probeInternet());
+    } finally {
+      _checkingInternet = false;
+    }
+  }
+
+  Future<void> _applyInternetState(bool online) async {
+    if (_internetOnline == online) return;
+    final previous = _internetOnline;
+    _internetOnline = online;
+    if (!online) {
+      await _stopNativeListening();
+      try { await _voice.invokeMethod('stop_speech'); } catch (_) {}
+      if (mounted) setState(() {
+        _listening = false;
+        _status = 'Нет интернета · текстовый режим';
+      });
+      return;
+    }
+    if (mounted) setState(() {
+      _status = previous == null
+          ? 'Интернет доступен · голос готов'
+          : 'Интернет восстановлен · голос доступен';
+    });
+    if (_android && _voiceEnabled) {
+      Future<void>.delayed(const Duration(milliseconds: 250), () {
+        if (!mounted || _internetOnline != true || !_voiceEnabled) return;
+        if (_voiceReady) {
+          _startNativeListening();
+        } else {
+          _initNativeVoice();
+        }
+      });
+    }
+  }
+
   Future<void> _onNativeVoiceEvent(dynamic event) async {
-    if (!_android || !_voiceEnabled || !mounted) return;
+    if (!_android || !_voiceEnabled || !mounted || _internetOnline != true) return;
     final value = event?.toString().trim() ?? '';
     if (value.isEmpty) return;
     if (value == '__READY__') { _voiceReady = true; _listening = false; if (mounted) setState(() => _status = 'Русский голосовой контур готов · слушаю'); if (_voiceEnabled) Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); }); return; }
@@ -269,7 +343,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   }
 
   Future<void> _speak(String text) async {
-    if (!_android || !mounted || text.trim().isEmpty) return;
+    if (!_android || !mounted || _internetOnline != true || text.trim().isEmpty) return;
     try { await _voice.invokeMethod('speak', {'text': text.trim()}); } catch (_) {}
   }
 
@@ -384,7 +458,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 TextField(controller: _dsaKey, obscureText: false, decoration: const InputDecoration(labelText: 'API key / Bearer token (если нужен)', isDense: true)),
                 const SizedBox(height: 12),
                 const Text('ГОЛОС / МИКРОФОН', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
-                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Локальный русский STT. Микрофон работает только при открытом приложении.')),
+                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Голос доступен только при подключённом интернете. Без сети микрофон и озвучивание отключаются; остаётся текстовый режим.')),
                 const SizedBox(height: 12),
                 const Text('ИНСТРУМЕНТЫ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 Wrap(spacing: 6, runSpacing: 6, children: [
@@ -429,6 +503,11 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   Future<void> _toggleVoice() async {
     if (!_android) return;
+    if (!_voiceEnabled && _internetOnline != true) {
+      if (mounted) setState(() => _status = 'Нет интернета · голос пока недоступен');
+      await _checkInternetStatus();
+      return;
+    }
     if (!_voiceReady) { await _initNativeVoice(); return; }
     _voiceEnabled = !_voiceEnabled; _awaitingCommand = false; await _saveSettings();
     if (!_voiceEnabled) { await _stopNativeListening(); if (mounted) setState(() => _status = 'Голос выключен'); return; }
@@ -467,6 +546,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   void _scrollToBottom() { WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut); }); }
 
   @override void dispose() {
+    _networkTimer?.cancel();
     _orbController.dispose();
     _voiceSub?.cancel(); _partialSub?.cancel();
     if (_android) { _voice.invokeMethod('stop'); _voice.invokeMethod('dispose'); }
