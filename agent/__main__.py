@@ -52,6 +52,27 @@ def _attach_self_improvement_tools(agent) -> None:
     agent.tools.register("forget_preference", habits.forget_preference,
                          description="Удалить сохранённое предпочтение по точному названию.",
                          parameters={"key": "название предпочтения для удаления"})
+    agent.tools.register("propose_improvement", improvement_tools.propose_improvement,
+                         description="Создать сохраняемое предложение самоулучшения без изменения кода.",
+                         parameters={"problem": "описание проблемы", "change": "предлагаемое изменение", "tests": "план тестов"})
+    agent.tools.register("mark_improvement_tested", improvement_tools.mark_improvement_tested,
+                         description="Записать результат тестирования предложения.",
+                         parameters={"proposal_id": "ID предложения", "evidence": "фактический результат тестов"})
+    agent.tools.register("request_improvement_confirmation", improvement_tools.request_improvement_confirmation,
+                         description="Запросить подтверждение пользователя после тестирования.",
+                         parameters={"proposal_id": "ID предложения"})
+    agent.tools.register("confirm_improvement", improvement_tools.confirm_improvement,
+                         description="Записать явное решение пользователя да или нет.",
+                         parameters={"proposal_id": "ID предложения", "approved": "да или нет"})
+    agent.tools.register("mark_improvement_applied", improvement_tools.mark_improvement_applied,
+                         description="Зафиксировать реально применённое одобренное изменение.",
+                         parameters={"proposal_id": "ID предложения", "summary": "что изменено"})
+    agent.tools.register("verify_improvement", improvement_tools.verify_improvement,
+                         description="Записать результат повторных тестов после изменения.",
+                         parameters={"proposal_id": "ID предложения", "evidence": "результат повторных тестов"})
+    agent.tools.register("save_improvement", improvement_tools.save_improvement,
+                         description="Сохранить проверенное улучшение в журнал.",
+                         parameters={"proposal_id": "ID предложения"})
 
 
 def _attach_free_secondary_agents(agent, settings: Settings) -> None:
