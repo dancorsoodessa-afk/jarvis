@@ -583,7 +583,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   Widget _coreVisual() {
     final listening = _listening;
-    final ready = _voiceReady && _voiceEnabled;
+    final ready = _internetOnline == true && _voiceReady && _voiceEnabled;
     final accent = listening ? kGreen : (ready ? kCyan : kRed);
     return AnimatedBuilder(
       animation: _orbController,
@@ -794,7 +794,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 padding: const EdgeInsets.all(11),
                 decoration: BoxDecoration(color: const Color(0xFF071411), border: Border.all(color: kGreen.withOpacity(.16)), borderRadius: BorderRadius.circular(7)),
                 child: Row(children: [
-                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: _voiceReady ? kGreen : kRed, boxShadow: [BoxShadow(color: _voiceReady ? kGreen : kRed, blurRadius: 7)])),
+                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: _internetOnline == true && _voiceReady ? kGreen : kRed, boxShadow: [BoxShadow(color: _voiceReady ? kGreen : kRed, blurRadius: 7)])),
                   const SizedBox(width: 9),
                   Expanded(child: Text(_voiceReady ? 'ГОЛОСОВОЙ КОНТУР ГОТОВ' : 'ГОЛОСОВОЙ КОНТУР НЕ ГОТОВ', style: TextStyle(color: _voiceReady ? kGreen : kRed, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .7))),
                 ]),
@@ -886,7 +886,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         )),
         titleSpacing: 0,
         title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+          Text('SUPERMAN', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
           Text('COMMAND CENTER', style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1.1)),
         ]),
         actions: [
