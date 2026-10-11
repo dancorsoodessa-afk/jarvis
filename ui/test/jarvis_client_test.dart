@@ -95,4 +95,11 @@ void main() {
     expect(primaryCalls, 1);
     expect(fallbackCalls, 1);
   });
+
+  test('connection verification uses fallback after primary authentication fails', () async {
+    await client.verifyConnection();
+    expect(primaryCalls, 1);
+    expect(fallbackCalls, 1);
+  });
+
 }

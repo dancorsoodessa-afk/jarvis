@@ -380,24 +380,86 @@ class JarvisIpc {
 
   Future<void> verifyConnection() async {
     if (!_standalone) return;
-    final url = (_apiUrl ?? '').trim().replaceFirst(RegExp(r'/+$'), '');
-    final key = (_apiKey ?? '').trim();
-    final model = (_model ?? '').trim();
-    if (url.isEmpty) throw ArgumentError('AI endpoint не указан');
-    if (key.isEmpty) throw ArgumentError('API key не указан');
-    final r = await _httpClient!.getUrl(Uri.parse('$url/models'));
-    r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
-    final data = await _json(await r.close());
-    if (model.isNotEmpty && data['data'] is List) {
-      final ids = (data['data'] as List)
-          .whereType<Map>()
-          .map((m) => m['id']?.toString())
-          .whereType<String>()
-          .toSet();
-      if (ids.isNotEmpty && !ids.contains(model)) {
-        throw StateError('Модель $model недоступна у выбранного провайдера');
+    final providers = <Map<String, String>>[
+      {'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
+      ..._fallbacks,
+    ];
+    Object? lastError;
+    var attempted = 0;
+    var allEndpointsReturnedNotFound = true;
+    var hasConfiguredModel = false;
+
+    for (final provider in providers) {
+      final url = (provider['url'] ?? '').trim().replaceFirst(RegExp(r'/+
+
+
+  Future<JarvisReply> sendMessage(String text, {Map<String, dynamic>? attachment}) async {
+    if (_standalone) return await _standaloneSend(text, attachment: attachment);
+    final response = await _ipc({
+      'type': 'message',
+      'text': text,
+      if (attachment != null) 'attachment': attachment,
+    });
+    return JarvisReply.fromJson(response);
+  }
+
+  Future<List<String>> listTools() async {
+    if (!_standalone) {
+      try {
+        final r = await _ipc({'type': 'list_tools'});
+        if (r['tools'] is List) return (r['tools'] as List).map((e) => e.toString()).toList();
+      } catch (_) {}
+      return const [];
+    }
+    return _tools().map((x) => ((x['function'] as Map)['name'] ?? '').toString()).where((x) => x.isNotEmpty).toList();
+  }
+
+  Future<void> dispose() async {
+    for (final c in _pending.values) { if (!c.isCompleted) c.completeError(StateError('Клиент закрыт')); }
+    _pending.clear();
+    await _deltas.close();
+    _httpClient?.close(force: true);
+    _process?.kill();
+  }
+}
+), '');
+      final key = (provider['key'] ?? '').trim();
+      final model = (provider['model'] ?? '').trim();
+      if (url.isEmpty || key.isEmpty) continue;
+      attempted++;
+      if (model.isNotEmpty) hasConfiguredModel = true;
+      try {
+        final request = await _httpClient!.getUrl(Uri.parse('$url/models'));
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        final data = await _json(await request.close());
+        if (model.isNotEmpty && data['data'] is List) {
+          final ids = (data['data'] as List)
+              .whereType<Map>()
+              .map((item) => item['id']?.toString())
+              .whereType<String>()
+              .toSet();
+          if (ids.isNotEmpty && !ids.contains(model)) {
+            throw StateError('Модель $model недоступна у провайдера ${provider['name'] ?? url}');
+          }
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!error.toString().contains('AI 404')) {
+          allEndpointsReturnedNotFound = false;
+        }
       }
     }
+
+    // Some OpenAI-compatible gateways support chat completions but intentionally
+    // do not expose GET /models. Do not block startup when a model was configured;
+    // the actual chat request will verify that endpoint and can use the fallback.
+    if (attempted > 0 && hasConfiguredModel && allEndpointsReturnedNotFound) return;
+    if (attempted == 0) {
+      throw StateError('Не настроен ни один AI-провайдер: проверьте URL и API key.');
+    }
+    throw StateError('Проверка подключения AI не прошла: ${lastError ?? 'неизвестная ошибка'}');
   }
 
 
