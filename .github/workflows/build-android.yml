@@ -43,8 +43,6 @@ jobs:
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
           echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
-          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-jvm-1.13.8.jar -o android/app/libs/sherpa-onnx-jvm-1.13.8.jar
-          echo "77b7b047fade4eadada96b568eb92615049aaf1dc317c7244e46c1ea38b9a63b  android/app/libs/sherpa-onnx-jvm-1.13.8.jar" | sha256sum -c -
           test ! -e test/widget_test.dart
       - name: Install native Android voice engine
         working-directory: ui
@@ -97,7 +95,6 @@ jobs:
               'implementation("androidx.core:core-ktx:1.12.0")',
               'implementation("androidx.appcompat:appcompat:1.6.1")',
               'implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))',
-              'implementation(files("$projectDir/libs/sherpa-onnx-jvm-1.13.8.jar"))',
           ]
           for dep in deps:
               if dep in t:
@@ -123,11 +120,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s android/app/libs/sherpa-onnx-1.13.8.aar
-          test -s android/app/libs/sherpa-onnx-jvm-1.13.8.jar
           grep -F 'implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))' android/app/build.gradle.kts
-          grep -F 'implementation(files("$projectDir/libs/sherpa-onnx-jvm-1.13.8.jar"))' android/app/build.gradle.kts
-          echo '--- Sherpa JAR class entries ---'
-          jar tf android/app/libs/sherpa-onnx-jvm-1.13.8.jar | grep -E 'com/k2fsa/sherpa/onnx/(OnlineRecognizer|Vad|OfflineTts)' | head -40 || true
           echo '--- Sherpa AAR classes.jar entries ---'
           unzip -p android/app/libs/sherpa-onnx-1.13.8.aar classes.jar > /tmp/sherpa-classes.jar
           jar tf /tmp/sherpa-classes.jar | grep -E 'com/k2fsa/sherpa/onnx/(OnlineRecognizer|Vad|OfflineTts)' | head -40 || true
