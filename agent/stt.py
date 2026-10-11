@@ -33,6 +33,9 @@ def available_engines() -> list[str]:
 
 
 def current_engine() -> str:
+    from .connectivity import internet_available
+    if not internet_available():
+        return "off"
     mode = os.environ.get("JARVIS_STT", "faster-whisper").strip().lower()
     if mode == "off":
         return "off"
@@ -66,6 +69,9 @@ def warmup() -> None:
 
 
 def transcribe(audio_path: str) -> str:
+    from .connectivity import internet_available
+    if not internet_available():
+        raise RuntimeError("Интернет недоступен: голосовой режим выключен. Используйте текстовый ввод.")
     if current_engine() == "off":
         raise RuntimeError("Распознавание речи отключено или faster-whisper не установлен.")
     path = Path(audio_path)
