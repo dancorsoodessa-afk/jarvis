@@ -90,16 +90,16 @@ class MainActivity : FlutterActivity() {
                 "load_settings" -> {
                     val p = getSharedPreferences(PREFS, MODE_PRIVATE)
                     result.success(mapOf(
-                        "endpoint" to p.getString(KEY_ENDPOINT, "https://api.openai.com/v1"),
-                        "model" to p.getString(KEY_MODEL, "gpt-4.1-mini"),
+                        "endpoint" to p.getString(KEY_ENDPOINT, "https://openrouter.ai/api/v1"),
+                        "model" to p.getString(KEY_MODEL, "openrouter/free"),
                         "apiKey" to p.getString(KEY_AI_API_KEY, ""),
-                        "model1" to p.getString(KEY_MODEL1, "gpt-4.1-mini"),
-                        "model2" to p.getString(KEY_MODEL2, "openai/gpt-oss-120b"),
+                        "model1" to p.getString(KEY_MODEL1, "openrouter/free"),
+                        "model2" to p.getString(KEY_MODEL2, "qwen/qwen3-32b"),
                         "model3" to p.getString(KEY_MODEL3, "openai/gpt-oss-20b"),
                         "key1" to p.getString(KEY_KEY1, p.getString(KEY_AI_API_KEY, "")),
                         "key2" to p.getString(KEY_KEY2, ""),
                         "key3" to p.getString(KEY_KEY3, ""),
-                        "activeModel" to p.getInt(KEY_ACTIVE_MODEL, 1),
+                        "activeModel" to p.getInt(KEY_ACTIVE_MODEL, 0),
                         "apiHostKey" to p.getString(KEY_APIHOST, ""),
                         "voiceEnabled" to p.getBoolean(KEY_VOICE_ENABLED, true),
                         "coinglassApiKey" to p.getString(KEY_CG_KEY, ""),
