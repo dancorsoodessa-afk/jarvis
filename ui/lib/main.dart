@@ -201,8 +201,15 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     if (!_android || !mounted) return;
     if (_internetOnline != true) {
       final online = await _probeInternet();
-      await _applyInternetState(online);
-      if (!online || !mounted) return;
+      if (!online) {
+        await _applyInternetState(false);
+        return;
+      }
+      final wasKnown = _internetOnline != null;
+      _internetOnline = true;
+      if (mounted) setState(() => _status = wasKnown
+          ? 'Интернет восстановлен · голос доступен'
+          : 'Интернет доступен · голос готов');
     }
     try {
       await _voiceSub?.cancel();
@@ -285,7 +292,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
           ? 'Интернет доступен · голос готов'
           : 'Интернет восстановлен · голос доступен';
     });
-    if (_android && _voiceEnabled) {
+    if (_android && _voiceEnabled && previous != null) {
       Future<void>.delayed(const Duration(milliseconds: 250), () {
         if (!mounted || _internetOnline != true || !_voiceEnabled) return;
         if (_voiceReady) {
