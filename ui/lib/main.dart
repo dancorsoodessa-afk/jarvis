@@ -587,80 +587,66 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     return AnimatedBuilder(
       animation: _orbController,
       builder: (context, child) {
-        final phase = _orbController.value * 6.283185307;
+        final phase = _orbController.value * math.pi * 2;
         final pulse = 0.94 + 0.06 * (0.5 + 0.5 * math.sin(phase));
         return Container(
-          height: 286,
-          margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+          height: 300,
+          margin: const EdgeInsets.fromLTRB(10, 8, 10, 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF080E17),
-            border: Border.all(color: const Color(0xFF18283A)),
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(.35), blurRadius: 24)],
+            gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: [Color(0xFF0B1626), Color(0xFF050911), Color(0xFF09131C)]),
+            border: Border.all(color: accent.withOpacity(.25)),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: accent.withOpacity(.06), blurRadius: 28, spreadRadius: 1)],
           ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Positioned(top: 10, left: 12, right: 12, child: Row(
-                children: [
-                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 8)])),
-                  const SizedBox(width: 7),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 2)),
-                  const SizedBox(width: 7),
-                  const Text('V4.2 // ONLINE', style: TextStyle(color: Colors.white38, fontSize: 8, fontFamily: 'monospace')),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: accent.withOpacity(.08), border: Border.all(color: accent.withOpacity(.35)), borderRadius: BorderRadius.circular(3)),
-                    child: Text(listening ? 'SUPERMAN ACTIVE' : (ready ? 'READY' : 'OFFLINE'), style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                  ),
-                ],
-              )),
-              for (final size in [198.0 * pulse, 166.0 * pulse, 132.0 * pulse])
-                Container(
-                  width: size,
-                  height: size,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: accent.withOpacity(.16), width: 1),
-                  ),
-                ),
-              Container(
-                width: 108 * pulse,
-                height: 108 * pulse,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0E3440), Color(0xFF09202A)]),
-                  border: Border.all(color: accent.withOpacity(.8)),
-                  boxShadow: [BoxShadow(color: accent.withOpacity(.22), blurRadius: 30)],
-                ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    for (final h in [13.0, 24.0, 34.0, 20.0, 29.0])
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 450),
-                          width: 4,
-                          height: h * pulse,
-                          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(3), boxShadow: [BoxShadow(color: accent, blurRadius: 7)]),
-                        ),
-                      ),
-                  ]),
-                  const SizedBox(height: 8),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                ]),
+          child: Stack(alignment: Alignment.center, children: [
+            Positioned(top: 13, left: 15, right: 15, child: Row(children: [
+              Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 8)])),
+              const SizedBox(width: 8),
+              const Text('SUPERMAN', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 2.2)),
+              const Spacer(),
+              Text('ИИ-АГЕНТ  /  V1', style: TextStyle(color: accent.withOpacity(.75), fontSize: 8, fontFamily: 'monospace', letterSpacing: 1)),
+            ])),
+            Transform.rotate(
+              angle: phase * .32,
+              child: Container(width: 202 * pulse, height: 202 * pulse,
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: accent.withOpacity(.22), width: 1)),
+                child: Align(alignment: Alignment.topCenter, child: Container(width: 7, height: 7, margin: const EdgeInsets.only(top: 5),
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 9)]))),
               ),
-              Positioned(bottom: 36, left: 16, right: 16, child: Column(children: [
-                RichText(textAlign: TextAlign.center, text: TextSpan(children: [
-                  TextSpan(text: listening ? 'СЛУШАЕТ ПОТОК ' : 'JARVIS ', style: const TextStyle(color: Colors.white, fontSize: 20, fontFamily: 'serif', fontWeight: FontWeight.w700)),
-                  TextSpan(text: listening ? 'DUPLEX' : 'CORE', style: TextStyle(color: const Color(0xFF061016), backgroundColor: accent, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                ])),
-                const SizedBox(height: 4),
-                Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 9, fontFamily: 'monospace')),
-              ])),
-            ],
-          ),
+            ),
+            Transform.rotate(
+              angle: -phase * .48,
+              child: Container(width: 164, height: 164,
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: accent.withOpacity(.38), width: 1.2)),
+                child: Align(alignment: Alignment.bottomRight, child: Container(width: 6, height: 6, margin: const EdgeInsets.only(right: 10, bottom: 13),
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: kGreen, boxShadow: [BoxShadow(color: kGreen.withOpacity(.8), blurRadius: 7)]))),
+              ),
+            ),
+            Container(
+              width: 122 * pulse, height: 122 * pulse,
+              decoration: BoxDecoration(shape: BoxShape.circle,
+                gradient: RadialGradient(center: const Alignment(-.3, -.35), radius: .95,
+                  colors: [accent.withOpacity(.30), const Color(0xFF0B2031), const Color(0xFF050B14)], stops: const [0, .55, 1]),
+                border: Border.all(color: accent.withOpacity(.8), width: 1.4),
+                boxShadow: [BoxShadow(color: accent.withOpacity(.20), blurRadius: 30, spreadRadius: 2)],
+              ),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.hub_rounded, color: accent, size: 40),
+                const SizedBox(height: 5),
+                const Text('CORE', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 3)),
+                const SizedBox(height: 3),
+                Text(ready ? 'ONLINE' : 'TEXT MODE', style: TextStyle(color: accent, fontSize: 7, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+              ]),
+            ),
+            Positioned(bottom: 14, left: 14, right: 14, child: Column(children: [
+              Text(listening ? 'СЛУШАЮ КОМАНДУ' : (_busy ? 'ОБРАБАТЫВАЮ ЗАПРОС' : 'СУПЕРМЕН ГОТОВ'),
+                textAlign: TextAlign.center, style: TextStyle(color: accent, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+              const SizedBox(height: 4),
+              Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white54, fontSize: 9, fontFamily: 'monospace')),
+            ])),
+          ]),
         );
       },
     );
