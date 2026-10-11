@@ -124,6 +124,7 @@ class JarvisDesktop(tk.Tk):
         self._build_ui()
         self._start_agent()
         self.after(80, self._drain_events)
+        self._orb_after = self.after(100, self._draw_orb)
         self.protocol("WM_DELETE_WINDOW", self._close)
 
     def _apply_saved_settings(self):

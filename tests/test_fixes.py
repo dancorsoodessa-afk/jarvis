@@ -68,6 +68,14 @@ class TestLlmToolCallWithNameParam(unittest.TestCase):
         self.assertIsInstance(agent._execute_for_llm("ps", {"name": "python"}), str)
 
 
+class TestReactorStarts(unittest.TestCase):
+    def test_orb_animation_is_started_in_init(self):
+        """_draw_orb reschedules itself but was never called, so the 3D reactor stayed blank."""
+        src = (Path(__file__).resolve().parent.parent / "jarvis_desktop.py").read_text(encoding="utf-8")
+        init = src.split("def __init__", 1)[1].split("\n    def ", 1)[0]
+        self.assertRegex(init, r"self\.after\([^)]*self\._draw_orb")
+
+
 class TestSafeEndpoint(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
