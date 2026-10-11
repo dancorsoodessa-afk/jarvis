@@ -10,7 +10,7 @@ from agent.runtime import build_agent
 from agent.config import Settings
 from agent.multi_agent import ThreeAgentProvider
 from agent.providers.openai_chat import OpenAIChatProvider
-from agent import ipc, habits
+from agent import ipc, habits, improvement_tools
 from agent.tools import self_modify
 
 
