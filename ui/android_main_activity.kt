@@ -138,6 +138,12 @@ class MainActivity : FlutterActivity() {
                 }
                 "start", "listen_now" -> { voiceLoopEnabled = true; startRecognition(); result.success(true) }
                 "stop" -> { voiceLoopEnabled = false; stopRecognition(); result.success(true) }
+                "stop_speech" -> {
+                    try { systemTts?.stop() } catch (_: Exception) {}
+                    ttsPlaying = false
+                    pendingTts = null
+                    result.success(true)
+                }
                 "speak" -> { speak(call.argument<String>("text").orEmpty()); result.success(true) }
                 "open_tts_settings" -> { openTtsSettings(); result.success(true) }
                 "install_tts_data" -> { installTtsData(); result.success(true) }
