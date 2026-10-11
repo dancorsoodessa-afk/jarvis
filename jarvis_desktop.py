@@ -13,7 +13,7 @@ from tkinter import filedialog, messagebox, ttk
 import mimetypes
 
 from agent.runtime import build_agent
-from agent import tts, voice, stt
+from agent import tts, voice, stt, connectivity
 from agent.secrets import protect_secret, unprotect_secret
 from agent.tools_catalog import TOOLS
 
@@ -74,7 +74,7 @@ def _load_saved_settings() -> dict:
 class JarvisDesktop(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("JARVIS — AI COMMAND CENTER")
+        self.title("SUPERMAN — AI COMMAND CENTER")
         self.geometry("1420x900")
         self.minsize(1180, 740)
         self.configure(bg=BG)
@@ -86,6 +86,8 @@ class JarvisDesktop(tk.Tk):
         self.tool_names = []
         self.attachments = []
         self._voice_loop_running = False
+        self._network_monitor_running = True
+        self._network_online = None
         self._voice_armed_until = 0.0
         self._orb_phase = 0.0
         self._visual_state = "IDLE"
@@ -98,6 +100,7 @@ class JarvisDesktop(tk.Tk):
         self._start_agent()
         self.after(80, self._drain_events)
         self.protocol("WM_DELETE_WINDOW", self._close)
+        threading.Thread(target=self._monitor_network, daemon=True).start()
 
     def _apply_saved_settings(self):
         profiles = self.settings.get("agents", {})
