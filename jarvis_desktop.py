@@ -675,7 +675,7 @@ class JarvisDesktop(tk.Tk):
                         self.send_button.config(state="normal")
                         self.attach_button.config(state="normal")
                         self.status.config(text="● ONLINE", fg=GREEN)
-                        if self.settings.get("tts_enabled", True):
+                        if self.settings.get("tts_enabled", True) and connectivity.internet_available():
                             threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
                         else:
                             self._set_visual_state("IDLE", 0.0)
