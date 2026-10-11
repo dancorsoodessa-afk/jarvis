@@ -295,3 +295,12 @@ powershell -ExecutionPolicy Bypass -File scripts\\install_autostart.ps1 -Remove
 - The background connection monitor re-enables voice automatically after internet returns, unless the user manually disabled voice.
 - Text entry remains available offline, but cloud AI requests require connectivity. No offline speech fallback is used.
 - Voice status is checked through a short-lived cached HTTPS probe; API credentials are never sent to the connectivity probe.
+
+
+## Persistent preferences and guarded self-improvement
+
+- SUPERMAN can save explicit user preferences with `remember_preference`, list them with `list_preferences`, and delete them with `forget_preference`.
+- Preferences are stored in `~/.superman/preferences.json`; the assistant must not silently profile conversations. Save a habit only when the user asks or confirms.
+- Self-improvement proposals are recorded in `~/.superman/improvement_workflow.json`. The available tools enforce the order: propose → record test evidence → request user confirmation → record approval/rejection → apply the approved change → record verification evidence → save.
+- These tools manage the workflow; they do not train model weights or update an installed/signed APK. The agent must actually run tests and must never treat a claimed result as verified without evidence.
+- Source edits create a backup when the target file already exists. `rollback_last_change` restores the newest valid backup; newly created files do not produce a fake backup.
