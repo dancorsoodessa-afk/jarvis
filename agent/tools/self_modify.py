@@ -98,7 +98,7 @@ def rollback_last_backup() -> str:
         if match:
             backups.append((candidate.stat().st_mtime_ns, candidate, unquote(match.group(2))))
             continue
-        legacy = re.match(r"^(\\d{8}_\\d{6}_\\d{6})_(.+)$", candidate.name)
+        legacy = re.match(r"^([0-9]{8}_[0-9]{6}_[0-9]{6})_(.+)$", candidate.name)
         if legacy:
             backups.append((candidate.stat().st_mtime_ns, candidate, legacy.group(2).replace("__", "/")))
     if not backups:
