@@ -1,8 +1,8 @@
-name: JARVIS Windows tests
+name: SUPERMAN Windows tests
 
 on:
   push:
-    branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928]
+    branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928, unified-superman]
     paths:
       - "agent/**"
       - "tests/**"
