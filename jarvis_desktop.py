@@ -88,6 +88,7 @@ class JarvisDesktop(tk.Tk):
         self._voice_loop_running = False
         self._network_monitor_running = True
         self._network_online = None
+        self._ui_network_online = None
         self._voice_armed_until = 0.0
         self._orb_phase = 0.0
         self._visual_state = "IDLE"
@@ -680,17 +681,20 @@ class JarvisDesktop(tk.Tk):
                             self._set_visual_state("IDLE", 0.0)
                     elif kind == "network_status":
                         online = bool(event[1])
+                        if online == self._ui_network_online:
+                            continue
+                        was_known = self._ui_network_online is not None
+                        self._ui_network_online = online
                         if online:
                             self.voice_button.config(state="normal", text="🎙 ГОЛОС")
                             self.voice_control.config(text=("🔊  Голос: ВКЛ" if self.settings.get("voice_enabled", True) else "🔇  Голос: ВЫКЛ"))
                             if not self.busy:
                                 self.status.config(text="● ONLINE", fg=GREEN)
                             self._update_voice_status()
-                            self._append("SYSTEM", "Интернет восстановлен. Голосовые функции доступны.")
+                            self._append("SYSTEM", "Интернет восстановлен. Голосовые функции доступны." if was_known else "Интернет доступен. Голосовые функции готовы.")
                             if self.settings.get("voice_enabled", True) and not self._voice_loop_running:
                                 self.after(0, self._start_voice_loop)
                         else:
-                            self._voice_loop_running = False
                             tts.stop()
                             self.voice_button.config(state="disabled", text="🎙 НЕТ СЕТИ")
                             self.voice_control.config(text="🔇  Голос: НЕТ СЕТИ")
