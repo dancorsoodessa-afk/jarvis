@@ -720,6 +720,8 @@ class JarvisDesktop(tk.Tk):
                     elif kind == "voice_status":
                         self._append("VOICE", event[1])
                     elif kind == "voice_error":
+                        if self._ui_network_online is False:
+                            continue
                         self._set_visual_state("ERROR")
                         self.voice_button.config(text="🎙 ГОЛОС")
                         self.metrics["Voice"].config(text="ERROR", fg=RED)
@@ -732,6 +734,9 @@ class JarvisDesktop(tk.Tk):
                         self._set_visual_state("IDLE", 0.0)
                         self._update_voice_status()
                     elif kind == "tts_error":
+                        if self._ui_network_online is False:
+                            self._set_visual_state("IDLE", 0.0)
+                            continue
                         self._set_visual_state("ERROR")
                         self.metrics["TTS"].config(text="ERROR", fg=RED)
                         self._append("VOICE", "Не удалось озвучить ответ: " + event[1])
