@@ -108,4 +108,4 @@ def rollback_last_backup() -> str:
     if not target.exists():
         raise FileNotFoundError(f"Нельзя откатить: исходный файл отсутствует: {relative}")
     target.write_text(backup.read_text(encoding="utf-8"), encoding="utf-8")
-    return f"Восстановлено: {target.relative_to(ROOT)} из {backup.relative_to(ROOT)}"
+    return f"Восстановлено: {target.relative_to(ROOT).as_posix()} из {backup.relative_to(ROOT).as_posix()}"
