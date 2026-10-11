@@ -540,6 +540,9 @@ class JarvisDesktop(tk.Tk):
             wake_words = ("jarvis", "джарвис")
             while self._voice_loop_running and self.settings.get("voice_enabled", True):
                 try:
+                    if not connectivity.internet_available():
+                        self.events.put(("network_status", False))
+                        break
                     self.events.put(("voice_listening", None))
                     # Keep the microphone open while waiting for the wake word.
                     # A 2-second start timeout repeatedly closed the mic and missed speech.
@@ -583,7 +586,10 @@ class JarvisDesktop(tk.Tk):
                         self._voice_armed_until = 0.0
                         self.events.put(("voice_text", command))
                 except Exception as exc:
-                    self.events.put(("voice_error", str(exc)))
+                    if not connectivity.internet_available():
+                        self.events.put(("network_status", False))
+                    else:
+                        self.events.put(("voice_error", str(exc)))
                     break
             self._voice_loop_running = False
         threading.Thread(target=work, daemon=True).start()
