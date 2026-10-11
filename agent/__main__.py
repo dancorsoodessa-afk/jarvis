@@ -10,7 +10,7 @@ from agent.runtime import build_agent
 from agent.config import Settings
 from agent.multi_agent import ThreeAgentProvider
 from agent.providers.openai_chat import OpenAIChatProvider
-from agent import ipc
+from agent import ipc, habits
 from agent.tools import self_modify
 
 
@@ -20,6 +20,8 @@ SUPERMAN_SYSTEM_PROMPT = (
     "Ты не просто чат: если у тебя есть подходящий инструмент, самостоятельно выполняй задачу. "
     "Для изменения собственного проекта используй инструменты чтения/записи исходников и после изменения запускай тесты. "
     "Не утверждай, что действие выполнено, если инструмент его не выполнил. "
+    "Запоминай привычки и предпочтения только когда пользователь прямо просит об этом или подтверждает предложение; используй инструменты remember_preference, list_preferences и forget_preference. " 
+    "Не заявляй о пассивном обучении и не сохраняй чувствительные сведения без явного запроса. " 
     "Перед действительно опасным действием требуй подтверждение. "
     "Работай последовательно: понять задачу → действовать инструментами → проверить результат → сообщить результат."
 )
@@ -41,6 +43,15 @@ def _attach_self_improvement_tools(agent) -> None:
                          description="Показать текущую ветку и незакоммиченные изменения проекта.")
     agent.tools.register("rollback_last_change", self_modify.rollback_last_backup,
                          description="Откатить последнюю резервную копию, созданную инструментом write_source.")
+    agent.tools.register("remember_preference", habits.remember_preference,
+                         description="Сохранить привычку или предпочтение пользователя только по его явной просьбе.",
+                         parameters={"key": "короткое название привычки или предпочтения", "value": "что именно нужно запомнить"})
+    agent.tools.register("list_preferences", habits.list_preferences,
+                         description="Показать сохранённые привычки и предпочтения; можно указать фильтр.",
+                         parameters={"query": "необязательный фильтр по названию или значению"})
+    agent.tools.register("forget_preference", habits.forget_preference,
+                         description="Удалить сохранённое предпочтение по точному названию.",
+                         parameters={"key": "название предпочтения для удаления"})
 
 
 def _attach_free_secondary_agents(agent, settings: Settings) -> None:
