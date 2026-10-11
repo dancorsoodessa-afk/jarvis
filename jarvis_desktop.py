@@ -504,13 +504,30 @@ class JarvisDesktop(tk.Tk):
 
     def _warmup_stt(self):
         try:
+            if not connectivity.internet_available():
+                self.events.put(("stt_offline", None))
+                return
             stt.warmup()
             self.events.put(("stt_ready", None))
         except Exception as exc:
             self.events.put(("stt_error", str(exc)))
 
+    def _monitor_network(self):
+        while self._network_monitor_running:
+            online = connectivity.internet_available(force=True)
+            if online != self._network_online:
+                self._network_online = online
+                self.events.put(("network_status", online))
+            time.sleep(2.5)
+
     def _start_voice_loop(self):
-        if not self.settings.get("voice_enabled", True) or self._voice_loop_running or not voice.available():
+        if not self.settings.get("voice_enabled", True) or self._voice_loop_running:
+            return
+        if not connectivity.internet_available():
+            self.events.put(("network_status", False))
+            return
+        if not voice.available():
+            self.events.put(("voice_status", "Голосовой движок недоступен. Проверьте микрофон и настройки."))
             return
         self._voice_loop_running = True
         self.voice_button.config(text="🎙 СЛУШАЮ")
