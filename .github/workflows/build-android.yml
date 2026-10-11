@@ -39,12 +39,10 @@ jobs:
           set -e
           rm -rf android
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
-          rm -rf test
+          rm -f test/widget_test.dart
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
           echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
-          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-jvm-1.13.8.jar -o android/app/libs/sherpa-onnx-jvm-1.13.8.jar
-          echo "77b7b047fade4eadada96b568eb92615049aaf1dc317c7244e46c1ea38b9a63b  android/app/libs/sherpa-onnx-jvm-1.13.8.jar" | sha256sum -c -
           test ! -e test/widget_test.dart
       - name: Install native Android voice engine
         working-directory: ui
@@ -92,9 +90,22 @@ jobs:
           p=Path('android/app/build.gradle.kts')
           t=p.read_text()
           t=t.replace('applicationId = "com.dancorsoodessa.jarvis_ui"','applicationId = "com.dancorsoodessa.jarvis"')
-          t=t.replace('implementation(files("libs/sherpa-onnx-1.13.8.aar"))\n    implementation(files("libs/sherpa-onnx-jvm-1.13.8.jar"))','implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")')
-          for dep in ['implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")','implementation("androidx.core:core-ktx:1.12.0")','implementation("androidx.appcompat:appcompat:1.6.1")']:
-              if dep not in t: t=t.replace('dependencies {','dependencies {\n    '+dep,1)
+          t=t.replace('implementation("com.github.k2-fsa:sherpa-onnx:v1.13.8")', '')
+          deps = [
+              'implementation("androidx.core:core-ktx:1.12.0")',
+              'implementation("androidx.appcompat:appcompat:1.6.1")',
+              'implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))',
+          ]
+          for dep in deps:
+              if dep in t:
+                  continue
+              if 'dependencies {' in t:
+                  t=t.replace('dependencies {', 'dependencies {\n    '+dep, 1)
+              else:
+                  t += '\n\ndependencies {\n    '+dep+'\n}\n'
+          for dep in deps:
+              if dep not in t:
+                  raise SystemExit('Android dependency was not inserted: '+dep)
           p.write_text(t)
           p=Path('pubspec.yaml'); p.write_text(p.read_text().replace('version: 0.1.0','version: 0.1.2',1))
           p=Path('android/app/src/main/AndroidManifest.xml'); t=p.read_text()
@@ -105,14 +116,27 @@ jobs:
                   t=t.replace(marker, f'    <uses-permission android:name="{n}" />\n'+marker, 1)
           p.write_text(t)
           PY
+      - name: Verify Sherpa Android dependencies
+        working-directory: ui
+        run: |
+          set -euo pipefail
+          test -s android/app/libs/sherpa-onnx-1.13.8.aar
+          grep -F 'implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))' android/app/build.gradle.kts
+          echo '--- Sherpa AAR classes.jar entries ---'
+          unzip -p android/app/libs/sherpa-onnx-1.13.8.aar classes.jar > /tmp/sherpa-classes.jar
+          jar tf /tmp/sherpa-classes.jar | grep -E 'com/k2fsa/sherpa/onnx/(OnlineRecognizer|Vad|OfflineTts)' | head -40 || true
+          echo 'Classpath resolution will be validated by the release build step.'
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
+      - name: Run Dart regression tests
+        working-directory: ui
+        run: flutter test
       - name: Verify voice contracts
         working-directory: ui
         run: |
           set -euo pipefail
-          grep -q "await _send(text)" lib/main.dart
+          grep -q "await _send(command, fromVoice: true)" lib/main.dart
           grep -q "__MIC_SOURCE_READY__" lib/main.dart
           grep -q "__MIC_LEVEL__" lib/main.dart
           grep -q "__MIC_LEVEL__" android_main_activity.kt
