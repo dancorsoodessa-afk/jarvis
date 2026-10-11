@@ -1,4 +1,4 @@
-# JARVIS
+# SUPERMAN
 
 Personal AI Agent / Desktop Assistant for Windows x64.
 
@@ -286,3 +286,12 @@ JARVIS ожидает речь, но **не отправляет обычную 
 powershell -ExecutionPolicy Bypass -File scripts\\install_autostart.ps1
 powershell -ExecutionPolicy Bypass -File scripts\\install_autostart.ps1 -Remove
 ```
+
+
+## SUPERMAN voice/network policy
+
+- Voice capture, speech recognition, and speech output are enabled only while an external HTTPS connection is available.
+- If connectivity is lost, SUPERMAN stops the voice loop and speech playback, disables the microphone control, and switches the desktop UI to text mode.
+- The background connection monitor re-enables voice automatically after internet returns, unless the user manually disabled voice.
+- Text entry remains available offline, but cloud AI requests require connectivity. No offline speech fallback is used.
+- Voice status is checked through a short-lived cached HTTPS probe; API credentials are never sent to the connectivity probe.
