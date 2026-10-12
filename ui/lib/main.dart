@@ -235,7 +235,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
     if (value.startsWith('__TTS_ERROR__')) { _ttsReady = false; if (mounted) setState(() => _status = 'Ошибка TTS: ${value.substring(12)}'); return; }
     if (value == '__MIC_SOURCE_READY__') { if (mounted) setState(() => _status = 'Микрофон подключён · проверяю сигнал…'); return; }
-    if (value.startsWith('__MIC_LEVEL__:')) { final rawLevel = double.tryParse(value.substring(14).replaceAll('%', '').trim()); if (mounted) setState(() { _audioLevel = rawLevel == null ? 0.0 : (rawLevel > 1 ? rawLevel / 100.0 : rawLevel).clamp(0.0, 1.0).toDouble(); _status = 'Микрофон работает · сигнал ${value.substring(14)}'; }); return; }
+    if (value.startsWith('__MIC_LEVEL__:')) { final rawLevel = double.tryParse(value.substring(14).replaceAll('%', '').trim()); if (mounted) setState(() { _audioLevel = rawLevel == null ? 0.0 : (rawLevel > 1 ? rawLevel / 100.0 : rawLevel * 3.5).clamp(0.0, 1.0).toDouble(); _status = 'Микрофон работает · сигнал ${value.substring(14)}'; }); return; }
     if (value == '__LISTENING__') { _listening = true; _audioLevel = 0.06; if (mounted) setState(() => _status = 'Слушаю…'); return; }
     if (value.startsWith('__ERROR__:')) {
       _listening = false;
