@@ -69,15 +69,19 @@ class _NeuralSpherePainter extends CustomPainter {
   final JarvisVisualState state;
   final double audioLevel, load;
 
-  Color get accent => switch (state) {
-        JarvisVisualState.idle => const Color(0xFF36CFFF),
-        JarvisVisualState.listening => const Color(0xFF35FFD2),
-        JarvisVisualState.thinking => const Color(0xFF9B75FF),
-        JarvisVisualState.speaking => const Color(0xFF4CA8FF),
-        JarvisVisualState.confirmation => const Color(0xFF61FFB2),
-        JarvisVisualState.error => const Color(0xFFFF496C),
-        JarvisVisualState.exiting => const Color(0xFF607B91),
-      };
+  Color get accent {
+    final base = switch (state) {
+      JarvisVisualState.idle => const Color(0xFF36CFFF),
+      JarvisVisualState.listening => const Color(0xFF35FFD2),
+      JarvisVisualState.thinking => const Color(0xFF9B75FF),
+      JarvisVisualState.speaking => const Color(0xFF4CA8FF),
+      JarvisVisualState.confirmation => const Color(0xFF61FFB2),
+      JarvisVisualState.error => const Color(0xFFFF496C),
+      JarvisVisualState.exiting => const Color(0xFF607B91),
+    };
+    // High AI activity pushes the state color toward bright plasma-cyan.
+    return Color.lerp(base, const Color(0xFFB8F5FF), load * 0.48)!;
+  }
 
   double get stateEnergy => switch (state) {
         JarvisVisualState.idle => 0.24,
