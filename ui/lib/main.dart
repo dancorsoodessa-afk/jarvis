@@ -508,20 +508,25 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     return JarvisVisualState.idle;
   }
 
-  Color get _visualAccent => switch (_visualState) {
-    JarvisVisualState.idle => const Color(0xFF36CFFF),
-    JarvisVisualState.listening => const Color(0xFF35FFD2),
-    JarvisVisualState.thinking => const Color(0xFF9B75FF),
-    JarvisVisualState.speaking => const Color(0xFF4CA8FF),
-    JarvisVisualState.confirmation => const Color(0xFF61FFB2),
-    JarvisVisualState.error => kRed,
-    JarvisVisualState.exiting => Colors.blueGrey,
-  };
+  double get _visualLoad => _busy ? 0.96 : (_speaking ? 0.78 : (_listening ? 0.42 + _audioLevel * 0.45 : 0.16));
+
+  Color get _visualAccent {
+    final base = switch (_visualState) {
+      JarvisVisualState.idle => const Color(0xFF36CFFF),
+      JarvisVisualState.listening => const Color(0xFF35FFD2),
+      JarvisVisualState.thinking => const Color(0xFF9B75FF),
+      JarvisVisualState.speaking => const Color(0xFF4CA8FF),
+      JarvisVisualState.confirmation => const Color(0xFF61FFB2),
+      JarvisVisualState.error => kRed,
+      JarvisVisualState.exiting => Colors.blueGrey,
+    };
+    return Color.lerp(base, const Color(0xFFB8F5FF), _visualLoad * 0.48)!;
+  }
 
   Widget _coreVisual() {
     final state = _visualState;
     final accent = _visualAccent;
-    final load = _busy ? 0.96 : (_speaking ? 0.78 : (_listening ? 0.42 + _audioLevel * 0.45 : 0.16));
+    final load = _visualLoad;
     final label = switch (state) {
       JarvisVisualState.idle => 'ГОТОВ',
       JarvisVisualState.listening => 'СЛУШАЕТ',
