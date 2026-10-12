@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 import 'jarvis_client.dart';
+import 'jarvis_reactor.dart';
 
 const kCyan = Color(0xFF08E6FF);
 const kGreen = Color(0xFF45F0B0);
@@ -65,7 +66,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   _Attachment? _attachment;
   StreamSubscription<dynamic>? _voiceSub;
   StreamSubscription<String>? _partialSub;
-  bool _voiceReady = false, _ttsReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
+  bool _voiceReady = false, _ttsReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false, _speaking = false;
+  double _audioLevel = 0.0;
   static final RegExp _jarvisWake = RegExp(r'^\s*(?:jarvis|джарвис)\s*[,;:.!?-]?\s*', caseSensitive: false);
   late final AnimationController _orbController;
   String _status = 'JARVIS запускается…', _streamText = '';
@@ -233,8 +235,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
     if (value.startsWith('__TTS_ERROR__')) { _ttsReady = false; if (mounted) setState(() => _status = 'Ошибка TTS: ${value.substring(12)}'); return; }
     if (value == '__MIC_SOURCE_READY__') { if (mounted) setState(() => _status = 'Микрофон подключён · проверяю сигнал…'); return; }
-    if (value.startsWith('__MIC_LEVEL__:')) { if (mounted) setState(() => _status = 'Микрофон работает · сигнал ${value.substring(14)}'); return; }
-    if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
+    if (value.startsWith('__MIC_LEVEL__:')) { final rawLevel = double.tryParse(value.substring(14).replaceAll('%', '').trim()); if (mounted) setState(() { _audioLevel = rawLevel == null ? 0.0 : (rawLevel > 1 ? rawLevel / 100.0 : rawLevel).clamp(0.0, 1.0).toDouble(); _status = 'Микрофон работает · сигнал ${value.substring(14)}'; }); return; }
+    if (value == '__LISTENING__') { _listening = true; _audioLevel = 0.06; if (mounted) setState(() => _status = 'Слушаю…'); return; }
     if (value.startsWith('__ERROR__:')) {
       _listening = false;
       if (mounted) setState(() => _status = 'Ошибка голоса: ${value.substring(10)}');
@@ -270,7 +272,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
 
   Future<void> _speak(String text) async {
     if (!_android || !mounted || text.trim().isEmpty) return;
+    setState(() { _speaking = true; _audioLevel = 0.35; });
     try { await _voice.invokeMethod('speak', {'text': text.trim()}); } catch (_) {}
+    finally { if (mounted) setState(() { _speaking = false; _audioLevel = 0.0; }); }
   }
 
   Future<void> _connectDesktop() async {
@@ -494,89 +498,89 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
       decoration: BoxDecoration(color: kPanel, border: Border.all(color: kLine), borderRadius: BorderRadius.circular(3)),
       child: Text(text, style: const TextStyle(color: kCyan, fontSize: 10, fontFamily: 'monospace'))));
 
+  JarvisVisualState get _visualState {
+    final status = _status.toLowerCase();
+    if (status.contains('ошибка') || status.startsWith('ошибка')) return JarvisVisualState.error;
+    if (_speaking) return JarvisVisualState.speaking;
+    if (_busy) return JarvisVisualState.thinking;
+    if (_listening) return JarvisVisualState.listening;
+    if (_status.contains('подтверждение')) return JarvisVisualState.confirmation;
+    return JarvisVisualState.idle;
+  }
+
+  Color get _visualAccent => switch (_visualState) {
+    JarvisVisualState.idle => const Color(0xFF36CFFF),
+    JarvisVisualState.listening => const Color(0xFF35FFD2),
+    JarvisVisualState.thinking => const Color(0xFF9B75FF),
+    JarvisVisualState.speaking => const Color(0xFF4CA8FF),
+    JarvisVisualState.confirmation => const Color(0xFF61FFB2),
+    JarvisVisualState.error => kRed,
+    JarvisVisualState.exiting => Colors.blueGrey,
+  };
+
   Widget _coreVisual() {
-    final listening = _listening;
-    final ready = _voiceReady && _voiceEnabled;
-    final accent = listening ? kGreen : (ready ? kCyan : kRed);
-    return AnimatedBuilder(
-      animation: _orbController,
-      builder: (context, child) {
-        final phase = _orbController.value * 6.283185307;
-        final pulse = 0.94 + 0.06 * (0.5 + 0.5 * math.sin(phase));
-        return Container(
-          height: 286,
-          margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
-          decoration: BoxDecoration(
-            color: const Color(0xFF080E17),
-            border: Border.all(color: const Color(0xFF18283A)),
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(.35), blurRadius: 24)],
+    final state = _visualState;
+    final accent = _visualAccent;
+    final load = _busy ? 0.96 : (_speaking ? 0.78 : (_listening ? 0.42 + _audioLevel * 0.45 : 0.16));
+    final label = switch (state) {
+      JarvisVisualState.idle => 'ГОТОВ',
+      JarvisVisualState.listening => 'СЛУШАЕТ',
+      JarvisVisualState.thinking => 'ДУМАЕТ',
+      JarvisVisualState.speaking => 'ОТВЕЧАЕТ',
+      JarvisVisualState.confirmation => 'НУЖНО ПОДТВЕРЖДЕНИЕ',
+      JarvisVisualState.error => 'ОШИБКА',
+      JarvisVisualState.exiting => 'ЗАВЕРШЕНИЕ',
+    };
+    return Container(
+      height: 286,
+      margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF080E17),
+        border: Border.all(color: const Color(0xFF18283A)),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [BoxShadow(color: accent.withOpacity(.08), blurRadius: 26)],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 36, 8, 64),
+              child: JarvisReactor(state: state, audioLevel: _audioLevel, load: load),
+            ),
           ),
-          child: Stack(
-            alignment: Alignment.center,
+          Positioned(top: 10, left: 12, right: 12, child: Row(
             children: [
-              Positioned(top: 10, left: 12, right: 12, child: Row(
-                children: [
-                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 8)])),
-                  const SizedBox(width: 7),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 2)),
-                  const SizedBox(width: 7),
-                  const Text('V4.2 // ONLINE', style: TextStyle(color: Colors.white38, fontSize: 8, fontFamily: 'monospace')),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: accent.withOpacity(.08), border: Border.all(color: accent.withOpacity(.35)), borderRadius: BorderRadius.circular(3)),
-                    child: Text(listening ? 'JARVIS ACTIVE' : (ready ? 'READY' : 'OFFLINE'), style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                  ),
-                ],
-              )),
-              for (final size in [198.0 * pulse, 166.0 * pulse, 132.0 * pulse])
-                Container(
-                  width: size,
-                  height: size,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: accent.withOpacity(.16), width: 1),
-                  ),
-                ),
+              Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 8)])),
+              const SizedBox(width: 7),
+              const Text('SUPERMAN // NEURAL CORE', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+              const Spacer(),
               Container(
-                width: 108 * pulse,
-                height: 108 * pulse,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0E3440), Color(0xFF09202A)]),
-                  border: Border.all(color: accent.withOpacity(.8)),
-                  boxShadow: [BoxShadow(color: accent.withOpacity(.22), blurRadius: 30)],
-                ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    for (final h in [13.0, 24.0, 34.0, 20.0, 29.0])
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 450),
-                          width: 4,
-                          height: h * pulse,
-                          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(3), boxShadow: [BoxShadow(color: accent, blurRadius: 7)]),
-                        ),
-                      ),
-                  ]),
-                  const SizedBox(height: 8),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                ]),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: accent.withOpacity(.08), border: Border.all(color: accent.withOpacity(.35)), borderRadius: BorderRadius.circular(3)),
+                child: Text(label, style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: .7)),
               ),
-              Positioned(bottom: 36, left: 16, right: 16, child: Column(children: [
-                RichText(textAlign: TextAlign.center, text: TextSpan(children: [
-                  TextSpan(text: listening ? 'СЛУШАЕТ ПОТОК ' : 'JARVIS ', style: const TextStyle(color: Colors.white, fontSize: 20, fontFamily: 'serif', fontWeight: FontWeight.w700)),
-                  TextSpan(text: listening ? 'DUPLEX' : 'CORE', style: TextStyle(color: const Color(0xFF061016), backgroundColor: accent, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                ])),
-                const SizedBox(height: 4),
-                Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 9, fontFamily: 'monospace')),
-              ])),
             ],
-          ),
-        );
-      },
+          )),
+          Positioned(bottom: 36, left: 16, right: 16, child: Column(children: [
+            Text(
+              switch (state) {
+                JarvisVisualState.idle => 'ЯДРО АКТИВНО',
+                JarvisVisualState.listening => 'СЛУШАЮ ГОЛОС',
+                JarvisVisualState.thinking => 'ОБРАБАТЫВАЮ ЗАПРОС',
+                JarvisVisualState.speaking => 'ФОРМИРУЮ ОТВЕТ',
+                JarvisVisualState.confirmation => 'ОЖИДАЮ РАЗРЕШЕНИЕ',
+                JarvisVisualState.error => 'ТРЕБУЕТСЯ ПРОВЕРКА',
+                JarvisVisualState.exiting => 'ОСТАНОВКА',
+              },
+              style: TextStyle(color: accent, fontSize: 16, fontFamily: 'serif', fontWeight: FontWeight.w700, letterSpacing: .8),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 9, fontFamily: 'monospace')),
+          ])),
+        ],
+      ),
     );
   }
 
