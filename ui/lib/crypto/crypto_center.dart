@@ -13,9 +13,9 @@ class _CryptoCenterScreenState extends State<CryptoCenterScreen> {
   final Map<String, Map<String,dynamic>> prices = {};
   final cap = TextEditingController(text:'1000'), risk = TextEditingController(text:'1');
   final holdings = {'BTC':TextEditingController(text:'0'),'ETH':TextEditingController(text:'0'),'SOL':TextEditingController(text:'0')};
-  bool loading=false; String error=''; DateTime? updated;
+  bool loading=false; String error=''; DateTime? updated;\n  String symbol='BTCUSDT', timeframe='1h'; List<List<double>> candles=[]; String marketExtras='Нажмите «Обновить деривативы» для funding и open interest.'; final alerts= <String>[]; final alertPrice=TextEditingController(text:''); final alertSide= 'Выше';
   @override void initState(){super.initState(); refresh();}
-  @override void dispose(){cap.dispose();risk.dispose();for(final c in holdings.values){c.dispose();}super.dispose();}
+  @override void dispose(){cap.dispose();risk.dispose();alertPrice.dispose();for(final c in holdings.values){c.dispose();}super.dispose();}
   double n(dynamic v)=>v is num?v.toDouble():double.tryParse('$v')??0;
   String usd(double v)=>'\$'+v.toStringAsFixed(v.abs()>=100?2:v.abs()>=1?3:6);
   Future<void> refresh() async {
