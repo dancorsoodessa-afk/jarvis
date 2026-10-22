@@ -85,7 +85,7 @@ Flutter UI может запускать агент через IPC. Если г�
 |---|---|---|---|
 | \`JARVIS_PROVIDER\` | AI-провайдер (зафиксирован на Hugging Face) | \`huggingface\` | Нет |
 | \`JARVIS_CHAT_URL\` | Игнорируется: endpoint зафиксирован на Hugging Face | Hugging Face endpoint | Нет |
-| \`JARVIS_CHAT_KEY\` | API-ключ провайдера | пусто | Зависит от API |
+| \`HF_TOKEN\` | Hugging Face access token | пусто | Да |
 | \`JARVIS_CHAT_MODEL\` | Имя модели | \`Qwen/Qwen2.5-7B-Instruct\` | Нет |
 | \`JARVIS_CTX\` | Размер контекста, минимум 256 | \`2048\` | Нет |
 | \`JARVIS_THREADS\` | Число CPU-потоков, минимум 1 | \`6\` | Нет |
@@ -99,17 +99,8 @@ Flutter UI может запускать агент через IPC. Если г�
 ~~~
 $env:JARVIS_PROVIDER = "huggingface"
 $env:JARVIS_CHAT_URL = "https://router.huggingface.co/v1/chat/completions"
-$env:JARVIS_CHAT_KEY = "YOUR_API_KEY"
+$env:HF_TOKEN = "hf_ВАШ_ТОКЕН"
 $env:JARVIS_CHAT_MODEL = "your-model"
-.\\release\\JARVIS.exe
-~~~
-
-**Полностью локальный llama.cpp:**
-
-~~~
-$env:JARVIS_PROVIDER = "local-vulkan"
-$env:JARVIS_LLAMA_CLI = "llama-cli"
-$env:JARVIS_MODEL = "C:\\Models\\model.gguf"
 .\\release\\JARVIS.exe
 ~~~
 
