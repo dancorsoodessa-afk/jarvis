@@ -7,15 +7,8 @@ DEFAULT_CHAT_URL = "https://router.huggingface.co/v1/chat/completions"
 
 
 def normalize_chat_url(value: str | None) -> str:
-    """Use the configured OpenAI-compatible endpoint, including local servers.
-
-    An empty setting gets the default cloud endpoint. Explicit localhost/loopback
-    URLs must be preserved so Ollama, LM Studio, and llama.cpp server can be used.
-    Connection failures should be reported by the provider, not hidden by
-    silently redirecting requests to a different service.
-    """
-    url = (value or "").strip()
-    return url or DEFAULT_CHAT_URL
+    """Force all cloud AI traffic through Hugging Face Inference API."""
+    return DEFAULT_CHAT_URL
 
 
 
@@ -40,7 +33,7 @@ def normalize_provider(value: str | None) -> str:
 
 @dataclass
 class Settings:
-    """Runtime settings for free/local AI providers only."""
+    """Runtime settings for Hugging Face Inference API."""
 
     provider: str = "huggingface"
     chat_url: str = ""
