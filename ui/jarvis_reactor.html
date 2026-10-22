@@ -1,55 +1,22 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<title>JARVIS Reactor — free HUD animation</title>
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JARVIS — Neural Reactor</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #05080f; display: grid; place-items: center; }
-  canvas { display: block; }
-</style>
-</head>
-<body>
-<canvas id="c" width="480" height="480"></canvas>
+:root{color-scheme:dark;--cyan:#20e8ff;--bg:#040812}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:radial-gradient(ellipse at 50% 45%,#0b2030 0,#040812 55%,#02040a 100%);font:12px system-ui,sans-serif;color:#e8fbff}
+canvas{width:100%;height:100%;display:block}.hud{position:absolute;inset:0;pointer-events:none;padding:clamp(16px,4vw,36px);display:flex;flex-direction:column;justify-content:space-between}.top,.bottom{display:flex;justify-content:space-between;align-items:center;gap:16px}.brand{letter-spacing:.35em;font-weight:800}.eyebrow{font:10px monospace;letter-spacing:.2em;color:var(--cyan);opacity:.8}.status{border:1px solid #20e8ff55;padding:8px 12px;border-radius:99px;color:var(--cyan);background:#06101bbb;letter-spacing:.14em;font-size:10px}.center-label{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;text-shadow:0 0 22px #20e8ff88}.name{font-size:clamp(25px,5vw,48px);font-weight:200;letter-spacing:.5em;padding-left:.5em}.sub{margin-top:12px;font:10px monospace;letter-spacing:.24em;color:#b5eaf2;opacity:.72}.bottom{font:10px monospace;letter-spacing:.12em;color:#a1c5d0a8}.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--cyan);margin-right:8px;box-shadow:0 0 12px var(--cyan)}@media(prefers-reduced-motion:reduce){.status{animation:none}}
+</style></head><body><canvas id="scene" aria-label="Animated JARVIS 3D neural reactor"></canvas>
+<div class="hud"><div class="top"><div><div class="brand">J.A.R.V.I.S</div><div class="eyebrow" style="margin-top:7px">NEURAL INTERFACE / REACTOR 03</div></div><div class="status"><span class="dot"></span><span id="state">SYSTEM ONLINE</span></div></div><div class="bottom"><span>CORE: <b id="core">STABLE</b></span><span>LOCAL RENDER • OFFLINE READY</span><span>VOICE: <b id="voice">STANDBY</b></span></div></div>
+<div class="center-label"><div class="name">JARVIS</div><div class="sub" id="subtitle">ADAPTIVE NEURAL CORE</div></div>
 <script>
-// Self-drawn Jarvis-style HUD. No assets, no licenses — use freely.
-const ctx = document.getElementById('c').getContext('2d');
-const CYAN = '#37d5ee', DIM = 'rgba(55,213,238,0.25)';
-const RINGS = [
-  { r: 200, w: 2,  speed:  0.15, segs: 60, gap: 0.35, color: DIM },
-  { r: 178, w: 6,  speed: -0.4,  segs: 4,  gap: 0.9,  color: CYAN },
-  { r: 150, w: 1,  speed:  0.6,  segs: 90, gap: 0.5,  color: DIM },
-  { r: 128, w: 10, speed: -0.25, segs: 8,  gap: 0.45, color: CYAN },
-  { r: 100, w: 2,  speed:  0.9,  segs: 36, gap: 0.3,  color: CYAN },
-];
-function arc(cx, cy, r, a0, a1, w, color) {
-  ctx.beginPath(); ctx.arc(cx, cy, r, a0, a1);
-  ctx.lineWidth = w; ctx.strokeStyle = color; ctx.stroke();
-}
-function frame(t) {
-  const s = t / 1000, cx = 240, cy = 240;
-  ctx.clearRect(0, 0, 480, 480);
-  ctx.lineCap = 'round';
-  for (const ring of RINGS) {
-    const rot = s * ring.speed, step = (Math.PI * 2) / ring.segs;
-    for (let i = 0; i < ring.segs; i++) {
-      const a = rot + i * step;
-      arc(cx, cy, ring.r, a, a + step * (1 - ring.gap), ring.w, ring.color);
-    }
-  }
-  // Pulsing core with glow
-  const pulse = 1 + 0.08 * Math.sin(s * 3), core = 62 * pulse;
-  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, core * 1.8);
-  g.addColorStop(0, 'rgba(180,245,255,0.9)');
-  g.addColorStop(0.45, 'rgba(55,213,238,0.35)');
-  g.addColorStop(1, 'rgba(55,213,238,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(cx, cy, core * 1.8, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = 'rgba(10,25,35,0.9)';
-  ctx.beginPath(); ctx.arc(cx, cy, core * 0.72, 0, Math.PI * 2); ctx.fill();
-  arc(cx, cy, core * 0.72, 0, Math.PI * 2, 2, CYAN);
-  requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
-</script>
-</body>
-</html>
+(()=>{const canvas=document.getElementById('scene'),ctx=canvas.getContext('2d');let w=0,h=0,dpr=1,t=0;const particles=Array.from({length:720},(_,i)=>{const y=1-2*(i+.5)/720,a=i*2.3999632297;return{x:Math.sqrt(1-y*y)*Math.cos(a),y,z:Math.sqrt(1-y*y)*Math.sin(a),s:.5+(i%5)*.23}});function resize(){dpr=Math.min(devicePixelRatio||1,2);w=innerWidth;h=innerHeight;canvas.width=w*dpr;canvas.height=h*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}addEventListener('resize',resize);resize();
+function draw(ms){t=ms*.00022;ctx.clearRect(0,0,w,h);const cx=w/2,cy=h/2,r=Math.min(w*.225,h*.29),pulse=1+.025*Math.sin(t*2.3),R=r*pulse;const glow=ctx.createRadialGradient(cx,cy,0,cx,cy,R*2.1);glow.addColorStop(0,'#16dfff25');glow.addColorStop(.5,'#12baff12');glow.addColorStop(1,'#02061000');ctx.fillStyle=glow;ctx.fillRect(cx-R*2.1,cy-R*2.1,R*4.2,R*4.2);
+const orbit=(rx,ry,rot,color,lw,dash)=>{ctx.save();ctx.translate(cx,cy);ctx.rotate(rot);ctx.beginPath();ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2);ctx.strokeStyle=color;ctx.lineWidth=lw;ctx.setLineDash(dash||[]);ctx.stroke();ctx.restore()};orbit(R*1.55,R*.38,t*1.3,'#20e8ff99',1.2,[3,7]);orbit(R*1.7,R*.52,-t*.9,'#20e8ff55',1.4,[1,9]);orbit(R*1.9,R*.64,t*.34,'#20e8ff28',1,[]);
+const sphere=ctx.createRadialGradient(cx-R*.36,cy-R*.42,R*.05,cx,cy,R);sphere.addColorStop(0,'#c5fbff');sphere.addColorStop(.12,'#3de9ff');sphere.addColorStop(.42,'#087eaa');sphere.addColorStop(.78,'#07304c');sphere.addColorStop(1,'#020914');ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.fillStyle=sphere;ctx.fill();ctx.save();ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.clip();
+ctx.strokeStyle='#7deeff65';ctx.lineWidth=.7;for(let i=-4;i<=4;i++){const yy=i*R*.22,ww=Math.sqrt(Math.max(0,R*R-yy*yy));ctx.beginPath();ctx.ellipse(cx,cy+yy,ww,Math.max(2,R*.055),0,0,Math.PI*2);ctx.stroke()}
+for(let j=0;j<7;j++){ctx.save();ctx.translate(cx,cy);ctx.rotate(t*.42+j*Math.PI/7);ctx.beginPath();ctx.ellipse(0,0,R*(.25+(j%3)*.22),R,0,0,Math.PI*2);ctx.stroke();ctx.restore()}
+const projected=[];for(const p of particles){const x=p.x*Math.cos(t*.45)+p.z*Math.sin(t*.45),z=-p.x*Math.sin(t*.45)+p.z*Math.cos(t*.45),y=p.y; if(z<-.25)continue;projected.push({x:cx+x*R*.98,y:cy+y*R*.98,z,s:p.s})}for(const p of projected){ctx.globalAlpha=.22+(p.z+1)*.34;ctx.fillStyle='#c6fbff';ctx.beginPath();ctx.arc(p.x,p.y,p.s,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;ctx.restore();
+const core=R*.24,g=ctx.createRadialGradient(cx,cy,0,cx,cy,core*2.3);g.addColorStop(0,'#ffffff');g.addColorStop(.18,'#a7faff');g.addColorStop(.45,'#20e8ff99');g.addColorStop(1,'#20e8ff00');ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,core*2.3,0,Math.PI*2);ctx.fill();
+for(let i=0;i<56;i++){const a=i*Math.PI*2/56,ri=R*1.95,ro=ri+(i%4===0?9:4);ctx.strokeStyle='#20e8ff'+(i%4===0?'bb':'66');ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*ri,cy+Math.sin(a)*ri);ctx.lineTo(cx+Math.cos(a)*ro,cy+Math.sin(a)*ro);ctx.stroke()}
+requestAnimationFrame(draw)}requestAnimationFrame(draw);
+window.jarvisSetState=(state)=>{const s=String(state||'idle').toLowerCase(),el=document.getElementById('state'),v=document.getElementById('voice');el.textContent=s==='listening'?'LISTENING':s==='processing'?'PROCESSING':s==='speaking'?'SPEAKING':s==='error'?'ERROR':'SYSTEM ONLINE';v.textContent=s==='listening'?'INPUT LIVE':s==='speaking'?'OUTPUT LIVE':'STANDBY';document.documentElement.style.setProperty('--cyan',s==='listening'?'#45f0b0':s==='processing'?'#ffc857':s==='error'?'#ff6078':'#20e8ff');document.getElementById('core').textContent=s==='error'?'CHECK REQUIRED':s==='processing'?'ACTIVE COMPUTE':'STABLE';document.getElementById('subtitle').textContent=s==='listening'?'VOICE INPUT DETECTED':s==='processing'?'NEURAL PROCESSING':s==='speaking'?'VOICE OUTPUT ACTIVE':'ADAPTIVE NEURAL CORE'};
+})();</script></body></html>
