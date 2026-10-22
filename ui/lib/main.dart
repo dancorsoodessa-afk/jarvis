@@ -1,919 +1,617 @@
-// JARVIS Android UI — selected provider first, transient-failure fallback
-// CI verification after provider-loop fix
-// Android CI build
-// Analyzer fix: model label + response model scope
-// Final CI source cleanup
-// Android terminal-launcher skin inspired by the linked Jarvis/Aris visual language.
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_selector/file_selector.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'jarvis_client.dart';
+import 'jarvis_reactor.dart';
 
-const kCyan = Color(0xFF08E6FF);
-const kGreen = Color(0xFF45F0B0);
-const kRed = Color(0xFFFF6078);
-const kAmber = Color(0xFFFFC857);
-const kBg = Color(0xFF070B12);
-const kPanel = Color(0xFF0B111B);
-const kLine = Color(0xFF18283A);
-const _defaultAiEndpoint = 'https://api.openai.com/v1';
-const _defaultModel1 = 'gpt-5.6-luna';
-const _defaultModel2 = 'openai/gpt-oss-120b';
-const _defaultModel3 = 'openai/gpt-oss-120b';
+const kCyan = Color(0xFF37D5EE);
+const kBg = Color(0xFF05080F);
+const kPanel = Color(0xFF0D1622);
+const kFreePrimaryUrl = 'https://router.huggingface.co/v1';
+const kFreePrimaryModel = 'Qwen/Qwen3-4B-Instruct-2507';
+const kFreeFallbackUrl = '';
+const kFreeFallbackModel = '';
 
-void main() => runApp(const BusyaApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runZonedGuarded(() => runApp(const JarvisApp()), (error, stack) {
+    debugPrint('JARVIS error: $error');
+    debugPrintStack(stackTrace: stack);
+  });
+}
 
-class BusyaApp extends StatelessWidget {
-  const BusyaApp({super.key});
+class JarvisApp extends StatelessWidget {
+  const JarvisApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'JARVIS', debugShowCheckedModeBanner: false,
-    theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: kBg,
-      colorScheme: ColorScheme.fromSeed(seedColor: kCyan, brightness: Brightness.dark), useMaterial3: true,
-      inputDecorationTheme: const InputDecorationTheme(filled: true, fillColor: Color(0xFF050B0C), border: OutlineInputBorder(borderSide: BorderSide(color: kLine)), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: kLine)), focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: kCyan))) ),
-    home: const BusyaHomePage(),
+    title: 'JARVIS',
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: kBg, colorScheme: ColorScheme.fromSeed(seedColor: kCyan, brightness: Brightness.dark), useMaterial3: true),
+    home: const JarvisHomePage(),
   );
 }
 
-class _Msg { _Msg(this.text, {required this.isUser}); final String text; final bool isUser; }
-class _Attachment {
-  _Attachment({required this.name, required this.mime, required this.data});
-  final String name, mime, data;
+class _Msg {
+  _Msg(this.text, {required this.isUser});
+  final String text;
+  final bool isUser;
 }
 
-class BusyaHomePage extends StatefulWidget {
-  const BusyaHomePage({super.key});
-  @override State<BusyaHomePage> createState() => _BusyaHomePageState();
-}
-
-class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProviderStateMixin {
-  static const _voice = MethodChannel('jarvis.voice');
-  static const _voiceEvents = EventChannel('jarvis.voice.events');
-  JarvisIpc? _client;
-  final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint),
-      _model1 = TextEditingController(text: _defaultModel1), _model2 = TextEditingController(text: _defaultModel2), _model3 = TextEditingController(text: _defaultModel3),
-      _key1 = TextEditingController(), _key2 = TextEditingController(), _key3 = TextEditingController(), _apiHostKey = TextEditingController(), _dsaEndpoint = TextEditingController(), _dsaKey = TextEditingController();
-  final _coinglassKey = TextEditingController(), _okxKey = TextEditingController(), _okxSecret = TextEditingController(), _okxPass = TextEditingController(), _okxEndpoint = TextEditingController(text: 'https://www.okx.com');
-  bool _okxDemo = true;
-  int _activeModel = 0;
+class _JarvisHomePageState extends State<JarvisHomePage> {
+  JarvisIpc? _jarvis;
+  final _input = TextEditingController();
+  final _endpoint = TextEditingController();
+  final _apiKey = TextEditingController();
+  final _model = TextEditingController();
+  final _fallbackEndpoint = TextEditingController();
+  final _fallbackKey = TextEditingController();
+  final _fallbackModel = TextEditingController();
+  static const _platform = MethodChannel('com.dancorsoodessa.jarvis/timer');
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
-  _Attachment? _attachment;
-  StreamSubscription<dynamic>? _voiceSub;
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  final FlutterTts _tts = FlutterTts();
   StreamSubscription<String>? _partialSub;
-  bool _voiceReady = false, _ttsReady = false, _listening = false, _voiceEnabled = true, _awaitingCommand = false, _busy = false;
-  static final RegExp _jarvisWake = RegExp(r'^\s*(?:jarvis|джарвис)\s*[,;:.!?-]?\s*', caseSensitive: false);
-  late final AnimationController _orbController;
-  String _status = 'JARVIS запускается…', _streamText = '';
+  Timer? _visualTimer;
+  Timer? _voiceRestartTimer;
+  int _speechSession = 0;
+  bool _busy = false;
+  bool _voiceReady = false;
+  bool _voiceRunning = false;
+  bool _ttsSpeaking = false;
+  bool _voiceStarting = false;
+  bool _wakeArmed = false;
+  String _status = 'Запуск JARVIS…';
+  String _streamText = '';
+  String _heardText = '';
+  JarvisVisualState _visualState = JarvisVisualState.idle;
   bool get _android => Platform.isAndroid;
 
-  @override void initState() {
+  @override
+  void initState() {
     super.initState();
-    _orbController = AnimationController(vsync: this, duration: const Duration(seconds: 7))..repeat();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (_android) {
-        await _loadSettings();
-        await _connectAndroid();
-        if (!mounted) return;
-        await Future<void>.delayed(const Duration(milliseconds: 700));
-        if (mounted && _voiceEnabled) await _initNativeVoice();
-      } else {
-        await _connectDesktop();
-      }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _android ? _initAndroid() : _connectDesktop();
     });
   }
 
-  Future<void> _loadSettings() async {
-    if (!_android) return;
+  Future<void> _initVoice() async {
+    if (!_android || _voiceReady) return;
     try {
-      final raw = await _voice.invokeMethod<dynamic>('load_settings');
-      if (raw is Map) {
-        final endpoint = raw['endpoint']?.toString().trim() ?? '';
-        final model = raw['model']?.toString().trim() ?? '';
-        final apiKey = raw['apiKey']?.toString() ?? '';
-        final apiHostKey = raw['apiHostKey']?.toString() ?? '';
-        final model1 = raw['model1']?.toString().trim() ?? '';
-        final model2 = raw['model2']?.toString().trim() ?? '';
-        final model3 = raw['model3']?.toString().trim() ?? '';
-        final key1 = raw['key1']?.toString() ?? '';
-        final key2 = raw['key2']?.toString() ?? '';
-        final key3 = raw['key3']?.toString() ?? '';
-        final activeModel = raw['activeModel'];
-        final voiceEnabled = raw['voiceEnabled'];
-        final coinglassApiKey = raw['coinglassApiKey']?.toString() ?? '';
-        final okxApiKey = raw['okxApiKey']?.toString() ?? '';
-        final okxSecretKey = raw['okxSecretKey']?.toString() ?? '';
-        final okxPassphrase = raw['okxPassphrase']?.toString() ?? '';
-        final okxEndpoint = raw['okxEndpoint']?.toString() ?? '';
-        final okxDemo = raw['okxDemo'];
-        final dsaEndpoint = raw['dsaEndpoint']?.toString() ?? '';
-        final dsaApiKey = raw['dsaApiKey']?.toString() ?? '';
-        if (endpoint.isNotEmpty && !endpoint.contains('openrouter.ai')) _endpoint.text = endpoint;
-        else _endpoint.text = _defaultAiEndpoint;
-        // Migration: older builds could save a Groq Qwen model into the OpenAI primary slot.
-        final migratedModel1 = model1.startsWith('qwen/') ? _defaultModel1 : (model1.isNotEmpty ? model1 : (model.isNotEmpty ? model : _defaultModel1));
-        final migratedModel2 = model2.isNotEmpty ? model2 : _defaultModel2;
-        final migratedModel3 = model3.isNotEmpty ? model3 : _defaultModel3;
-        _model1.text = migratedModel1;
-        _model2.text = migratedModel2;
-        _model3.text = migratedModel3;
-        _key1.text = key1.isNotEmpty ? key1 : apiKey;
-        _key2.text = key2;
-        _key3.text = key3;
-        _apiHostKey.text = apiHostKey;
-        _coinglassKey.text = coinglassApiKey;
-        _okxKey.text = okxApiKey;
-        _okxSecret.text = okxSecretKey;
-        _okxPass.text = okxPassphrase;
-        if (okxEndpoint.isNotEmpty) _okxEndpoint.text = okxEndpoint;
-        if (okxDemo is bool) _okxDemo = okxDemo;
-        _dsaEndpoint.text = dsaEndpoint;
-        _dsaKey.text = dsaApiKey;
-        if (activeModel is int && activeModel >= 0 && activeModel <= 1) {
-          _activeModel = activeModel;
-          // Older installs could retain the default OpenAI slot while the only
-          // configured key was Groq. Keep the working provider selected after restart.
-          if (_activeModel == 0 && key1.trim().isEmpty && key2.trim().isNotEmpty) _activeModel = 1;
-        }
-        if (voiceEnabled is bool) _voiceEnabled = voiceEnabled;
+      final mic = await Permission.microphone.request();
+      if (!mic.isGranted) {
+        if (mounted) setState(() => _status = mic.isPermanentlyDenied
+            ? 'Микрофон заблокирован. Разрешите микрофон в настройках Android.'
+            : 'Нужно разрешение на микрофон.');
+        return;
       }
-    } catch (_) {}
+      // Voice startup is non-fatal: a broken native speech/TTS engine
+      // must never prevent the main JARVIS UI from opening.
+      final available = await _speech.initialize(
+        onStatus: (status) {
+          debugPrint('JARVIS speech status: $status');
+          if (!mounted) return;
+          if (status == 'notListening' && _voiceRunning && !_ttsSpeaking && !_busy) {
+            _scheduleVoiceRestart();
+          }
+        },
+        onError: (error) {
+          debugPrint('JARVIS speech error: $error');
+          if (mounted && !_ttsSpeaking) setState(() => _status = 'Микрофон: ${error.errorMsg}');
+          if (_voiceRunning && !_ttsSpeaking) _scheduleVoiceRestart();
+        },
+        debugLogging: false,
+      );
+      if (!available) throw StateError('Распознавание речи недоступно на устройстве');
+      try {
+        await _tts.setLanguage('ru-RU');
+        await _tts.setSpeechRate(0.48);
+        await _tts.setVolume(1.0);
+        await _tts.setPitch(1.0);
+      } catch (e) {
+        debugPrint('JARVIS TTS init warning: $e');
+      }
+      _tts.setStartHandler(() {
+        _ttsSpeaking = true;
+        if (mounted) _setVisual(JarvisVisualState.speaking);
+      });
+      _tts.setCompletionHandler(() {
+        _ttsSpeaking = false;
+        if (mounted) _returnToIdle(const Duration(milliseconds: 250));
+        if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
+      });
+      _tts.setCancelHandler(() {
+        _ttsSpeaking = false;
+        if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
+      });
+      _voiceReady = true;
+      if (mounted) setState(() => _status = 'Голос готов · скажите «Джарвис»');
+    } catch (e) {
+      _voiceReady = false;
+      if (mounted) setState(() => _status = 'Голос недоступен: $e');
+      _setVisual(JarvisVisualState.error);
+    }
   }
 
-  Future<void> _pickFile() async {
+  Future<void> _startVoiceLoop() async {
+    if (!_android || !_voiceReady || _voiceStarting || _ttsSpeaking || _busy) return;
+    final mic = await Permission.microphone.status;
+    if (!mic.isGranted) {
+      if (mounted) setState(() => _status = 'Нет разрешения на микрофон');
+      return;
+    }
+    _voiceStarting = true;
     try {
-      const typeGroup = XTypeGroup(
-        label: 'Файлы',
-        extensions: <String>[
-          'txt', 'md', 'csv', 'json', 'xml', 'log',
-          'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-          'jpg', 'jpeg', 'png', 'webp', 'gif',
-          'mp3', 'wav', 'm4a', 'ogg', 'webm', 'aac',
-        ],
+      await _speech.stop();
+      await _speech.listen(
+        onResult: (result) => _onSpeechResult(result, _speechSession),
+        listenFor: const Duration(minutes: 1),
+        pauseFor: const Duration(seconds: 4),
+        partialResults: true,
+        cancelOnError: false,
+        listenMode: stt.ListenMode.dictation,
+        localeId: 'ru_RU',
       );
-      final file = await openFile(acceptedTypeGroups: <XTypeGroup>[typeGroup]);
-      if (file == null) return;
-      final bytes = await file.readAsBytes();
-      if (bytes.isEmpty) throw StateError('Файл пустой');
-      final mime = file.mimeType ?? 'application/octet-stream';
-      if (bytes.length > 25 * 1024 * 1024) {
-        throw StateError('Файл слишком большой. Максимальный размер — 25 МБ.');
+      _voiceRunning = true;
+      if (mounted) {
+        setState(() => _status = _wakeArmed ? 'Слушаю команду…' : 'Слушаю · жду «Джарвис»');
+        _setVisual(JarvisVisualState.listening);
       }
-      if (mounted) setState(() {
-        _attachment = _Attachment(name: file.name, mime: mime, data: base64Encode(bytes));
-        _status = 'Файл прикреплён: ${file.name}';
-      });
     } catch (e) {
-      if (mounted) setState(() => _status = 'Ошибка выбора файла: $e');
+      _voiceRunning = false;
+      if (mounted) setState(() => _status = 'Ошибка микрофона: $e');
+      _scheduleVoiceRestart(const Duration(seconds: 2));
+    } finally {
+      _voiceStarting = false;
+    }
+  }
+
+  void _scheduleVoiceRestart([Duration delay = const Duration(milliseconds: 500)]) {
+    if (!_android || !_voiceRunning || _ttsSpeaking || _busy) return;
+    _voiceRestartTimer?.cancel();
+    _voiceRestartTimer = Timer(delay, () {
+      if (mounted && _voiceRunning && !_ttsSpeaking && !_busy) _startVoiceLoop();
+    });
+  }
+
+  String? _extractWakeCommand(String text) {
+    final normalized = text.toLowerCase().replaceAll(RegExp(r'[,.!?;:]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final match = RegExp(r'\bджарвис\b').firstMatch(normalized);
+    if (match == null) return null;
+    final command = normalized.substring(match.end).trim();
+    return command.isEmpty ? '' : command;
+  }
+
+  Future<void> _onSpeechResult(dynamic result, int session) async {
+    if (session != _speechSession) return;
+    final text = result.recognizedWords?.toString().trim() ?? '';
+    final isFinal = result.finalResult == true;
+    if (text.isEmpty || !mounted) return;
+    setState(() {
+      _heardText = text;
+      _status = _wakeArmed ? 'Слышу команду: $text' : 'Слышу: $text';
+    });
+    _setVisual(JarvisVisualState.listening);
+    if (!isFinal) return;
+
+    final wakeCommand = _extractWakeCommand(text);
+    _voiceRestartTimer?.cancel();
+
+    if (wakeCommand != null) {
+      _speechSession++;
+      if (wakeCommand.isEmpty) {
+        _wakeArmed = true;
+        await _speech.stop();
+        await _speak('Да, слушаю.');
+        return;
+      }
+      _wakeArmed = false;
+      await _speech.stop();
+      await _send(wakeCommand, speakReply: true);
+      return;
+    }
+
+    if (_wakeArmed) {
+      _speechSession++;
+      _wakeArmed = false;
+      await _speech.stop();
+      await _send(text, speakReply: true);
+    }
+  }
+
+  Future<void> _speak(String text) async {
+    if (!_android || text.trim().isEmpty) return;
+    try {
+      _ttsSpeaking = true;
+      await _tts.stop();
+      if (!_voiceReady) {
+        await _tts.setLanguage('ru-RU');
+        await _tts.setSpeechRate(0.48);
+        await _tts.setVolume(1.0);
+        await _tts.setPitch(1.0);
+      }
+      _setVisual(JarvisVisualState.speaking);
+      await _tts.speak(text.trim());
+    } catch (e) {
+      _ttsSpeaking = false;
+      if (mounted) setState(() => _status = 'TTS ошибка: $e');
+      _setVisual(JarvisVisualState.error);
+    }
+  }
+
+  Future<void> _initAndroid() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final storedEndpoint = prefs.getString('endpoint')?.trim() ?? '';
+      final storedModel = prefs.getString('model')?.trim() ?? '';
+      final storedKey = prefs.getString('api_key')?.trim() ?? '';
+      final storedFallbackEndpoint = prefs.getString('fallback_endpoint')?.trim() ?? '';
+      final storedFallbackModel = prefs.getString('fallback_model')?.trim() ?? '';
+
+      // JARVIS XXX uses Hugging Face Inference Router only. Migrate old provider settings.
+      final usingOldProvider = storedEndpoint != kFreePrimaryUrl;
+      if (usingOldProvider) {
+        _endpoint.text = kFreePrimaryUrl;
+        _model.text = kFreePrimaryModel;
+        // Never send a key from another provider to Hugging Face.
+        _apiKey.text = '';
+      } else {
+        _endpoint.text = storedEndpoint;
+        _model.text = storedModel;
+        _apiKey.text = storedKey;
+      }
+
+      _fallbackEndpoint.text = '';
+      _fallbackKey.text = prefs.getString('fallback_key')?.trim() ?? '';
+      _fallbackModel.text = '';
+      // Do not initialize native microphone/speech services during startup.
+      // Voice is initialized only after the main UI is visible, preventing
+      // device-specific native speech-service crashes from closing JARVIS.
+      if (!mounted) return;
+      if (_apiKey.text.isEmpty) {
+        setState(() => _status = 'Введите API key в Настройках');
+      } else {
+        await _connectAndroid();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _status = 'JARVIS запущен · ошибка: $e');
+        _setVisual(JarvisVisualState.error);
+      }
     }
   }
 
   Future<void> _saveSettings() async {
-    if (!_android) return;
-    try {
-      await _voice.invokeMethod('save_settings', {
-        'endpoint': _endpoint.text.trim(),
-        'model': _activeModel == 0 ? _model1.text.trim() : _activeModel == 1 ? _model2.text.trim() : _model3.text.trim(),
-        'apiKey': _activeModel == 0 ? _key1.text.trim() : _activeModel == 1 ? _key2.text.trim() : _key3.text.trim(),
-        'model1': _model1.text.trim(), 'model2': _model2.text.trim(), 'model3': _model3.text.trim(),
-        'key1': _key1.text.trim(), 'key2': _key2.text.trim(), 'key3': _key3.text.trim(),
-        'activeModel': _activeModel,
-        'apiHostKey': _apiHostKey.text.trim(),
-        'voiceEnabled': _voiceEnabled,
-        'coinglassApiKey': _coinglassKey.text.trim(), 'okxApiKey': _okxKey.text.trim(),
-        'okxSecretKey': _okxSecret.text.trim(), 'okxPassphrase': _okxPass.text.trim(),
-        'okxEndpoint': _okxEndpoint.text.trim(), 'okxDemo': _okxDemo,
-        'dsaEndpoint': _dsaEndpoint.text.trim(), 'dsaApiKey': _dsaKey.text.trim(),
-      });
-    } catch (_) {}
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('endpoint', _endpoint.text.trim());
+    await prefs.setString('model', _model.text.trim());
+    await prefs.setString('api_key', _apiKey.text.trim());
+    await prefs.setString('fallback_endpoint', '');
+    await prefs.setString('fallback_key', '');
+    await prefs.setString('fallback_model', '');
   }
 
-  Future<void> _initNativeVoice() async {
-    if (!_android || !mounted) return;
+  Future<void> _connectAndroid() async {
+    final endpoint = _endpoint.text.trim();
+    final model = _model.text.trim();
+    final key = _apiKey.text.trim();
+    if (endpoint.isEmpty || key.isEmpty) {
+      if (mounted) setState(() => _status = 'Введите AI URL и API key в Настройках');
+      _setVisual(JarvisVisualState.error);
+      return;
+    }
     try {
-      await _voiceSub?.cancel();
-      _voiceSub = _voiceEvents.receiveBroadcastStream().listen(_onNativeVoiceEvent,
-        onError: (Object e) { if (mounted) setState(() => _status = 'Ошибка голоса: $e'); });
-      final available = await _voice.invokeMethod<bool>('initialize') ?? false;
-      if (!mounted) return;
-      if (!available) { setState(() => _status = 'Не удалось запустить голосовой модуль'); return; }
-      setState(() => _status = 'Запрашиваю/запускаю микрофон…');
-    } catch (e) { if (mounted) setState(() => _status = 'Ошибка голоса: $e'); }
-  }
-
-  Future<void> _startNativeListening() async {
-    if (!_android || !_voiceReady || !_voiceEnabled || _busy || _listening) return;
-    try {
-      _listening = true;
-      await _voice.invokeMethod('listen_now');
-      if (mounted) setState(() => _status = 'Постоянное голосовое слушание');
+      await _saveSettings();
+      if (mounted) setState(() => _status = 'Проверяю основной и резервный AI…');
+      _setVisual(JarvisVisualState.thinking);
+      await _jarvis?.dispose();
+      _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model, fallbackUrl: '', fallbackKey: '', fallbackModel: '');
+      await _jarvis!.checkConnection();
+      await _finishConnect();
     } catch (e) {
-      _listening = false;
-      if (mounted) setState(() => _status = 'Ошибка микрофона: $e');
+      if (mounted) setState(() => _status = 'Ошибка AI: $e');
+      _setVisual(JarvisVisualState.error);
     }
-  }
-
-  Future<void> _stopNativeListening() async {
-    if (!_android) return;
-    try { await _voice.invokeMethod('stop'); } catch (_) {}
-    _listening = false;
-  }
-
-  Future<void> _onNativeVoiceEvent(dynamic event) async {
-    if (!_android || !_voiceEnabled || !mounted) return;
-    final value = event?.toString().trim() ?? '';
-    if (value.isEmpty) return;
-    if (value == '__READY__') { _voiceReady = true; _listening = false; if (mounted) setState(() => _status = 'Русский голосовой контур готов · слушаю'); if (_voiceEnabled) Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); }); return; }
-    if (value == '__TTS_READY__') { _ttsReady = true; if (mounted) setState(() => _status = 'Локальный русский голос готов'); return; }
-    if (value == '__LOADING_VOICE__') { if (mounted) setState(() => _status = 'Загрузка локальной модели речи…'); return; }
-    if (value.startsWith('__PARTIAL__:')) { if (mounted) setState(() => _status = 'Слышу: ${value.substring(12)}'); return; }
-    if (value.startsWith('__TTS_ERROR__')) { _ttsReady = false; if (mounted) setState(() => _status = 'Ошибка TTS: ${value.substring(12)}'); return; }
-    if (value == '__MIC_SOURCE_READY__') { if (mounted) setState(() => _status = 'Микрофон подключён · проверяю сигнал…'); return; }
-    if (value.startsWith('__MIC_LEVEL__:')) { if (mounted) setState(() => _status = 'Микрофон работает · сигнал ${value.substring(14)}'); return; }
-    if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
-    if (value.startsWith('__ERROR__:')) {
-      _listening = false;
-      if (mounted) setState(() => _status = 'Ошибка голоса: ${value.substring(10)}');
-      if (_voiceEnabled && !_busy) Future<void>.delayed(const Duration(milliseconds: 700), () { if (mounted) _startNativeListening(); });
-      return;
-    }
-    if (value == '__END__') {
-      _listening = false;
-      if (_voiceEnabled && !_busy) Future<void>.delayed(const Duration(milliseconds: 450), () { if (mounted) _startNativeListening(); });
-      return;
-    }
-    _listening = false;
-    await _stopNativeListening();
-    final phrase = value.trim();
-    final wakeMatch = _jarvisWake.matchAsPrefix(phrase);
-    // Голосовые команды принимаются только после обращения «Jarvis».
-    // Никаких хлопков, порогов амплитуды или скрытой активации.
-    if (wakeMatch == null) {
-      if (mounted) setState(() => _status = 'Жду команду «Jarvis …»');
-      Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); });
-      return;
-    }
-    final command = phrase.substring(wakeMatch.end).trim();
-    _awaitingCommand = false;
-    if (command.isEmpty) {
-      if (mounted) setState(() => _status = 'Jarvis активирован · слушаю команду');
-      Future<void>.delayed(const Duration(milliseconds: 120), () { if (mounted) _startNativeListening(); });
-      return;
-    }
-    if (mounted) setState(() => _status = 'Команда Jarvis: $command');
-    await _send(command, fromVoice: true);
-  }
-
-  Future<void> _speak(String text) async {
-    if (!_android || !mounted || text.trim().isEmpty) return;
-    try { await _voice.invokeMethod('speak', {'text': text.trim()}); } catch (_) {}
   }
 
   Future<void> _connectDesktop() async {
     try {
       final dir = File(Platform.resolvedExecutable).parent.path;
       final exe = '$dir${Platform.pathSeparator}jarvis.exe';
-      _client = await (File(exe).existsSync() ? JarvisIpc.spawn(exe) : JarvisIpc.spawn('python', ['-m', 'agent', '--ipc']));
+      _jarvis = await (File(exe).existsSync() ? JarvisIpc.spawn(exe) : JarvisIpc.spawn('python', ['-m', 'agent', '--ipc']));
       await _finishConnect();
-    } catch (e) { if (mounted) setState(() => _status = 'Агент не запущен: $e'); }
-  }
-
-  Future<void> _connectAndroid() async {
-    await _saveSettings();
-    final primary = _activeModel == 0
-        ? {'name': 'OpenAI', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()}
-        : {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()};
-    if ((primary['url'] ?? '').toString().trim().isEmpty || (primary['key'] ?? '').toString().trim().isEmpty) {
-      if (mounted) setState(() => _status = 'Для выбранного AI не указан API URL или API key');
-      return;
+    } catch (e) {
+      if (mounted) {
+        setState(() => _status = 'Агент не запущен: $e');
+        _setVisual(JarvisVisualState.error);
+      }
     }
-    try {
-      final old = _client; _client = null; await old?.dispose();
-      _client = await JarvisIpc.connectAi(
-        primary['url']!.toString(),
-        apiKey: primary['key']!.toString(),
-        model: primary['model']!.toString(),
-        fallbacks: _activeModel == 0
-            ? [
-                {'name': 'Groq', 'url': 'https://api.groq.com/openai/v1', 'key': _key2.text.trim(), 'model': _model2.text.trim()},
-              ]
-            : [
-                {'name': 'OpenAI', 'url': _endpoint.text.trim(), 'key': _key1.text.trim(), 'model': _model1.text.trim()},
-              ],
-      );
-      await _client!.verifyConnection();
-      await _finishConnect();
-    } catch (e) { if (mounted) setState(() => _status = 'Ошибка подключения AI: $e'); }
   }
 
   Future<void> _finishConnect() async {
-    final client = _client; if (client == null) return;
-    final tools = await client.listTools();
+    if (_jarvis == null) return;
+    final tools = _android ? const <String>[] : await _jarvis!.listTools();
+    if (!mounted) return;
+    setState(() => _status = _android ? 'AI подключён · JARVIS активен' : 'JARVIS подключён · инструментов: ${tools.length}');
+    _setVisual(JarvisVisualState.confirmation);
+    _returnToIdle(const Duration(milliseconds: 1100));
     await _partialSub?.cancel();
-    _partialSub = client.partials().listen((text) { if (mounted) setState(() => _streamText = text); });
-    if (mounted) setState(() => _status = _android ? 'AI подключён · постоянно слушаю' : 'Агент подключён · инструментов: ${tools.length}');
-    if (_android && _voiceReady && _voiceEnabled) _startNativeListening();
+    _partialSub = _jarvis!.partials().listen((text) {
+      if (mounted) setState(() {
+        _streamText = text;
+        if (text.isNotEmpty) _visualState = JarvisVisualState.speaking;
+      });
+    });
+    if (_android && _voiceReady && mounted) {
+      _voiceRunning = true;
+      Future<void>.delayed(const Duration(milliseconds: 700), () {
+        if (mounted && _voiceRunning && !_busy && !_ttsSpeaking) {
+          _startVoiceLoop();
+        }
+      });
+    }
   }
 
   Future<void> _settings() async {
     if (!_android) return;
-    final previousVoiceEnabled = _voiceEnabled;
-    var saved = false;
-    _awaitingCommand = false;
-    await _stopNativeListening();
+    _speechSession++;
+    await _speech.stop();
+    _voiceRunning = false;
+    _wakeArmed = false;
     await showDialog<void>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Row(children: [Icon(Icons.tune, color: kCyan), SizedBox(width: 8), Text('ЦЕНТР УПРАВЛЕНИЯ')]),
-          content: SizedBox(
-            width: 520,
-            child: SingleChildScrollView(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                const Text('AI · ОСНОВНОЙ + РЕЗЕРВ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                const Text('Выбранный AI используется первым. Резерв подключается только при временной ошибке или лимите; 401/403 не скрываются переключением.', style: TextStyle(color: Colors.white60, fontSize: 11)),
-                const SizedBox(height: 8),
-                for (int i = 0; i < 2; i++) ...[
-                  Card(
-                    color: _activeModel == i ? const Color(0xFF0A2421) : kPanel,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        Row(children: [
-                          Expanded(child: Text(i == 0 ? 'OPENAI · AI 1' : 'GROQ · AI 2', style: const TextStyle(color: kGreen, fontWeight: FontWeight.bold))),
-                          Radio<int>(value: i, groupValue: _activeModel, onChanged: (v) { if (v != null) setDialogState(() => _activeModel = v); }),
-                        ]),
-                        TextField(controller: i == 0 ? _model1 : _model2, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
-                        const SizedBox(height: 6),
-                        TextField(controller: i == 0 ? _key1 : _key2, obscureText: false, decoration: InputDecoration(labelText: i == 0 ? 'OpenAI API key' : 'Groq API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
-                      ]),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                ],
-                TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenAI endpoint', isDense: true)),
-                const SizedBox(height: 6),
-                TextField(controller: _apiHostKey, obscureText: false, decoration: const InputDecoration(labelText: 'APIHOST key · голос Леда', isDense: true)),
-                const SizedBox(height: 12),
-                const Text('COINGLASS + OKX · ТОРГОВЫЙ КОНТУР', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                const Text('Ключи остаются локально. По умолчанию OKX работает в DEMO. Реальная торговля включается отдельно.', style: TextStyle(color: Colors.white60, fontSize: 11)),
-                const SizedBox(height: 7),
-                TextField(controller: _coinglassKey, obscureText: false, decoration: const InputDecoration(labelText: 'CoinGlass API Key', isDense: true)),
-                const SizedBox(height: 6),
-                TextField(controller: _okxKey, obscureText: false, decoration: const InputDecoration(labelText: 'OKX API Key', isDense: true)),
-                const SizedBox(height: 6),
-                TextField(controller: _okxSecret, obscureText: false, decoration: const InputDecoration(labelText: 'OKX Secret Key', isDense: true)),
-                const SizedBox(height: 6),
-                TextField(controller: _okxPass, obscureText: false, decoration: const InputDecoration(labelText: 'OKX Passphrase', isDense: true)),
-                const SizedBox(height: 6),
-                TextField(controller: _okxEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OKX API endpoint', isDense: true)),
-                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _okxDemo, onChanged: (v) => setDialogState(() => _okxDemo = v), title: const Text('OKX DEMO Trading'), subtitle: const Text('Рекомендуется оставить включённым для первого теста.')),
-                const SizedBox(height: 12),
-                const Text('DAILY STOCK ANALYSIS · АНАЛИТИКА АКЦИЙ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                const Text('Подключение к FastAPI проекта ZhuLinsen/daily_stock_analysis.', style: TextStyle(color: Colors.white60, fontSize: 11)),
-                const SizedBox(height: 7),
-                TextField(controller: _dsaEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Daily Stock Analysis API URL', hintText: 'https://твой-сервер:8000', isDense: true)),
-                const SizedBox(height: 6),
-                TextField(controller: _dsaKey, obscureText: false, decoration: const InputDecoration(labelText: 'API key / Bearer token (если нужен)', isDense: true)),
-                const SizedBox(height: 12),
-                const Text('ГОЛОС / МИКРОФОН', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
-                SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Локальный русский STT. Микрофон работает только при открытом приложении.')),
-                const SizedBox(height: 12),
-                const Text('ИНСТРУМЕНТЫ', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
-                Wrap(spacing: 6, runSpacing: 6, children: [
-                  _commandChip('help'), _commandChip('status'), _commandChip('voice'), _commandChip('settings'),
-                  _commandChip('поиск'), _commandChip('погода'), _commandChip('список файлов'), _commandChip('покажи память'),
-                  _commandChip('чему ты научилась'), _commandChip('самоулучшайся'),
-                ]),
-              ]),
-            ),
+      builder: (ctx) => AlertDialog(
+        title: const Text('JARVIS — настройки'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Align(alignment: Alignment.centerLeft, child: Text('Hugging Face Inference API', style: TextStyle(fontWeight: FontWeight.bold))),
+          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'AI URL', hintText: 'https://router.huggingface.co/v1')),
+          TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'Hugging Face Token')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'Qwen/Qwen3-4B-Instruct-2507')),
+          const SizedBox(height: 8),
+          const Text(
+            'Подключение выполняется через Hugging Face Inference Providers. Нужен действующий токен и доступ к выбранной модели.',
+            style: TextStyle(fontSize: 12),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть')),
-            FilledButton.icon(
-              onPressed: () async {
-                await _saveSettings();
-                saved = true;
-                if (ctx.mounted) Navigator.pop(ctx);
-                await _connectAndroid();
-                if (mounted) {
-                  setState(() => _status = 'Центр управления сохранён · ' + (_activeModel + 1).toString() + '-я модель');
-                  if (_voiceEnabled) await _startNativeListening();
-                }
-              },
-              icon: const Icon(Icons.check),
-              label: const Text('Сохранить и подключить'),
-            ),
-          ],
-        ),
+          const SizedBox(height: 4),
+          const Text('Голос: автоматическое ожидание «Джарвис».', style: TextStyle(fontSize: 12)),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
+          FilledButton(onPressed: () { Navigator.pop(ctx); _connectAndroid(); }, child: const Text('Сохранить и подключить')),
+        ],
       ),
     );
-    if (mounted && !saved) {
-      _voiceEnabled = previousVoiceEnabled;
-      if (_voiceEnabled && _voiceReady) {
-        setState(() => _status = 'Постоянный локальный голос');
-        await _startNativeListening();
-      }
-    } else if (mounted && _voiceReady && _voiceEnabled) {
-      setState(() => _status = 'Постоянный локальный голос');
-      await _startNativeListening();
+    if (mounted && _jarvis != null && _voiceReady) {
+      _voiceRunning = true;
+      _wakeArmed = false;
+      _startVoiceLoop();
     }
   }
 
-  Future<void> _toggleVoice() async {
-    if (!_android) return;
-    if (!_voiceReady) { await _initNativeVoice(); return; }
-    _voiceEnabled = !_voiceEnabled; _awaitingCommand = false; await _saveSettings();
-    if (!_voiceEnabled) { await _stopNativeListening(); if (mounted) setState(() => _status = 'Голос выключен'); return; }
-    if (mounted) setState(() => _status = 'Постоянный локальный голос'); await _startNativeListening();
-  }
-
-  Future<void> _send(String text, {bool fromVoice = false}) async {
-    final clean = text.trim(); final client = _client; final attachment = _attachment;
-    if (clean.isEmpty || _busy) return;
-    if (client == null) { if (mounted) setState(() => _status = 'Сначала подключите AI в настройках'); if (fromVoice) await _speak('Сначала подключите AI в настройках'); return; }
-    // Pause native STT during typed requests to avoid AudioRecord/Sherpa races.
-    final resumeVoice = _android && _voiceEnabled && !fromVoice;
-    if (resumeVoice) await _stopNativeListening();
-    if (!mounted) return;
-    setState(() { _busy = true; _streamText = ''; _messages.add(_Msg(attachment == null ? clean : '$clean\n📎 ${attachment.name}', isUser: true)); });
-    _scrollToBottom();
+  Future<void> _send(String text, {bool speakReply = false}) async {
+    text = text.trim();
+    if (text.isEmpty || _jarvis == null || _busy) return;
+    if (await _handleTimer(text)) { _input.clear(); return; }
+    _input.clear();
+    setState(() {
+      _messages.add(_Msg(text, isUser: true));
+      _busy = true;
+      _streamText = '';
+      _visualState = JarvisVisualState.thinking;
+      _status = 'Думаю…';
+    });
     try {
-      final reply = await client.sendMessage(clean, attachment: attachment == null ? null : {'name': attachment.name, 'mime': attachment.mime, 'data': attachment.data});
-      if (!mounted) return;
-      setState(() { _messages.add(_Msg(reply.text, isUser: false)); _status = reply.needsConfirmation ? 'Требуется подтверждение' : (_android ? 'JARVIS · голосовой канал' : 'Готов'); });
-      _scrollToBottom();
-      if (_android && _voiceEnabled) await _speak(reply.text);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() { _messages.add(_Msg('Ошибка: $e', isUser: false)); _status = 'Ошибка'; });
-      if (_android && _voiceEnabled) await _speak('Произошла ошибка');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-      if (resumeVoice && mounted && _voiceEnabled) {
-        await Future<void>.delayed(const Duration(milliseconds: 250));
-        if (mounted && !_busy) await _startNativeListening();
+      final reply = await _jarvis!.sendMessage(text);
+      if (mounted) {
+        setState(() {
+          _messages.add(_Msg(reply.text, isUser: false));
+          _visualState = JarvisVisualState.speaking;
+          _status = 'Готов';
+        });
       }
+      if (speakReply) await _speak(reply.text);
+      _returnToIdle(const Duration(milliseconds: 800));
+    } catch (e) {
+      if (mounted) {
+        final errorText = 'Ошибка: $e';
+        setState(() => _messages.add(_Msg(errorText, isUser: false)));
+        _setVisual(JarvisVisualState.error);
+        setState(() => _status = 'Ошибка AI: $e');
+      }
+      if (speakReply) await _speak('Произошла ошибка. Проверьте подключение к AI.');
+    } finally {
+      if (mounted) setState(() { _busy = false; _streamText = ''; });
+      if (_voiceRunning && !_ttsSpeaking) _scheduleVoiceRestart(const Duration(milliseconds: 500));
     }
   }
 
-  void _scrollToBottom() { WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut); }); }
-
-  @override void dispose() {
-    _orbController.dispose();
-    _voiceSub?.cancel(); _partialSub?.cancel();
-    if (_android) { _voice.invokeMethod('stop'); _voice.invokeMethod('dispose'); }
-    _client?.dispose(); _input.dispose(); _endpoint.dispose(); _model1.dispose(); _model2.dispose(); _model3.dispose(); _key1.dispose(); _key2.dispose(); _key3.dispose(); _apiHostKey.dispose(); _coinglassKey.dispose(); _okxKey.dispose(); _okxSecret.dispose(); _okxPass.dispose(); _okxEndpoint.dispose(); _dsaEndpoint.dispose(); _dsaKey.dispose(); _scroll.dispose(); super.dispose();
-  }
-
-  Widget _terminalLine(String text, {Color color = kGreen, bool dim = false}) {
-    return Padding(padding: const EdgeInsets.only(bottom: 3), child: Text(text, maxLines: 8, overflow: TextOverflow.ellipsis,
-      style: TextStyle(color: dim ? color.withOpacity(.55) : color, fontSize: 12, height: 1.18, fontFamily: 'monospace')));
-  }
-
-  Widget _gauge(String value, String label, {Color color = kCyan}) {
-    return Container(width: 76, height: 76, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: color.withOpacity(.65), width: 1.5)),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
-        Text(label, style: TextStyle(color: color.withOpacity(.65), fontSize: 8)),
-      ]));
-  }
-
-  Widget _commandChip(String text) => InkWell(
-    onTap: _busy ? null : () async {
-      await _send(text);
-    },
-    child: Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(color: kPanel, border: Border.all(color: kLine), borderRadius: BorderRadius.circular(3)),
-      child: Text(text, style: const TextStyle(color: kCyan, fontSize: 10, fontFamily: 'monospace'))));
-
-  Widget _coreVisual() {
-    final listening = _listening;
-    final ready = _voiceReady && _voiceEnabled;
-    final accent = listening ? kGreen : (ready ? kCyan : kRed);
-    return AnimatedBuilder(
-      animation: _orbController,
-      builder: (context, child) {
-        final phase = _orbController.value * 6.283185307;
-        final pulse = 0.94 + 0.06 * (0.5 + 0.5 * math.sin(phase));
-        return Container(
-          height: 286,
-          margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
-          decoration: BoxDecoration(
-            color: const Color(0xFF080E17),
-            border: Border.all(color: const Color(0xFF18283A)),
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(.35), blurRadius: 24)],
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Positioned(top: 10, left: 12, right: 12, child: Row(
-                children: [
-                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 8)])),
-                  const SizedBox(width: 7),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 2)),
-                  const SizedBox(width: 7),
-                  const Text('V4.2 // ONLINE', style: TextStyle(color: Colors.white38, fontSize: 8, fontFamily: 'monospace')),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: accent.withOpacity(.08), border: Border.all(color: accent.withOpacity(.35)), borderRadius: BorderRadius.circular(3)),
-                    child: Text(listening ? 'JARVIS ACTIVE' : (ready ? 'READY' : 'OFFLINE'), style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                  ),
-                ],
-              )),
-              for (final size in [198.0 * pulse, 166.0 * pulse, 132.0 * pulse])
-                Container(
-                  width: size,
-                  height: size,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: accent.withOpacity(.16), width: 1),
-                  ),
-                ),
-              Container(
-                width: 108 * pulse,
-                height: 108 * pulse,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0E3440), Color(0xFF09202A)]),
-                  border: Border.all(color: accent.withOpacity(.8)),
-                  boxShadow: [BoxShadow(color: accent.withOpacity(.22), blurRadius: 30)],
-                ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    for (final h in [13.0, 24.0, 34.0, 20.0, 29.0])
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 450),
-                          width: 4,
-                          height: h * pulse,
-                          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(3), boxShadow: [BoxShadow(color: accent, blurRadius: 7)]),
-                        ),
-                      ),
-                  ]),
-                  const SizedBox(height: 8),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                ]),
-              ),
-              Positioned(bottom: 36, left: 16, right: 16, child: Column(children: [
-                RichText(textAlign: TextAlign.center, text: TextSpan(children: [
-                  TextSpan(text: listening ? 'СЛУШАЕТ ПОТОК ' : 'JARVIS ', style: const TextStyle(color: Colors.white, fontSize: 20, fontFamily: 'serif', fontWeight: FontWeight.w700)),
-                  TextSpan(text: listening ? 'DUPLEX' : 'CORE', style: TextStyle(color: const Color(0xFF061016), backgroundColor: accent, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                ])),
-                const SizedBox(height: 4),
-                Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 9, fontFamily: 'monospace')),
-              ])),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _quickAction(IconData icon, String label, VoidCallback onTap) => Expanded(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3),
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 16),
-        label: Text(label, style: const TextStyle(fontSize: 10)),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: kCyan,
-          side: const BorderSide(color: kLine),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 5),
-        ),
-      ),
-    ),
-  );
-
-  Widget _statusCard(IconData icon, String title, String value, Color color) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: kPanel,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(.18)),
-        ),
-        child: Row(children: [
-          Icon(icon, color: color, size: 21),
-          const SizedBox(width: 9),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(color: Colors.white54, fontSize: 9)),
-            const SizedBox(height: 2),
-            Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
-          ])),
-        ]),
-      ),
-    );
-  }
-
-
-  Future<void> _runMenuAction(String label, Future<void> Function() action) async {
+  void _setVisual(JarvisVisualState state) {
     if (!mounted) return;
-    Navigator.of(context).maybePop();
-    await Future<void>.delayed(const Duration(milliseconds: 120));
-    if (mounted) await action();
+    setState(() => _visualState = state);
+    _visualTimer?.cancel();
   }
 
-  Widget _drawerSection(String title) => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-    child: Text(title, style: const TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1.4)),
-  );
-
-  Widget _drawerItem(IconData icon, String title, Future<void> Function() action, {bool selected = false, Color? color}) {
-    final c = color ?? (selected ? kCyan : Colors.white70);
-    return ListTile(
-      dense: true,
-      visualDensity: const VisualDensity(vertical: -1),
-      leading: Icon(icon, size: 19, color: c),
-      title: Text(title, style: TextStyle(color: c, fontSize: 12, fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-      tileColor: selected ? const Color(0xFF0A2424) : Colors.transparent,
-      onTap: () => _runMenuAction(title, action),
-    );
+  void _returnToIdle(Duration delay) {
+    _visualTimer?.cancel();
+    _visualTimer = Timer(delay, () {
+      if (mounted) setState(() => _visualState = JarvisVisualState.idle);
+    });
   }
 
-  Widget _buildDrawer() {
-    return Drawer(
-      backgroundColor: const Color(0xFF050B12),
-      width: 292,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 14, 12),
-              child: Row(children: [
-                Container(
-                  width: 42, height: 42,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const RadialGradient(colors: [Color(0xFF16453F), Color(0xFF07100F)]),
-                    border: Border.all(color: kCyan.withOpacity(.45)),
-                  ),
-                  child: const Icon(Icons.auto_awesome, color: kCyan, size: 22),
-                ),
-                const SizedBox(width: 11),
-                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-                  Text('COMMAND CENTER', style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1.2)),
-                ])),
-                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white38, size: 19)),
-              ]),
-            ),
-            Container(height: 1, color: kLine),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                children: [
-                  _drawerSection('СИСТЕМА'),
-                  _drawerItem(Icons.dashboard_rounded, 'Главная', () async => _scrollToBottom(), selected: true),
-                  _drawerItem(Icons.mic_rounded, 'Голос', () async => _toggleVoice()),
-                  _drawerItem(Icons.psychology_rounded, 'AI / Модели', () async => _settings()),
-                  _drawerItem(Icons.tune_rounded, 'Команды', () async => _openCommandCenter()),
-                  _drawerItem(Icons.folder_rounded, 'Файлы', () async => _send('список файлов')),
-                  _drawerItem(Icons.apps_rounded, 'Программы', () async => _send('покажи установленные программы')),
-                  _drawerItem(Icons.memory_rounded, 'Процессы', () async => _send('ps')),
-                  _drawerItem(Icons.monitor_heart_rounded, 'Система', () async => _send('status')),
-                  _drawerSection('ИНСТРУМЕНТЫ'),
-                  _drawerItem(Icons.search_rounded, 'OSINT / Поиск', () async => _send('поиск')),
-                  _drawerItem(Icons.extension_rounded, 'MCP', () async => _send('покажи доступные MCP инструменты')),
-                  _drawerItem(Icons.psychology_alt_rounded, 'Память', () async => _send('покажи память')),
-                  _drawerItem(Icons.task_alt_rounded, 'Задачи', () async => _send('напомни мне мои задачи')),
-                  _drawerSection('БЫСТРЫЕ ДЕЙСТВИЯ'),
-                  _drawerItem(Icons.camera_alt_rounded, 'Скриншот', () async => _send('screenshot')),
-                  _drawerItem(Icons.volume_up_rounded, 'Громкость', () async => _send('volume')),
-                  _drawerItem(Icons.cloud_rounded, 'Погода', () async => _send('weather')),
-                  _drawerItem(Icons.access_time_rounded, 'Время', () async => _send('now')),
-                  _drawerItem(Icons.calculate_rounded, 'Калькулятор', () async => _send('calc')),
-                  _drawerItem(Icons.settings_rounded, 'Настройки', () async => _settings()),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
-              child: Container(
-                padding: const EdgeInsets.all(11),
-                decoration: BoxDecoration(color: const Color(0xFF071411), border: Border.all(color: kGreen.withOpacity(.16)), borderRadius: BorderRadius.circular(7)),
-                child: Row(children: [
-                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: _voiceReady ? kGreen : kRed, boxShadow: [BoxShadow(color: _voiceReady ? kGreen : kRed, blurRadius: 7)])),
-                  const SizedBox(width: 9),
-                  Expanded(child: Text(_voiceReady ? 'ГОЛОСОВОЙ КОНТУР ГОТОВ' : 'ГОЛОСОВОЙ КОНТУР НЕ ГОТОВ', style: TextStyle(color: _voiceReady ? kGreen : kRed, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .7))),
-                ]),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Future<Duration?> _parseTimer(String text) async {
+    final s = text.toLowerCase();
+    final m = RegExp(r'(?:таймер|напомни|напоминание)\s*(?:на|через)?\s*(\d+(?:[.,]\d+)?)\s*(сек|секунд(?:у|ы)?|s|мин|минут(?:у|ы)?|m|ч|час(?:а|ов)?|h)').firstMatch(s);
+    if (m == null) return null;
+    final value = double.tryParse(m.group(1)!.replaceAll(',', '.'));
+    if (value == null || value <= 0) return null;
+    final u = m.group(2)!;
+    if (u == 's' || u.startsWith('сек')) return Duration(milliseconds: (value * 1000).round());
+    if (u == 'm' || u.startsWith('мин')) return Duration(milliseconds: (value * 60000).round());
+    return Duration(milliseconds: (value * 3600000).round());
   }
 
-  Future<void> _openCommandCenter() async {
-    if (!mounted) return;
-    final commands = <Map<String, Object>>[
-      {'name': '/status', 'icon': Icons.monitor_heart_rounded, 'command': 'status'},
-      {'name': '/ps', 'icon': Icons.memory_rounded, 'command': 'ps'},
-      {'name': '/screenshot', 'icon': Icons.camera_alt_rounded, 'command': 'screenshot'},
-      {'name': '/volume', 'icon': Icons.volume_up_rounded, 'command': 'volume'},
-      {'name': '/weather', 'icon': Icons.cloud_rounded, 'command': 'weather'},
-      {'name': '/now', 'icon': Icons.access_time_rounded, 'command': 'now'},
-      {'name': '/calc', 'icon': Icons.calculate_rounded, 'command': 'calc'},
-      {'name': '/search', 'icon': Icons.search_rounded, 'command': 'поиск'},
-      {'name': '/remember', 'icon': Icons.bookmark_add_rounded, 'command': 'запомни'},
-      {'name': '/recall', 'icon': Icons.bookmarks_rounded, 'command': 'вспомни'},
-      {'name': '/forget', 'icon': Icons.delete_sweep_rounded, 'command': 'забудь'},
-      {'name': '/reminders', 'icon': Icons.alarm_rounded, 'command': 'напоминания'},
-      {'name': '/tools', 'icon': Icons.build_circle_rounded, 'command': 'покажи инструменты'},
-      {'name': '/help', 'icon': Icons.help_outline_rounded, 'command': 'help'},
-    ];
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: const Color(0xFF050B12),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 16),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              const Icon(Icons.terminal_rounded, color: kCyan, size: 20),
-              const SizedBox(width: 8),
-              const Expanded(child: Text('ЦЕНТР КОМАНД JARVIS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 1))),
-              IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close, color: Colors.white38)),
-            ]),
-            const SizedBox(height: 5),
-            const Text('Команды выполняются через подключённый AI-контур.', style: TextStyle(color: Colors.white38, fontSize: 10)),
-            const SizedBox(height: 10),
-            Flexible(
-              child: GridView.builder(
-                shrinkWrap: true,
-                itemCount: commands.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisExtent: 56, crossAxisSpacing: 8, mainAxisSpacing: 8),
-                itemBuilder: (context, index) {
-                  final item = commands[index];
-                  return OutlinedButton.icon(
-                    onPressed: _busy ? null : () {
-                      Navigator.pop(ctx);
-                      _send(item['command']! as String);
-                    },
-                    icon: Icon(item['icon']! as IconData, size: 17),
-                    label: Text(item['name']! as String, style: const TextStyle(fontFamily: 'monospace', fontSize: 10)),
-                    style: OutlinedButton.styleFrom(foregroundColor: kCyan, side: const BorderSide(color: kLine), alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 10)),
-                  );
-                },
-              ),
-            ),
-          ]),
-        ),
-      ),
-    );
+  Future<bool> _handleTimer(String text) async {
+    if (!_android) return false;
+    final d = await _parseTimer(text);
+    if (d == null) return false;
+    try {
+      await _platform.invokeMethod('scheduleTimer', {'delayMs': d.inMilliseconds, 'label': text});
+      final mins = d.inMinutes;
+      final reply = mins > 0 ? 'Таймер установлен на $mins минут.' : 'Таймер установлен на ${d.inSeconds} секунд.';
+      if (mounted) setState(() => _messages.add(_Msg(reply, isUser: false)));
+      await _speak(reply);
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Ошибка таймера: $e');
+    }
+    return true;
   }
 
+  @override
+  void dispose() {
+    _partialSub?.cancel();
+    _visualTimer?.cancel();
+    _voiceRestartTimer?.cancel();
+    _speech.stop();
+    _tts.stop();
+    _jarvis?.dispose();
+    _input.dispose();
+    _endpoint.dispose();
+    _apiKey.dispose();
+    _model.dispose();
+    _fallbackEndpoint.dispose();
+    _fallbackKey.dispose();
+    _fallbackModel.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Color get _visualColor => switch (_visualState) {
+    JarvisVisualState.idle => kCyan,
+    JarvisVisualState.listening => const Color(0xFF48F0B4),
+    JarvisVisualState.thinking => const Color(0xFF8B7CFF),
+    JarvisVisualState.speaking => const Color(0xFF39C6FF),
+    JarvisVisualState.confirmation => const Color(0xFF72F5CE),
+    JarvisVisualState.error => const Color(0xFFFF526B),
+    JarvisVisualState.exiting => const Color(0xFF718096),
+  };
+
+  String get _visualLabel => switch (_visualState) {
+    JarvisVisualState.idle => 'ГОТОВ К РАБОТЕ',
+    JarvisVisualState.listening => 'СЛУШАЮ',
+    JarvisVisualState.thinking => 'ОБРАБАТЫВАЮ ЗАПРОС',
+    JarvisVisualState.speaking => 'ОТВЕЧАЮ',
+    JarvisVisualState.confirmation => 'ПОДКЛЮЧЕНО',
+    JarvisVisualState.error => 'ТРЕБУЕТСЯ ПРОВЕРКА',
+    JarvisVisualState.exiting => 'ЗАВЕРШЕНИЕ',
+  };
 
   @override
   Widget build(BuildContext context) {
-    final micColor = _listening ? kGreen : (_voiceReady && _voiceEnabled ? kCyan : kRed);
-    final modelLabel = '${_activeModel + 1}/2';
     return Scaffold(
-      backgroundColor: kBg,
-      drawer: _buildDrawer(),
       appBar: AppBar(
-        backgroundColor: kBg,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: Builder(builder: (ctx) => IconButton(
-          tooltip: 'Меню JARVIS',
-          onPressed: () => Scaffold.of(ctx).openDrawer(),
-          icon: const Icon(Icons.menu_rounded, color: kCyan),
-        )),
-        titleSpacing: 0,
-        title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('JARVIS', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
-          Text('COMMAND CENTER', style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1.1)),
-        ]),
-        actions: [
-          IconButton(tooltip: 'Микрофон', onPressed: _toggleVoice, icon: Icon(_listening ? Icons.mic_rounded : Icons.mic_none_rounded, color: micColor, size: 25)),
-          IconButton(tooltip: 'Настройки', onPressed: _settings, icon: const Icon(Icons.settings_rounded, color: kCyan, size: 23)),
-        ],
+        title: const Text('JARVIS XXX', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w600)),
+        actions: [if (_android) IconButton(tooltip: 'Настройки Hugging Face', onPressed: _settings, icon: const Icon(Icons.tune))],
       ),
       body: SafeArea(
-        top: false,
         child: Column(children: [
-          _coreVisual(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            child: Row(children: [
-
+          SizedBox(
+            height: 272,
+            width: double.infinity,
+            child: Stack(alignment: Alignment.center, children: [
+              Positioned.fill(child: JarvisReactor(color: _visualColor, state: _visualState)),
+              Positioned(
+                bottom: 12,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_visualLabel, style: TextStyle(color: _visualColor, fontSize: 11, letterSpacing: 2.2, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 5),
+                  SizedBox(width: MediaQuery.sizeOf(context).width * 0.78,
+                    child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.72), fontSize: 12))),
+                ]),
+              ),
             ]),
           ),
-          const SizedBox(height: 4),
+          const Divider(height: 1, color: Color(0xFF182736)),
           Expanded(
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-              decoration: BoxDecoration(color: const Color(0xFF050C0C), borderRadius: BorderRadius.circular(9), border: Border.all(color: kLine.withOpacity(.8))),
-              child: ListView(
-                controller: _scroll,
-                children: [
-                  Row(children: [
-                    const Expanded(child: Text('ЖУРНАЛ / ДИАЛОГ', style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1))),
-                    Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: _listening ? kGreen : Colors.white38, fontSize: 8, fontFamily: 'monospace')), if (_ttsReady) const Icon(Icons.volume_up_rounded, size: 13, color: kGreen),
-                    if (_busy) const Padding(padding: EdgeInsets.only(left: 8), child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: kCyan))),
+            child: _messages.isEmpty && _streamText.isEmpty
+              ? Center(child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.graphic_eq, color: _visualColor, size: 30),
+                    const SizedBox(height: 12),
+                    const Text('Система готова', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 6),
+                    Text('Введите запрос или нажмите микрофон и скажите «Джарвис».',
+                      textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withValues(alpha: 0.58), fontSize: 13)),
                   ]),
-                  const SizedBox(height: 8),
-                  ..._messages.map((m) => Align(
-                    alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 520),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: m.isUser ? const Color(0xFF0B2926) : const Color(0xFF0A1514),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(color: (m.isUser ? kCyan : kGreen).withOpacity(.18)),
-                      ),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(m.isUser ? 'КОМАНДА' : 'JARVIS', style: TextStyle(color: m.isUser ? kCyan : kGreen, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                        const SizedBox(height: 3),
-                        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Expanded(child: SelectableText(m.text, style: TextStyle(color: m.isUser ? Colors.white : Colors.white70, fontSize: 13, height: 1.35))),
-                          IconButton(
-                            tooltip: 'Копировать',
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                            icon: const Icon(Icons.copy_rounded, size: 17, color: Colors.white54),
-                            onPressed: () async {
-                              await Clipboard.setData(ClipboardData(text: m.text));
-                              if (mounted) setState(() => _status = 'Текст скопирован');
-                            },
-                          ),
-                        ]),
-                      ]),
-                    ),
-                  )),
-                  if (_streamText.isNotEmpty) Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: const Color(0xFF06161A), border: Border.all(color: kCyan.withOpacity(.2)), borderRadius: BorderRadius.circular(5)),
-                    child: Text(_streamText, style: const TextStyle(color: kCyan, fontSize: 12)),
-                  ),
-                  if (_messages.isEmpty && _streamText.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 32),
-                      child: Center(child: Text('СИСТЕМА ГОТОВА\nОткройте меню или скажите команду JARVIS.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.5))),
-                    ),
-                  if (_attachment != null) Row(children: [
-                    const Icon(Icons.attach_file_rounded, color: kCyan, size: 17),
-                    const SizedBox(width: 5),
-                    Expanded(child: Text(_attachment!.name, style: const TextStyle(color: kCyan, fontSize: 11))),
-                    IconButton(icon: const Icon(Icons.close, color: kRed, size: 18), onPressed: () => setState(() => _attachment = null)),
-                  ]),
-                ],
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 4, 10, 9),
-            child: Row(children: [
-              IconButton(onPressed: _busy ? null : _pickFile, icon: const Icon(Icons.attach_file_rounded, color: kCyan)),
-              Expanded(
-                child: TextField(
-                  controller: _input,
-                  minLines: 2,
-                  maxLines: 7,
-                  keyboardType: TextInputType.multiline,
-                  textInputAction: TextInputAction.newline,
-                  style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.35),
-                  cursorColor: kCyan,
-                  decoration: InputDecoration(
-                    hintText: 'Введите команду JARVIS…',
-                    hintStyle: const TextStyle(color: Colors.white30),
-                    filled: true,
-                    fillColor: kPanel,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide(color: kLine.withOpacity(.8))),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide(color: kLine.withOpacity(.8))),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: kCyan)),
-                  ),
+                ))
+              : ListView.builder(
+                  controller: _scroll,
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+                  itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (_streamText.isNotEmpty && index == _messages.length) {
+                      return Align(alignment: Alignment.centerLeft, child: _messageBubble(_streamText, false));
+                    }
+                    final m = _messages[index];
+                    return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft,
+                      child: _messageBubble(m.text, m.isUser));
+                  },
                 ),
-              ),
+          ),
+          if (_android && _heardText.isNotEmpty)
+            Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+              child: Row(children: [
+                Icon(Icons.graphic_eq, color: _visualColor, size: 16),
+                const SizedBox(width: 6),
+                Expanded(child: Text(_heardText, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.62), fontSize: 11))),
+              ])),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(child: TextField(
+                controller: _input, minLines: 1, maxLines: 4,
+                textInputAction: TextInputAction.newline,
+                onSubmitted: _send,
+                decoration: InputDecoration(
+                  hintText: 'Сообщение JARVIS…',
+                  filled: true, fillColor: kPanel,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                ),
+              )),
               const SizedBox(width: 6),
               IconButton.filled(
-                onPressed: _busy ? null : () { final text = _input.text; _input.clear(); _send(text); },
-                style: IconButton.styleFrom(backgroundColor: const Color(0xFF0A2724), foregroundColor: kGreen),
-                icon: const Icon(Icons.arrow_upward_rounded),
+                tooltip: 'Отправить',
+                onPressed: _busy ? null : () => _send(_input.text),
+                icon: const Icon(Icons.arrow_upward),
               ),
+              if (_android)
+                IconButton(
+                  tooltip: _voiceRunning ? 'Остановить микрофон' : 'Включить голос',
+                  onPressed: _busy ? null : () async {
+                    if (_voiceRunning) {
+                      _speechSession++;
+                      _voiceRunning = false;
+                      await _speech.stop();
+                      if (mounted) setState(() { _status = 'Голос остановлен'; _visualState = JarvisVisualState.idle; });
+                    } else {
+                      if (!_voiceReady) await _initVoice();
+                      if (_voiceReady && mounted) {
+                        _voiceRunning = true;
+                        await _startVoiceLoop();
+                      }
+                    }
+                  },
+                  icon: Icon(_voiceRunning ? Icons.mic : Icons.mic_none, color: _voiceRunning ? _visualColor : null),
+                ),
             ]),
           ),
         ]),
@@ -921,4 +619,21 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     );
   }
 
+  Widget _messageBubble(String text, bool isUser) => Container(
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+    constraints: const BoxConstraints(maxWidth: 620),
+    decoration: BoxDecoration(
+      color: isUser ? const Color(0xFF102632) : kPanel,
+      borderRadius: BorderRadius.circular(15),
+      border: Border.all(color: (isUser ? kCyan : const Color(0xFF344454)).withValues(alpha: 0.32)),
+    ),
+    child: SelectableText(text, style: const TextStyle(fontSize: 14, height: 1.4)),
+  );
+}
+
+class JarvisHomePage extends StatefulWidget {
+  const JarvisHomePage({super.key});
+  @override
+  State<JarvisHomePage> createState() => _JarvisHomePageState();
 }
