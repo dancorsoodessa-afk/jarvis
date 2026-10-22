@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/services.dart';
 
 class JarvisReply {
   JarvisReply(this.text, this.provider, this.toolUsed, this.needsConfirmation);
-  factory JarvisReply.fromJson(Map<String, dynamic> json) => JarvisReply(json['text']?.toString() ?? '', json['provider']?.toString() ?? 'unknown', json['tool_used']?.toString(), json['needs_confirmation'] == true);
+  factory JarvisReply.fromJson(Map<String, dynamic> j) => JarvisReply(
+    j['text'] as String, j['provider'] as String? ?? 'unknown',
+    j['tool_used'] as String?, j['needs_confirmation'] as bool? ?? false);
   final String text;
   final String provider;
   final String? toolUsed;
@@ -13,408 +14,212 @@ class JarvisReply {
 }
 
 class JarvisIpc {
-  JarvisIpc._({Process? process, HttpClient? httpClient, String? apiUrl, String? apiKey, String? model, List<Map<String, String>> fallbacks = const []})
-      : _process = process, _httpClient = httpClient, _apiUrl = apiUrl, _apiKey = apiKey, _model = model, _fallbacks = fallbacks;
-  static const _channel = MethodChannel('jarvis.voice');
+  JarvisIpc._({Process? process, HttpClient? client, String? url, String? key, String? model,
+      String? fallbackUrl, String? fallbackKey, String? fallbackModel})
+      : _process = process, _httpClient = client, _apiUrl = url, _apiKey = key, _model = model,
+        _fallbackUrl = fallbackUrl, _fallbackKey = fallbackKey, _fallbackModel = fallbackModel;
 
-  static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async => JarvisIpc._(process: await Process.start(executable, args));
-  static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = '', List<Map<String, String>> fallbacks = const []}) async {
-    var url = apiUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    for (final suffix in ['/chat/completions', '/models']) {
-      if (url.endsWith(suffix)) { url = url.substring(0, url.length - suffix.length); break; }
-    }
-    if (url.isEmpty) throw ArgumentError('AI endpoint не указан');
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15)..idleTimeout = const Duration(seconds: 60);
-    final key = apiKey.trim().replaceFirst(RegExp(r'^(?:authorization\s*:\s*)?bearer\s+', caseSensitive: false), '').trim();
-    return JarvisIpc._(httpClient: client, apiUrl: url, apiKey: key, model: model.trim(), fallbacks: fallbacks);
+  static String _normalize(String value) {
+    var v = value.trim().replaceFirst(RegExp(r'/+$'), '');
+    if (v.endsWith('/chat/completions')) v = v.substring(0, v.length - 17);
+    return v;
+  }
+
+  static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async =>
+      JarvisIpc._(process: await Process.start(executable, args));
+
+  static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = '',
+      String fallbackUrl = '', String fallbackKey = '', String fallbackModel = ''}) async {
+    final url = _normalize(apiUrl);
+    if (url.isEmpty) throw ArgumentError('AI URL не указан');
+    if (apiKey.trim().isEmpty) throw ArgumentError('API key не указан');
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15)
+      ..idleTimeout = const Duration(seconds: 90);
+    return JarvisIpc._(client: client, url: url, key: apiKey.trim(), model: model.trim(),
+      fallbackUrl: _normalize(fallbackUrl), fallbackKey: fallbackKey.trim(), fallbackModel: fallbackModel.trim());
   }
 
   final Process? _process;
   final HttpClient? _httpClient;
-  String? _apiUrl;
-  String? _apiKey;
-  String? _model;
-  final List<Map<String, String>> _fallbacks;
-  final List<Map<String, dynamic>> _history = [];
-  final Map<int, Completer<Map<String, dynamic>>> _pending = {};
-  final _deltas = StreamController<Map<int, String>>.broadcast();
-  bool _processListening = false;
+  final String? _apiUrl;
+  final String? _apiKey;
+  final String? _model;
+  final String? _fallbackUrl;
+  final String? _fallbackKey;
+  final String? _fallbackModel;
+  bool _listening = false;
   int _nextId = 0;
   int? _activeId;
-  bool get _standalone => _httpClient != null;
-  Stream<Map<int, String>> get deltas => _deltas.stream;
-  int? get activeId => _activeId;
-  Stream<String> partials() => deltas.map((m) => m[activeId]).where((value) => value != null).cast<String>();
+  final Map<int, Completer<Map<String, dynamic>>> _pending = {};
+  final _deltaController = StreamController<Map<int, String>>.broadcast();
+  final List<Map<String, String>> _history = [];
 
-  void _listenProcess() {
-    if (_process == null || _processListening) return;
-    _processListening = true;
-    final acc = <int, String>{};
-    _process!.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
-      if (line.trim().isEmpty) return;
-      try {
-        final msg = jsonDecode(line) as Map<String, dynamic>;
-        final id = msg['id'] is int ? msg['id'] as int : null;
-        if (msg['type'] == 'delta' && id != null) {
-          acc[id] = (acc[id] ?? '') + (msg['text']?.toString() ?? '');
-          _deltas.add({id: acc[id]!});
-        } else if (id != null) {
-          final c = _pending.remove(id);
-          if (c != null && !c.isCompleted) c.complete(msg);
-        }
-      } catch (e) {
-        for (final c in _pending.values) { if (!c.isCompleted) c.completeError(e); }
-        _pending.clear();
+  bool get _standalone => _httpClient != null;
+  Stream<Map<int, String>> get deltas => _deltaController.stream;
+  int? get activeId => _activeId;
+  Stream<String> partials() => deltas.map((m) => m[activeId]).where((v) => v != null).cast<String>();
+
+  Map<String, String> _headers(String key) => {
+    'Authorization': 'Bearer ' + key.trim(),
+    HttpHeaders.acceptHeader: 'application/json',
+    HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
+    'HTTP-Referer': 'https://github.com/dancorsoodessa-afk/jarvis',
+    'X-Title': 'JARVIS Android',
+  };
+
+  String _error(int code, String body) {
+    try {
+      final j = jsonDecode(body);
+      if (j is Map) {
+        final e = j['error'];
+        if (e is Map && (e['message']?.toString().trim().isNotEmpty ?? false)) return 'HTTP ' + code.toString() + ': ' + e['message'].toString().trim();
+        if (j['message']?.toString().trim().isNotEmpty ?? false) return 'HTTP ' + code.toString() + ': ' + j['message'].toString().trim();
       }
-    }, onError: (Object e) {
-      for (final c in _pending.values) { if (!c.isCompleted) c.completeError(e); }
-      _pending.clear();
+    } catch (_) {}
+    return 'HTTP ' + code.toString() + ': ' + (body.trim().isEmpty ? 'пустой ответ сервера' : body.trim());
+  }
+
+  Future<void> _check(String base, String key, String label) async {
+    final request = await _httpClient!.getUrl(Uri.parse(base + '/models'));
+    final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
+    h.forEach(request.headers.set);
+    final response = await request.close();
+    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(label + ': ' + _error(response.statusCode, body));
+  }
+
+  Future<String> _autoModel(String base, String key) async {
+    final request = await _httpClient!.getUrl(Uri.parse(base + '/models'));
+    final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
+    h.forEach(request.headers.set);
+    final response = await request.close();
+    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(_error(response.statusCode, body));
+    final j = jsonDecode(body);
+    if (j is Map && j['data'] is List) {
+      for (final item in j['data']) {
+        if (item is Map && item['id'] is String && item['id'].toString().trim().isNotEmpty) return item['id'].toString().trim();
+      }
+    }
+    throw StateError('AI-сервер не сообщил доступных моделей');
+  }
+
+  Future<void> checkConnection() async {
+    if (!_standalone) return;
+    // Connection validation is intentionally best-effort. Some compatible
+    // providers do not expose /models even though chat/completions works.
+    try {
+      await _check(_apiUrl!, _apiKey!, 'Основной AI');
+      return;
+    } catch (primary) {
+      if ((_fallbackUrl ?? '').isNotEmpty && (_fallbackKey ?? '').isNotEmpty) {
+        try {
+          await _check(_fallbackUrl!, _fallbackKey!, 'Резервный AI');
+          return;
+        } catch (fallback) {
+          throw StateError('Основной AI недоступен: $primary. Резервный AI недоступен: $fallback');
+        }
+      }
+      // Do not block a configured provider solely because /models is absent
+      // or temporarily rate-limited. The real chat request will decide.
+      if (_retryable(primary)) return;
+      rethrow;
+    }
+  }
+
+  void _ensureListening() {
+    if (_standalone || _listening) return;
+    _listening = true;
+    final lines = _process!.stdout.transform(utf8.decoder).transform(const LineSplitter());
+    final accumulated = <int, String>{};
+    lines.listen((line) {
+      if (line.trim().isEmpty) return;
+      final msg = jsonDecode(line) as Map<String, dynamic>;
+      final id = msg['id'] is int ? msg['id'] as int : null;
+      if (msg['type'] == 'delta' && id != null) {
+        accumulated[id] = (accumulated[id] ?? '') + (msg['text'] as String);
+        _deltaController.add({id: accumulated[id]!});
+      } else if (id != null) {
+        _pending.remove(id)?.complete(msg);
+      }
     });
   }
 
-  Future<Map<String, dynamic>> _ipc(Map<String, dynamic> body) {
-    _listenProcess();
+  Future<Map<String, dynamic>> _request(Map<String, dynamic> body) {
+    _ensureListening();
     final id = _nextId++;
     _activeId = id;
     final c = Completer<Map<String, dynamic>>();
     _pending[id] = c;
     _process!.stdin.writeln(jsonEncode({...body, 'id': id}));
-    return c.future.timeout(const Duration(seconds: 90));
+    return c.future;
   }
 
-  void _auth(HttpClientRequest r) {
-    final key = _apiKey?.trim() ?? '';
-    if (key.isEmpty) return;
-    // OpenAI-compatible providers use Bearer authentication.
-    // Do not send X-API-Key here: some gateways/proxies reject unexpected auth headers.
-    r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
-  }
-
-  Future<Map<String, dynamic>> _json(HttpClientResponse response) async {
-    final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 90));
-    dynamic value;
-    try { value = body.trim().isEmpty ? <String, dynamic>{} : jsonDecode(body); } catch (_) { value = {'message': body.trim()}; }
-    final data = value is Map<String, dynamic> ? value : <String, dynamic>{'data': value};
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final err = data['error'];
-      final msg = err is Map ? err['message']?.toString() : data['message']?.toString();
-      throw StateError('AI ${response.statusCode}: ${msg?.isNotEmpty == true ? msg : 'HTTP ${response.statusCode}'}');
-    }
-    return data;
-  }
-
-  Future<String> _modelId() async {
-    if ((_model ?? '').trim().isNotEmpty) return _model!.trim();
-    final r = await _httpClient!.getUrl(Uri.parse('$_apiUrl/models'));
-    _auth(r);
-    r.headers.set(HttpHeaders.acceptHeader, 'application/json');
-    final data = (await _json(await r.close()))['data'];
-    if (data is List) {
-      for (final item in data) {
-        if (item is Map && item['id']?.toString().trim().isNotEmpty == true) return item['id'].toString().trim();
-      }
-    }
-    throw StateError('AI-сервер не сообщил доступную модель.');
-  }
-
-  static Map<String, dynamic> _fn(String name, String description, Map<String, dynamic> props, List<String> required) => {'type': 'function', 'function': {'name': name, 'description': description, 'parameters': {'type': 'object', 'properties': props, 'required': required}}};
-
-  List<Map<String, dynamic>> _tools() => [
-    _fn('google_search', 'Основной поиск через Google.com', {'query': {'type': 'string'}, 'limit': {'type': 'integer'}}, ['query']),
-    _fn('web_get', 'Получить страницу HTTP/HTTPS', {'url': {'type': 'string'}}, ['url']),
-    _fn('http_request', 'HTTP API GET/POST/PUT/PATCH/DELETE', {'method': {'type': 'string'}, 'url': {'type': 'string'}, 'body': {'type': 'string'}, 'headers': {'type': 'string'}}, ['url']),
-    _fn('download_file', 'Скачать файл в app-specific storage', {'url': {'type': 'string'}, 'filename': {'type': 'string'}}, ['url']),
-    _fn('weather', 'Погода через бесплатный Open-Meteo', {'city': {'type': 'string'}}, ['city']),
-    _fn('file_roots', 'Доступные папки', {}, []),
-    _fn('file_list', 'Список файлов', {'path': {'type': 'string'}}, []),
-    _fn('file_read', 'Прочитать UTF-8 файл', {'path': {'type': 'string'}}, ['path']),
-    _fn('file_write', 'Записать UTF-8 файл', {'path': {'type': 'string'}, 'content': {'type': 'string'}}, ['path', 'content']),
-    _fn('file_append', 'Добавить в файл', {'path': {'type': 'string'}, 'content': {'type': 'string'}}, ['path', 'content']),
-    _fn('file_mkdir', 'Создать папку', {'path': {'type': 'string'}}, ['path']),
-    _fn('file_delete', 'Удалить файл/папку', {'path': {'type': 'string'}}, ['path']),
-    _fn('file_copy', 'Копировать', {'from': {'type': 'string'}, 'to': {'type': 'string'}}, ['from', 'to']),
-    _fn('file_move', 'Переместить', {'from': {'type': 'string'}, 'to': {'type': 'string'}}, ['from', 'to']),
-    _fn('db_tables', 'Таблицы SQLite', {'database': {'type': 'string'}}, ['database']),
-    _fn('db_query', 'SQLite SELECT/PRAGMA', {'database': {'type': 'string'}, 'sql': {'type': 'string'}, 'limit': {'type': 'integer'}}, ['database', 'sql']),
-    _fn('db_exec', 'SQLite INSERT/UPDATE/DDL', {'database': {'type': 'string'}, 'sql': {'type': 'string'}}, ['database', 'sql']),
-    _fn('device_info', 'Информация Android', {}, []),
-    _fn('time_now', 'Текущее время', {}, []),
-    _fn('open_url', 'Открыть HTTP/HTTPS ссылку', {'url': {'type': 'string'}}, ['url']),
-    _fn('clipboard_get', 'Прочитать буфер', {}, []),
-    _fn('clipboard_set', 'Записать буфер', {'text': {'type': 'string'}}, ['text']),
-    _fn('self_improve', 'Изменить постоянное поведение БУСИ', {'instruction': {'type': 'string'}}, ['instruction']),
-    _fn('self_learn', 'Сохранить правило/навык/предпочтение', {'category': {'type': 'string'}, 'text': {'type': 'string'}, 'priority': {'type': 'integer'}}, ['text']),
-    _fn('self_forget', 'Забыть правило', {'text': {'type': 'string'}}, ['text']),
-    _fn('self_memory', 'Полная память самоулучшения', {}, []),
-    _fn('self_behavior', 'Активный поведенческий слой', {}, []),
-    _fn('self_clear', 'Полностью очистить память самоулучшения', {}, []),
-  ];
-
-  Future<String> _tool(String name, Map<String, dynamic> args) async {
-    if (!Platform.isAndroid) throw StateError('Android-инструмент недоступен');
-    return (await _channel.invokeMethod<dynamic>('android_tool', {'name': name, 'args': jsonEncode(args)}))?.toString() ?? '';
-  }
-
-  Future<JarvisReply> _local(String text) async {
-    if (!Platform.isAndroid) return JarvisReply('', 'none', null, false);
-    final lower = text.trim().toLowerCase();
-    if (lower == 'что ты помнишь' || lower == 'чему ты научилась' || lower == 'покажи память') return JarvisReply(await _tool('self_memory', {}), 'android-self-improvement', 'self_memory', false);
-    if (lower == 'покажи правила' || lower == 'какое у тебя поведение') return JarvisReply(await _tool('self_behavior', {}), 'android-self-improvement', 'self_behavior', false);
-    for (final p in ['запомни ', 'запомни:', 'научись:']) {
-      if (lower.startsWith(p)) {
-        final t = text.trim().substring(p.length).trim();
-        if (t.isEmpty) return JarvisReply('Скажи, что запомнить.', 'android-self-improvement', null, false);
-        await _tool('self_learn', {'category': 'rules', 'text': t, 'priority': 95});
-        return JarvisReply('Запомнила и активировала правило.', 'android-self-improvement', 'self_learn', false);
-      }
-    }
-    for (final p in ['самоулучшайся:', 'самоулучшись:', 'самоулучшайся ', 'самоулучшись ', 'самоулучшайся', 'самоулучшись']) {
-      if (lower.startsWith(p)) {
-        final t = text.trim().substring(p.length).trim();
-        final raw = await _tool('self_improve', {'instruction': t.isEmpty ? 'Проведи максимальное безопасное улучшение поведения, памяти, инструментов и обработки ошибок.' : t});
-        return JarvisReply('Самоулучшение применено. Состояние: ${_version(raw)}', 'android-self-improvement', 'self_improve', false);
-      }
-    }
-    for (final p in ['забудь ', 'забудь:']) {
-      if (lower.startsWith(p)) {
-        await _tool('self_forget', {'text': text.trim().substring(p.length).trim()});
-        return JarvisReply('Правило удалено.', 'android-self-improvement', 'self_forget', false);
-      }
-    }
-    return JarvisReply('', 'none', null, false);
-  }
-
-  String _version(String raw) { try { return (jsonDecode(raw) as Map)['version']?.toString() ?? '?'; } catch (_) { return '?'; } }
-
-  Future<String> _transcribeAttachment(Map<String, dynamic> attachment) async {
-    final mime = (attachment['mime']?.toString() ?? '').toLowerCase();
-    final data = attachment['data']?.toString() ?? '';
-    if (data.isEmpty) throw StateError('Пустой аудиофайл');
-    String format = 'wav';
-    if (mime.contains('mpeg') || mime.endsWith('/mp3')) format = 'mp3';
-    else if (mime.contains('m4a')) format = 'm4a';
-    else if (mime.contains('ogg')) format = 'ogg';
-    else if (mime.contains('webm')) format = 'webm';
-    else if (mime.contains('aac')) format = 'aac';
-    final req = await _httpClient!.postUrl(Uri.parse('$_apiUrl/audio/transcriptions'));
-    req.headers.contentType = ContentType.json;
-    _auth(req);
-    req.write(jsonEncode({
-      'model': 'openai/whisper-1',
-      'input_audio': {'data': data, 'format': format},
-      'language': 'ru',
-    }));
-    final decoded = await _json(await req.close());
-    final text = decoded['text']?.toString().trim() ?? '';
-    if (text.isEmpty) throw StateError('STT не вернул текст');
-    return text;
-  }
-
-  List<Map<String, dynamic>> _attachmentParts(Map<String, dynamic> a, String prompt) {
-    final name = a['name']?.toString() ?? 'file';
-    final mime = (a['mime']?.toString() ?? 'application/octet-stream').toLowerCase();
-    final data = a['data']?.toString() ?? '';
-    if (mime.startsWith('image/')) {
-      return [
-        {'type': 'text', 'text': prompt},
-        {'type': 'image_url', 'image_url': {'url': 'data:$mime;base64,$data'}},
-      ];
-    }
-    if (mime.startsWith('video/')) {
-      return [
-        {'type': 'text', 'text': prompt},
-        {'type': 'video_url', 'video_url': {'url': 'data:$mime;base64,$data'}},
-      ];
-    }
-    if (mime == 'application/pdf') {
-      return [
-        {'type': 'text', 'text': prompt},
-        {'type': 'file', 'file': {'filename': name, 'file_data': 'data:$mime;base64,$data'}},
-      ];
-    }
-    if (mime.startsWith('text/') || mime.contains('json') || mime.contains('csv') || mime.contains('xml') || mime.contains('markdown')) {
-      try {
-        final decoded = utf8.decode(base64Decode(data));
-        return [{'type': 'text', 'text': '$prompt\n\nФайл $name:\n$decoded'}];
-      } catch (_) {}
-    }
-    return [
-      {'type': 'text', 'text': '$prompt\n\nПрикреплён файл: $name ($mime).'},
+  Future<JarvisReply> _call(String base, String key, String model, String text) async {
+    final selected = model.trim().isEmpty ? await _autoModel(base, key) : model.trim();
+    final messages = <Map<String, String>>[
+      {'role': 'system', 'content': 'Ты JARVIS — AI-помощник. Отвечай на языке пользователя. Не утверждай, что выполнил действие на телефоне, если оно не было выполнено инструментом.'},
+      ..._history,
+      {'role': 'user', 'content': text},
     ];
+    final request = await _httpClient!.postUrl(Uri.parse(base + '/chat/completions'));
+    _headers(key).forEach(request.headers.set);
+    final bytes = utf8.encode(jsonEncode({'model': selected, 'messages': messages, 'stream': false}));
+    request.contentLength = bytes.length;
+    request.add(bytes);
+    final response = await request.close();
+    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(_error(response.statusCode, body));
+    final j = jsonDecode(body) as Map<String, dynamic>;
+    final choices = j['choices'];
+    if (choices is! List || choices.isEmpty) throw StateError('AI не вернул ответ');
+    final message = choices.first['message'];
+    final content = message is Map ? message['content']?.toString() : null;
+    if (content == null || content.trim().isEmpty) throw StateError('AI вернул пустой ответ');
+    return JarvisReply(content.trim(), base, null, false);
   }
 
-  Future<JarvisReply> _standaloneSendOnce(String text, {Map<String, dynamic>? attachment}) async {
-    var userText = text;
-    Map<String, dynamic>? activeAttachment = attachment;
-    if (attachment != null && (attachment['mime']?.toString() ?? '').toLowerCase().startsWith('audio/')) {
-      userText = '$text\n\nРасшифровка прикреплённого аудио: ${await _transcribeAttachment(attachment)}';
-      activeAttachment = null;
-    }
-    final local = await _local(userText);
-    if (local.text.isNotEmpty) return local;
-    final defaultModel = await _modelId();
-    final attachmentMime = (activeAttachment?['mime']?.toString() ?? '').toLowerCase();
-    final model = activeAttachment != null ? 'google/gemma-4-26b-a4b-it:free' : defaultModel;
-    final behavior = Platform.isAndroid ? await _tool('self_behavior', {}) : '';
-    final system = 'Ты JARVIS — автономный AI-агент. Отвечай на языке пользователя. Используй инструменты для реальных действий и не выдумывай результат. Отделы: internet (Google.com, HTTP, download, weather), files, database (SQLite), other, self-improvement. Самоулучшение — изменение постоянного поведенческого слоя: правила, навыки, предпочтения, исправления, успешные шаблоны и политики инструментов. Когда пользователь просит улучшить себя — используй self_improve или self_learn. Не заявляй об изменении весов модели или подписанного APK. Активный слой:\n$behavior';
-    final messages = <Map<String, dynamic>>[{'role': 'system', 'content': system}, ..._history, {'role': 'user', 'content': activeAttachment == null ? userText : _attachmentParts(activeAttachment, userText)}];
-    String answer = '';
-    String? lastTool;
-    String responseModel = model;
-    for (var round = 0; round < 8; round++) {
-      final req = await _httpClient!.postUrl(Uri.parse('$_apiUrl/chat/completions'));
-      req.headers.contentType = ContentType.json;
-      req.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      if (_apiUrl!.contains('openrouter.ai')) {
-        req.headers.set('HTTP-Referer', 'https://github.com/dancorsoodessa-afk/jarvis');
-        req.headers.set('X-OpenRouter-Title', 'JARVIS Android');
-      }
-      _auth(req);
-      final models = <String>[
-        model,
-        'openrouter/free',
-        'qwen/qwen3.8-27b:free',
-        'google/gemma-4-26b-a4b-it:free',
-      ].where((m) => m.trim().isNotEmpty).toSet().toList();
-      final requestBody = <String, dynamic>{
-        'messages': messages,
-        'tools': _tools(),
-        'tool_choice': 'auto',
-        'temperature': 0.2,
-        'stream': false,
-      };
-      if (_apiUrl!.contains('openrouter.ai')) {
-        requestBody['models'] = models;
-      } else {
-        requestBody['model'] = model;
-      }
-      req.write(jsonEncode(requestBody));
-      final decoded = await _json(await req.close());
-      responseModel = decoded['model']?.toString() ?? model;
-      final choices = decoded['choices'];
-      if (choices is! List || choices.isEmpty) throw StateError('AI не вернул choices');
-      final first = choices.first;
-      final message = first is Map ? first['message'] : null;
-      if (message is! Map) throw StateError('AI не вернул message');
-      final content = message['content'];
-      if (content != null) answer = content.toString();
-      final calls = message['tool_calls'];
-      if (calls is! List || calls.isEmpty) break;
-      messages.add({'role': 'assistant', 'content': content, 'tool_calls': calls});
-      for (final call in calls) {
-        if (call is! Map || call['function'] is! Map) continue;
-        final fn = call['function'] as Map;
-        final name = fn['name']?.toString() ?? '';
-        Map<String, dynamic> args = {};
-        try { final a = jsonDecode(fn['arguments']?.toString() ?? '{}'); if (a is Map) args = Map<String, dynamic>.from(a); } catch (_) {}
-        String result;
-        try { result = await _tool(name, args); lastTool = name; } catch (e) { result = jsonEncode({'error': e.toString()}); }
-        messages.add({'role': 'tool', 'tool_call_id': call['id']?.toString() ?? name, 'content': result});
-      }
-    }
-    answer = answer.trim().isEmpty ? 'Готово.' : answer.trim();
-    _history.add({'role': 'user', 'content': userText});
-    _history.add({'role': 'assistant', 'content': answer});
-    while (_history.length > 24) _history.removeAt(0);
-    if (Platform.isAndroid) {
-      try { await _channel.invokeMethod('self_feedback', {'user': text, 'assistant': answer}); } catch (_) {}
-    }
-    return JarvisReply(answer, responseModel, lastTool, false);
+  bool _retryable(Object e) {
+    final s = e.toString();
+    return RegExp(r'HTTP (400|401|402|403|404|408|409|425|429|500|502|503|504)').hasMatch(s) ||
+        s.contains('SocketException') || s.contains('TimeoutException') || s.contains('Connection closed');
   }
 
-  bool _fallbackAllowed(Object error) {
-    final message = error.toString();
-    final match = RegExp(r'AI (\d{3})').firstMatch(message);
-    if (match != null) {
-      final code = int.tryParse(match.group(1)!) ?? 0;
-      // Never hide bad credentials, bad requests, or invalid model IDs by
-      // silently switching providers. Fallback is for transient failures.
-      return code == 408 || code == 409 || code == 425 || code == 429 || code >= 500;
-    }
-    return error is SocketException ||
-        error is TimeoutException ||
-        message.contains('Connection reset') ||
-        message.contains('Connection closed') ||
-        message.contains('timed out');
-  }
-
-  Future<JarvisReply> _standaloneSend(String text, {Map<String, dynamic>? attachment}) async {
-    final providers = <Map<String, String>>[
-      {'name': 'Primary', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
-      ..._fallbacks,
-    ].fold<List<Map<String, String>>>(<Map<String, String>>[], (list, p) {
-      final signature = '${p['url']}|${p['key']}|${p['model']}';
-      if (!list.any((x) => '${x['url']}|${x['key']}|${x['model']}' == signature)) list.add(p);
-      return list;
-    });
-    Object? lastError;
-    for (var i = 0; i < providers.length; i++) {
-      final p = providers[i];
-      final url = (p['url'] ?? '').trim();
-      final key = (p['key'] ?? '').trim();
-      if (url.isEmpty || key.isEmpty) continue;
-      _apiUrl = url;
-      _apiKey = key;
-      _model = (p['model'] ?? '').trim();
-      try {
-        return await _standaloneSendOnce(text, attachment: attachment);
-      } catch (e) {
-        lastError = e;
-        if (i == providers.length - 1 || !_fallbackAllowed(e)) rethrow;
-      }
-    }
-    throw StateError('AI-провайдеры недоступны: ${lastError ?? 'нет настроенных ключей'}');
-  }
-
-  Future<void> verifyConnection() async {
-    if (!_standalone) return;
-    final url = (_apiUrl ?? '').trim().replaceFirst(RegExp(r'/+$'), '');
-    final key = (_apiKey ?? '').trim();
-    final model = (_model ?? '').trim();
-    if (url.isEmpty) throw ArgumentError('AI endpoint не указан');
-    if (key.isEmpty) throw ArgumentError('API key не указан');
-    final r = await _httpClient!.getUrl(Uri.parse('$url/models'));
-    r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
-    final data = await _json(await r.close());
-    if (model.isNotEmpty && data['data'] is List) {
-      final ids = (data['data'] as List)
-          .whereType<Map>()
-          .map((m) => m['id']?.toString())
-          .whereType<String>()
-          .toSet();
-      if (ids.isNotEmpty && !ids.contains(model)) {
-        throw StateError('Модель $model недоступна у выбранного провайдера');
-      }
+  Future<JarvisReply> _sendStandalone(String text) async {
+    try {
+      final r = await _call(_apiUrl!, _apiKey!, _model ?? '', text);
+      _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': r.text});
+      if (_history.length > 40) _history.removeRange(0, _history.length - 40);
+      return r;
+    } catch (e) {
+      if ((_fallbackUrl ?? '').isEmpty || (_fallbackKey ?? '').isEmpty || !_retryable(e)) rethrow;
+      final r = await _call(_fallbackUrl!, _fallbackKey!, _fallbackModel ?? '', text);
+      _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': r.text});
+      if (_history.length > 40) _history.removeRange(0, _history.length - 40);
+      return r;
     }
   }
 
-
-  Future<JarvisReply> sendMessage(String text, {Map<String, dynamic>? attachment}) async {
-    if (_standalone) return await _standaloneSend(text, attachment: attachment);
-    final response = await _ipc({
-      'type': 'message',
-      'text': text,
-      if (attachment != null) 'attachment': attachment,
-    });
-    return JarvisReply.fromJson(response);
+  Future<JarvisReply> sendMessage(String text) async {
+    final value = text.trim();
+    if (value.isEmpty) throw ArgumentError('Пустое сообщение');
+    if (_standalone) return _sendStandalone(value);
+    final resp = await _request({'type': 'message', 'text': value});
+    if (resp['type'] == 'error') throw StateError(resp['message']?.toString() ?? 'Ошибка агента');
+    return JarvisReply.fromJson(resp);
   }
 
   Future<List<String>> listTools() async {
-    if (!_standalone) {
-      try {
-        final r = await _ipc({'type': 'list_tools'});
-        if (r['tools'] is List) return (r['tools'] as List).map((e) => e.toString()).toList();
-      } catch (_) {}
-      return const [];
-    }
-    return _tools().map((x) => ((x['function'] as Map)['name'] ?? '').toString()).where((x) => x.isNotEmpty).toList();
+    if (_standalone) return const [];
+    final resp = await _request({'type': 'tools'});
+    if (resp['type'] == 'error') throw StateError(resp['message']?.toString() ?? 'Ошибка');
+    return (resp['tools'] as List).cast<String>();
   }
 
   Future<void> dispose() async {
-    for (final c in _pending.values) { if (!c.isCompleted) c.completeError(StateError('Клиент закрыт')); }
-    _pending.clear();
-    await _deltas.close();
-    _httpClient?.close(force: true);
+    await _deltaController.close();
     _process?.kill();
+    _httpClient?.close(force: true);
   }
 }
