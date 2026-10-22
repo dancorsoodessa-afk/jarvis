@@ -289,7 +289,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _endpoint.text = kFreePrimaryUrl;\n    await prefs.setString('endpoint', kFreePrimaryUrl);
+    _endpoint.text = kFreePrimaryUrl;
+    await prefs.setString('endpoint', kFreePrimaryUrl);
     await prefs.setString('model', _model.text.trim());
     await prefs.setString('api_key', _apiKey.text.trim());
     await prefs.setString('fallback_endpoint', '');
