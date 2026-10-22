@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 import 'jarvis_client.dart';
+import 'jarvis_3d_core.dart';
 
 const kCyan = Color(0xFF08E6FF);
 const kGreen = Color(0xFF45F0B0);
@@ -497,88 +498,54 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   Widget _coreVisual() {
     final listening = _listening;
     final ready = _voiceReady && _voiceEnabled;
-    final accent = listening ? kGreen : (ready ? kCyan : kRed);
+    final accent = listening ? kGreen : (_busy ? kAmber : (ready ? kCyan : kRed));
+    final state = listening ? 'СЛУШАЮ' : (_busy ? 'ОБРАБАТЫВАЮ' : (ready ? 'СИСТЕМА ГОТОВА' : 'ОЖИДАНИЕ СВЯЗИ'));
     return AnimatedBuilder(
       animation: _orbController,
       builder: (context, child) {
-        final phase = _orbController.value * 6.283185307;
-        final pulse = 0.94 + 0.06 * (0.5 + 0.5 * math.sin(phase));
+        final phase = _orbController.value * math.pi * 2;
         return Container(
-          height: 286,
+          height: 326,
           margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF080E17),
-            border: Border.all(color: const Color(0xFF18283A)),
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(.35), blurRadius: 24)],
+            color: const Color(0xFF050912),
+            border: Border.all(color: accent.withOpacity(.28)),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [BoxShadow(color: accent.withOpacity(.08), blurRadius: 28)],
           ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Positioned(top: 10, left: 12, right: 12, child: Row(
-                children: [
-                  Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 8)])),
-                  const SizedBox(width: 7),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 2)),
-                  const SizedBox(width: 7),
-                  const Text('V4.2 // ONLINE', style: TextStyle(color: Colors.white38, fontSize: 8, fontFamily: 'monospace')),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: accent.withOpacity(.08), border: Border.all(color: accent.withOpacity(.35)), borderRadius: BorderRadius.circular(3)),
-                    child: Text(listening ? 'JARVIS ACTIVE' : (ready ? 'READY' : 'OFFLINE'), style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                  ),
-                ],
-              )),
-              for (final size in [198.0 * pulse, 166.0 * pulse, 132.0 * pulse])
-                Container(
-                  width: size,
-                  height: size,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: accent.withOpacity(.16), width: 1),
-                  ),
-                ),
-              Container(
-                width: 108 * pulse,
-                height: 108 * pulse,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0E3440), Color(0xFF09202A)]),
-                  border: Border.all(color: accent.withOpacity(.8)),
-                  boxShadow: [BoxShadow(color: accent.withOpacity(.22), blurRadius: 30)],
-                ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    for (final h in [13.0, 24.0, 34.0, 20.0, 29.0])
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 450),
-                          width: 4,
-                          height: h * pulse,
-                          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(3), boxShadow: [BoxShadow(color: accent, blurRadius: 7)]),
-                        ),
-                      ),
-                  ]),
-                  const SizedBox(height: 8),
-                  const Text('A.R.C. CORE', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                ]),
-              ),
-              Positioned(bottom: 36, left: 16, right: 16, child: Column(children: [
-                RichText(textAlign: TextAlign.center, text: TextSpan(children: [
-                  TextSpan(text: listening ? 'СЛУШАЕТ ПОТОК ' : 'JARVIS ', style: const TextStyle(color: Colors.white, fontSize: 20, fontFamily: 'serif', fontWeight: FontWeight.w700)),
-                  TextSpan(text: listening ? 'DUPLEX' : 'CORE', style: TextStyle(color: const Color(0xFF061016), backgroundColor: accent, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                ])),
-                const SizedBox(height: 4),
-                Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 9, fontFamily: 'monospace')),
-              ])),
-            ],
-          ),
+          child: Stack(alignment: Alignment.center, children: [
+            Positioned.fill(child: Jarvis3DCore(phase: phase, accent: accent, listening: listening, processing: _busy)),
+            Positioned(top: 13, left: 15, right: 15, child: Row(children: [
+              Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: accent, boxShadow: [BoxShadow(color: accent, blurRadius: 9)])),
+              const SizedBox(width: 8),
+              const Text('J.A.R.V.I.S', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 3)),
+              const Spacer(),
+              Text('NEURAL INTERFACE / 3D', style: TextStyle(color: accent.withOpacity(.75), fontSize: 8, fontFamily: 'monospace', letterSpacing: 1)),
+            ])),
+            Positioned(left: 14, top: 49, child: _hudReadout('CORE', _busy ? 'PROCESSING' : (ready ? 'ONLINE' : 'STANDBY'), accent)),
+            Positioned(right: 14, top: 49, child: _hudReadout('VOICE', listening ? 'INPUT LIVE' : (_ttsReady ? 'AUDIO READY' : 'IDLE'), accent)),
+            Positioned(bottom: 15, left: 12, right: 12, child: Column(children: [
+              Text('JARVIS', style: TextStyle(color: Colors.white.withOpacity(.94), fontSize: 22, fontWeight: FontWeight.w300, letterSpacing: 7, shadows: [Shadow(color: accent.withOpacity(.7), blurRadius: 16)])),
+              const SizedBox(height: 5),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5), decoration: BoxDecoration(color: accent.withOpacity(.08), border: Border.all(color: accent.withOpacity(.3)), borderRadius: BorderRadius.circular(30)), child: Text(state, style: TextStyle(color: accent, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 2))),
+              const SizedBox(height: 5),
+              Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white38, fontSize: 9, fontFamily: 'monospace')),
+            ])),
+          ]),
         );
       },
     );
   }
+
+  Widget _hudReadout(String label, String value, Color accent) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    decoration: BoxDecoration(color: const Color(0x6608111D), border: Border.all(color: accent.withOpacity(.18)), borderRadius: BorderRadius.circular(5)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(color: Colors.white38, fontSize: 7, letterSpacing: 1.5)),
+      const SizedBox(height: 3),
+      Text(value, style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: .8)),
+    ]),
+  );
 
   Widget _quickAction(IconData icon, String label, VoidCallback onTap) => Expanded(
     child: Padding(
