@@ -84,16 +84,10 @@ Flutter UI может запускать агент через IPC. Если г�
 
 | Переменная | Описание | По умолчанию | Обязательна |
 |---|---|---|---|
-| \`JARVIS_PROVIDER\` | Провайдер: \`openai-compatible\` или \`local-vulkan\` | \`openai-compatible\` | Нет |
-| \`JARVIS_CHAT_URL\` | URL OpenAI-compatible API | пусто | Для cloud/local API — да |
+| \`JARVIS_PROVIDER\` | AI-провайдер (зафиксирован на Hugging Face) | \`huggingface\` | Нет |
+| \`JARVIS_CHAT_URL\` | Игнорируется: endpoint зафиксирован на Hugging Face | Hugging Face endpoint | Нет |
 | \`JARVIS_CHAT_KEY\` | API-ключ провайдера | пусто | Зависит от API |
 | \`JARVIS_CHAT_MODEL\` | Имя модели | \`Qwen/Qwen2.5-7B-Instruct\` | Нет |
-| \`DEPRECATED_DEEPSEEK_URL\` | URL дополнительного DeepSeek-провайдера | пусто | Нет |
-| \`DEPRECATED_DEEPSEEK_KEY\` | Ключ DeepSeek | пусто | Нет |
-| \`DEPRECATED_DEEPSEEK_MODEL\` | Модель DeepSeek | \`deepseek/deepseek-chat:free\` | Нет |
-| \`DEPRECATED_GLM_URL\` | URL дополнительного GLM-провайдера | пусто | Нет |
-| \`DEPRECATED_GLM_KEY\` | Ключ GLM | пусто | Нет |
-| \`DEPRECATED_GLM_MODEL\` | Модель GLM | \`z-ai/glm-5.2:free\` | Нет |
 | \`JARVIS_LLAMA_CLI\` | Исполняемый файл llama.cpp | \`llama-cli\` | Только local-vulkan |
 | \`JARVIS_MODEL\` | Путь к GGUF-модели для local-vulkan | \`model.gguf\` | Только local-vulkan |
 | \`JARVIS_CTX\` | Размер контекста, минимум 256 | \`2048\` | Нет |
@@ -104,11 +98,11 @@ Flutter UI может запускать агент через IPC. Если г�
 
 ### Примеры конфигурации
 
-**OpenAI-compatible API:**
+**Hugging Face Inference API:**
 
 ~~~
-$env:JARVIS_PROVIDER = "openai-compatible"
-$env:JARVIS_CHAT_URL = "https://your-provider.example/v1/chat/completions"
+$env:JARVIS_PROVIDER = "huggingface"
+$env:JARVIS_CHAT_URL = "https://router.huggingface.co/v1/chat/completions"
 $env:JARVIS_CHAT_KEY = "YOUR_API_KEY"
 $env:JARVIS_CHAT_MODEL = "your-model"
 .\\release\\JARVIS.exe
@@ -215,7 +209,7 @@ $env:JARVIS_CHAT_MODEL = "your-local-model"
 .\\dist\\jarvis.exe
 ```
 
-`JARVIS_CHAT_MODEL` may be left empty when the local server exposes `/v1/models`; JARVIS will discover the first available model. The URL and model are configurable, so the same provider can work with compatible local runtimes such as Ollama, llama.cpp server, or LM Studio.
+Set `JARVIS_CHAT_MODEL` to a model available through Hugging Face Inference Providers. Cloud requests always use the Hugging Face endpoint.
 
 ### 2. llama.cpp + Vulkan — direct local provider
 
