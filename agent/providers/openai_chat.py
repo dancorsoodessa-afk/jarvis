@@ -218,8 +218,6 @@ class OpenAIChatProvider:
         model = self.discover_model()
         messages = self._messages(prompt)
         payload = {"model": model, "messages": messages, "temperature": 0.25}
-        if self.fallback_models and "router.huggingface.co" in self.url:
-            payload["models"] = list(dict.fromkeys([model, *self.fallback_models]))
         if tools:
             payload["tools"] = tools
 
@@ -249,8 +247,6 @@ class OpenAIChatProvider:
             if confirmation_pending:
                 break
             payload = {"model": model, "messages": messages, "temperature": 0.25}
-            if self.fallback_models and "router.huggingface.co" in self.url:
-                payload["models"] = list(dict.fromkeys([model, *self.fallback_models]))
             if tools:
                 payload["tools"] = tools
         else:
