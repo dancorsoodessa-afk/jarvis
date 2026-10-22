@@ -5,7 +5,7 @@ $ErrorActionPreference = "Stop"
 
 python -m pip install --upgrade pip
 python -m pip install -e ".[all]"
-python -m pip install --upgrade "pyinstaller>=6.22,<7" pytest faster-whisper huggingface-hub
+python -m pip install --upgrade "pyinstaller>=6.22,<7" pytest faster-whisper huggingface-hub psutil
 
 Write-Host "== JARVIS: unit tests before large model downloads ==" -ForegroundColor Cyan
 pytest tests/ -q
