@@ -39,6 +39,14 @@ def _safe_endpoint(value: str | None) -> str:
     return url or DEFAULT_URL
 
 
+def _safe_model_id(value: str | None, fallback: str) -> str:
+    """Prevent an API URL accidentally saved in the model-ID field from breaking every request."""
+    model = (value or "").strip()
+    if not model or model.lower().startswith(("http://", "https://")) or "/chat/completions" in model.lower():
+        return fallback
+    return model
+
+
 _SECRET_SETTING_KEYS = {
     "api_key",
     "openrouter_api_key",
@@ -122,6 +130,9 @@ class JarvisDesktop(tk.Tk):
             value = profiles.get(key, {})
             merged[key] = {**default, **(value if isinstance(value, dict) else {})}
             merged[key]["url"] = _safe_endpoint(merged[key].get("url"))
+            # A previous misconfiguration may have put the endpoint URL in Model.
+            # Restore the profile's known-good model ID instead of sending the URL as "model".
+            merged[key]["model"] = _safe_model_id(merged[key].get("model"), default["model"])
         profile = merged[str(active)]
         self.settings["active_agent"] = active
         self.settings["agents"] = merged
@@ -310,6 +321,8 @@ class JarvisDesktop(tk.Tk):
         self.input.bind("<Return>", lambda _e: self.send())
         self.voice_button = ttk.Button(compose, text="🎙 ГОЛОС", command=self.start_voice)
         self.voice_button.grid(row=0,column=1,padx=3,ipadx=7,ipady=3)
+        # Several voice status handlers update this control; keep a valid reference.
+        self.voice_control = self.voice_button
         self.attach_button = ttk.Button(compose, text="📎 ФАЙЛ", command=self.pick_attachments)
         self.attach_button.grid(row=0,column=2,padx=3,ipadx=7,ipady=3)
         self.send_button = ttk.Button(compose, text="▶  ВЫПОЛНИТЬ", style="Accent.TButton", command=self.send)
