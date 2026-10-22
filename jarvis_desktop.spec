@@ -15,6 +15,7 @@ hiddenimports = [
     "av",
     "tokenizers",
     "huggingface_hub",
+    "psutil",
 ]
 
 a = Analysis(
