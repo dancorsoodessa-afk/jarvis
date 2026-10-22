@@ -86,7 +86,7 @@ Flutter UI может запускать агент через IPC. Если г�
 | \`JARVIS_PROVIDER\` | AI-провайдер (зафиксирован на Hugging Face) | \`huggingface\` | Нет |
 | \`JARVIS_CHAT_URL\` | Игнорируется: endpoint зафиксирован на Hugging Face | Hugging Face endpoint | Нет |
 | \`HF_TOKEN\` | Hugging Face access token | пусто | Да |
-| \`JARVIS_CHAT_MODEL\` | Имя модели | \`Qwen/Qwen2.5-7B-Instruct\` | Нет |
+| \`JARVIS_CHAT_MODEL\` | Имя модели | \`Qwen/Qwen2.5-7B-Instruct-1M\` | Нет |
 | \`JARVIS_CTX\` | Размер контекста, минимум 256 | \`2048\` | Нет |
 | \`JARVIS_THREADS\` | Число CPU-потоков, минимум 1 | \`6\` | Нет |
 | \`JARVIS_MEMORY\` | Файл краткосрочной памяти | \`jarvis_memory.json\` | Нет |
@@ -187,7 +187,7 @@ JARVIS uses only Hugging Face Inference API for cloud AI. OpenRouter, direct Dee
 ```powershell
 $env:JARVIS_PROVIDER = "huggingface"
 $env:HF_TOKEN = "hf_ВАШ_ТОКЕН"
-$env:JARVIS_CHAT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+$env:JARVIS_CHAT_MODEL = "Qwen/Qwen2.5-7B-Instruct-1M"
 .\\release\\JARVIS.exe
 ```
 
