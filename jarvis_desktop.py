@@ -385,81 +385,150 @@ class JarvisDesktop(tk.Tk):
         self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
 
     def _draw_orb(self):
-        """Высокопроизводительный псевдо-3D ARC Reactor: глубина, орбиты, сетка и реакция на голос/AI."""
+        """Живая проецируемая 3D-нейросфера с орбитами и состояниями реального цикла JARVIS."""
         self.canvas.delete("all")
-        w=max(430,self.canvas.winfo_width()); h=max(300,self.canvas.winfo_height())
-        cx,cy=w*0.43,h*0.48
-        phase=self._orb_phase; state=self._visual_state; level=self._visual_level
-        speed={"IDLE":0.014,"LISTENING":0.085,"THINKING":0.12,"SPEAKING":0.10,"ERROR":0.17}.get(state,0.03)
-        core=RED if state=="ERROR" else (YELLOW if state=="THINKING" else CYAN)
-        dark="#06121c"; faint="#0a2837"; dim="#17566d"; bright="#49cfe8"
+        w = max(430, self.canvas.winfo_width())
+        h = max(300, self.canvas.winfo_height())
+        cx, cy = w * 0.48, h * 0.48
+        phase = self._orb_phase
+        state = self._visual_state
+        level = max(0.0, min(1.0, float(self._visual_level)))
+        colors = {
+            "IDLE": "#39cfff",
+            "LISTENING": "#35ffd2",
+            "THINKING": "#a58bff",
+            "SPEAKING": "#4ca8ff",
+            "ERROR": "#ff496c",
+        }
+        core = colors.get(state, "#39cfff")
+        muted = "#153e52"
+        faint = "#0a202d"
+        energy = min(1.0, {"IDLE": 0.22, "LISTENING": 0.45 + level * 0.55,
+                           "THINKING": 0.72, "SPEAKING": 0.58 + level * 0.42,
+                           "ERROR": 0.8}.get(state, 0.25))
+        speed = {"IDLE": 0.009, "LISTENING": 0.035 + level * 0.055,
+                 "THINKING": 0.045, "SPEAKING": 0.04 + level * 0.035,
+                 "ERROR": 0.06}.get(state, 0.015)
+        radius = min(w * 0.29, h * 0.39, 145)
+        radius = max(68, radius)
 
-        # Perspective grid behind the reactor.
-        horizon=cy+h*.08
-        for i in range(9):
-            y=horizon+i*i*2.2
-            self.canvas.create_line(0,y,w,y,fill="#0b2431",width=1)
-        for i in range(-8,9):
-            self.canvas.create_line(cx+i*34,horizon,cx+i*105,h,fill="#0a202c",width=1)
+        # Background grid is deliberately subdued so the neural core stays central.
+        horizon = cy + h * 0.13
+        for i in range(7):
+            y = horizon + i * i * 3.0
+            if y < h:
+                self.canvas.create_line(0, y, w, y, fill="#0a1c28")
+        for i in range(-5, 6):
+            self.canvas.create_line(cx + i * 35, horizon, cx + i * 86, h, fill="#091a26")
 
-        # Depth particles orbiting the reactor.
-        for i in range(46):
-            a=phase*(0.10+(i%5)*0.018)+i*math.tau/46
-            depth=0.45+0.55*(0.5+0.5*math.sin(a*1.7+i))
-            rx=118+62*depth; ry=52+34*depth
-            x=cx+math.cos(a)*rx; y=cy+math.sin(a)*ry
-            size=0.7+2.0*depth*(0.5+0.5*level)
-            self.canvas.create_oval(x-size,y-size,x+size,y+size,fill=bright if i%11==0 else dim,outline="")
+        # Spherical Fibonacci distribution, rotated in 3D then perspective-projected.
+        # Links are selected in 3D space, so the mesh actually changes as it turns.
+        count = 54
+        golden = math.pi * (3.0 - math.sqrt(5.0))
+        nodes = []
+        rot_y = phase * (0.22 + energy * 0.42)
+        rot_x = math.sin(phase * 0.19) * 0.36
+        cos_y, sin_y = math.cos(rot_y), math.sin(rot_y)
+        cos_x, sin_x = math.cos(rot_x), math.sin(rot_x)
+        for i in range(count):
+            y0 = 1.0 - 2.0 * (i / (count - 1))
+            ring = math.sqrt(max(0.0, 1.0 - y0 * y0))
+            theta = golden * i
+            pulse = 1.0 + math.sin(phase * (1.4 + energy) + i * 0.73) * (0.012 + level * 0.065 + energy * 0.025)
+            x0, y0, z0 = math.cos(theta) * ring * pulse, y0 * pulse, math.sin(theta) * ring * pulse
+            xr = x0 * cos_y + z0 * sin_y
+            zr = -x0 * sin_y + z0 * cos_y
+            yr = y0 * cos_x - zr * sin_x
+            zf = y0 * sin_x + zr * cos_x
+            perspective = 1.0 / (1.0 + zf * 0.20)
+            px = cx + xr * radius * perspective
+            py = cy + yr * radius * 0.88 * perspective
+            depth = max(0.0, min(1.0, (zf + 1.0) * 0.5))
+            size = 1.0 + depth * 1.45 + energy * 0.35
+            nodes.append((xr, yr, zf, px, py, depth, size))
 
-        # Tilted orbital rings create the 3D illusion.
-        for idx,(rx,ry,tilt,rot) in enumerate(((168,78,.0,.12),(145,64,.38,-.18),(116,48,-.52,.25),(88,36,.72,-.31))):
-            a0=phase*rot+tilt
-            pts=[]
-            for j in range(73):
-                a=a0+math.tau*j/72
-                x=cx+math.cos(a)*rx
-                y=cy+math.sin(a)*ry
-                # slight vertical perspective wobble
-                y += math.sin(a+tilt)*10*(idx+1)/4
-                pts.append((x,y))
-            for j in range(len(pts)-1):
-                self.canvas.create_line(*pts[j],*pts[j+1],fill=("#257f98" if idx<2 else faint),width=1)
+        # Synaptic edges: the mesh evolves with rotation and audio energy.
+        for i, a in enumerate(nodes):
+            for j in range(i + 1, count):
+                b = nodes[j]
+                dx, dy, dz = a[0] - b[0], a[1] - b[1], a[2] - b[2]
+                d2 = dx * dx + dy * dy + dz * dz
+                if d2 > 0.205:
+                    continue
+                alpha = (a[5] + b[5]) * 0.5
+                color = core if alpha > 0.78 and (i + j) % 3 == 0 else muted
+                self.canvas.create_line(a[3], a[4], b[3], b[4], fill=color,
+                                        width=1 if alpha > 0.42 else 1)
 
-        # Rotating scanner beam and radial energy spokes.
-        sweep=phase%math.tau
-        sx=cx+math.cos(sweep)*175; sy=cy+math.sin(sweep)*92
-        self.canvas.create_line(cx,cy,sx,sy,fill=core,width=2)
-        for i in range(18):
-            a=sweep+i*math.tau/18
-            r1=58+8*math.sin(phase+i); r2=112+22*level+12*math.sin(phase*1.4+i*.7)
-            self.canvas.create_line(cx+math.cos(a)*r1,cy+math.sin(a)*r1*.58,
-                                    cx+math.cos(a)*r2,cy+math.sin(a)*r2*.58,
-                                    fill=core if i%3==0 else dim,width=1)
+        # Three independently rotating orbital ellipses, with front/back depth cue.
+        for k, (rx, ry, tilt, rate) in enumerate(((1.17, 0.48, 0.05, 0.13),
+                                                   (0.96, 0.37, 0.72, -0.19),
+                                                   (0.77, 0.27, -0.88, 0.24))):
+            angle0 = phase * rate
+            pts = []
+            for j in range(65):
+                a = angle0 + math.tau * j / 64
+                x = math.cos(a) * radius * rx
+                y = math.sin(a) * radius * ry
+                px = cx + x * math.cos(tilt) - y * math.sin(tilt)
+                py = cy + x * math.sin(tilt) + y * math.cos(tilt)
+                pts.append((px, py))
+            for j in range(len(pts) - 1):
+                self.canvas.create_line(*pts[j], *pts[j + 1],
+                                        fill=core if (j // 5 + k) % 7 == 0 else faint,
+                                        width=2 if k == 0 and j % 8 < 2 else 1)
 
-        # Central reactor with layered glow.
-        pulse=1+.08*math.sin(phase*3.0)+level*.22
-        for mul,col in ((2.9,"#0c3040"),(2.25,"#10485b"),(1.65,dim),(1.15,core)):
-            rr=38*pulse*mul
-            self.canvas.create_oval(cx-rr,cy-rr*.62,cx+rr,cy+rr*.62,outline=col,width=1)
-        rr=35*pulse
-        self.canvas.create_oval(cx-rr,cy-rr,cx+rr,cy+rr,fill=dark,outline=core,width=2)
-        self.canvas.create_oval(cx-rr*.62,cy-rr*.62,cx+rr*.62,cy+rr*.62,fill="#0b3a4a",outline=bright,width=2)
-        self.canvas.create_oval(cx-rr*.28,cy-rr*.28,cx+rr*.28,cy+rr*.28,fill=core,outline="")
-        self.canvas.create_text(cx,cy-4,text="J",fill="#f5ffff",font=("Segoe UI",25,"bold"))
-        self.canvas.create_text(cx,cy+19,text=state,fill=core,font=("Consolas",7,"bold"))
+        # Traveling light packets on changing chords.
+        for i in range(0, count, 6):
+            a = nodes[i]
+            b = nodes[(i + 13 + int(phase * 1.7)) % count]
+            progress = 0.5 + 0.5 * math.sin(phase * (1.1 + energy) + i)
+            px = a[3] + (b[3] - a[3]) * progress
+            py = a[4] + (b[4] - a[4]) * progress
+            r = 1.5 + energy * 1.2
+            self.canvas.create_oval(px-r, py-r, px+r, py+r, fill="#e8fdff", outline="")
 
-        labels=("CORE","VOICE","AI","TOOLS","MEMORY","FILES","SYSTEM","NET")
-        for i in range(8):
-            a=phase*(.16 if i%2 else -.11)+i*math.tau/8
-            rx,ry=(168,78) if i%2==0 else (145,64)
-            nx,ny=cx+math.cos(a)*rx,cy+math.sin(a)*ry
-            self.canvas.create_oval(nx-5,ny-5,nx+5,ny+5,fill=core if i in (0,4) else "#123d4e",outline=dim)
-            self.canvas.create_text(nx,ny+(16 if ny<cy else -16),text=labels[i],fill="#82aebe",font=("Consolas",6,"bold"))
+        # Nodes are depth-shaded; near-side neurons glow brighter.
+        for i, node in enumerate(nodes):
+            _, _, _, px, py, depth, size = node
+            if depth > 0.45:
+                halo = size * (2.0 + energy * 0.7)
+                self.canvas.create_oval(px-halo, py-halo, px+halo, py+halo,
+                                        fill=muted, outline="")
+            color = core if depth > 0.74 or (i % 11 == 0) else "#28758d"
+            self.canvas.create_oval(px-size, py-size, px+size, py+size,
+                                    fill=color, outline="")
 
-        self.canvas.create_text(cx,h-18,text="J A R V I S  //  A.R.C. 3D REACTOR  //  "+state,
-                                fill=core,font=("Consolas",8,"bold"))
-        self._orb_phase+=speed
-        self._orb_after=self.after(50,self._draw_orb)
+        # Core glow, pulsing center, and state label.
+        pulse = 1.0 + math.sin(phase * 2.6) * (0.025 + level * 0.08)
+        cr = radius * (0.16 + energy * 0.025) * pulse
+        for factor, color in ((3.0, "#0b2635"), (2.25, "#104458"), (1.55, muted)):
+            rr = cr * factor
+            self.canvas.create_oval(cx-rr, cy-rr, cx+rr, cy+rr,
+                                    outline=color, width=2 if factor == 1.55 else 1)
+        self.canvas.create_oval(cx-cr, cy-cr, cx+cr, cy+cr,
+                                fill="#071722", outline=core, width=2)
+        self.canvas.create_oval(cx-cr*0.58, cy-cr*0.58, cx+cr*0.58, cy+cr*0.58,
+                                fill=core, outline="#e4fcff", width=1)
+        self.canvas.create_text(cx, cy, text="J", fill="#ffffff",
+                                font=("Segoe UI", max(12, int(cr * 0.85)), "bold"))
+        self.canvas.create_text(cx, cy + cr + 14, text=state, fill=core,
+                                font=("Consolas", 8, "bold"))
+
+        # Peripheral labels are positioned on the sphere's orbital plane.
+        labels = ("ЯДРО", "ГОЛОС", "AI", "ИНСТРУМЕНТЫ", "ПАМЯТЬ", "СИСТЕМА")
+        for i, label in enumerate(labels):
+            a = phase * (0.07 if i % 2 == 0 else -0.09) + i * math.tau / len(labels)
+            lx = cx + math.cos(a) * radius * 1.24
+            ly = cy + math.sin(a) * radius * 0.52
+            self.canvas.create_text(lx, ly, text=label, fill="#7299aa",
+                                    font=("Consolas", 7, "bold"))
+
+        # Only real state/level inputs affect this scene; no fabricated host metrics.
+        self.canvas.create_text(cx, h - 18, text="J A R V I S  //  ЖИВОЕ 3D-ЯДРО  //  " + state,
+                                fill=core, font=("Consolas", 8, "bold"))
+        self._orb_phase += speed
+        self._orb_after = self.after(50, self._draw_orb)
 
     def _start_agent(self):
         # Ignore stale results when settings are saved/reloaded more than once.
