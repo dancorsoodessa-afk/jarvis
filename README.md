@@ -11,8 +11,8 @@ Target hardware:
 - Windows 10 x64
 
 AI strategy:
-- **JARVIS: главный гибридный мозг** — интернет-ИИ при наличии сети, локальный ИИ без сети
-- **DeepSeek и GLM: дополнительные консультанты**, не главные
+- **JARVIS: Hugging Face Inference API** — облачный ИИ через единый Hugging Face токен
+- **Используется только Hugging Face Inference API**
 - Облачный ИИ используется только при наличии интернета
 - Ollama is optional when exposed through its OpenAI-compatible API
 - Model is replaceable; Jarvis is not tied to one runtime
@@ -87,13 +87,13 @@ Flutter UI может запускать агент через IPC. Если г�
 | \`JARVIS_PROVIDER\` | Провайдер: \`openai-compatible\` или \`local-vulkan\` | \`openai-compatible\` | Нет |
 | \`JARVIS_CHAT_URL\` | URL OpenAI-compatible API | пусто | Для cloud/local API — да |
 | \`JARVIS_CHAT_KEY\` | API-ключ провайдера | пусто | Зависит от API |
-| \`JARVIS_CHAT_MODEL\` | Имя модели | \`openrouter/free\` | Нет |
-| \`JARVIS_DEEPSEEK_URL\` | URL дополнительного DeepSeek-провайдера | пусто | Нет |
-| \`JARVIS_DEEPSEEK_KEY\` | Ключ DeepSeek | пусто | Нет |
-| \`JARVIS_DEEPSEEK_MODEL\` | Модель DeepSeek | \`deepseek/deepseek-chat:free\` | Нет |
-| \`JARVIS_GLM_URL\` | URL дополнительного GLM-провайдера | пусто | Нет |
-| \`JARVIS_GLM_KEY\` | Ключ GLM | пусто | Нет |
-| \`JARVIS_GLM_MODEL\` | Модель GLM | \`z-ai/glm-5.2:free\` | Нет |
+| \`JARVIS_CHAT_MODEL\` | Имя модели | \`Qwen/Qwen2.5-7B-Instruct\` | Нет |
+| \`DEPRECATED_DEEPSEEK_URL\` | URL дополнительного DeepSeek-провайдера | пусто | Нет |
+| \`DEPRECATED_DEEPSEEK_KEY\` | Ключ DeepSeek | пусто | Нет |
+| \`DEPRECATED_DEEPSEEK_MODEL\` | Модель DeepSeek | \`deepseek/deepseek-chat:free\` | Нет |
+| \`DEPRECATED_GLM_URL\` | URL дополнительного GLM-провайдера | пусто | Нет |
+| \`DEPRECATED_GLM_KEY\` | Ключ GLM | пусто | Нет |
+| \`DEPRECATED_GLM_MODEL\` | Модель GLM | \`z-ai/glm-5.2:free\` | Нет |
 | \`JARVIS_LLAMA_CLI\` | Исполняемый файл llama.cpp | \`llama-cli\` | Только local-vulkan |
 | \`JARVIS_MODEL\` | Путь к GGUF-модели для local-vulkan | \`model.gguf\` | Только local-vulkan |
 | \`JARVIS_CTX\` | Размер контекста, минимум 256 | \`2048\` | Нет |
