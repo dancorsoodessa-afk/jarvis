@@ -14,9 +14,8 @@ AI strategy:
 - **JARVIS: Hugging Face Inference API** — облачный ИИ через единый Hugging Face токен
 - **Используется только Hugging Face Inference API**
 - Облачный ИИ используется только при наличии интернета
-- Ollama is optional when exposed through its OpenAI-compatible API
 - Model is replaceable; Jarvis is not tied to one runtime
-- If `JARVIS_CHAT_MODEL` is empty, the OpenAI-compatible provider discovers the first model exposed by `/v1/models`
+- Все облачные запросы принудительно направляются на `https://router.huggingface.co/v1/chat/completions`
 
 ## Build jarvis.exe (Windows x64)
 
@@ -88,13 +87,10 @@ Flutter UI может запускать агент через IPC. Если г�
 | \`JARVIS_CHAT_URL\` | Игнорируется: endpoint зафиксирован на Hugging Face | Hugging Face endpoint | Нет |
 | \`JARVIS_CHAT_KEY\` | API-ключ провайдера | пусто | Зависит от API |
 | \`JARVIS_CHAT_MODEL\` | Имя модели | \`Qwen/Qwen2.5-7B-Instruct\` | Нет |
-| \`JARVIS_LLAMA_CLI\` | Исполняемый файл llama.cpp | \`llama-cli\` | Только local-vulkan |
-| \`JARVIS_MODEL\` | Путь к GGUF-модели для local-vulkan | \`model.gguf\` | Только local-vulkan |
 | \`JARVIS_CTX\` | Размер контекста, минимум 256 | \`2048\` | Нет |
 | \`JARVIS_THREADS\` | Число CPU-потоков, минимум 1 | \`6\` | Нет |
 | \`JARVIS_MEMORY\` | Файл краткосрочной памяти | \`jarvis_memory.json\` | Нет |
 | \`JARVIS_KG\` | Файл графа знаний | пусто | Нет |
-| \`JARVIS_LOCAL\` | Если равно \`1\`, принудительно включает local-vulkan | пусто | Нет |
 
 ### Примеры конфигурации
 
@@ -137,7 +133,7 @@ cd "C:\\путь\\к\\JARVIS"
 - Проверь \`JARVIS_CHAT_URL\`, \`JARVIS_CHAT_KEY\` и \`JARVIS_CHAT_MODEL\`.
 - Для локального API проверь, что сервер действительно запущен и открывает \`/v1/models\`.
 - Если \`JARVIS_CHAT_MODEL\` пустой, JARVIS пытается выбрать первую модель из \`/v1/models\`.
-- При использовании \`local-vulkan\` проверь \`llama-cli\` и путь к GGUF-модели.
+- Проверь HF токен и идентификатор модели в Hugging Face Inference Providers.
 
 ### Нет голоса / ошибка TTS
 
@@ -193,34 +189,18 @@ Get-ChildItem
 Test-Path ".\\JARVIS Desktop.exe"
 ~~~
 
-## AI providers
+## AI provider — Hugging Face only
 
-JARVIS does not require a paid/cloud provider. The supported paths are:
-
-### 1. JARVIS — основной режим (internet-first / offline fallback)
-
-При наличии интернета JARVIS сначала обращается к настроенному OpenAI-compatible ИИ. Если интернет пропал, API недоступен или облачный лимит исчерпан, JARVIS автоматически переключается на встроенный локальный мозг llama.cpp + Qwen 3B. Возврат интернета автоматически возвращает облачный режим.
+JARVIS uses only Hugging Face Inference API for cloud AI. OpenRouter, direct DeepSeek/GLM endpoints, custom provider URLs, and local AI provider selection are not supported by the runtime.
 
 ```powershell
-$env:JARVIS_PROVIDER  = "openai-compatible"
-$env:JARVIS_CHAT_URL  = "http://127.0.0.1:11434/v1/chat/completions"
-$env:JARVIS_CHAT_KEY  = ""
-$env:JARVIS_CHAT_MODEL = "your-local-model"
-.\\dist\\jarvis.exe
+$env:JARVIS_PROVIDER = "huggingface"
+$env:HF_TOKEN = "hf_ВАШ_ТОКЕН"
+$env:JARVIS_CHAT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+.\\release\\JARVIS.exe
 ```
 
-Set `JARVIS_CHAT_MODEL` to a model available through Hugging Face Inference Providers. Cloud requests always use the Hugging Face endpoint.
-
-### 2. llama.cpp + Vulkan — direct local provider
-
-```powershell
-$env:JARVIS_PROVIDER = "local-vulkan"
-$env:JARVIS_LLAMA_CLI = "llama-cli"
-$env:JARVIS_MODEL = "model.gguf"
-.\\dist\\jarvis.exe
-```
-
-This path runs the model locally and does not require an API key.
+The endpoint is fixed to `https://router.huggingface.co/v1/chat/completions`. Use a model ID available through Hugging Face Inference Providers.
 
 ## Flutter UI (ui/)
 
@@ -235,7 +215,7 @@ Preview of the reactor animation without Flutter: open `ui/jarvis_reactor.html`.
 
 ## Android
 
-The Android workflow generates the Flutter Android platform during CI and builds a standalone APK from `ui/`. The Android client connects directly to the configured OpenAI-compatible API; it is independent from the Windows process and does not use the Windows IPC channel.
+The Android workflow generates the Flutter Android platform during CI and builds a standalone APK from `ui/`. The Android client connects to Hugging Face Inference API; it is independent from the Windows process and does not use the Windows IPC channel.
 
 ## Release checklist
 
