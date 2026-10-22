@@ -12,6 +12,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 import 'jarvis_client.dart';
+import 'crypto/crypto_center.dart';
+import 'osint/osint_center.dart';
 
 const kCyan = Color(0xFF08E6FF);
 const kGreen = Color(0xFF45F0B0);
@@ -687,7 +689,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                   _drawerItem(Icons.memory_rounded, 'Процессы', () async => _send('ps')),
                   _drawerItem(Icons.monitor_heart_rounded, 'Система', () async => _send('status')),
                   _drawerSection('ИНСТРУМЕНТЫ'),
-                  _drawerItem(Icons.search_rounded, 'OSINT / Поиск', () async => _send('поиск')),
+                  _drawerItem(Icons.currency_bitcoin_rounded, 'Крипто-инструменты', () async { if (!mounted) return; await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CryptoCenterScreen())); }),
+                  _drawerItem(Icons.search_rounded, 'OSINT / Разведка', () async { if (!mounted) return; await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const OsintCenterScreen())); }),
                   _drawerItem(Icons.extension_rounded, 'MCP', () async => _send('покажи доступные MCP инструменты')),
                   _drawerItem(Icons.psychology_alt_rounded, 'Память', () async => _send('покажи память')),
                   _drawerItem(Icons.task_alt_rounded, 'Задачи', () async => _send('напомни мне мои задачи')),
