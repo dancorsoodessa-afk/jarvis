@@ -378,13 +378,14 @@ class JarvisDesktop(tk.Tk):
         try:
             import psutil
             disk_root = os.environ.get("SystemDrive", "C:") + os.sep
+            cpu_percent = psutil.cpu_percent(interval=None)
+            self._system_cpu_level = cpu_percent / 100.0
             values = {
-                "CPU": f"{psutil.cpu_percent(interval=None):.0f}%",
+                "CPU": f"{cpu_percent:.0f}%",
                 "RAM": f"{psutil.virtual_memory().percent:.0f}%",
                 "Диск": f"{psutil.disk_usage(disk_root).percent:.0f}%",
                 "GPU": "НЕТ ДАННЫХ",
             }
-            self._system_cpu_level = psutil.cpu_percent(interval=None) / 100.0
             colors = {"CPU": CYAN, "RAM": CYAN, "Диск": CYAN, "GPU": YELLOW}
         except Exception:
             values = {"CPU": "НЕДОСТУПНО", "RAM": "НЕДОСТУПНО", "GPU": "НЕДОСТУПНО", "Диск": "НЕДОСТУПНО"}
