@@ -289,7 +289,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('endpoint', _endpoint.text.trim());
+    _endpoint.text = kFreePrimaryUrl;\n    await prefs.setString('endpoint', kFreePrimaryUrl);
     await prefs.setString('model', _model.text.trim());
     await prefs.setString('api_key', _apiKey.text.trim());
     await prefs.setString('fallback_endpoint', '');
@@ -298,7 +298,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Future<void> _connectAndroid() async {
-    final endpoint = _endpoint.text.trim();
+    const endpoint = kFreePrimaryUrl;
     final model = _model.text.trim();
     final key = _apiKey.text.trim();
     if (endpoint.isEmpty || key.isEmpty) {
@@ -370,7 +370,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Align(alignment: Alignment.centerLeft, child: Text('Hugging Face Inference API', style: TextStyle(fontWeight: FontWeight.bold))),
-          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'AI URL', hintText: 'https://router.huggingface.co/v1')),
+          TextField(controller: _endpoint, readOnly: true, decoration: const InputDecoration(labelText: 'AI URL · только Hugging Face', hintText: 'https://router.huggingface.co/v1')),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'Hugging Face Token')),
           TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'Qwen/Qwen3-4B-Instruct-2507')),
           const SizedBox(height: 8),
