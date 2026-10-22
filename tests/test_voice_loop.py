@@ -1,11 +1,9 @@
-"""Tests for the voice loop: wake-word gating and the hear->think->speak step."""
+"""Tests for wake-word gating and one-command-per-activation behavior."""
 
 import pytest
+from types import SimpleNamespace
 
 from agent.voice_loop import VoiceLoop
-
-
-from types import SimpleNamespace
 
 
 class FakeAgent:
@@ -26,15 +24,16 @@ class FakeRecorder:
 
 
 def make_loop(agent, **kw):
-    return VoiceLoop(agent, recorder=FakeRecorder(),
-                     tmp_dir="/tmp", **kw)
+    return VoiceLoop(agent, recorder=FakeRecorder(), tmp_dir="/tmp", **kw)
 
 
-def test_wake_word_required():
+def test_wake_word_required_for_each_command():
     agent = FakeAgent()
     loop = make_loop(agent)
     assert loop.step("просто фраза без ворда") is None
-    assert agent.calls == []
+    assert loop.step("джарвис погода") == "ответ на погода"
+    assert loop.step("ещё одна команда без ворда") is None
+    assert agent.calls == ["погода"]
 
 
 def test_wake_word_with_command():
@@ -45,18 +44,21 @@ def test_wake_word_with_command():
     assert "погода" in out
 
 
-def test_wake_word_alone_acknowledges():
+def test_wake_word_alone_asks_for_command_without_staying_active():
     agent = FakeAgent()
     loop = make_loop(agent)
-    assert loop.step("джарвис") == "Слушаю."
+    assert loop.step("джарвис") == "Слушаю. Скажите команду."
+    assert loop.active is False
+    assert loop.step("следующая фраза без активации") is None
     assert agent.calls == []
 
 
-def test_wake_disabled_passes_through():
+def test_wake_disabled_passes_through_each_command():
     agent = FakeAgent()
     loop = make_loop(agent, wake_enabled=False)
     loop.step("обычная команда")
-    assert agent.calls == ["обычная команда"]
+    loop.step("вторая команда")
+    assert agent.calls == ["обычная команда", "вторая команда"]
 
 
 def test_custom_wake_word():
@@ -65,6 +67,13 @@ def test_custom_wake_word():
     assert loop.step("джарвис включи свет") is None
     loop.step("Альфред, свет")
     assert agent.calls == ["свет"]
+
+
+def test_stop_command_does_not_call_agent():
+    agent = FakeAgent()
+    loop = make_loop(agent)
+    assert loop.step("джарвис стоп") == "Ожидаю."
+    assert agent.calls == []
 
 
 def test_step_agent_error_propagates():

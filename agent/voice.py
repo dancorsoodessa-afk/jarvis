@@ -1,7 +1,7 @@
-"""Надёжный локальный голосовой ввод JARVIS: VAD + faster-whisper, без хлопков.
+"""SUPERMAN voice input: adaptive VAD + faster-whisper, with online-only gating.
 
-Микрофон открывается на один цикл прослушивания, калибровка короткая,
-порог адаптивный. Устройство можно задать через JARVIS_AUDIO_DEVICE.
+The microphone opens for one listening cycle. Voice is intentionally disabled
+when internet connectivity is unavailable. Configure the device with JARVIS_AUDIO_DEVICE.
 """
 from __future__ import annotations
 
@@ -16,6 +16,9 @@ SPEECH_MIN_SECONDS = 0.20
 
 
 def available() -> bool:
+    from .connectivity import internet_available
+    if not internet_available():
+        return False
     try:
         import numpy  # noqa: F401
         import sounddevice  # noqa: F401
@@ -66,6 +69,9 @@ def _write_wav(frames, samplerate: int) -> Path:
 
 
 def _recognize(frames, samplerate: int) -> str:
+    from .connectivity import internet_available
+    if not internet_available():
+        raise RuntimeError("Интернет недоступен: голосовой режим выключен. Используйте текстовый ввод.")
     path = _write_wav(frames, samplerate)
     try:
         from . import stt
@@ -97,6 +103,9 @@ def listen_for_phrase(
     on_speech_start=None,
 ) -> str:
     """Записать одну фразу автоматически по уровню речи и распознать её."""
+    from .connectivity import internet_available
+    if not internet_available():
+        raise RuntimeError("Интернет недоступен: микрофон отключён. Используйте текстовый ввод.")
     import numpy as np
     import sounddevice as sd
 

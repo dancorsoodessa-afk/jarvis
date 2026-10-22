@@ -1,4 +1,4 @@
-"""Native Windows desktop UI for JARVIS with live module controls."""
+"""Native Windows desktop UI for SUPERMAN with live module controls."""
 
 import json
 import base64
@@ -13,7 +13,7 @@ from tkinter import filedialog, messagebox, ttk
 import mimetypes
 
 from agent.runtime import build_agent
-from agent import tts, voice, stt
+from agent import tts, voice, stt, connectivity
 from agent.secrets import protect_secret, unprotect_secret
 from agent.tools_catalog import TOOLS
 
@@ -74,7 +74,7 @@ def _load_saved_settings() -> dict:
 class JarvisDesktop(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("JARVIS — AI COMMAND CENTER")
+        self.title("SUPERMAN — AI COMMAND CENTER")
         self.geometry("1420x900")
         self.minsize(1180, 740)
         self.configure(bg=BG)
@@ -86,6 +86,9 @@ class JarvisDesktop(tk.Tk):
         self.tool_names = []
         self.attachments = []
         self._voice_loop_running = False
+        self._network_monitor_running = True
+        self._network_online = None
+        self._ui_network_online = None
         self._voice_armed_until = 0.0
         self._orb_phase = 0.0
         self._visual_state = "IDLE"
@@ -98,15 +101,16 @@ class JarvisDesktop(tk.Tk):
         self._start_agent()
         self.after(80, self._drain_events)
         self.protocol("WM_DELETE_WINDOW", self._close)
+        threading.Thread(target=self._monitor_network, daemon=True).start()
 
     def _apply_saved_settings(self):
         profiles = self.settings.get("agents", {})
         if not isinstance(profiles, dict):
             profiles = {}
         active = int(self.settings.get("active_agent", 0) or 0)
-        active = max(0, min(2, active))
+        active = max(0, min(1, active))
         legacy = {
-            "name": "JARVIS",
+            "name": "SUPERMAN",
             "provider": self.settings.get("provider") or os.environ.get("JARVIS_PROVIDER") or DEFAULT_PROVIDER,
             "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
             "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "openrouter/free",
@@ -114,8 +118,7 @@ class JarvisDesktop(tk.Tk):
         }
         defaults = {
             "0": legacy,
-            "1": {"name": "DeepSeek", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "deepseek/deepseek-chat:free", "api_key": legacy["api_key"]},
-            "2": {"name": "GLM", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "z-ai/glm-5.2:free", "api_key": legacy["api_key"]},
+            "1": {"name": "SUPERMAN CODE", "provider": "openai-compatible", "url": DEFAULT_URL, "model": "deepseek/deepseek-chat:free", "api_key": legacy["api_key"]},
         }
         merged = {}
         for key, default in defaults.items():
@@ -135,18 +138,17 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
         os.environ["OPENROUTER_API_KEY"] = profile["api_key"]
         os.environ["JARVIS_CHAT_MODEL"] = profile["model"]
+        # Two selectable assistants share one OpenRouter endpoint and API key.
         os.environ["JARVIS_FAST_MODEL"] = merged["0"]["model"]
         os.environ["JARVIS_REASONING_MODEL"] = merged["1"]["model"]
-        os.environ["JARVIS_CODING_MODEL"] = merged["2"]["model"]
-        os.environ["JARVIS_ADDITIONAL_MODEL"] = self.settings.get("additional_model") or os.environ.get("JARVIS_ADDITIONAL_MODEL") or merged["0"]["model"]
-        # Independent consultant providers. Keep secrets out of the repository;
-        # they live only in the user's settings/environment.
-        os.environ["JARVIS_DEEPSEEK_URL"] = self.settings.get("deepseek_url", os.environ.get("JARVIS_DEEPSEEK_URL", ""))
-        os.environ["JARVIS_DEEPSEEK_KEY"] = self.settings.get("deepseek_key", os.environ.get("JARVIS_DEEPSEEK_KEY", ""))
-        os.environ["JARVIS_DEEPSEEK_MODEL"] = self.settings.get("deepseek_model", os.environ.get("JARVIS_DEEPSEEK_MODEL", "deepseek/deepseek-chat:free"))
-        os.environ["JARVIS_GLM_URL"] = self.settings.get("glm_url", os.environ.get("JARVIS_GLM_URL", ""))
-        os.environ["JARVIS_GLM_KEY"] = self.settings.get("glm_key", os.environ.get("JARVIS_GLM_KEY", ""))
-        os.environ["JARVIS_GLM_MODEL"] = self.settings.get("glm_model", os.environ.get("JARVIS_GLM_MODEL", "z-ai/glm-5.2:free"))
+        os.environ["JARVIS_CODING_MODEL"] = merged["1"]["model"]
+        os.environ["JARVIS_ADDITIONAL_MODEL"] = merged["0"]["model"]
+        os.environ["JARVIS_DEEPSEEK_URL"] = ""
+        os.environ["JARVIS_DEEPSEEK_KEY"] = ""
+        os.environ["JARVIS_DEEPSEEK_MODEL"] = merged["1"]["model"]
+        os.environ["JARVIS_GLM_URL"] = ""
+        os.environ["JARVIS_GLM_KEY"] = ""
+        os.environ["JARVIS_GLM_MODEL"] = merged["1"]["model"]
         disabled = self.settings.get("disabled_tools", [])
         if not isinstance(disabled, list):
             disabled = []
@@ -352,7 +354,7 @@ class JarvisDesktop(tk.Tk):
                       highlightthickness=1).pack(fill="x",padx=10,pady=3)
         tk.Label(right,text="AI-МАРШРУТИЗАЦИЯ",bg="#070d16",fg=MUTED,
                  font=("Consolas",8,"bold")).pack(anchor="w",padx=14,pady=(15,5))
-        tk.Label(right,text="Основной • Reasoning • Coding\nDeepSeek / GLM — дополнительные\nОффлайн: локальные инструменты и голос",
+        tk.Label(right,text="SUPERMAN — основной AI\nSUPERMAN CODE — программирование\nОдин OpenRouter API-ключ\nЛокально: инструменты и голос",
                  bg="#070d16",fg="#8297a5",justify="left",font=("Segoe UI",8),wraplength=235).pack(anchor="w",padx=14)
     def _set_visual_state(self, state, level=None):
         self._visual_state = state
@@ -365,84 +367,117 @@ class JarvisDesktop(tk.Tk):
             "SPEAKING": "ОТВЕЧАЮ",
             "ERROR": "ОШИБКА",
         }
-        self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
+        self.hud_text.config(text=labels.get(state, state) + "\nSUPERMAN CORE")
 
     def _draw_orb(self):
-        """Высокопроизводительный псевдо-3D ARC Reactor: глубина, орбиты, сетка и реакция на голос/AI."""
+        """Draw a live, projected neural sphere using Tk Canvas (no external assets)."""
         self.canvas.delete("all")
-        w=max(430,self.canvas.winfo_width()); h=max(300,self.canvas.winfo_height())
-        cx,cy=w*0.43,h*0.48
-        phase=self._orb_phase; state=self._visual_state; level=self._visual_level
-        speed={"IDLE":0.014,"LISTENING":0.085,"THINKING":0.12,"SPEAKING":0.10,"ERROR":0.17}.get(state,0.03)
-        core=RED if state=="ERROR" else (YELLOW if state=="THINKING" else CYAN)
-        dark="#06121c"; faint="#0a2837"; dim="#17566d"; bright="#49cfe8"
+        w = max(430, self.canvas.winfo_width())
+        h = max(300, self.canvas.winfo_height())
+        cx, cy = w * 0.5, h * 0.47
+        phase = self._orb_phase
+        state = self._visual_state
+        level = self._visual_level
+        speed = {"IDLE": 0.012, "LISTENING": 0.075, "THINKING": 0.11,
+                 "SPEAKING": 0.085, "ERROR": 0.14}.get(state, 0.025)
+        core = RED if state == "ERROR" else (YELLOW if state == "THINKING" else CYAN)
+        dim = "#123e55"
+        bright = "#72f4ff"
+        radius = min(w, h) * 0.315
 
-        # Perspective grid behind the reactor.
-        horizon=cy+h*.08
-        for i in range(9):
-            y=horizon+i*i*2.2
-            self.canvas.create_line(0,y,w,y,fill="#0b2431",width=1)
-        for i in range(-8,9):
-            self.canvas.create_line(cx+i*34,horizon,cx+i*105,h,fill="#0a202c",width=1)
+        # Generate a stable Fibonacci sphere and its local-neighbour graph once.
+        if not hasattr(self, "_neural_nodes"):
+            count = 126
+            points = []
+            golden_angle = math.pi * (3.0 - math.sqrt(5.0))
+            for i in range(count):
+                y = 1.0 - 2.0 * (i + 0.5) / count
+                r = math.sqrt(max(0.0, 1.0 - y * y))
+                a = golden_angle * i
+                points.append((math.cos(a) * r, y, math.sin(a) * r))
+            edges = []
+            for i, p in enumerate(points):
+                for j in range(i + 1, count):
+                    q = points[j]
+                    d2 = sum((p[k] - q[k]) ** 2 for k in range(3))
+                    if d2 < 0.115:
+                        edges.append((i, j))
+            self._neural_nodes = points
+            self._neural_edges = edges
 
-        # Depth particles orbiting the reactor.
-        for i in range(46):
-            a=phase*(0.10+(i%5)*0.018)+i*math.tau/46
-            depth=0.45+0.55*(0.5+0.5*math.sin(a*1.7+i))
-            rx=118+62*depth; ry=52+34*depth
-            x=cx+math.cos(a)*rx; y=cy+math.sin(a)*ry
-            size=0.7+2.0*depth*(0.5+0.5*level)
-            self.canvas.create_oval(x-size,y-size,x+size,y+size,fill=bright if i%11==0 else dim,outline="")
+        # Rotate the sphere in 3D, then project it onto the desktop canvas.
+        angle_y = phase * 0.42
+        angle_x = math.sin(phase * 0.17) * 0.24
+        cyaw, syaw = math.cos(angle_y), math.sin(angle_y)
+        cpitch, spitch = math.cos(angle_x), math.sin(angle_x)
+        projected = []
+        for i, (x, y, z) in enumerate(self._neural_nodes):
+            xr = x * cyaw + z * syaw
+            zr = -x * syaw + z * cyaw
+            yr = y * cpitch - zr * spitch
+            zr = y * spitch + zr * cpitch
+            perspective = 1.0 / max(0.62, 1.75 - zr * 0.32)
+            px = cx + xr * radius * perspective
+            py = cy + yr * radius * perspective
+            activity = 0.18 + 0.22 * (0.5 + 0.5 * math.sin(phase * 2.2 + i * 1.73))
+            activity = min(1.0, activity + level * (0.35 + 0.65 * (i % 7) / 6))
+            projected.append((px, py, zr, activity))
 
-        # Tilted orbital rings create the 3D illusion.
-        for idx,(rx,ry,tilt,rot) in enumerate(((168,78,.0,.12),(145,64,.38,-.18),(116,48,-.52,.25),(88,36,.72,-.31))):
-            a0=phase*rot+tilt
-            pts=[]
-            for j in range(73):
-                a=a0+math.tau*j/72
-                x=cx+math.cos(a)*rx
-                y=cy+math.sin(a)*ry
-                # slight vertical perspective wobble
-                y += math.sin(a+tilt)*10*(idx+1)/4
-                pts.append((x,y))
-            for j in range(len(pts)-1):
-                self.canvas.create_line(*pts[j],*pts[j+1],fill=("#257f98" if idx<2 else faint),width=1)
+        # Connections first, so nodes remain crisp on top.
+        for i, j in self._neural_edges:
+            ax, ay, az, aa = projected[i]
+            bx, by, bz, ba = projected[j]
+            depth = (az + bz) * 0.5
+            if depth < -0.35:
+                continue
+            color = bright if max(aa, ba) > 0.78 else (dim if depth < 0.2 else "#267d96")
+            self.canvas.create_line(ax, ay, bx, by, fill=color, width=1)
 
-        # Rotating scanner beam and radial energy spokes.
-        sweep=phase%math.tau
-        sx=cx+math.cos(sweep)*175; sy=cy+math.sin(sweep)*92
-        self.canvas.create_line(cx,cy,sx,sy,fill=core,width=2)
-        for i in range(18):
-            a=sweep+i*math.tau/18
-            r1=58+8*math.sin(phase+i); r2=112+22*level+12*math.sin(phase*1.4+i*.7)
-            self.canvas.create_line(cx+math.cos(a)*r1,cy+math.sin(a)*r1*.58,
-                                    cx+math.cos(a)*r2,cy+math.sin(a)*r2*.58,
-                                    fill=core if i%3==0 else dim,width=1)
+        # Subtle outer shell and rotating latitude rings.
+        shell_r = radius * 0.98
+        self.canvas.create_oval(cx-shell_r, cy-shell_r, cx+shell_r, cy+shell_r,
+                                outline="#0c2b3b", width=1)
+        for ring_index, flatten in enumerate((0.34, 0.62, 0.86)):
+            points = []
+            rot = phase * (0.16 if ring_index % 2 == 0 else -0.13)
+            for step in range(73):
+                a = math.tau * step / 72 + rot
+                points.append((cx + math.cos(a) * radius * 0.98,
+                               cy + math.sin(a) * radius * flatten))
+            for j in range(len(points) - 1):
+                self.canvas.create_line(*points[j], *points[j+1],
+                                        fill="#10394b", width=1)
 
-        # Central reactor with layered glow.
-        pulse=1+.08*math.sin(phase*3.0)+level*.22
-        for mul,col in ((2.9,"#0c3040"),(2.25,"#10485b"),(1.65,dim),(1.15,core)):
-            rr=38*pulse*mul
-            self.canvas.create_oval(cx-rr,cy-rr*.62,cx+rr,cy+rr*.62,outline=col,width=1)
-        rr=35*pulse
-        self.canvas.create_oval(cx-rr,cy-rr,cx+rr,cy+rr,fill=dark,outline=core,width=2)
-        self.canvas.create_oval(cx-rr*.62,cy-rr*.62,cx+rr*.62,cy+rr*.62,fill="#0b3a4a",outline=bright,width=2)
-        self.canvas.create_oval(cx-rr*.28,cy-rr*.28,cx+rr*.28,cy+rr*.28,fill=core,outline="")
-        self.canvas.create_text(cx,cy-4,text="J",fill="#f5ffff",font=("Segoe UI",25,"bold"))
-        self.canvas.create_text(cx,cy+19,text=state,fill=core,font=("Consolas",7,"bold"))
+        # Neural nodes pulse independently; front-facing nodes are brighter.
+        for i, (px, py, depth, activity) in enumerate(projected):
+            if depth < -0.48:
+                continue
+            r = 1.1 + activity * (1.8 + max(0.0, depth) * 1.7)
+            color = core if activity > 0.78 else (bright if depth > 0.35 else "#2787a0")
+            self.canvas.create_oval(px-r, py-r, px+r, py+r,
+                                    fill=color, outline="")
+            if activity > 0.88:
+                self.canvas.create_oval(px-r*2.1, py-r*2.1, px+r*2.1, py+r*2.1,
+                                        outline="#1c6478", width=1)
 
-        labels=("CORE","VOICE","AI","TOOLS","MEMORY","FILES","SYSTEM","NET")
-        for i in range(8):
-            a=phase*(.16 if i%2 else -.11)+i*math.tau/8
-            rx,ry=(168,78) if i%2==0 else (145,64)
-            nx,ny=cx+math.cos(a)*rx,cy+math.sin(a)*ry
-            self.canvas.create_oval(nx-5,ny-5,nx+5,ny+5,fill=core if i in (0,4) else "#123d4e",outline=dim)
-            self.canvas.create_text(nx,ny+(16 if ny<cy else -16),text=labels[i],fill="#82aebe",font=("Consolas",6,"bold"))
+        # Core label stays centered while the surrounding graph remains in motion.
+        pulse = 1.0 + 0.07 * math.sin(phase * 2.6) + level * 0.16
+        core_r = max(14, radius * 0.22 * pulse)
+        self.canvas.create_oval(cx-core_r*1.7, cy-core_r*1.7, cx+core_r*1.7, cy+core_r*1.7,
+                                outline="#155269", width=2)
+        self.canvas.create_oval(cx-core_r, cy-core_r, cx+core_r, cy+core_r,
+                                fill="#071724", outline=core, width=2)
+        self.canvas.create_oval(cx-core_r*0.58, cy-core_r*0.58, cx+core_r*0.58, cy+core_r*0.58,
+                                fill="#0c3d50", outline=bright, width=1)
+        self.canvas.create_text(cx, cy-3, text="J", fill="#f5ffff",
+                                font=("Segoe UI", max(15, int(core_r * 0.65)), "bold"))
+        self.canvas.create_text(cx, cy+core_r+12, text=state, fill=core,
+                                font=("Consolas", 8, "bold"))
+        self.canvas.create_text(cx, h-14, text="SUPERMAN  //  LIVE NEURAL NETWORK",
+                                fill="#5f9caf", font=("Consolas", 8, "bold"))
 
-        self.canvas.create_text(cx,h-18,text="J A R V I S  //  A.R.C. 3D REACTOR  //  "+state,
-                                fill=core,font=("Consolas",8,"bold"))
-        self._orb_phase+=speed
-        self._orb_after=self.after(50,self._draw_orb)
+        self._orb_phase += speed
+        self._orb_after = self.after(50, self._draw_orb)
 
     def _start_agent(self):
         # Ignore stale results when settings are saved/reloaded more than once.
@@ -466,17 +501,34 @@ class JarvisDesktop(tk.Tk):
             return
         self._agent_start_pending = False
         self.status.config(text="● ЗАПУСК ЗАВИС", fg=RED)
-        self._append("SYSTEM", "Ядро не запустилось за 30 секунд. Повторите запуск; подробности могут быть в журнале JARVIS.")
+        self._append("SYSTEM", "Ядро не запустилось за 30 секунд. Повторите запуск; подробности могут быть в журнале SUPERMAN.")
 
     def _warmup_stt(self):
         try:
+            if not connectivity.internet_available():
+                self.events.put(("stt_offline", None))
+                return
             stt.warmup()
             self.events.put(("stt_ready", None))
         except Exception as exc:
             self.events.put(("stt_error", str(exc)))
 
+    def _monitor_network(self):
+        while self._network_monitor_running:
+            online = connectivity.internet_available(force=True)
+            if online != self._network_online:
+                self._network_online = online
+                self.events.put(("network_status", online))
+            time.sleep(2.5)
+
     def _start_voice_loop(self):
-        if not self.settings.get("voice_enabled", True) or self._voice_loop_running or not voice.available():
+        if not self.settings.get("voice_enabled", True) or self._voice_loop_running:
+            return
+        if not connectivity.internet_available():
+            self.events.put(("network_status", False))
+            return
+        if not voice.available():
+            self.events.put(("voice_status", "Голосовой движок недоступен. Проверьте микрофон и настройки."))
             return
         self._voice_loop_running = True
         self.voice_button.config(text="🎙 СЛУШАЮ")
@@ -489,10 +541,16 @@ class JarvisDesktop(tk.Tk):
             wake_words = ("jarvis", "джарвис")
             while self._voice_loop_running and self.settings.get("voice_enabled", True):
                 try:
+                    if not connectivity.internet_available():
+                        self.events.put(("network_status", False))
+                        break
+                    self.events.put(("voice_listening", None))
+                    # Keep the microphone open while waiting for the wake word.
+                    # A 2-second start timeout repeatedly closed the mic and missed speech.
                     heard = voice.listen_for_phrase(
                         silence_seconds=0.55,
                         max_seconds=10.0,
-                        start_timeout=2.0,
+                        start_timeout=0.0,
                         on_speech_start=on_speech_start,
                     )
                     if not heard or not self._voice_loop_running:
@@ -504,7 +562,7 @@ class JarvisDesktop(tk.Tk):
                         if normalized.startswith(word):
                             activated = True
                             command = normalized[len(word):].strip(" ,.!")
-                            self._voice_armed_until = float("inf")
+                            self._voice_armed_until = time.monotonic() + 10.0
                             break
                     if activated and not command:
                         self.events.put(("voice_status", "Jarvis активирован. Слушаю вас."))
@@ -518,15 +576,21 @@ class JarvisDesktop(tk.Tk):
                         command = normalized
                     else:
                         continue
-                    if command in {"стоп", "режим ожидания", "перейди в режим ожидания", "спасибо джарвис", "спасибо джарвис"}:
+                    if command in {"стоп", "режим ожидания", "перейди в режим ожидания", "спасибо джарвис"}:
                         self._voice_armed_until = 0.0
                         self.events.put(("voice_status", "Голосовой режим: ожидание. Скажите «Джарвис», чтобы продолжить."))
                         continue
                     if command and self._voice_loop_running:
-                        self._voice_armed_until = float("inf")
+                        # One wake word authorizes one command only. Require a
+                        # fresh "Jarvis" for the next command instead of leaving
+                        # the microphone permanently armed after first activation.
+                        self._voice_armed_until = 0.0
                         self.events.put(("voice_text", command))
                 except Exception as exc:
-                    self.events.put(("voice_error", str(exc)))
+                    if not connectivity.internet_available():
+                        self.events.put(("network_status", False))
+                    else:
+                        self.events.put(("voice_error", str(exc)))
                     break
             self._voice_loop_running = False
         threading.Thread(target=work, daemon=True).start()
@@ -586,7 +650,7 @@ class JarvisDesktop(tk.Tk):
                         self.enabled_label.config(text=f"Активно модулей: {len(self.tool_names)} из {len(TOOLS)}\nОтключено: {len(TOOLS)-len(self.tool_names)}")
                         self._update_voice_status()
                         self.side_core.config(text="● CORE  —  ACTIVE", fg=GREEN)
-                        self._append("JARVIS", f"Система готова. Активных модулей: {len(self.tool_names)} из {len(TOOLS)}.")
+                        self._append("SUPERMAN", f"Система готова. Активных модулей: {len(self.tool_names)} из {len(TOOLS)}.")
                         if self.settings.get("voice_enabled", True):
                             self._start_voice_loop()
                     elif kind == "stt_ready":
@@ -602,19 +666,50 @@ class JarvisDesktop(tk.Tk):
                         self._replace_streaming_reply(self._streaming_reply)
                     elif kind == "reply":
                         reply = event[1]
-                        self._set_visual_state("SPEAKING", 0.65)
                         if getattr(self, "_streaming_reply", ""):
                             self._replace_streaming_reply(reply, final=True)
                         else:
-                            self._append("JARVIS", reply)
+                            self._append("SUPERMAN", reply)
                         self._streaming_reply = ""
                         self.busy = False
                         self.send_button.config(state="normal")
                         self.attach_button.config(state="normal")
                         self.status.config(text="● ONLINE", fg=GREEN)
-                        self._set_visual_state("IDLE", 0.0)
-                        if self.settings.get("tts_enabled", True):
+                        if self.settings.get("tts_enabled", True) and connectivity.internet_available():
                             threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
+                        else:
+                            self._set_visual_state("IDLE", 0.0)
+                    elif kind == "network_status":
+                        online = bool(event[1])
+                        if online == self._ui_network_online:
+                            continue
+                        was_known = self._ui_network_online is not None
+                        self._ui_network_online = online
+                        if online:
+                            self.voice_button.config(state="normal", text="🎙 ГОЛОС")
+                            self.voice_control.config(text=("🔊  Голос: ВКЛ" if self.settings.get("voice_enabled", True) else "🔇  Голос: ВЫКЛ"))
+                            if not self.busy:
+                                self.status.config(text="● ONLINE", fg=GREEN)
+                            self._update_voice_status()
+                            self._append("SYSTEM", "Интернет восстановлен. Голосовые функции доступны." if was_known else "Интернет доступен. Голосовые функции готовы.")
+                            if self.settings.get("voice_enabled", True) and not self._voice_loop_running:
+                                self.after(0, self._start_voice_loop)
+                        else:
+                            tts.stop()
+                            stt.unload()
+                            self.voice_button.config(state="disabled", text="🎙 НЕТ СЕТИ")
+                            self.voice_control.config(text="🔇  Голос: НЕТ СЕТИ")
+                            self.metrics["Voice"].config(text="OFFLINE", fg=YELLOW)
+                            self.metrics["TTS"].config(text="OFFLINE", fg=YELLOW)
+                            self.side_voice.config(text="◉ ГОЛОС — НЕТ СЕТИ", fg=YELLOW)
+                            self.status.config(text="● OFFLINE · ТЕКСТОВЫЙ РЕЖИМ", fg=YELLOW)
+                            self._set_visual_state("IDLE", 0.0)
+                            self._append("SYSTEM", "Интернет недоступен: микрофон и озвучивание отключены. Можно пользоваться текстовым интерфейсом; сетевой AI временно недоступен.")
+                    elif kind == "stt_offline":
+                        self.metrics["Voice"].config(text="OFFLINE", fg=YELLOW)
+                        self._append("VOICE", "Интернета нет — распознавание речи не запускается.")
+                    elif kind == "voice_listening":
+                        self._set_visual_state("LISTENING", 0.25)
                     elif kind == "voice_text":
                         self._set_visual_state("LISTENING", 0.75)
                         if self.busy:
@@ -625,12 +720,23 @@ class JarvisDesktop(tk.Tk):
                     elif kind == "voice_status":
                         self._append("VOICE", event[1])
                     elif kind == "voice_error":
+                        if self._ui_network_online is False:
+                            continue
                         self._set_visual_state("ERROR")
                         self.voice_button.config(text="🎙 ГОЛОС")
                         self.metrics["Voice"].config(text="ERROR", fg=RED)
                         self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
                         self._append("VOICE", "Прослушивание остановлено: " + event[1] + " Нажмите «Голос», чтобы повторить запуск.")
+                    elif kind == "tts_started":
+                        self._set_visual_state("SPEAKING", 0.65)
+                        self.metrics["TTS"].config(text="SPEAKING", fg=CYAN)
+                    elif kind == "tts_finished":
+                        self._set_visual_state("IDLE", 0.0)
+                        self._update_voice_status()
                     elif kind == "tts_error":
+                        if self._ui_network_online is False:
+                            self._set_visual_state("IDLE", 0.0)
+                            continue
                         self._set_visual_state("ERROR")
                         self.metrics["TTS"].config(text="ERROR", fg=RED)
                         self._append("VOICE", "Не удалось озвучить ответ: " + event[1])
@@ -670,16 +776,22 @@ class JarvisDesktop(tk.Tk):
 
     def _speak_reply(self, text):
         # This function runs on a worker thread. Never call Tk widgets here:
-        # Tkinter is not thread-safe and a UI exception used to prevent TTS itself.
+        # Tkinter is not thread-safe. UI state is updated through the event queue.
+        self.events.put(("tts_started", None))
+        failed = False
         try:
             tts.speak_and_play(text)
         except Exception as exc:
+            failed = True
             self.events.put(("tts_error", str(exc)))
+        finally:
+            if not failed:
+                self.events.put(("tts_finished", None))
 
     def _replace_streaming_reply(self, text, final=False):
         self.chat.configure(state="normal")
         if not getattr(self, "_streaming_reply_started", False):
-            self.chat.insert("end", "JARVIS\\n", "who")
+            self.chat.insert("end", "SUPERMAN\\n", "who")
             self._streaming_reply_started = True
         self.chat.delete("end-1c linestart", "end")
         self.chat.insert("end", text, "stream_body")
@@ -706,7 +818,7 @@ class JarvisDesktop(tk.Tk):
         female_phrases = ("голос на женский", "женский голос", "сделай голос женским", "поставь женский голос", "включи женский голос")
         if any(phrase in normalized for phrase in male_phrases):
             gender = "male"
-            message = "Готово. Установил мужской голос JARVIS."
+            message = "Готово. Установил мужской голос SUPERMAN."
         elif any(phrase in normalized for phrase in female_phrases):
             self.events.put(("reply", "В этой сборке доступен русский мужской голос Dmitri."))
             return True
@@ -791,6 +903,7 @@ class JarvisDesktop(tk.Tk):
         attachment_payload=self._build_attachment_payload()
         self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
         self.status.config(text="● PROCESSING",fg=CYAN)
+        self._set_visual_state("THINKING", 0.45)
         def work():
             provider = getattr(self.agent, "provider", None)
             try:
@@ -871,7 +984,7 @@ class JarvisDesktop(tk.Tk):
             except Exception:
                 items = []
         if not items: items = [(name, desc)]
-        win = tk.Toplevel(self); win.title("JARVIS — " + title); win.configure(bg=BG); win.geometry("820x650")
+        win = tk.Toplevel(self); win.title("SUPERMAN — " + title); win.configure(bg=BG); win.geometry("820x650")
         tk.Label(win, text=title, bg=BG, fg=CYAN, font=("Segoe UI", 18, "bold")).pack(anchor="w", padx=20, pady=(18, 4))
         tk.Label(win, text=("● АКТИВЕН" if enabled else "● ВЫКЛЮЧЕН"), bg=BG, fg=GREEN if enabled else RED, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20)
         tk.Label(win, text="Полный перечень: " + str(len(items)), bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=8)
@@ -882,7 +995,7 @@ class JarvisDesktop(tk.Tk):
         ttk.Button(win, text="ЗАКРЫТЬ", command=win.destroy).pack(anchor="e", padx=20, pady=(0, 14))
     def show_tools(self):
         win = tk.Toplevel(self)
-        win.title("JARVIS — Управление модулями")
+        win.title("SUPERMAN — Управление модулями")
         win.configure(bg=BG)
         win.geometry("1120x760")
         win.minsize(920, 600)
@@ -894,7 +1007,7 @@ class JarvisDesktop(tk.Tk):
         self.tool_status_label = tk.Label(header, text="", bg=BG, fg=GREEN,
                                           font=("Segoe UI", 10, "bold"))
         self.tool_status_label.pack(side="right")
-        tk.Label(win, text="Нажми на модуль, чтобы открыть его. Переключатель «АКТИВЕН» включает или отключает функцию. JARVIS сам выбирает нужный инструмент по вашей задаче — команды вводить не нужно.",
+        tk.Label(win, text="Нажми на модуль, чтобы открыть его. Переключатель «АКТИВЕН» включает или отключает функцию. SUPERMAN сам выбирает нужный инструмент по вашей задаче — команды вводить не нужно.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9), wraplength=1040, justify="left").pack(anchor="w", padx=22, pady=(0, 10))
 
         outer = tk.Frame(win, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
@@ -963,13 +1076,13 @@ class JarvisDesktop(tk.Tk):
 
     def show_settings(self):
         win = tk.Toplevel(self)
-        win.title("JARVIS — Центр управления")
+        win.title("SUPERMAN — Центр управления")
         win.configure(bg=PANEL)
         win.geometry("900x780")
         win.minsize(820, 700)
         win.transient(self)
         win.grab_set()
-        tk.Label(win, text="ЦЕНТР УПРАВЛЕНИЯ JARVIS", bg=PANEL, fg=CYAN,
+        tk.Label(win, text="ЦЕНТР УПРАВЛЕНИЯ SUPERMAN", bg=PANEL, fg=CYAN,
                  font=("Segoe UI", 19, "bold")).pack(anchor="w", padx=24, pady=(22, 4))
         tk.Label(win, text="Один OpenRouter API-ключ для всех моделей. Меняйте модель — ключ остаётся один.",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(0, 16))
@@ -989,11 +1102,11 @@ class JarvisDesktop(tk.Tk):
         if not isinstance(profiles, dict):
             profiles = {}
         active = int(self.settings.get("active_agent", 0) or 0)
-        names = ("FAST / Обычные", "REASONING / Рассуждения", "CODING / Код")
+        active = max(0, min(1, active))
+        names = ("SUPERMAN / ОСНОВНОЙ", "SUPERMAN CODE / ПРОГРАММИРОВАНИЕ")
         defaults = (
             ("openai-compatible", DEFAULT_URL, "openrouter/free"),
             ("openai-compatible", DEFAULT_URL, "deepseek/deepseek-chat:free"),
-            ("openai-compatible", DEFAULT_URL, "z-ai/glm-5.2:free"),
         )
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
@@ -1002,37 +1115,7 @@ class JarvisDesktop(tk.Tk):
         shared_key.insert(0, str(self.settings.get("openrouter_api_key") or profiles.get("0", {}).get("api_key", "") or os.environ.get("OPENROUTER_API_KEY", "")))
         shared_key.pack(fill="x", padx=14, pady=(0, 12), ipady=7)
 
-        additional_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
-        additional_row.pack(fill="x", pady=(2, 10))
-        tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
-        additional_model = tk.Entry(additional_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
-        additional_model.insert(0, str(self.settings.get("additional_model", "openrouter/free")))
-        additional_model.pack(fill="x", padx=14, pady=(0, 12), ipady=6)
-
-        consultant_frame = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
-        consultant_frame.pack(fill="x", pady=(2, 10))
-        tk.Label(consultant_frame, text="НЕЗАВИСИМЫЕ КОНСУЛЬТАНТЫ", bg="#091b29", fg=CYAN,
-                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 3))
-        tk.Label(consultant_frame,
-                 text="Если указать собственные ключи, DeepSeek и GLM работают напрямую, а не через OpenRouter.",
-                 bg="#091b29", fg=MUTED, font=("Segoe UI", 8), wraplength=760, justify="left").pack(anchor="w", padx=14, pady=(0, 7))
-        consultant_fields = {}
-        consultant_defaults = (
-            ("DeepSeek URL", "deepseek_url", self.settings.get("deepseek_url", ""), False),
-            ("DeepSeek API-ключ", "deepseek_key", self.settings.get("deepseek_key", ""), True),
-            ("DeepSeek модель", "deepseek_model", self.settings.get("deepseek_model", "deepseek/deepseek-chat:free"), False),
-            ("GLM URL", "glm_url", self.settings.get("glm_url", ""), False),
-            ("GLM API-ключ", "glm_key", self.settings.get("glm_key", ""), True),
-            ("GLM модель", "glm_model", self.settings.get("glm_model", "z-ai/glm-5.2:free"), False),
-        )
-        for label, key, default, secret in consultant_defaults:
-            row = tk.Frame(consultant_frame, bg="#091b29")
-            row.pack(fill="x", padx=14, pady=3)
-            tk.Label(row, text=label, width=20, anchor="w", bg="#091b29", fg=MUTED).pack(side="left")
-            e = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•" if secret else "", exportselection=False)
-            e.insert(0, str(default))
-            e.pack(side="left", fill="x", expand=True, ipady=6)
-            consultant_fields[key] = e
+        # Only two assistant profiles are shown; both use the shared OpenRouter key.
 
         entries = []
         for i, title in enumerate(names):
@@ -1066,7 +1149,7 @@ class JarvisDesktop(tk.Tk):
 
         voice_frame = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         voice_frame.pack(fill="x", pady=10)
-        tk.Label(voice_frame, text="ГОЛОС JARVIS / ELEVENLABS + PIPER", bg="#091b29", fg=CYAN,
+        tk.Label(voice_frame, text="ГОЛОС SUPERMAN / ELEVENLABS + PIPER", bg="#091b29", fg=CYAN,
                  font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 6))
         voice_fields = {}
         for label, key, default, secret in (
@@ -1097,9 +1180,11 @@ class JarvisDesktop(tk.Tk):
                 new_profiles[str(i)]["name"] = names[i]
             self.settings["agents"] = new_profiles
             self.settings["openrouter_api_key"] = shared_key.get().strip()
-            self.settings["additional_model"] = additional_model.get().strip() or "openrouter/free"
-            for k, e in consultant_fields.items():
-                self.settings[k] = e.get().strip()
+            self.settings["additional_model"] = new_profiles["0"]["model"]
+            for k in ("deepseek_url", "deepseek_key", "glm_url", "glm_key"):
+                self.settings[k] = ""
+            self.settings["deepseek_model"] = new_profiles["1"]["model"]
+            self.settings["glm_model"] = new_profiles["1"]["model"]
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
@@ -1128,6 +1213,7 @@ class JarvisDesktop(tk.Tk):
         self._start_agent()
 
     def _close(self):
+        self._network_monitor_running = False
         self._voice_loop_running = False
         tts.stop()
         if self._orb_after:

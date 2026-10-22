@@ -10,30 +10,33 @@ from agent.runtime import build_agent
 from agent.config import Settings
 from agent.multi_agent import ThreeAgentProvider
 from agent.providers.openai_chat import OpenAIChatProvider
-from agent import ipc
+from agent import ipc, habits, improvement_tools
 from agent.tools import self_modify
 
 
-JARVIS_SYSTEM_PROMPT = (
-    "Ты — Джарвис, личный ИИ-агент пользователя. "
+SUPERMAN_SYSTEM_PROMPT = (
+    "Ты — Супермен, личный ИИ-агент пользователя. "
     "Всегда отвечай на русском языке, если пользователь явно не попросил другой язык. "
     "Ты не просто чат: если у тебя есть подходящий инструмент, самостоятельно выполняй задачу. "
     "Для изменения собственного проекта используй инструменты чтения/записи исходников и после изменения запускай тесты. "
     "Не утверждай, что действие выполнено, если инструмент его не выполнил. "
+    "Запоминай привычки и предпочтения только когда пользователь прямо просит об этом или подтверждает предложение; используй инструменты remember_preference, list_preferences и forget_preference. " 
+    "Для самоулучшения веди сохраняемый цикл: propose_improvement → фактические тесты → mark_improvement_tested → request_improvement_confirmation → дождись явного решения → применяй только после одобрения → повторные тесты → verify_improvement → save_improvement. " 
+    "Не заявляй о пассивном обучении и не сохраняй чувствительные сведения без явного запроса. " 
     "Перед действительно опасным действием требуй подтверждение. "
     "Работай последовательно: понять задачу → действовать инструментами → проверить результат → сообщить результат."
 )
 
 # Backward-compatible identity alias.
-BUSYA_SYSTEM_PROMPT = JARVIS_SYSTEM_PROMPT
+LEGACY_SYSTEM_PROMPT = SUPERMAN_SYSTEM_PROMPT
 
 
 def _attach_self_improvement_tools(agent) -> None:
     agent.tools.register("read_source", self_modify.read_source,
-                         description="Прочитать исходный/config файл проекта JARVIS. Путь только внутри проекта.",
+                         description="Прочитать исходный/config файл проекта SUPERMAN. Путь только внутри проекта.",
                          parameters={"path": "путь относительно корня проекта"})
     agent.tools.register("write_source", self_modify.write_source,
-                         description="Изменить исходный/config файл проекта JARVIS. Перед записью создаётся резервная копия.",
+                         description="Изменить исходный/config файл проекта SUPERMAN. Перед записью создаётся резервная копия.",
                          parameters={"path": "путь относительно корня проекта", "content": "полное новое содержимое файла"})
     agent.tools.register("run_tests", self_modify.run_tests,
                          description="Запустить полный набор Python-тестов проекта после изменения кода.")
@@ -41,6 +44,36 @@ def _attach_self_improvement_tools(agent) -> None:
                          description="Показать текущую ветку и незакоммиченные изменения проекта.")
     agent.tools.register("rollback_last_change", self_modify.rollback_last_backup,
                          description="Откатить последнюю резервную копию, созданную инструментом write_source.")
+    agent.tools.register("remember_preference", habits.remember_preference,
+                         description="Сохранить привычку или предпочтение пользователя только по его явной просьбе.",
+                         parameters={"key": "короткое название привычки или предпочтения", "value": "что именно нужно запомнить"})
+    agent.tools.register("list_preferences", habits.list_preferences,
+                         description="Показать сохранённые привычки и предпочтения; можно указать фильтр.",
+                         parameters={"query": "необязательный фильтр по названию или значению"})
+    agent.tools.register("forget_preference", habits.forget_preference,
+                         description="Удалить сохранённое предпочтение по точному названию.",
+                         parameters={"key": "название предпочтения для удаления"})
+    agent.tools.register("propose_improvement", improvement_tools.propose_improvement,
+                         description="Создать сохраняемое предложение самоулучшения без изменения кода.",
+                         parameters={"problem": "описание проблемы", "change": "предлагаемое изменение", "tests": "план тестов"})
+    agent.tools.register("mark_improvement_tested", improvement_tools.mark_improvement_tested,
+                         description="Записать результат тестирования предложения.",
+                         parameters={"proposal_id": "ID предложения", "evidence": "фактический результат тестов"})
+    agent.tools.register("request_improvement_confirmation", improvement_tools.request_improvement_confirmation,
+                         description="Запросить подтверждение пользователя после тестирования.",
+                         parameters={"proposal_id": "ID предложения"})
+    agent.tools.register("confirm_improvement", improvement_tools.confirm_improvement,
+                         description="Записать явное решение пользователя да или нет.",
+                         parameters={"proposal_id": "ID предложения", "approved": "да или нет"})
+    agent.tools.register("mark_improvement_applied", improvement_tools.mark_improvement_applied,
+                         description="Зафиксировать реально применённое одобренное изменение.",
+                         parameters={"proposal_id": "ID предложения", "summary": "что изменено"})
+    agent.tools.register("verify_improvement", improvement_tools.verify_improvement,
+                         description="Записать результат повторных тестов после изменения.",
+                         parameters={"proposal_id": "ID предложения", "evidence": "результат повторных тестов"})
+    agent.tools.register("save_improvement", improvement_tools.save_improvement,
+                         description="Сохранить проверенное улучшение в журнал.",
+                         parameters={"proposal_id": "ID предложения"})
 
 
 def _attach_free_secondary_agents(agent, settings: Settings) -> None:
@@ -68,14 +101,14 @@ def _set_busya_identity(agent) -> None:
     provider = agent.provider
     target = provider.main if isinstance(provider, ThreeAgentProvider) else provider
     if hasattr(target, "system_prompt"):
-        target.system_prompt = BUSYA_SYSTEM_PROMPT
+        target.system_prompt = LEGACY_SYSTEM_PROMPT
     if hasattr(target, "name"):
         try:
-            target.name = "Буся ИИ"
+            target.name = "СУПЕРМЕН"
         except Exception:
             pass
     if isinstance(provider, ThreeAgentProvider):
-        provider.name = "Джарвис · 3 агента"
+        provider.name = "СУПЕРМЕН · 3 агента"
 
 
 def main():
@@ -110,7 +143,7 @@ def main():
         return
 
     names = ", ".join(f"/{n}" for n in agent.tools.names())
-    print(f"JARVIS готов (provider: {agent.provider.name}). "
+    print(f"СУПЕРМЕН готов (provider: {agent.provider.name}). "
           f"Инструменты: {names}. Выход: /exit, Ctrl+C.")
     while True:
         try:

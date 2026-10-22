@@ -1,8 +1,7 @@
-"""Локальное распознавание речи JARVIS.
+"""Local faster-whisper STT, gated by SUPERMAN online-only voice policy.
 
-Единственный STT-движок: faster-whisper.
-Модель поставляется вместе с Windows-сборкой, поэтому сеть для STT не нужна.
-Сегментацию речи выполняет agent.voice; Whisper не запускает второй VAD.
+No model is loaded or used while internet is unavailable. Speech segmentation
+is handled by agent.voice; Whisper does not run a second VAD.
 """
 from __future__ import annotations
 
@@ -33,6 +32,9 @@ def available_engines() -> list[str]:
 
 
 def current_engine() -> str:
+    from .connectivity import internet_available
+    if not internet_available():
+        return "off"
     mode = os.environ.get("JARVIS_STT", "faster-whisper").strip().lower()
     if mode == "off":
         return "off"
@@ -65,7 +67,17 @@ def warmup() -> None:
         _get_model()
 
 
+def unload() -> None:
+    """Release the cached speech model when voice mode is unavailable."""
+    global _MODEL
+    with _MODEL_LOCK:
+        _MODEL = None
+
+
 def transcribe(audio_path: str) -> str:
+    from .connectivity import internet_available
+    if not internet_available():
+        raise RuntimeError("Интернет недоступен: голосовой режим выключен. Используйте текстовый ввод.")
     if current_engine() == "off":
         raise RuntimeError("Распознавание речи отключено или faster-whisper не установлен.")
     path = Path(audio_path)

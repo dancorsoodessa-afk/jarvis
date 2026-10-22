@@ -256,7 +256,7 @@ class JarvisIpc {
     final attachmentMime = (activeAttachment?['mime']?.toString() ?? '').toLowerCase();
     final model = activeAttachment != null ? 'google/gemma-4-26b-a4b-it:free' : defaultModel;
     final behavior = Platform.isAndroid ? await _tool('self_behavior', {}) : '';
-    final system = 'Ты JARVIS — автономный AI-агент. Отвечай на языке пользователя. Используй инструменты для реальных действий и не выдумывай результат. Отделы: internet (Google.com, HTTP, download, weather), files, database (SQLite), other, self-improvement. Самоулучшение — изменение постоянного поведенческого слоя: правила, навыки, предпочтения, исправления, успешные шаблоны и политики инструментов. Когда пользователь просит улучшить себя — используй self_improve или self_learn. Не заявляй об изменении весов модели или подписанного APK. Активный слой:\n$behavior';
+    final system = 'Ты СУПЕРМЕН — личный AI-агент. Голосовое обращение для активации: «Джарвис». Отвечай на языке пользователя. Используй инструменты для реальных действий и не выдумывай результат. Отделы: internet (Google.com, HTTP, download, weather), files, database (SQLite), other, self-improvement. Самоулучшение — изменение постоянного поведенческого слоя: правила, навыки, предпочтения, исправления, успешные шаблоны и политики инструментов. Когда пользователь просит улучшить себя — используй self_improve или self_learn. Не заявляй об изменении весов модели или подписанного APK. Активный слой:\n$behavior';
     final messages = <Map<String, dynamic>>[{'role': 'system', 'content': system}, ..._history, {'role': 'user', 'content': activeAttachment == null ? userText : _attachmentParts(activeAttachment, userText)}];
     String answer = '';
     String? lastTool;
@@ -267,7 +267,7 @@ class JarvisIpc {
       req.headers.set(HttpHeaders.acceptHeader, 'application/json');
       if (_apiUrl!.contains('openrouter.ai')) {
         req.headers.set('HTTP-Referer', 'https://github.com/dancorsoodessa-afk/jarvis');
-        req.headers.set('X-OpenRouter-Title', 'JARVIS Android');
+        req.headers.set('X-OpenRouter-Title', 'SUPERMAN Android');
       }
       _auth(req);
       final models = <String>[
@@ -327,9 +327,10 @@ class JarvisIpc {
     final match = RegExp(r'AI (\d{3})').firstMatch(message);
     if (match != null) {
       final code = int.tryParse(match.group(1)!) ?? 0;
-      // Never hide bad credentials, bad requests, or invalid model IDs by
-      // silently switching providers. Fallback is for transient failures.
-      return code == 408 || code == 409 || code == 425 || code == 429 || code >= 500;
+      // Try explicitly configured alternate credentials/providers after auth
+      // failures too; never retry the same provider indefinitely.
+      return code == 401 || code == 403 || code == 404 || code == 408 || code == 409 ||
+          code == 425 || code == 429 || code >= 500;
     }
     return error is SocketException ||
         error is TimeoutException ||
@@ -339,8 +340,15 @@ class JarvisIpc {
   }
 
   Future<JarvisReply> _standaloneSend(String text, {Map<String, dynamic>? attachment}) async {
+    // Keep the configured primary provider immutable across messages. The
+    // request helper reads these fields, so restore them after every attempt;
+    // otherwise a successful fallback silently becomes the next message's
+    // primary provider and can corrupt later fallback ordering.
+    final primaryUrl = _apiUrl;
+    final primaryKey = _apiKey;
+    final primaryModel = _model;
     final providers = <Map<String, String>>[
-      {'name': 'Primary', 'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
+      {'name': 'Primary', 'url': primaryUrl ?? '', 'key': primaryKey ?? '', 'model': primaryModel ?? ''},
       ..._fallbacks,
     ].fold<List<Map<String, String>>>(<Map<String, String>>[], (list, p) {
       final signature = '${p['url']}|${p['key']}|${p['model']}';
@@ -353,14 +361,18 @@ class JarvisIpc {
       final url = (p['url'] ?? '').trim();
       final key = (p['key'] ?? '').trim();
       if (url.isEmpty || key.isEmpty) continue;
-      _apiUrl = url;
-      _apiKey = key;
-      _model = (p['model'] ?? '').trim();
       try {
+        _apiUrl = url;
+        _apiKey = key;
+        _model = (p['model'] ?? '').trim();
         return await _standaloneSendOnce(text, attachment: attachment);
       } catch (e) {
         lastError = e;
         if (i == providers.length - 1 || !_fallbackAllowed(e)) rethrow;
+      } finally {
+        _apiUrl = primaryUrl;
+        _apiKey = primaryKey;
+        _model = primaryModel;
       }
     }
     throw StateError('AI-провайдеры недоступны: ${lastError ?? 'нет настроенных ключей'}');
@@ -368,26 +380,55 @@ class JarvisIpc {
 
   Future<void> verifyConnection() async {
     if (!_standalone) return;
-    final url = (_apiUrl ?? '').trim().replaceFirst(RegExp(r'/+$'), '');
-    final key = (_apiKey ?? '').trim();
-    final model = (_model ?? '').trim();
-    if (url.isEmpty) throw ArgumentError('AI endpoint не указан');
-    if (key.isEmpty) throw ArgumentError('API key не указан');
-    final r = await _httpClient!.getUrl(Uri.parse('$url/models'));
-    r.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
-    final data = await _json(await r.close());
-    if (model.isNotEmpty && data['data'] is List) {
-      final ids = (data['data'] as List)
-          .whereType<Map>()
-          .map((m) => m['id']?.toString())
-          .whereType<String>()
-          .toSet();
-      if (ids.isNotEmpty && !ids.contains(model)) {
-        throw StateError('Модель $model недоступна у выбранного провайдера');
+    final providers = <Map<String, String>>[
+      {'url': _apiUrl ?? '', 'key': _apiKey ?? '', 'model': _model ?? ''},
+      ..._fallbacks,
+    ];
+    Object? lastError;
+    var attempted = 0;
+    var allEndpointsReturnedNotFound = true;
+    var hasConfiguredModel = false;
+
+    for (final provider in providers) {
+      final url = (provider['url'] ?? '').trim().replaceFirst(RegExp(r'/+$'), '');
+      final key = (provider['key'] ?? '').trim();
+      final model = (provider['model'] ?? '').trim();
+      if (url.isEmpty || key.isEmpty) continue;
+      attempted++;
+      if (model.isNotEmpty) hasConfiguredModel = true;
+      try {
+        final request = await _httpClient!.getUrl(Uri.parse('$url/models'));
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        final data = await _json(await request.close());
+        if (model.isNotEmpty && data['data'] is List) {
+          final ids = (data['data'] as List)
+              .whereType<Map>()
+              .map((item) => item['id']?.toString())
+              .whereType<String>()
+              .toSet();
+          if (ids.isNotEmpty && !ids.contains(model)) {
+            throw StateError('Модель $model недоступна у провайдера ${provider['name'] ?? url}');
+          }
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!error.toString().contains('AI 404')) {
+          allEndpointsReturnedNotFound = false;
+        }
       }
     }
-  }
 
+    // Some OpenAI-compatible gateways support chat completions but intentionally
+    // do not expose GET /models. A configured model can still be tested by the
+    // first real request, which also supports the normal fallback flow.
+    if (attempted > 0 && hasConfiguredModel && allEndpointsReturnedNotFound) return;
+    if (attempted == 0) {
+      throw StateError('Не настроен ни один AI-провайдер: проверьте URL и API key.');
+    }
+    throw StateError('Проверка подключения AI не прошла: ${lastError ?? 'неизвестная ошибка'}');
+  }
 
   Future<JarvisReply> sendMessage(String text, {Map<String, dynamic>? attachment}) async {
     if (_standalone) return await _standaloneSend(text, attachment: attachment);
