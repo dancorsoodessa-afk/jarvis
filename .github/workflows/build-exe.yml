@@ -3,7 +3,7 @@ name: Build JARVIS для Windows
 on:
   workflow_dispatch:
   push:
-    branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928]
+    branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928, feature/approved-live-3d-interface]
     paths:
       - "agent/**"
       - "docs/**"
