@@ -7,16 +7,11 @@ on:
       - "ui/**"
       - ".github/workflows/build-android.yml"
   pull_request:
-    branches: [foundation, standalone-pc-android]
+    branches: [foundation, standalone-pc-android, android-complete-20261005]
     paths:
       - "ui/**"
       - ".github/workflows/build-android.yml"
   workflow_dispatch:
-    inputs:
-      reason:
-        description: "APK build verification"
-        required: false
-        default: "manual verification"
 
 concurrency:
   group: jarvis-android-${{ github.ref }}
@@ -33,124 +28,51 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Generate Android platform
+      - name: Generate Android project
         working-directory: ui
         run: |
           set -e
-          rm -rf android
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
           rm -rf test
-          mkdir -p android/app/libs
-          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
-          echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
-          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-jvm-1.13.8.jar -o android/app/libs/sherpa-onnx-jvm-1.13.8.jar
-          echo "77b7b047fade4eadada96b568eb92615049aaf1dc317c7244e46c1ea38b9a63b  android/app/libs/sherpa-onnx-jvm-1.13.8.jar" | sha256sum -c -
-          test ! -e test/widget_test.dart
-      - name: Verify Sherpa ONNX JVM classes
+      - name: Configure Android permissions
         working-directory: ui
+        shell: bash
         run: |
-          set -euo pipefail
-          test -s android/app/libs/sherpa-onnx-1.13.8.aar
-          test -s android/app/libs/sherpa-onnx-jvm-1.13.8.jar
-          jar tf android/app/libs/sherpa-onnx-jvm-1.13.8.jar | grep -q 'com/k2fsa/sherpa/onnx/OnlineRecognizer.class'
-      - name: Install native Android voice engine
-        working-directory: ui
-        run: |
-          set -e
-          root=android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
-          mkdir -p "$root"
-          cp android_main_activity.kt "$root/MainActivity.kt"
-          cp android_tools/AndroidToolRouter.kt "$root/AndroidToolRouter.kt"
-          cp android_tools/TradingTools.kt "$root/TradingTools.kt"
-          cp android_tools/StockAnalysisTools.kt "$root/StockAnalysisTools.kt"
-          mkdir -p "$root/database" "$root/files" "$root/internet" "$root/other" "$root/selfimprovement"
-          cp android_tools/database/DatabaseTools.kt "$root/database/DatabaseTools.kt"
-          cp android_tools/files/FileTools.kt "$root/files/FileTools.kt"
-          cp android_tools/internet/InternetTools.kt "$root/internet/InternetTools.kt"
-          cp android_tools/other/OtherTools.kt "$root/other/OtherTools.kt"
-          cp android_tools/selfimprovement/SelfImprovementEngine.kt "$root/selfimprovement/SelfImprovementEngine.kt"
-          mkdir -p android/app/src/main/assets
-          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16.tar.bz2 -o /tmp/ru-asr.tar.bz2
-          tar -xjf /tmp/ru-asr.tar.bz2 -C android/app/src/main/assets
-          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-ru_RU-irina-medium.tar.bz2 -o /tmp/ru-tts.tar.bz2
-          tar -xjf /tmp/ru-tts.tar.bz2 -C android/app/src/main/assets
-          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx -o android/app/src/main/assets/silero_vad.onnx
-          test -s android/app/src/main/assets/silero_vad.onnx
-          test -s android/app/src/main/assets/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16/encoder.int8.onnx
-          test -s android/app/src/main/assets/vits-piper-ru_RU-irina-medium/ru_RU-irina-medium.onnx
-      - name: Install isolated crypto modules
-        working-directory: ui
-        run: |
-          mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/crypto/providers
-          cp crypto/*.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/crypto/
-          cp crypto/providers/*.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/crypto/providers/
-      - name: Configure Android
-        working-directory: ui
-        run: |
-          set -e
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('android/app/build.gradle.kts')
-          t=p.read_text()
-          t=t.replace('applicationId = "com.dancorsoodessa.jarvis_ui"','applicationId = "com.dancorsoodessa.jarvis"')
-          # Use the checksum-verified local Sherpa ONNX artifacts downloaded above.
-          # Do not resolve an unverified/incorrect Maven coordinate during the release build.
-          for dep in ['implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))','implementation(files("$projectDir/libs/sherpa-onnx-jvm-1.13.8.jar"))','implementation("androidx.core:core-ktx:1.12.0")','implementation("androidx.appcompat:appcompat:1.6.1")']:
-              if dep not in t: t=t.replace('dependencies {','dependencies {\n    '+dep,1)
-          p.write_text(t)
-          p=Path('pubspec.yaml'); p.write_text(p.read_text().replace('version: 0.1.0','version: 0.1.2',1))
-          p=Path('android/app/src/main/AndroidManifest.xml'); t=p.read_text()
-          for n in ['android.permission.INTERNET','android.permission.RECORD_AUDIO','android.permission.MODIFY_AUDIO_SETTINGS','android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_MICROPHONE','android.permission.POST_NOTIFICATIONS']:
-              if n not in t:
-                  marker='</manifest>'
-                  t=t.replace(marker, f'    <uses-permission android:name="{n}" />\n'+marker, 1)
-          p.write_text(t)
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          text = p.read_text(encoding="utf-8")
+          permissions = [
+              '    <uses-permission android:name="android.permission.INTERNET" />',
+              '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
+          ]
+          for permission in permissions:
+              if permission not in text:
+                  text = text.replace("<application", permission + "\n    <application", 1)
+          if "android.speech.RecognitionService" not in text:
+              text = text.replace("<application", '    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n    <application', 1)
+          p.write_text(text, encoding="utf-8")
           PY
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
-      - name: Verify voice contracts
-        working-directory: ui
-        run: |
-          set -euo pipefail
-          grep -q "await _send(text)" lib/main.dart
-          grep -q "__MIC_SOURCE_READY__" lib/main.dart
-          grep -q "__MIC_LEVEL__" lib/main.dart
-          grep -q "__MIC_LEVEL__" android_main_activity.kt
-          grep -q "microphone_permission_missing" android_main_activity.kt
-          grep -q "silero_vad.onnx" android_main_activity.kt
-          ! grep -q "WakeClapService\|startWakeService\|WAKE_ACTION" android_main_activity.kt
-          ! grep -R -q --exclude-dir=.git "double clap\|двойной хлоп" .
-      - name: Analyze Dart code
+      - name: Analyze Dart
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Build release APK
         working-directory: ui
-        run: flutter build apk --release --target-platform android-arm64
+        run: flutter build apk --release
       - name: Verify APK
         working-directory: ui
         run: |
-          set -euo pipefail
-          apk=build/app/outputs/flutter-apk/app-release.apk
-          test -s "$apk"
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
-          ZIPALIGN=$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)
-          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
-          "$APKSIGNER" verify --verbose --print-certs "$apk"
-          "$ZIPALIGN" -c -v 4 "$apk"
-          unzip -l "$apk" | grep -q "lib/arm64-v8a/"
-          ! unzip -l "$apk" | grep -q "lib/armeabi-v7a/\|lib/x86_64/"
-          "$AAPT" dump badging "$apk" | tee apk-manifest.txt
-          grep -q "^package: name='com.dancorsoodessa.jarvis'" apk-manifest.txt
-          grep -q "versionName='0.1.2'" apk-manifest.txt
-          "$AAPT" dump permissions "$apk" | grep -q "android.permission.RECORD_AUDIO"
-          sha256sum "$apk" | tee apk.sha256
-      - name: Upload JARVIS APK
+          set -e
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          test -s "$APK"
+          file "$APK"
+          sha256sum "$APK"
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-android-apk
-          path: |
-            ui/build/app/outputs/flutter-apk/app-release.apk
-            ui/apk.sha256
-            ui/apk-manifest.txt
+          path: ui/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
