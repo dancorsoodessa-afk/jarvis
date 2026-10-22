@@ -30,91 +30,23 @@ def _send_email(to: str, subject: str, body: str) -> str:
 
 def build_agent(settings: Settings | None = None) -> JarvisAgent:
     settings=settings or Settings.from_env(); log=get_log("runtime"); log.info("Старт агента (provider=%s)",settings.provider); memory=MemoryStore(settings.memory_path)
-    if settings.provider == "local-vulkan":
-        provider = LocalVulkanProvider(
-            settings.llama_cli, settings.model, ctx=settings.ctx, threads=settings.threads
-        )
-        session = None
-    elif settings.provider == "hybrid":
-        session = SessionMemory(memory)
-        chat_url = settings.chat_url.strip()
-        cloud = OpenAIChatProvider(
-            url=chat_url,
-            api_key=settings.chat_key,
-            model=settings.chat_model,
-            history=session.load_history(),
-        )
-        local = LocalVulkanProvider(
-            settings.llama_cli, settings.model, ctx=settings.ctx, threads=settings.threads
-        )
-        provider = HybridProvider(cloud, local)
-    elif settings.provider == "openai-compatible":
+    if settings.provider == "huggingface":
         session = SessionMemory(memory)
         history = session.load_history()
-        shared_url = settings.chat_url.strip()
-        shared_key = settings.chat_key
-
-        # Main/FAST stays on the user's primary OpenAI-compatible endpoint.
-        fast = OpenAIChatProvider(
-            url=shared_url,
-            api_key=shared_key,
-            model=settings.fast_model,
-            history=history,
-            fallback_models=[settings.reasoning_model, settings.additional_model],
-        )
-
-        # DeepSeek and GLM become independent providers when their own
-        # credentials are configured. This prevents the OpenRouter free
-        # limit from becoming the single point of failure.
-        deepseek_key = (settings.deepseek_key or "").strip()
-        deepseek_url = (settings.deepseek_url or "").strip()
-        deepseek_model = (settings.deepseek_model or "").strip()
-        if deepseek_key:
-            deepseek_url = deepseek_url or "https://api.deepseek.com/v1/chat/completions"
-            if deepseek_model.endswith(":free") or deepseek_model.startswith("deepseek/"):
-                deepseek_model = ""
-        else:
-            deepseek_url = shared_url
-            deepseek_model = settings.reasoning_model
-
-        glm_key = (settings.glm_key or "").strip()
-        glm_url = (settings.glm_url or "").strip()
-        glm_model = (settings.glm_model or "").strip()
-        if glm_key:
-            glm_url = glm_url or "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-            if glm_model.endswith(":free") or glm_model.startswith("z-ai/"):
-                glm_model = ""
-        else:
-            glm_url = shared_url
-            glm_model = settings.coding_model
-
-        reasoning = OpenAIChatProvider(
-            url=deepseek_url,
-            api_key=deepseek_key or shared_key,
-            model=deepseek_model,
-            history=history,
-            fallback_models=[settings.coding_model, settings.additional_model],
-        )
-        coding = OpenAIChatProvider(
-            url=glm_url,
-            api_key=glm_key or shared_key,
-            model=glm_model,
-            history=history,
-            fallback_models=[settings.reasoning_model, settings.additional_model],
-        )
-        additional = OpenAIChatProvider(
-            url=shared_url,
-            api_key=shared_key,
-            model=settings.additional_model,
-            history=history,
-            fallback_models=[settings.fast_model, settings.reasoning_model],
-        )
+        shared_url = settings.chat_url.strip() or "https://router.huggingface.co/v1/chat/completions"
+        shared_key = settings.chat_key or __import__("os").environ.get("HF_TOKEN", "")
+        default_model = settings.chat_model or "Qwen/Qwen2.5-7B-Instruct"
+        fast = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.fast_model or default_model,
+                                  history=history, fallback_models=[settings.reasoning_model, settings.coding_model, settings.additional_model])
+        reasoning = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.reasoning_model or default_model,
+                                       history=history, fallback_models=[settings.fast_model, settings.coding_model, settings.additional_model])
+        coding = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.coding_model or default_model,
+                                    history=history, fallback_models=[settings.fast_model, settings.reasoning_model, settings.additional_model])
+        additional = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.additional_model or default_model,
+                                        history=history, fallback_models=[settings.fast_model, settings.reasoning_model, settings.coding_model])
         provider = RoleRouterProvider({"fast": fast, "reasoning": reasoning, "coding": coding, "additional": additional})
     else:
-        raise RuntimeError(
-            f"Неизвестный провайдер: {settings.provider}. "
-            "Доступны: hybrid, openai-compatible, local-vulkan"
-        )
+        raise RuntimeError("JARVIS поддерживает только Hugging Face Inference API.")
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
     tools=ToolRegistry()
     tools.register("inspect_file",universal.inspect_file,description="Прочитать и проанализировать локальный файл: TXT, MD, CSV, JSON, XML, Python, PDF, DOCX, XLSX и другие поддерживаемые форматы.",parameters={"path":"путь к файлу или папке"})
