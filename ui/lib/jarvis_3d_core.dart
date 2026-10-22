@@ -44,7 +44,7 @@ class _CorePainter extends CustomPainter {
     final mesh = Paint()..color = accent.withOpacity(.48)..style = PaintingStyle.stroke..strokeWidth = .65;
     for (int i = -3; i <= 3; i++) {
       final y = i * r * .24, w = math.sqrt(math.max(0, r * r - y * y));
-      canvas.drawOval(Rect.fromCenter(center: c + Offset(0, y), width: w * 2, height: math.max(2, r * .12)), mesh);
+      canvas.drawOval(Rect.fromCenter(center: c + Offset(0, y), width: w * 2, height: math.max(2.0, r * .12)), mesh);
     }
     for (int i = 0; i < 7; i++) {
       canvas.save(); canvas.translate(c.dx, c.dy); canvas.rotate(phase * .3 + i * math.pi / 7);
