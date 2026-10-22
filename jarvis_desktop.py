@@ -384,6 +384,7 @@ class JarvisDesktop(tk.Tk):
                 "Диск": f"{psutil.disk_usage(disk_root).percent:.0f}%",
                 "GPU": "НЕТ ДАННЫХ",
             }
+            self._system_cpu_level = psutil.cpu_percent(interval=None) / 100.0
             colors = {"CPU": CYAN, "RAM": CYAN, "Диск": CYAN, "GPU": YELLOW}
         except Exception:
             values = {"CPU": "НЕДОСТУПНО", "RAM": "НЕДОСТУПНО", "GPU": "НЕДОСТУПНО", "Диск": "НЕДОСТУПНО"}
@@ -427,7 +428,8 @@ class JarvisDesktop(tk.Tk):
         core = colors.get(state, "#39cfff")
         muted = "#153e52"
         faint = "#0a202d"
-        energy = min(1.0, {"IDLE": 0.22, "LISTENING": 0.45 + level * 0.55,
+        cpu_load = max(0.0, min(1.0, float(getattr(self, "_system_cpu_level", 0.0))))
+        energy = min(1.0, cpu_load * 0.25 + {"IDLE": 0.22, "LISTENING": 0.45 + level * 0.55,
                            "THINKING": 0.72, "SPEAKING": 0.58 + level * 0.42,
                            "ERROR": 0.8}.get(state, 0.25))
         speed = {"IDLE": 0.009, "LISTENING": 0.035 + level * 0.055,
@@ -604,6 +606,7 @@ class JarvisDesktop(tk.Tk):
                         max_seconds=10.0,
                         start_timeout=2.0,
                         on_speech_start=on_speech_start,
+                        on_audio_level=lambda value: self.events.put(("audio_level", value)),
                     )
                     if not heard or not self._voice_loop_running:
                         continue
@@ -623,6 +626,7 @@ class JarvisDesktop(tk.Tk):
                             max_seconds=10.0,
                             start_timeout=4.0,
                             on_speech_start=on_speech_start,
+                            on_audio_level=lambda value: self.events.put(("audio_level", value)),
                         )
                     elif not activated and time.monotonic() < self._voice_armed_until:
                         command = normalized
@@ -678,7 +682,10 @@ class JarvisDesktop(tk.Tk):
                 event = self.events.get_nowait()
                 kind = event[0]
                 try:
-                    if kind == "ready":
+                    if kind == "audio_level":
+                        if self._visual_state in ("LISTENING", "SPEAKING"):
+                            self._set_visual_state(self._visual_state, event[1])
+                    elif kind == "ready":
                         if len(event) > 2 and event[2] != self._agent_generation:
                             continue
                         self._agent_start_pending = False
