@@ -344,7 +344,7 @@ class JarvisDesktop(tk.Tk):
         tk.Label(right, text="REAL-TIME SYSTEM STATUS", bg="#070d16", fg=MUTED,
                  font=("Consolas", 7)).pack(anchor="w", padx=14, pady=(0,12))
         self.metrics = {}
-        for name in ("Core","AI Provider","Memory","Tools","Voice","TTS"):
+        for name in ("CPU","RAM","GPU","Диск","Core","AI Provider","Memory","Tools","Voice","TTS"):
             row=tk.Frame(right,bg="#0a131f",highlightbackground="#13283a",highlightthickness=1)
             row.pack(fill="x",padx=10,pady=4)
             tk.Label(row,text=name,bg="#0a131f",fg=MUTED,font=("Consolas",8)).pack(side="left",padx=9,pady=9)
@@ -371,6 +371,30 @@ class JarvisDesktop(tk.Tk):
                  font=("Consolas",8,"bold")).pack(anchor="w",padx=14,pady=(15,5))
         tk.Label(right,text="Hugging Face Inference API\nОдин токен для всех моделей\nЛокальные инструменты и голос",
                  bg="#070d16",fg="#8297a5",justify="left",font=("Segoe UI",8),wraplength=235).pack(anchor="w",padx=14)
+        self.after(1200, self._refresh_system_telemetry)
+
+    def _refresh_system_telemetry(self):
+        """Показывает реальные CPU/RAM/диск; GPU помечается недоступным без источника телеметрии."""
+        try:
+            import psutil
+            disk_root = os.environ.get("SystemDrive", "C:") + os.sep
+            values = {
+                "CPU": f"{psutil.cpu_percent(interval=None):.0f}%",
+                "RAM": f"{psutil.virtual_memory().percent:.0f}%",
+                "Диск": f"{psutil.disk_usage(disk_root).percent:.0f}%",
+                "GPU": "НЕТ ДАННЫХ",
+            }
+            colors = {"CPU": CYAN, "RAM": CYAN, "Диск": CYAN, "GPU": YELLOW}
+        except Exception:
+            values = {"CPU": "НЕДОСТУПНО", "RAM": "НЕДОСТУПНО", "GPU": "НЕДОСТУПНО", "Диск": "НЕДОСТУПНО"}
+            colors = {key: MUTED for key in values}
+        for key, value in values.items():
+            label = self.metrics.get(key)
+            if label is not None:
+                label.config(text=value, fg=colors[key])
+        if self.winfo_exists():
+            self.after(2000, self._refresh_system_telemetry)
+
     def _set_visual_state(self, state, level=None):
         self._visual_state = state
         if level is not None:
