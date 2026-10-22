@@ -2,8 +2,8 @@ import os
 from dataclasses import dataclass
 
 
-SUPPORTED_PROVIDERS = ("openai-compatible", "local-vulkan")
-DEFAULT_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
+SUPPORTED_PROVIDERS = ("huggingface",)
+DEFAULT_CHAT_URL = "https://router.huggingface.co/v1/chat/completions"
 
 
 def normalize_chat_url(value: str | None) -> str:
@@ -20,7 +20,7 @@ def normalize_chat_url(value: str | None) -> str:
 
 
 def normalize_provider(value: str | None) -> str:
-    provider = (value or "openai-compatible").strip().lower()
+    provider = (value or "huggingface").strip().lower()
     provider = provider.replace("_", "-").replace(" ", "-")
     aliases = {
         "openai": "openai-compatible",
@@ -35,28 +35,21 @@ def normalize_provider(value: str | None) -> str:
         "llama": "local-vulkan",
         "llama-cpp": "local-vulkan",
     }
-    return aliases.get(provider, provider)
+    return "huggingface"
 
 
 @dataclass
 class Settings:
     """Runtime settings for free/local AI providers only."""
 
-    provider: str = "openai-compatible"
+    provider: str = "huggingface"
     chat_url: str = ""
     chat_key: str = ""
-    chat_model: str = "openrouter/free"
-    fast_model: str = "openrouter/free"
-    reasoning_model: str = "deepseek/deepseek-chat:free"
-    coding_model: str = "z-ai/glm-5.2:free"
-    additional_model: str = "openrouter/free"
-    # Current free OpenRouter variants; these can also be overridden for local models.
-    deepseek_url: str = ""
-    deepseek_key: str = ""
-    deepseek_model: str = "deepseek/deepseek-chat:free"
-    glm_url: str = ""
-    glm_key: str = ""
-    glm_model: str = "z-ai/glm-5.2:free"
+    chat_model: str = "Qwen/Qwen2.5-7B-Instruct"
+    fast_model: str = "Qwen/Qwen2.5-7B-Instruct"
+    reasoning_model: str = "Qwen/Qwen2.5-7B-Instruct"
+    coding_model: str = "Qwen/Qwen2.5-7B-Instruct"
+    additional_model: str = "Qwen/Qwen2.5-7B-Instruct"
     llama_cli: str = "llama-cli"
     model: str = "model.gguf"
     ctx: int = 2048
@@ -87,18 +80,12 @@ class Settings:
         return cls(
             provider=provider,
             chat_url=normalize_chat_url(os.environ.get("JARVIS_CHAT_URL")),
-            chat_key=os.environ.get("JARVIS_CHAT_KEY", "") or os.environ.get("OPENROUTER_API_KEY", ""),
-            chat_model=os.environ.get("JARVIS_CHAT_MODEL", "openrouter/free").strip() or "openrouter/free",
-            fast_model=os.environ.get("JARVIS_FAST_MODEL", os.environ.get("JARVIS_CHAT_MODEL", "openrouter/free")).strip() or "openrouter/free",
-            reasoning_model=os.environ.get("JARVIS_REASONING_MODEL", "deepseek/deepseek-chat:free").strip() or "deepseek/deepseek-chat:free",
-            coding_model=os.environ.get("JARVIS_CODING_MODEL", "z-ai/glm-5.2:free").strip() or "z-ai/glm-5.2:free",
-            additional_model=os.environ.get("JARVIS_ADDITIONAL_MODEL", "openrouter/free").strip() or "openrouter/free",
-            deepseek_url=os.environ.get("JARVIS_DEEPSEEK_URL", "").strip(),
-            deepseek_key=os.environ.get("JARVIS_DEEPSEEK_KEY", ""),
-            deepseek_model=os.environ.get("JARVIS_DEEPSEEK_MODEL", "deepseek/deepseek-chat:free").strip(),
-            glm_url=os.environ.get("JARVIS_GLM_URL", "").strip(),
-            glm_key=os.environ.get("JARVIS_GLM_KEY", ""),
-            glm_model=os.environ.get("JARVIS_GLM_MODEL", "z-ai/glm-5.2:free").strip(),
+            chat_key=os.environ.get("JARVIS_CHAT_KEY", "") or os.environ.get("HF_TOKEN", ""),
+            chat_model=os.environ.get("JARVIS_CHAT_MODEL", "Qwen/Qwen2.5-7B-Instruct").strip() or "Qwen/Qwen2.5-7B-Instruct",
+            fast_model=os.environ.get("JARVIS_FAST_MODEL", os.environ.get("JARVIS_CHAT_MODEL", "Qwen/Qwen2.5-7B-Instruct")).strip() or "Qwen/Qwen2.5-7B-Instruct",
+            reasoning_model=os.environ.get("JARVIS_REASONING_MODEL", "Qwen/Qwen2.5-7B-Instruct").strip() or "Qwen/Qwen2.5-7B-Instruct",
+            coding_model=os.environ.get("JARVIS_CODING_MODEL", "Qwen/Qwen2.5-7B-Instruct").strip() or "Qwen/Qwen2.5-7B-Instruct",
+            additional_model=os.environ.get("JARVIS_ADDITIONAL_MODEL", "Qwen/Qwen2.5-7B-Instruct").strip() or "Qwen/Qwen2.5-7B-Instruct",
             llama_cli=os.environ.get("JARVIS_LLAMA_CLI", "llama-cli").strip(),
             model=os.environ.get("JARVIS_MODEL", "model.gguf").strip(),
             ctx=ctx,
