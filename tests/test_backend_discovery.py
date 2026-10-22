@@ -8,13 +8,14 @@ from agent.core_router import discover_chat_endpoint
 
 
 class TestBackendDiscovery(unittest.TestCase):
-    def test_dragon_alias_uses_openai_compatible(self):
-        self.assertEqual(normalize_provider("dragon"), "openai-compatible")
-        self.assertEqual(normalize_provider("dragon local"), "openai-compatible")
+    def test_all_provider_aliases_are_pinned_to_huggingface(self):
+        self.assertEqual(normalize_provider("dragon"), "huggingface")
+        self.assertEqual(normalize_provider("dragon local"), "huggingface")
+        self.assertEqual(normalize_provider("openrouter"), "huggingface")
 
     def test_settings_no_longer_hardcodes_ollama(self):
         settings = Settings.from_env()
-        self.assertEqual(settings.provider, "openai-compatible")
+        self.assertEqual(settings.provider, "huggingface")
         self.assertEqual(settings.chat_url, DEFAULT_CHAT_URL)
 
     def test_discovers_healthy_endpoint(self):
