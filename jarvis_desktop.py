@@ -119,13 +119,13 @@ class JarvisDesktop(tk.Tk):
             "name": "JARVIS",
             "provider": "huggingface",
             "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
-            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "Qwen/Qwen2.5-7B-Instruct",
+            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "Qwen/Qwen2.5-7B-Instruct-1M",
             "api_key": self.settings.get("hf_token") or os.environ.get("HF_TOKEN") or "",
         }
         defaults = {
             "0": legacy,
-            "1": {"name": "Hugging Face Reasoning", "provider": "huggingface", "url": DEFAULT_URL, "model": "Qwen/Qwen2.5-7B-Instruct", "api_key": legacy["api_key"]},
-            "2": {"name": "Hugging Face Coding", "provider": "huggingface", "url": DEFAULT_URL, "model": "Qwen/Qwen2.5-7B-Instruct", "api_key": legacy["api_key"]},
+            "1": {"name": "Hugging Face Reasoning", "provider": "huggingface", "url": DEFAULT_URL, "model": "Qwen/Qwen2.5-7B-Instruct-1M", "api_key": legacy["api_key"]},
+            "2": {"name": "Hugging Face Coding", "provider": "huggingface", "url": DEFAULT_URL, "model": "Qwen/Qwen2.5-7B-Instruct-1M", "api_key": legacy["api_key"]},
         }
         merged = {}
         for key, default in defaults.items():
@@ -137,6 +137,8 @@ class JarvisDesktop(tk.Tk):
             # A previous misconfiguration may have put the endpoint URL in Model.
             # Restore the profile's known-good model ID instead of sending the URL as "model".
             merged[key]["model"] = _safe_model_id(merged[key].get("model"), default["model"])
+            if merged[key]["model"] == "Qwen/Qwen2.5-7B-Instruct":
+                merged[key]["model"] = default["model"]
         profile = merged[str(active)]
         self.settings["active_agent"] = active
         self.settings["agents"] = merged
@@ -1006,9 +1008,9 @@ class JarvisDesktop(tk.Tk):
         active = int(self.settings.get("active_agent", 0) or 0)
         names = ("FAST / Обычные", "REASONING / Рассуждения", "CODING / Код")
         defaults = (
-            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct"),
-            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct"),
-            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct"),
+            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct-1M"),
+            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct-1M"),
+            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct-1M"),
         )
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
@@ -1021,7 +1023,7 @@ class JarvisDesktop(tk.Tk):
         additional_row.pack(fill="x", pady=(2, 10))
         tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
         additional_model = tk.Entry(additional_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
-        additional_model.insert(0, str(self.settings.get("additional_model", "Qwen/Qwen2.5-7B-Instruct")))
+        additional_model.insert(0, str(self.settings.get("additional_model", "Qwen/Qwen2.5-7B-Instruct-1M")))
         additional_model.pack(fill="x", padx=14, pady=(0, 12), ipady=6)
 
         entries = []
@@ -1080,10 +1082,10 @@ class JarvisDesktop(tk.Tk):
         def save():
             new_profiles = {}
             for i, fields in enumerate(entries):
-                new_profiles[str(i)] = {"provider": "huggingface", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "Qwen/Qwen2.5-7B-Instruct", "api_key": shared_key.get().strip(), "name": names[i]}
+                new_profiles[str(i)] = {"provider": "huggingface", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "Qwen/Qwen2.5-7B-Instruct-1M", "api_key": shared_key.get().strip(), "name": names[i]}
             self.settings["agents"] = new_profiles
             self.settings["hf_token"] = shared_key.get().strip()
-            self.settings["additional_model"] = additional_model.get().strip() or "Qwen/Qwen2.5-7B-Instruct"
+            self.settings["additional_model"] = additional_model.get().strip() or "Qwen/Qwen2.5-7B-Instruct-1M"
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
