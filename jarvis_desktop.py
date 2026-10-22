@@ -133,6 +133,7 @@ class JarvisDesktop(tk.Tk):
             merged[key] = {**default, **(value if isinstance(value, dict) else {})}
             merged[key]["provider"] = "huggingface"
             merged[key]["url"] = DEFAULT_URL
+            merged[key]["api_key"] = legacy["api_key"]
             # A previous misconfiguration may have put the endpoint URL in Model.
             # Restore the profile's known-good model ID instead of sending the URL as "model".
             merged[key]["model"] = _safe_model_id(merged[key].get("model"), default["model"])
@@ -1039,9 +1040,7 @@ class JarvisDesktop(tk.Tk):
                       bg="#0e667a", fg=TEXT, relief="flat", padx=10, pady=5).pack(side="right")
             fields = {}
             for label, key, default, secret in (
-                ("API", "provider", "huggingface", False),
-                ("API URL", "url", p.get("url", durl), False),
-                ("Модель", "model", p.get("model", dmodel), False),
+                ("Модель Hugging Face", "model", p.get("model", dmodel), False),
             ):
                 row = tk.Frame(card, bg="#091b29")
                 row.pack(fill="x", padx=14, pady=4)
