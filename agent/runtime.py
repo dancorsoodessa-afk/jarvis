@@ -33,7 +33,7 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     if settings.provider == "huggingface":
         session = SessionMemory(memory)
         history = session.load_history()
-        shared_url = settings.chat_url.strip() or "https://router.huggingface.co/v1/chat/completions"
+        shared_url = "https://router.huggingface.co/v1/chat/completions"
         shared_key = settings.chat_key or __import__("os").environ.get("HF_TOKEN", "")
         default_model = settings.chat_model or "Qwen/Qwen2.5-7B-Instruct"
         fast = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.fast_model or default_model,
