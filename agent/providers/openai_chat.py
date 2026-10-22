@@ -32,7 +32,7 @@ class OpenAIChatProvider:
                  system_prompt: Optional[str] = None, fallback_models: Optional[list[str]] = None):
         self.url = (url or os.environ.get("JARVIS_CHAT_URL", "")).strip()
         configured_key = api_key if api_key is not None else os.environ.get("JARVIS_CHAT_KEY", "")
-        self.api_key = (configured_key or os.environ.get("OPENROUTER_API_KEY", "") or os.environ.get("OPENAI_API_KEY", "")).strip()
+        self.api_key = (configured_key or os.environ.get("HF_TOKEN", "")).strip()
         self.model = (model or os.environ.get("JARVIS_CHAT_MODEL", "")).strip()
         self.timeout = timeout
         self.history: list[dict] = history if history is not None else []
@@ -89,14 +89,14 @@ class OpenAIChatProvider:
 
     @staticmethod
     def _normalize_model(model: str) -> str:
-        # OpenRouter's free router is a real model slug. Do not replace it
+        # Hugging Face Inference Providers is a real model slug. Do not replace it
         # with a hard-coded model that may have no available endpoint.
         return model.strip()
 
     def _auth_headers(self, *, stream: bool = False) -> dict:
         if not self.api_key:
             raise RuntimeError(
-                "API-ключ не задан. Для OpenRouter укажите API key в настройках JARVIS."
+                "API-ключ не задан. Для Hugging Face укажите токен доступа в настройках JARVIS."
             )
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
         if stream:
@@ -218,7 +218,7 @@ class OpenAIChatProvider:
         model = self.discover_model()
         messages = self._messages(prompt)
         payload = {"model": model, "messages": messages, "temperature": 0.25}
-        if self.fallback_models and "openrouter.ai" in self.url:
+        if self.fallback_models and "router.huggingface.co" in self.url:
             payload["models"] = list(dict.fromkeys([model, *self.fallback_models]))
         if tools:
             payload["tools"] = tools
@@ -249,7 +249,7 @@ class OpenAIChatProvider:
             if confirmation_pending:
                 break
             payload = {"model": model, "messages": messages, "temperature": 0.25}
-            if self.fallback_models and "openrouter.ai" in self.url:
+            if self.fallback_models and "router.huggingface.co" in self.url:
                 payload["models"] = list(dict.fromkeys([model, *self.fallback_models]))
             if tools:
                 payload["tools"] = tools
