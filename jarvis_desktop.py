@@ -103,6 +103,8 @@ class JarvisDesktop(tk.Tk):
         self._apply_saved_settings()
         self._build_style()
         self._build_ui()
+        # Start the animated ARC Reactor after the Canvas has been created.
+        self._draw_orb()
         self._start_agent()
         self.after(80, self._drain_events)
         self.protocol("WM_DELETE_WINDOW", self._close)
