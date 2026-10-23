@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 enum JarvisVisualState { idle, listening, thinking, speaking, confirmation, error, exiting }
 
 class JarvisReactor extends StatefulWidget {
-  const JarvisReactor({super.key, this.color = const Color(0xFF37D5EE), this.state = JarvisVisualState.idle});
+  const JarvisReactor({super.key, this.color = const Color(0xFF37D5EE), this.state = JarvisVisualState.idle, this.activity = 0.0});
   final Color color;
   final JarvisVisualState state;
+  final double activity;
   @override
   State<JarvisReactor> createState() => _JarvisReactorState();
 }
@@ -17,22 +18,23 @@ class _JarvisReactorState extends State<JarvisReactor> with SingleTickerProvider
   void dispose() { _controller.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => RepaintBoundary(
-    child: CustomPaint(painter: _ReactorPainter(_controller, widget.color, widget.state)),
+    child: CustomPaint(painter: _ReactorPainter(_controller, widget.color, widget.state, widget.activity)),
   );
 }
 
 class _ReactorPainter extends CustomPainter {
-  _ReactorPainter(this.time, this.color, this.state) : super(repaint: time);
+  _ReactorPainter(this.time, this.color, this.state, this.activity) : super(repaint: time);
   final Animation<double> time;
   final Color color;
   final JarvisVisualState state;
+  final double activity;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
     final radius = size.shortestSide / 2;
     final t = time.value * math.pi * 2;
-    final intensity = switch (state) {
+    final baseIntensity = switch (state) {
       JarvisVisualState.idle => 0.72,
       JarvisVisualState.listening => 1.05,
       JarvisVisualState.thinking => 1.18,
@@ -41,6 +43,10 @@ class _ReactorPainter extends CustomPainter {
       JarvisVisualState.error => 1.25,
       JarvisVisualState.exiting => 0.35,
     };
+    final voiceActivity = activity.clamp(0.0, 1.0).toDouble();
+    final intensity = (baseIntensity +
+        (state == JarvisVisualState.listening ? voiceActivity * 0.65 : 0.0))
+        .clamp(0.0, 2.0).toDouble();
     final speed = switch (state) {
       JarvisVisualState.idle => 0.55,
       JarvisVisualState.listening => 1.15,
@@ -76,7 +82,7 @@ class _ReactorPainter extends CustomPainter {
 
     // Project a rotating, deforming 3D wireframe sphere into the canvas.
     // The mesh changes its radius and rotation with the live JARVIS state.
-    final meshRadius = radius * (0.43 + 0.018 * math.sin(t * 1.7) * intensity);
+    final meshRadius = radius * (0.43 + 0.018 * math.sin(t * 1.7) * intensity + voiceActivity * 0.055);
     final rotationY = t * 0.22 * speed;
     final rotationX = math.sin(t * 0.31) * 0.28;
     final meshRows = 9;
@@ -84,7 +90,7 @@ class _ReactorPainter extends CustomPainter {
 
     Offset projectMeshPoint(double latitude, double longitude) {
       final deformation = 1.0 +
-          0.045 * math.sin(longitude * 3 + t * speed) *
+          (0.045 + voiceActivity * 0.09) * math.sin(longitude * 3 + t * speed) *
               math.cos(latitude * 4 + t * 0.6) * intensity;
       final x = math.cos(latitude) * math.sin(longitude) * deformation;
       final y = math.sin(latitude) * deformation;
