@@ -8,6 +8,10 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[all]"
 python -m pip install --upgrade "pyinstaller>=6.22,<7" pytest
 
+Write-Host "== JARVIS: prepare local Three.js engine ==" -ForegroundColor Cyan
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prepare_3d_assets.ps1
+if ($LASTEXITCODE -ne 0) { throw "Three.js asset preparation failed." }
+
 Write-Host "== JARVIS: run tests ==" -ForegroundColor Cyan
 python -m pytest tests/ -q
 if ($LASTEXITCODE -ne 0) { throw "Tests failed; release build aborted." }
