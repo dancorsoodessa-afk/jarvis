@@ -1,30 +1,31 @@
-"""Cloud speech-to-text via GroqCloud Whisper API; no local STT model."""
+"""Cloud speech-to-text using Gemini audio understanding; no local model."""
 from __future__ import annotations
 
+import base64
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
-import uuid
 from pathlib import Path
 
-DEFAULT_STT_MODEL = "whisper-large-v3-turbo"
-DEFAULT_STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+DEFAULT_STT_MODEL = "gemini-2.5-flash"
+DEFAULT_STT_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
 
 
 def _token() -> str:
-    return (os.environ.get("GROQ_API_KEY") or os.environ.get("JARVIS_CHAT_KEY") or "").strip()
+    return (os.environ.get("GEMINI_API_KEY") or os.environ.get("JARVIS_CHAT_KEY") or "").strip()
 
 
 def available_engines() -> list[str]:
-    return ["groq"] if _token() else []
+    return ["gemini"] if _token() else []
 
 
 def current_engine() -> str:
     mode = os.environ.get("JARVIS_STT", "auto").strip().lower()
     if mode == "off":
         return "off"
-    return "groq" if _token() else "off"
+    return "gemini" if _token() else "off"
 
 
 def warmup() -> None:
@@ -32,52 +33,44 @@ def warmup() -> None:
 
 
 def transcribe(audio_path: str) -> str:
-    if current_engine() == "off":
-        raise RuntimeError("Голосовой ввод требует бесплатный ключ GroqCloud. Вставьте его в Центре управления.")
+    token = _token()
+    if current_engine() == "off" or not token:
+        raise RuntimeError("Голосовой ввод требует бесплатный GEMINI_API_KEY из Google AI Studio. Вставьте его в Центр управления.")
     path = Path(audio_path)
     if not path.is_file():
         raise ValueError(f"Файл не найден: {audio_path}")
     audio = path.read_bytes()
     if not audio:
         raise ValueError("Аудиофайл пустой.")
-
-    boundary = "----JARVIS" + uuid.uuid4().hex
-    body = bytearray()
-    for name, value in (("model", DEFAULT_STT_MODEL), ("response_format", "json"), ("language", "ru")):
-        body.extend(f"--{boundary}\r\n".encode())
-        body.extend(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
-        body.extend(value.encode())
-        body.extend(b"\r\n")
-    body.extend(f"--{boundary}\r\n".encode())
-    body.extend(f'Content-Disposition: form-data; name="file"; filename="{path.name}"\r\n'.encode())
-    body.extend(b"Content-Type: audio/wav\r\n\r\n")
-    body.extend(audio)
-    body.extend(f"\r\n--{boundary}--\r\n".encode())
-
-    url = os.environ.get("JARVIS_STT_URL", DEFAULT_STT_URL).strip()
-    if not url.startswith("https://api.groq.com/openai/v1/audio/transcriptions"):
-        raise RuntimeError("Голосовое распознавание разрешено только через HTTPS API GroqCloud.")
-    request = urllib.request.Request(
-        url, data=bytes(body),
-        headers={"Authorization": f"Bearer {_token()}",
-                 "Content-Type": f"multipart/form-data; boundary={boundary}",
-                 "Accept": "application/json"},
-        method="POST",
-    )
+    if len(audio) > 18 * 1024 * 1024:
+        raise ValueError("Аудиофайл слишком большой для одного запроса Gemini (лимит JARVIS — 18 МБ).")
+    suffix = path.suffix.lower()
+    mime = "audio/wav" if suffix == ".wav" else "audio/mpeg" if suffix == ".mp3" else "audio/" + suffix.lstrip(".")
+    payload = {
+        "contents": [{"role": "user", "parts": [
+            {"text": "Точно распознай речь в аудио. Язык русский. Верни только распознанные слова без комментариев."},
+            {"inline_data": {"mime_type": mime, "data": base64.b64encode(audio).decode("ascii")}}
+        ]}],
+        "generationConfig": {"temperature": 0, "maxOutputTokens": 1024}
+    }
+    url = DEFAULT_STT_URL + DEFAULT_STT_MODEL + ":generateContent?" + urllib.parse.urlencode({"key": token})
+    request = urllib.request.Request(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                                     headers={"Content-Type": "application/json", "Accept": "application/json"},
+                                     method="POST")
     try:
         with urllib.request.urlopen(request, timeout=90) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            result = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:400]
-        raise RuntimeError(f"Ошибка распознавания GroqCloud: HTTP {exc.code}. {detail}") from exc
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError(f"Ошибка распознавания Gemini: HTTP {exc.code}. {detail}") from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"Не удалось подключиться к распознаванию GroqCloud: {exc.reason}") from exc
+        raise RuntimeError(f"Не удалось подключиться к Gemini STT: {exc.reason}") from exc
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise RuntimeError("Сервис распознавания вернул некорректный ответ.") from exc
-
-    text = payload.get("text") if isinstance(payload, dict) else None
-    if isinstance(text, str) and text.strip():
+        raise RuntimeError("Gemini STT вернул некорректный JSON.") from exc
+    try:
+        text = "".join(part.get("text", "") for part in result["candidates"][0]["content"]["parts"])
+    except (KeyError, IndexError, TypeError):
+        text = ""
+    if text.strip():
         return text.strip()
-    if isinstance(payload, dict) and payload.get("error"):
-        raise RuntimeError(f"Ошибка GroqCloud STT: {str(payload['error'])[:400]}")
-    raise RuntimeError("Сервис распознавания не вернул распознанный текст.")
+    raise RuntimeError("Gemini не вернул распознанный текст. Проверьте качество аудио и лимит API.")
