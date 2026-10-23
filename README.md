@@ -5,7 +5,7 @@ JARVIS is a Python desktop assistant with a graphical interface, memory, OS tool
 ## Architecture
 
 - **Cloud LLM:** Google Gemini API through its OpenAI-compatible endpoint.
-- **Cloud speech recognition:** configured separately; does not use the Gemini chat API.
+- **Cloud speech recognition:** Google Gemini API; requires `GEMINI_API_KEY`.
 - **Optional cloud speech output:** ElevenLabs; requires `ELEVENLABS_API_KEY`.
 - **Local components:** desktop UI, microphone capture, memory files, and Windows automation tools. No local AI model is required.
 
