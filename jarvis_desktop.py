@@ -134,11 +134,13 @@ class JarvisDesktop(tk.Tk):
             merged[key]["provider"] = "gemini"
             merged[key]["url"] = DEFAULT_URL
             merged[key]["api_key"] = legacy["api_key"]
-            # A previous misconfiguration may have put the endpoint URL in Model.
-            # Restore the profile's known-good model ID instead of sending the URL as "model".
-            merged[key]["model"] = _safe_model_id(merged[key].get("model"), default["model"])
-            if merged[key]["model"] == "gemini-3.8-flash":
+            # Migrate stale OpenRouter/Hugging Face model IDs to the configured Gemini model.
+            # Old saved profiles must never override the selected provider with incompatible model IDs.
+            saved_model = str(merged[key].get("model") or "").strip()
+            if saved_model != default["model"]:
                 merged[key]["model"] = default["model"]
+            else:
+                merged[key]["model"] = _safe_model_id(saved_model, default["model"])
         profile = merged[str(active)]
         self.settings["active_agent"] = active
         self.settings["agents"] = merged
