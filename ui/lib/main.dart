@@ -148,10 +148,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       return;
     }
     _voiceStarting = true;
+    final session = _speechSession;
     try {
       await _speech.stop();
       await _speech.listen(
-        onResult: (result) => _onSpeechResult(result, _speechSession),
+        onResult: (result) => _onSpeechResult(result, session),
         listenFor: const Duration(minutes: 1),
         pauseFor: const Duration(seconds: 4),
         partialResults: true,
