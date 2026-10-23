@@ -7,6 +7,7 @@ import os
 import tempfile
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -38,10 +39,25 @@ def current_engine() -> str:
 
 
 def health_check(timeout: float | None = None) -> str:
-    """Check that cloud TTS is configured; does not spend API quota on a test utterance."""
+    """Check the TTS model endpoint and credentials without generating audio."""
     if current_engine() == "off":
         raise RuntimeError("Для облачной озвучки нужен GEMINI_API_KEY.")
-    return "configured"
+    model = (os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
+    url = "https://generativelanguage.googleapis.com/v1beta/models/" + urllib.parse.quote(model, safe="-._")
+    request = urllib.request.Request(url, headers={"x-goog-api-key": _api_key(), "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=max(5.0, min(20.0, float(timeout or 10.0)))) as response:
+            body = json.loads(response.read().decode("utf-8"))
+        if not isinstance(body, dict) or not body.get("name"):
+            raise RuntimeError("Gemini TTS вернул неожиданный ответ проверки модели.")
+        return "ONLINE"
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:300]
+        raise RuntimeError(f"Gemini TTS: HTTP {exc.code}. {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Gemini TTS: сеть недоступна ({exc.reason}).") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RuntimeError("Gemini TTS вернул некорректный JSON при проверке доступности.") from exc
 
 
 def set_gender(_gender: str) -> None:
