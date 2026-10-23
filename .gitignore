@@ -8,3 +8,4 @@ jarvis_notes.json
 jarvis.log
 *.log
 .env
+ui/vendor/
