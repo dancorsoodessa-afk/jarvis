@@ -16,7 +16,7 @@ From the repository root (the folder containing `pyproject.toml`, `jarvis_deskto
 ```powershell
 python -m pip install --upgrade pip
 python -m pip install poetry
-python -m poetry install --all-extras
+python -m pip install -e ".[all]"
 python -m pip install "pyinstaller>=6.22,<7" pytest
 powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 ```
