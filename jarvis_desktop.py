@@ -585,8 +585,6 @@ class JarvisDesktop(tk.Tk):
                         self._update_voice_status()
                         self.side_core.config(text="● CORE  —  ACTIVE", fg=GREEN)
                         self._append("JARVIS", f"Система готова. Активных модулей: {len(self.tool_names)} из {len(TOOLS)}.")
-                        if self.settings.get("voice_enabled", True):
-                            self._start_voice_loop()
                     elif kind == "provider_health":
                         if len(event) > 2 and event[2] != self._agent_generation:
                             continue
@@ -600,8 +598,10 @@ class JarvisDesktop(tk.Tk):
                         groq_status = event[1].get("Groq API", "NOT CONFIGURED")
                         self._append("SYSTEM", f"Проверка провайдеров — Gemini: {gemini_status}; Groq: {groq_status}")
                     elif kind == "stt_ready":
-                        self.metrics["Voice"].config(text="READY", fg=GREEN)
-                        self.side_voice.config(text="◉ ГОЛОС — ГОТОВ", fg=GREEN)
+                        self.metrics["Voice"].config(text="ONLINE", fg=GREEN)
+                        self.side_voice.config(text="◉ ГОЛОС — ОБЛАКО ДОСТУПНО", fg=GREEN)
+                        if self.settings.get("voice_enabled", True):
+                            self._start_voice_loop()
                     elif kind == "stt_error":
                         self.metrics["Voice"].config(text="ERROR", fg=RED)
                         self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
