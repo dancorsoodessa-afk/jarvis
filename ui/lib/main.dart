@@ -265,7 +265,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       if (usingOldProvider) {
         _endpoint.text = kFreePrimaryUrl;
         _model.text = kFreePrimaryModel;
-        // Never send a key from another provider to Hugging Face.
+        // Never reuse a key from a different provider.
         _apiKey.text = '';
       } else {
         _endpoint.text = storedEndpoint;
