@@ -270,7 +270,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         _apiKey.text = '';
       } else {
         _endpoint.text = storedEndpoint;
-        _model.text = storedModel;
+        _model.text = storedModel.isEmpty ? kFreePrimaryModel : storedModel;
         _apiKey.text = storedKey;
       }
 
