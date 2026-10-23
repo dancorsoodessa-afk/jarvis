@@ -43,6 +43,7 @@ class RoleRouterProvider:
         self.providers = providers
         self.fallback_order = fallback_order
         self.tool_executor = None
+        self.on_delta = None
         self.last_role = "fast"
         self.last_reason = ""
         self.last_model = ""
@@ -67,6 +68,7 @@ class RoleRouterProvider:
                 continue
             try:
                 provider.tool_executor = self.tool_executor
+                provider.on_delta = self.on_delta
                 result = provider.generate(prompt, tools=tools, max_steps=max_steps)
                 self.last_role, self.last_reason = role, decision.reason
                 self.last_model = getattr(provider, "last_used_model", "") or getattr(provider, "model", "")
