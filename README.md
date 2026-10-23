@@ -4,10 +4,12 @@ JARVIS is a Windows desktop assistant with a graphical interface, memory, OS too
 
 ## Architecture
 
-- **Cloud AI and coding:** Google Gemini API using Google's OpenAI-compatible endpoint.
-- **Voice recognition:** Gemini audio understanding; it uses the same `GEMINI_API_KEY`.
-- **Voice output:** Windows built-in System.Speech by default; no extra key or paid service required.
-- **Local components:** UI, microphone capture, memory files, and Windows automation. No local LLM or STT model is downloaded.
+- **Primary cloud AI:** Google Gemini API using the official OpenAI-compatible endpoint.
+- **Independent chat fallback:** Groq Cloud, configured with its own optional API key, model, timeout, and live endpoint check. If Groq is not configured, it is explicitly reported as unavailable.
+- **Voice recognition:** microphone capture on the PC plus cloud Gemini transcription; requires internet and the Gemini API key.
+- **Voice output:** cloud Gemini TTS with a configurable voice, model, and timeout. No ElevenLabs and no Windows System.Speech dependency.
+- **3D interface:** real Three.js/WebGL neural reactor served locally and opened in the browser. The scene reacts to live microphone level and the assistant's listening, thinking, speaking, and error states.
+- **Camera:** not implemented; JARVIS does not request camera access.
 
 ## Get the free Gemini API key
 
@@ -38,10 +40,11 @@ The build script runs tests before packaging. The executable is written to `rele
 
 ## Voice
 
-- Input: local microphone recording is sent to Gemini for transcription.
-- Output: Windows' built-in speech engine by default.
-- ElevenLabs is optional and not needed for normal voice operation.
-- Check Windows microphone permissions if recording fails.
+- Input: microphone audio is recorded locally and sent to Gemini for Russian transcription.
+- Output: Gemini cloud TTS generates a WAV voice response using the same Gemini API key.
+- Internet access is required for both cloud recognition and speech generation. If the service is unavailable, JARVIS reports the error instead of silently switching to a system voice.
+- Configure the TTS model, voice, and request timeout in the control center.
+- Check Windows microphone permissions and the selected input device if recording fails.
 
 ## Run from source
 
