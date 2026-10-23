@@ -84,3 +84,39 @@ def test_router_skips_same_backend_after_auth_failure():
     assert router.generate("обычный вопрос") == "ok:coding"
     assert providers["fast"].calls == 1
     assert providers["reasoning"].calls == 0
+
+def test_router_uses_groq_when_all_gemini_roles_share_a_failed_backend():
+    class EndpointProvider(FakeProvider):
+        def __init__(self, name, url, api_key, error=None):
+            super().__init__(name)
+            self.url = url
+            self.api_key = api_key
+            self.error = error
+        def generate(self, prompt, tools=None, max_steps=4):
+            self.calls += 1
+            if self.error:
+                raise RuntimeError(self.error)
+            return f"ok:{self.name}"
+
+    gemini_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    providers = {
+        "fast": EndpointProvider("gemini-fast", gemini_url, "gemini-key", "Ошибка API: HTTP 503. overloaded"),
+        "reasoning": EndpointProvider("gemini-reasoning", gemini_url, "gemini-key"),
+        "coding": EndpointProvider("gemini-coding", gemini_url, "gemini-key"),
+        "additional": EndpointProvider("gemini-additional", gemini_url, "gemini-key"),
+        "groq": EndpointProvider("groq", "https://api.groq.com/openai/v1/chat/completions", "groq-key"),
+    }
+    router = RoleRouterProvider(providers)
+    assert router.generate("обычный вопрос") == "ok:groq"
+    assert providers["fast"].calls == 1
+    assert providers["reasoning"].calls == 0
+    assert providers["groq"].calls == 1
+
+
+def test_router_propagates_stream_callback_to_selected_provider():
+    callback = lambda _delta: None
+    providers = {r: FakeProvider(r) for r in ("fast", "reasoning", "coding", "additional")}
+    router = RoleRouterProvider(providers)
+    router.on_delta = callback
+    router.generate("Открой браузер")
+    assert providers["fast"].on_delta is callback
