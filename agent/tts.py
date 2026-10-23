@@ -127,6 +127,7 @@ def speak(text: str) -> Path:
 
 
 def speak_and_play(text: str):
+    """Generate cloud audio, then play it on this worker thread until playback ends."""
     global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PATH
     path = speak(text)
     stop()
@@ -135,33 +136,33 @@ def speak_and_play(text: str):
         token = _PLAYBACK_TOKEN
         _PLAYBACK_ACTIVE = True
         _PLAYBACK_PATH = path
-
-    def play():
-        global _PLAYBACK_ACTIVE, _PLAYBACK_PATH
+    try:
+        if os.name == "nt":
+            import winsound
+            winsound.PlaySound(str(path), winsound.SND_FILENAME)
+        else:
+            import wave
+            import numpy as np
+            import sounddevice as sd
+            with wave.open(str(path), "rb") as wav:
+                frames = wav.readframes(wav.getnframes())
+                rate = wav.getframerate()
+                channels = wav.getnchannels()
+            audio = np.frombuffer(frames, dtype=np.int16)
+            if channels > 1:
+                audio = audio.reshape(-1, channels)
+            sd.play(audio, rate, blocking=True)
+    except Exception as exc:
+        raise RuntimeError(f"Не удалось воспроизвести облачную речь: {exc}") from exc
+    finally:
+        with _PLAYBACK_LOCK:
+            if _PLAYBACK_TOKEN == token:
+                _PLAYBACK_ACTIVE = False
+                _PLAYBACK_PATH = None
         try:
-            if os.name == "nt":
-                import winsound
-                winsound.PlaySound(str(path), winsound.SND_FILENAME)
-            else:
-                import sounddevice as sd
-                import soundfile as sf
-                audio, rate = sf.read(str(path), dtype="float32")
-                sd.play(audio, rate, blocking=True)
-        except Exception as exc:
-            raise RuntimeError(f"Не удалось воспроизвести облачную речь: {exc}") from exc
-        finally:
-            with _PLAYBACK_LOCK:
-                if _PLAYBACK_TOKEN == token:
-                    _PLAYBACK_ACTIVE = False
-                    _PLAYBACK_PATH = None
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
-
-    # Playback remains asynchronous so the UI stays responsive.
-    threading.Thread(target=play, daemon=True).start()
-    return None
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def stop() -> None:
