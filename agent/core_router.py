@@ -39,7 +39,7 @@ def classify_role(prompt: Any) -> RoleDecision:
 
 class RoleRouterProvider:
     name = "Джарвис ИИ"
-    def __init__(self, providers: dict[str, Any], fallback_order=("fast","reasoning","coding","additional")):
+    def __init__(self, providers: dict[str, Any], fallback_order=("fast","reasoning","coding","additional","groq")):
         self.providers = providers
         self.fallback_order = fallback_order
         self.tool_executor = None
