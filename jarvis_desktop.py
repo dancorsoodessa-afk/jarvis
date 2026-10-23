@@ -7,6 +7,7 @@ import os
 import queue
 import threading
 import time
+import webbrowser
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -14,6 +15,7 @@ import mimetypes
 
 from agent.runtime import build_agent
 from agent import tts, voice, stt
+from agent.visual_server import start_visual_server
 from agent.secrets import protect_secret, unprotect_secret
 from agent.tools_catalog import TOOLS
 
@@ -94,16 +96,17 @@ class JarvisDesktop(tk.Tk):
         self.attachments = []
         self._voice_loop_running = False
         self._voice_armed_until = 0.0
-        self._orb_phase = 0.0
         self._visual_state = "IDLE"
         self._visual_level = 0.0
-        self._orb_after = None
         self.settings = _load_saved_settings()
         self._apply_saved_settings()
         self._build_style()
         self._build_ui()
-        # Start the animated ARC Reactor after the Canvas has been created.
-        self._draw_orb()
+        # The Three.js scene is served locally; no camera access is requested.
+        self._visual_server, self._visual_url = start_visual_server(
+            lambda: {"state": self._visual_state, "level": self._visual_level}
+        )
+        self.after(900, self._open_3d_scene)
         self._start_agent()
         self.after(80, self._drain_events)
         self.protocol("WM_DELETE_WINDOW", self._close)
@@ -311,8 +314,10 @@ class JarvisDesktop(tk.Tk):
         hero = tk.Frame(center, bg="#07101a", highlightbackground="#163246", highlightthickness=1)
         hero.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         hero.grid_columnconfigure(1, weight=1)
-        self.canvas = tk.Canvas(hero, bg="#07101a", width=430, height=300, highlightthickness=0)
-        self.canvas.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(4, 8), pady=4)
+        self.scene_label = tk.Label(hero, text="REAL 3D REACTOR\nОТКРЫВАЕТСЯ В БРАУЗЕРЕ",
+                                    bg="#030811", fg=CYAN, width=34, height=11,
+                                    font=("Consolas", 11, "bold"), justify="center")
+        self.scene_label.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(4, 8), pady=4)
         self.hud_text = tk.Label(hero, text="Инициализация ядра…", bg="#07101a", fg=CYAN,
                                  font=("Segoe UI", 14, "bold"), justify="left")
         self.hud_text.grid(row=0, column=1, sticky="sw", padx=8, pady=(42, 4))
@@ -397,499 +402,15 @@ class JarvisDesktop(tk.Tk):
             "ERROR": "ОШИБКА",
         }
         self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
+        if hasattr(self, "scene_label"):
+            self.scene_label.config(text=labels.get(state, state) + "\nTHREE.JS WEBGL")
 
-    def _draw_orb(self):
-        """Высокопроизводительный псевдо-3D ARC Reactor: глубина, орбиты, сетка и реакция на голос/AI."""
-        self.canvas.delete("all")
-        w=max(430,self.canvas.winfo_width()); h=max(300,self.canvas.winfo_height())
-        cx,cy=w*0.43,h*0.48
-        phase=self._orb_phase; state=self._visual_state; level=self._visual_level
-        speed={"IDLE":0.014,"LISTENING":0.085,"THINKING":0.12,"SPEAKING":0.10,"ERROR":0.17}.get(state,0.03)
-        core=RED if state=="ERROR" else (YELLOW if state=="THINKING" else CYAN)
-        dark="#06121c"; faint="#0a2837"; dim="#17566d"; bright="#49cfe8"
-
-        # Perspective grid behind the reactor.
-        horizon=cy+h*.08
-        for i in range(9):
-            y=horizon+i*i*2.2
-            self.canvas.create_line(0,y,w,y,fill="#0b2431",width=1)
-        for i in range(-8,9):
-            self.canvas.create_line(cx+i*34,horizon,cx+i*105,h,fill="#0a202c",width=1)
-
-        # Depth particles orbiting the reactor.
-        for i in range(46):
-            a=phase*(0.10+(i%5)*0.018)+i*math.tau/46
-            depth=0.45+0.55*(0.5+0.5*math.sin(a*1.7+i))
-            rx=118+62*depth; ry=52+34*depth
-            x=cx+math.cos(a)*rx; y=cy+math.sin(a)*ry
-            size=0.7+2.0*depth*(0.5+0.5*level)
-            self.canvas.create_oval(x-size,y-size,x+size,y+size,fill=bright if i%11==0 else dim,outline="")
-
-        # Tilted orbital rings create the 3D illusion.
-        for idx,(rx,ry,tilt,rot) in enumerate(((168,78,.0,.12),(145,64,.38,-.18),(116,48,-.52,.25),(88,36,.72,-.31))):
-            a0=phase*rot+tilt
-            pts=[]
-            for j in range(73):
-                a=a0+math.tau*j/72
-                x=cx+math.cos(a)*rx
-                y=cy+math.sin(a)*ry
-                # slight vertical perspective wobble
-                y += math.sin(a+tilt)*10*(idx+1)/4
-                pts.append((x,y))
-            for j in range(len(pts)-1):
-                self.canvas.create_line(*pts[j],*pts[j+1],fill=("#257f98" if idx<2 else faint),width=1)
-
-        # Rotating scanner beam and radial energy spokes.
-        sweep=phase%math.tau
-        sx=cx+math.cos(sweep)*175; sy=cy+math.sin(sweep)*92
-        self.canvas.create_line(cx,cy,sx,sy,fill=core,width=2)
-        for i in range(18):
-            a=sweep+i*math.tau/18
-            r1=58+8*math.sin(phase+i); r2=112+22*level+12*math.sin(phase*1.4+i*.7)
-            self.canvas.create_line(cx+math.cos(a)*r1,cy+math.sin(a)*r1*.58,
-                                    cx+math.cos(a)*r2,cy+math.sin(a)*r2*.58,
-                                    fill=core if i%3==0 else dim,width=1)
-
-        # Central reactor with layered glow.
-        pulse=1+.08*math.sin(phase*3.0)+level*.22
-        for mul,col in ((2.9,"#0c3040"),(2.25,"#10485b"),(1.65,dim),(1.15,core)):
-            rr=38*pulse*mul
-            self.canvas.create_oval(cx-rr,cy-rr*.62,cx+rr,cy+rr*.62,outline=col,width=1)
-        rr=35*pulse
-        self.canvas.create_oval(cx-rr,cy-rr,cx+rr,cy+rr,fill=dark,outline=core,width=2)
-        self.canvas.create_oval(cx-rr*.62,cy-rr*.62,cx+rr*.62,cy+rr*.62,fill="#0b3a4a",outline=bright,width=2)
-        self.canvas.create_oval(cx-rr*.28,cy-rr*.28,cx+rr*.28,cy+rr*.28,fill=core,outline="")
-        self.canvas.create_text(cx,cy-4,text="J",fill="#f5ffff",font=("Segoe UI",25,"bold"))
-        self.canvas.create_text(cx,cy+19,text=state,fill=core,font=("Consolas",7,"bold"))
-
-        labels=("CORE","VOICE","AI","TOOLS","MEMORY","FILES","SYSTEM","NET")
-        for i in range(8):
-            a=phase*(.16 if i%2 else -.11)+i*math.tau/8
-            rx,ry=(168,78) if i%2==0 else (145,64)
-            nx,ny=cx+math.cos(a)*rx,cy+math.sin(a)*ry
-            self.canvas.create_oval(nx-5,ny-5,nx+5,ny+5,fill=core if i in (0,4) else "#123d4e",outline=dim)
-            self.canvas.create_text(nx,ny+(16 if ny<cy else -16),text=labels[i],fill="#82aebe",font=("Consolas",6,"bold"))
-
-        self.canvas.create_text(cx,h-18,text="J A R V I S  //  A.R.C. 3D REACTOR  //  "+state,
-                                fill=core,font=("Consolas",8,"bold"))
-        self._orb_phase+=speed
-        self._orb_after=self.after(50,self._draw_orb)
-
-    def _start_agent(self):
-        # Ignore stale results when settings are saved/reloaded more than once.
-        self._agent_generation += 1
-        generation = self._agent_generation
-        self._agent_start_pending = True
-        self.after(30000, lambda token=generation: self._agent_start_timeout(token))
-
-        def work():
-            try:
-                agent = build_agent()
-                self.events.put(("ready", agent, generation))
-                if generation == self._agent_generation:
-                    threading.Thread(target=self._warmup_stt, daemon=True).start()
-                    threading.Thread(target=self._check_provider_health, args=(agent, generation), daemon=True).start()
-            except Exception as exc:
-                self.events.put(("agent_error", str(exc), generation))
-        threading.Thread(target=work, daemon=True).start()
-
-    def _agent_start_timeout(self, generation):
-        if generation != self._agent_generation or not self._agent_start_pending:
-            return
-        self._agent_start_pending = False
-        self.status.config(text="● ЗАПУСК ЗАВИС", fg=RED)
-        self._append("SYSTEM", "Ядро не запустилось за 30 секунд. Повторите запуск; подробности могут быть в журнале JARVIS.")
-
-    def _check_provider_health(self, agent, generation):
+    def _open_3d_scene(self):
         try:
-            provider = getattr(agent, "provider", None)
-            checks = provider.health_checks() if provider and hasattr(provider, "health_checks") else {}
-            self.events.put(("provider_health", checks, generation))
+            webbrowser.open(self._visual_url, new=1)
+            self.scene_label.config(text="THREE.JS WEBGL\n3D REACTOR ОТКРЫТ\n\nГолос и состояние ИИ\nпередаются в сцену")
         except Exception as exc:
-            self.events.put(("provider_health", {"Gemini API": "ERROR: " + str(exc)[:160]}, generation))
-
-    def _warmup_stt(self):
-        try:
-            stt.warmup()
-            self.events.put(("stt_ready", None))
-        except Exception as exc:
-            self.events.put(("stt_error", str(exc)))
-
-    def _start_voice_loop(self):
-        if not self.settings.get("voice_enabled", True) or self._voice_loop_running or not voice.available():
-            return
-        self._voice_loop_running = True
-        self.voice_button.config(text="🎙 СЛУШАЮ")
-        self.voice_control.config(text="🔊  Голос: ВКЛ")
-        def on_speech_start():
-            if tts.is_playing():
-                tts.stop()
-                self.events.put(("voice_status", "Перебивание: TTS остановлен, слушаю вас."))
-        def work():
-            wake_words = ("jarvis", "джарвис")
-            while self._voice_loop_running and self.settings.get("voice_enabled", True):
-                try:
-                    heard = voice.listen_for_phrase(
-                        silence_seconds=0.55,
-                        max_seconds=10.0,
-                        start_timeout=2.0,
-                        on_speech_start=on_speech_start,
-                    )
-                    if not heard or not self._voice_loop_running:
-                        continue
-                    normalized = " ".join(heard.lower().split())
-                    command = None
-                    activated = False
-                    for word in wake_words:
-                        if normalized.startswith(word):
-                            activated = True
-                            command = normalized[len(word):].strip(" ,.!")
-                            self._voice_armed_until = float("inf")
-                            break
-                    if activated and not command:
-                        self.events.put(("voice_status", "Jarvis активирован. Слушаю вас."))
-                        command = voice.listen_for_phrase(
-                            silence_seconds=0.55,
-                            max_seconds=10.0,
-                            start_timeout=4.0,
-                            on_speech_start=on_speech_start,
-                        )
-                    elif not activated and time.monotonic() < self._voice_armed_until:
-                        command = normalized
-                    else:
-                        continue
-                    if command in {"стоп", "режим ожидания", "перейди в режим ожидания", "спасибо джарвис", "спасибо джарвис"}:
-                        self._voice_armed_until = 0.0
-                        self.events.put(("voice_status", "Голосовой режим: ожидание. Скажите «Джарвис», чтобы продолжить."))
-                        continue
-                    if command and self._voice_loop_running:
-                        self._voice_armed_until = float("inf")
-                        self.events.put(("voice_text", command))
-                except Exception as exc:
-                    self.events.put(("voice_error", str(exc)))
-                    break
-            self._voice_loop_running = False
-        threading.Thread(target=work, daemon=True).start()
-
-    def _stop_voice(self):
-        self._voice_loop_running = False
-        self.voice_button.config(text="🎙 ГОЛОС")
-        self._append("VOICE", "Голосовой цикл остановлен. Его можно включить снова кнопкой «Голос». ")
-
-    def toggle_voice(self):
-        self.settings["voice_enabled"] = not self.settings.get("voice_enabled", True)
-        self._save_settings()
-        if self.settings["voice_enabled"]:
-            self._start_voice_loop()
-            self.voice_control.config(text="🔊  Голос: ВКЛ")
-        else:
-            self._stop_voice()
-            self.voice_control.config(text="🔇  Голос: ВЫКЛ")
-        self._update_voice_status()
-
-    def toggle_tts(self):
-        self.settings["tts_enabled"] = not self.settings.get("tts_enabled", True)
-        self._save_settings()
-        if not self.settings["tts_enabled"]:
-            tts.stop()
-        self.tts_control.config(text=("🗣  TTS: ВКЛ" if self.settings["tts_enabled"] else "🗣  TTS: ВЫКЛ"))
-        self._update_voice_status()
-
-    def _update_voice_status(self):
-        stt_ok = voice.available() and self.settings.get("voice_enabled", True)
-        tts_engine = tts.current_engine()
-        tts_ok = self.settings.get("tts_enabled", True) and tts_engine != "off"
-        self.metrics["Voice"].config(text="ON" if stt_ok else "OFF", fg=GREEN if stt_ok else RED)
-        self.metrics["TTS"].config(text=tts_engine.upper() if tts_ok else "OFF", fg=GREEN if tts_ok else RED)
-
-    def _drain_events(self):
-        try:
-            while True:
-                event = self.events.get_nowait()
-                kind = event[0]
-                try:
-                    if kind == "ready":
-                        if len(event) > 2 and event[2] != self._agent_generation:
-                            continue
-                        self._agent_start_pending = False
-                        self.agent = event[1]
-                        self.tool_names = list(self.agent.tools.names())
-                        provider = getattr(self.agent.provider, "name", "unknown").upper()
-                        # Building the local agent does not prove that the remote API is reachable.
-                        self.status.config(text="● ГОТОВ", fg=YELLOW)
-                        self.hud_text.config(text="Ядро готово\nAI: " + provider + "\nAPI: проверка при запросе")
-                        self.metrics["Core"].config(text="READY", fg=YELLOW)
-                        self.metrics["AI Provider"].config(text=provider)
-                        self.metrics["Memory"].config(text="ACTIVE", fg=GREEN)
-                        self.metrics["Tools"].config(text=str(len(self.tool_names)), fg=GREEN)
-                        self.tools_button.config(text=f"⌁  Модули ({len(self.tool_names)}/{len(TOOLS)})")
-                        self.enabled_label.config(text=f"Активно модулей: {len(self.tool_names)} из {len(TOOLS)}\nОтключено: {len(TOOLS)-len(self.tool_names)}")
-                        self._update_voice_status()
-                        self.side_core.config(text="● CORE  —  ACTIVE", fg=GREEN)
-                        self._append("JARVIS", f"Система готова. Активных модулей: {len(self.tool_names)} из {len(TOOLS)}.")
-                        if self.settings.get("voice_enabled", True):
-                            self._start_voice_loop()
-                    elif kind == "provider_health":
-                        if len(event) > 2 and event[2] != self._agent_generation:
-                            continue
-                        for label, result in event[1].items():
-                            if label not in self.metrics:
-                                continue
-                            status_text = str(result).split(":", 1)[0].upper()
-                            color = GREEN if status_text == "ONLINE" else YELLOW if status_text == "CONFIGURED" else RED
-                            self.metrics[label].config(text=status_text[:18], fg=color)
-                        gemini_status = event[1].get("Gemini API", "UNKNOWN")
-                        groq_status = event[1].get("Groq API", "NOT CONFIGURED")
-                        self._append("SYSTEM", f"Проверка провайдеров — Gemini: {gemini_status}; Groq: {groq_status}")
-                    elif kind == "stt_ready":
-                        self.metrics["Voice"].config(text="READY", fg=GREEN)
-                        self.side_voice.config(text="◉ ГОЛОС — ГОТОВ", fg=GREEN)
-                    elif kind == "stt_error":
-                        self.metrics["Voice"].config(text="ERROR", fg=RED)
-                        self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
-                        self._append("VOICE", "STT: " + event[1])
-                    elif kind == "reply_delta":
-                        self._streaming_reply = getattr(self, "_streaming_reply", "") + str(event[1])
-                        self._set_visual_state("THINKING", 0.7)
-                        self._replace_streaming_reply(self._streaming_reply)
-                    elif kind == "reply":
-                        reply = event[1]
-                        self._set_visual_state("SPEAKING", 0.65)
-                        if getattr(self, "_streaming_reply", ""):
-                            self._replace_streaming_reply(reply, final=True)
-                        else:
-                            self._append("JARVIS", reply)
-                        self._streaming_reply = ""
-                        self.busy = False
-                        self.send_button.config(state="normal")
-                        self.attach_button.config(state="normal")
-                        self.status.config(text="● ONLINE", fg=GREEN)
-                        self._set_visual_state("IDLE", 0.0)
-                        if self.settings.get("tts_enabled", True):
-                            threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
-                    elif kind == "voice_text":
-                        self._set_visual_state("LISTENING", 0.75)
-                        if self.busy:
-                            continue
-                        self.input.delete(0, "end")
-                        self.input.insert(0, event[1])
-                        self.send(event[1])
-                    elif kind == "voice_status":
-                        self._append("VOICE", event[1])
-                    elif kind == "voice_error":
-                        self._set_visual_state("ERROR")
-                        self.voice_button.config(text="🎙 ГОЛОС")
-                        self.metrics["Voice"].config(text="ERROR", fg=RED)
-                        self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
-                        self._append("VOICE", "Прослушивание остановлено: " + event[1] + " Нажмите «Голос», чтобы повторить запуск.")
-                    elif kind == "tts_error":
-                        self._set_visual_state("ERROR")
-                        self.metrics["TTS"].config(text="ERROR", fg=RED)
-                        self._append("VOICE", "Не удалось озвучить ответ: " + event[1])
-                    elif kind == "request_error":
-                        self._set_visual_state("ERROR")
-                        self.status.config(text="● API ERROR", fg=RED)
-                        self._append("AI", "Запрос не выполнен: " + event[1])
-                        self.busy = False
-                        self.send_button.config(state="normal")
-                        self.attach_button.config(state="normal")
-                        self._streaming_reply = ""
-                    elif kind == "agent_error":
-                        if len(event) > 2 and event[2] != self._agent_generation:
-                            continue
-                        self._agent_start_pending = False
-                        self._set_visual_state("ERROR")
-                        self.status.config(text="● ERROR", fg=RED)
-                        self._append("SYSTEM", "Не удалось запустить ядро: " + event[1])
-                        self.busy = False
-                        self.send_button.config(state="normal")
-                        self.attach_button.config(state="normal")
-
-                except Exception as exc:
-                    # A malformed UI event must not stop all future replies/events.
-                    try:
-                        self.status.config(text="● UI ERROR", fg=RED)
-                        self._append("SYSTEM", "Ошибка обработки события: " + str(exc))
-                    except Exception:
-                        pass
-        except queue.Empty:
-            pass
-        finally:
-            try:
-                self.after(80, self._drain_events)
-            except tk.TclError:
-                pass
-
-    def _speak_reply(self, text):
-        # This function runs on a worker thread. Never call Tk widgets here:
-        # Tkinter is not thread-safe and a UI exception used to prevent TTS itself.
-        try:
-            tts.speak_and_play(text)
-        except Exception as exc:
-            self.events.put(("tts_error", str(exc)))
-
-    def _replace_streaming_reply(self, text, final=False):
-        self.chat.configure(state="normal")
-        if not getattr(self, "_streaming_reply_started", False):
-            self.chat.insert("end", "JARVIS\\n", "who")
-            self._streaming_reply_started = True
-        self.chat.delete("end-1c linestart", "end")
-        self.chat.insert("end", text, "stream_body")
-        if final:
-            self.chat.insert("end", "\\n\\n")
-            self._streaming_reply_started = False
-        self.chat.tag_configure("stream_body", foreground=TEXT)
-        self.chat.see("end")
-        self.chat.configure(state="disabled")
-
-    def _append(self, who, text):
-        self.chat.configure(state="normal")
-        self.chat.insert("end", f"{who}\n", "who")
-        self.chat.insert("end", text + "\n\n", "body")
-        self.chat.tag_configure("who", foreground=CYAN, font=("Segoe UI", 9, "bold"))
-        self.chat.tag_configure("body", foreground=TEXT)
-        self.chat.see("end")
-        self.chat.configure(state="disabled")
-
-    def _handle_voice_setting_command(self, text):
-        """Handle voice-gender commands locally, without sending them to the AI backend."""
-        normalized = " ".join(text.lower().replace("ё", "е").split())
-        male_phrases = ("голос на мужской", "мужской голос", "сделай голос мужским", "поставь мужской голос", "включи мужской голос")
-        female_phrases = ("голос на женский", "женский голос", "сделай голос женским", "поставь женский голос", "включи женский голос")
-        if any(phrase in normalized for phrase in male_phrases):
-            gender = "male"
-            message = "Готово. Установил мужской голос JARVIS."
-        elif any(phrase in normalized for phrase in female_phrases):
-            self.events.put(("reply", "В этой сборке доступен русский мужской голос Dmitri."))
-            return True
-        else:
-            return False
-        self.settings["tts_gender"] = gender
-        os.environ["JARVIS_TTS_GENDER"] = gender
-        tts.set_gender(gender)
-        self._save_settings()
-        self.events.put(("reply", message))
-        return True
-
-    def pick_attachments(self):
-        paths=filedialog.askopenfilenames(parent=self,title="Прикрепить файлы, фото, видео или аудио",
-            filetypes=[("Все файлы","*.*")])
-        if not paths: return
-        self.attachments=[]
-        for raw in paths:
-            p=Path(raw)
-            try: size=p.stat().st_size
-            except OSError: continue
-            if size<=50*1024*1024:
-                self.attachments.append({"path":str(p),"name":p.name,"mime":mimetypes.guess_type(p.name)[0] or "application/octet-stream","size":size})
-        self._refresh_attachment_label()
-
-    def _refresh_attachment_label(self):
-        if not self.attachments:
-            self.attachment_label.config(text="Вложений нет",fg=MUTED); return
-        names=", ".join(x["name"] for x in self.attachments)
-        self.attachment_label.config(text=f"📎 {len(self.attachments)} файл(ов): {names[:140]}",fg=CYAN)
-
-    def _build_attachment_context(self):
-        if not self.attachments: return ""
-        parts=["ВЛОЖЕНИЯ ПОЛЬЗОВАТЕЛЯ:"]
-        for x in self.attachments:
-            p=Path(x["path"])
-            line=f"- {x['name']} | {x['mime']} | {x['size']} байт | путь: {p}"
-            if x["size"] <= 15*1024*1024:
-                try:
-                    suffix=p.suffix.lower()
-                    if suffix in {".txt",".md",".csv",".json",".xml",".log",".yaml",".yml",".toml",".ini",".py",".ps1",".js",".ts",".html",".css"}:
-                        line+="\n  Содержимое:\n"+p.read_text(encoding="utf-8",errors="replace")[:120000]
-                    elif suffix in {".pdf",".docx",".xlsx",".xlsm",".zip",".tar",".gz",".7z",".rar"}:
-                        from agent.tools.universal import inspect_file
-                        line+="\n  Анализ файла:\n"+inspect_file(str(p))[:120000]
-                except Exception as exc:
-                    line+=f"\n  Не удалось прочитать содержимое автоматически: {exc}"
-            parts.append(line)
-        return "\n".join(parts)
-
-    def _build_attachment_payload(self):
-        for x in self.attachments:
-            mime=x.get("mime","").lower()
-            if not (mime.startswith("image/") or mime.startswith("audio/")):
-                continue
-            p=Path(x["path"])
-            try:
-                if p.stat().st_size > 15*1024*1024:
-                    continue
-                return {"name":p.name,"mime":mime,"data":base64.b64encode(p.read_bytes()).decode("ascii")}
-            except OSError:
-                continue
-        return None
-
-    def _clear_attachments(self):
-        self.attachments=[]; self._refresh_attachment_label()
-
-    def send(self, text=None):
-        if text is None: text=self.input.get()
-        text=text.strip()
-        if not text:
-            self._append("SYSTEM", "Введите команду или используйте кнопку «Голос».")
-            return
-        if self.busy:
-            self._append("SYSTEM", "Предыдущая команда ещё выполняется. Дождитесь ответа.")
-            return
-        if self.agent is None:
-            self._append("SYSTEM", "Ядро ещё не готово или не запустилось. Проверьте статус и API-ключ в настройках.")
-            return
-        context=self._build_attachment_context()
-        shown = text + (
-            "\n📎 " + ", ".join(x["name"] for x in self.attachments)
-            if self.attachments else ""
-        )
-        self.input.delete(0, "end")
-        self._append("ВЫ", shown)
-        if self._handle_voice_setting_command(text):
-            self._clear_attachments(); return
-        prompt=text+("\n\n"+context if context else "")
-        attachment_payload=self._build_attachment_payload()
-        self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
-        self.status.config(text="● PROCESSING",fg=CYAN)
-        def work():
-            provider = getattr(self.agent, "provider", None)
-            try:
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = lambda delta: self.events.put(("reply_delta", delta))
-                result=self.agent.handle(prompt, attachment=attachment_payload)
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = None
-                # JarvisAgent converts provider exceptions into an AgentResult string.
-                # Detect that error explicitly instead of showing it as a successful reply.
-                if str(result.text).startswith("Ошибка провайдера:"):
-                    self.events.put(("request_error", str(result.text).partition(":")[2].strip()))
-                else:
-                    self.events.put(("reply",result.text))
-            except Exception as exc:
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = None
-                self.events.put(("request_error", str(exc)))
-        self._clear_attachments()
-        threading.Thread(target=work,daemon=True).start()
-
-    def start_voice(self):
-        if not self.settings.get("voice_enabled", True):
-            self._append("VOICE", "Голос выключен. Включите его в настройках.")
-            return
-        # A manual click explicitly arms command capture: the user should not
-        # have to say the wake word after pressing the microphone button.
-        self._voice_armed_until = float("inf")
-        if self._voice_loop_running:
-            self.voice_button.config(text="🎙 СЛУШАЮ КОМАНДУ")
-            self._append("VOICE", "Микрофон активен. Говорите команду сейчас — слово «Джарвис» не обязательно.")
-            return
-        self._start_voice_loop()
-        if self._voice_loop_running:
-            self._append("VOICE", "Микрофон включён. Говорите команду сейчас — слово «Джарвис» не обязательно.")
-        else:
-            devices = voice.audio_devices()
-            detail = " Доступные микрофоны: " + ", ".join(devices) if devices else " Windows не обнаружил входной микрофон."
-            self._append("VOICE", "Голосовой ввод не запущен. Проверьте разрешение микрофона в Windows и API-ключ Gemini." + detail)
+            self.scene_label.config(text="НЕ УДАЛОСЬ ОТКРЫТЬ 3D\n" + str(exc)[:100])
 
     def _draw_tool_avatar(self, canvas, kind, seed):
         palette = {
@@ -1212,8 +733,11 @@ class JarvisDesktop(tk.Tk):
     def _close(self):
         self._voice_loop_running = False
         tts.stop()
-        if self._orb_after:
-            self.after_cancel(self._orb_after)
+        try:
+            self._visual_server.shutdown()
+            self._visual_server.server_close()
+        except Exception:
+            pass
         self.destroy()
 
 
