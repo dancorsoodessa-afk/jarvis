@@ -581,7 +581,8 @@ class JarvisDesktop(tk.Tk):
                         self._agent_start_pending = False
                         self.agent = event[1]
                         self.tool_names = list(self.agent.tools.names())
-                        provider = getattr(self.agent.provider, "name", "unknown").upper()
+                        configured_providers = getattr(self.agent.provider, "providers", {})
+                        provider = "GEMINI PRIMARY" + (" / GROQ BACKUP" if "groq" in configured_providers else "")
                         # Building the local agent does not prove that the remote API is reachable.
                         self.status.config(text="● ГОТОВ", fg=YELLOW)
                         self.hud_text.config(text="Ядро готово\nAI: " + provider + "\nAPI: проверка при запросе")
