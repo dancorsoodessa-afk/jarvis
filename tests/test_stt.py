@@ -54,7 +54,7 @@ class TestSTT(unittest.TestCase):
                 self.assertEqual(stt.transcribe(str(audio)), "hello")
                 request = urlopen.call_args.args[0]
                 self.assertTrue(request.full_url.startswith("https://generativelanguage.googleapis.com/"))
-                self.assertIn("key=test-key", request.full_url)
+                self.assertEqual(request.get_header("X-goog-api-key"), "test-key")
                 self.assertEqual(request.get_header("Content-type"), "application/json")
                 self.assertIn("inline_data", request.data.decode("utf-8"))
 
