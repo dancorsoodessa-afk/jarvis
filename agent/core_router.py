@@ -74,15 +74,19 @@ class RoleRouterProvider:
             except Exception as exc:
                 errors.append(f"{role}: {exc}")
                 message = str(exc).lower()
+                # All role profiles currently share the same Gemini endpoint and key.
+                # Do not spend minutes retrying the same unavailable backend through
+                # each role after an HTTP failure; let the UI recover promptly.
+                http_failure = any(f"http {code}" in message for code in (
+                    400, 401, 403, 404, 408, 409, 429, 500, 502, 503, 504
+                ))
                 backend_unavailable = (
                     "не удалось подключиться к ии" in message
                     or "не удалось подключиться к серверу моделей" in message
-                    or "http 401" in message
-                    or "http 403" in message
-                    or (
-                        "http 429" in message
-                        and any(term in message for term in ("no credits", "credits", "quota", "billing", "rate limit"))
-                    )
+                    or "не удалось подключиться к серверу" in message
+                    or "временно перегружен" in message
+                    or "временно недоступен" in message
+                    or http_failure
                 )
                 if backend_unavailable:
                     failed_backends.add(backend)
