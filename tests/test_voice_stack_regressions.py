@@ -10,9 +10,10 @@ class TestCloudVoiceRegressions(unittest.TestCase):
         with mock.patch.dict(os.environ, {"JARVIS_STT": "off"}):
             self.assertEqual(stt.current_engine(), "off")
 
-    def test_stt_does_not_accept_huggingface_token_as_groq_key(self):
-        with mock.patch.dict(os.environ, {"JARVIS_STT": "auto", "HF_TOKEN": "old-token"}, clear=True):
-            self.assertEqual(stt.current_engine(), "off")
+    def test_stt_requires_gemini_key_not_huggingface(self):
+        with mock.patch.dict(os.environ, {"JARVIS_STT": "auto", "HF_TOKEN": "old-token"}, clear=False):
+            with mock.patch.object(stt, "_token", return_value=""):
+                self.assertEqual(stt.current_engine(), "off")
 
     def test_tts_auto_has_free_windows_fallback(self):
         with mock.patch.dict(os.environ, {"JARVIS_TTS": "auto"}):
@@ -25,7 +26,7 @@ class TestCloudVoiceRegressions(unittest.TestCase):
 
     def test_tts_rejects_unknown_engine(self):
         with mock.patch.dict(os.environ, {"JARVIS_TTS": "unknown"}):
-            with self.assertRaisesRegex(RuntimeError, "Выберите системную озвучку"):
+            with self.assertRaisesRegex(RuntimeError, "Выберите windows"):
                 tts.current_engine()
 
 
