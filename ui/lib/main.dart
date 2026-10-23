@@ -65,6 +65,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   bool _voiceRunning = false;
   bool _ttsSpeaking = false;
   bool _voiceStarting = false;
+  double _voiceLevel = 0.0;
   int _voiceRestartAttempts = 0;
   bool _wakeArmed = false;
   String _status = 'Запуск JARVIS…';
@@ -159,6 +160,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         cancelOnError: false,
         listenMode: stt.ListenMode.dictation,
         localeId: 'ru_RU',
+        onSoundLevelChange: (level) {
+          if (!mounted) return;
+          final activity = ((level + 2.0) / 12.0).clamp(0.0, 1.0).toDouble();
+          if ((_voiceLevel - activity).abs() >= 0.04) {
+            setState(() => _voiceLevel = activity);
+          }
+        },
       );
       _voiceRestartAttempts = 0;
       _voiceRunning = true;
@@ -544,7 +552,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             height: 272,
             width: double.infinity,
             child: Stack(alignment: Alignment.center, children: [
-              Positioned.fill(child: JarvisReactor(color: _visualColor, state: _visualState)),
+              Positioned.fill(child: JarvisReactor(color: _visualColor, state: _visualState, activity: _voiceLevel)),
               Positioned(
                 bottom: 12,
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -620,6 +628,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                     if (_voiceRunning) {
                       _speechSession++;
                       _voiceRunning = false;
+                      _voiceLevel = 0.0;
+                      _voiceRestartTimer?.cancel();
                       await _speech.stop();
                       if (mounted) setState(() { _status = 'Голос остановлен'; _visualState = JarvisVisualState.idle; });
                     } else {
