@@ -420,6 +420,9 @@ class JarvisDesktop(tk.Tk):
 
     def _start_agent(self):
         # Ignore stale results when settings are saved/reloaded more than once.
+        self._stt_online = False
+        if hasattr(self, "metrics") and "Voice" in self.metrics:
+            self.metrics["Voice"].config(text="CHECKING", fg=YELLOW)
         self._agent_generation += 1
         generation = self._agent_generation
         self._agent_start_pending = True
@@ -463,7 +466,13 @@ class JarvisDesktop(tk.Tk):
             self.events.put(("stt_error", str(exc)))
 
     def _start_voice_loop(self):
-        if not self.settings.get("voice_enabled", True) or self._voice_loop_running or not voice.available():
+        if not self.settings.get("voice_enabled", True) or self._voice_loop_running:
+            return
+        if not getattr(self, "_stt_online", False):
+            self._append("VOICE", "Проверяю доступность облачного распознавания речи. Подождите несколько секунд.")
+            return
+        if not voice.available():
+            self._append("VOICE", "Голосовой ввод недоступен: проверьте ключ Gemini и входной микрофон.")
             return
         self._voice_loop_running = True
         self.voice_button.config(text="🎙 СЛУШАЮ")
@@ -598,11 +607,13 @@ class JarvisDesktop(tk.Tk):
                         groq_status = event[1].get("Groq API", "NOT CONFIGURED")
                         self._append("SYSTEM", f"Проверка провайдеров — Gemini: {gemini_status}; Groq: {groq_status}")
                     elif kind == "stt_ready":
+                        self._stt_online = True
                         self.metrics["Voice"].config(text="ONLINE", fg=GREEN)
                         self.side_voice.config(text="◉ ГОЛОС — ОБЛАКО ДОСТУПНО", fg=GREEN)
                         if self.settings.get("voice_enabled", True):
                             self._start_voice_loop()
                     elif kind == "stt_error":
+                        self._stt_online = False
                         self.metrics["Voice"].config(text="ERROR", fg=RED)
                         self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
                         self._append("VOICE", "STT: " + event[1])
