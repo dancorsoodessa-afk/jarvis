@@ -104,7 +104,7 @@ jobs:
           t += '\n\n// JARVIS native voice runtime dependencies (kept explicit for CI).\ndependencies {\n'
           for dep in deps:
               if dep not in t:
-              t += f'    {dep}\n'
+                  t += f'    {dep}\n'
           t += '}\n'
           for dep in deps:
               if dep not in t:
