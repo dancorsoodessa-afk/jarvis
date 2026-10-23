@@ -22,13 +22,13 @@ def test_voice_has_no_clap_activation():
     assert "detect_clap" not in source
 
 
-def test_tts_has_gender_compatibility():
+def test_tts_uses_documented_gemini_cloud_api():
     source = (ROOT / "agent" / "tts.py").read_text(encoding="utf-8")
     assert "def set_gender" in source
-    assert "api.elevenlabs.io/v1/text-to-speech" in source
-    assert "JARVIS_ELEVENLABS_API_KEY" in source
-    assert "eleven_flash_v2_5" in source
-    assert "pcm_22050" in source
+    assert 'DEFAULT_TTS_MODEL = "gemini-3.8-flash-tts"' in source
+    assert 'TTS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"' in source
+    assert '"type": "speech_metadata"' in source
+    assert 'result.get("steps", [])' in source
 
 
 
