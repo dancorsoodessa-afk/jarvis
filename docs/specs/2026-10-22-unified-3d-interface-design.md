@@ -1,46 +1,42 @@
-# JARVIS Unified 3D Interface — Design Specification
+# JARVIS Cloud Voice and 3D Interface — Architecture Specification
 
-Date: 2026-10-22
+Date: 2026-10-24
 Target branch: `foundation`
 
 ## Goal
-Replace the existing JARVIS visual presentation with one coherent, Russian-language, sci-fi dashboard for Windows and Android, matching the approved reference concept. Preserve working assistant capabilities and the Hugging Face Inference API provider configuration.
+Replace the Windows desktop's pseudo-3D Canvas orb with a real Three.js/WebGL reactor, use cloud speech recognition and expressive cloud speech synthesis, and provide an independent chat-provider fallback. Keep camera functionality out of scope.
 
 ## Architecture
-- Use one shared Three.js/WebGL scene packaged locally with the application; the visualization must not require a network connection.
-- Embed the scene in the existing platform UI surfaces rather than replacing the Python/Flutter assistant backends.
-- Keep platform-specific bridges thin: send runtime state and audio/activity measurements to the visual component; return only user interface actions through existing app interfaces.
-- Do not load scripts, textures, fonts, or other visual assets from a CDN at runtime.
+- Primary chat provider: Google Gemini API.
+- Optional independent chat fallback: Groq Cloud, with its own API key, model ID, timeout, endpoint health check, and visible status. It must not be presented as a separate provider when no Groq key is configured.
+- Speech recognition: cloud Gemini transcription with a dedicated model setting, request timeout, startup reachability check, and visible error status.
+- Speech synthesis: cloud Gemini TTS with dedicated voice, model, request timeout, and startup reachability check. Do not use a local Windows speech engine or any third-party TTS service.
+- The Three.js scene is served from a loopback-only local HTTP server. The pinned engine modules are bundled with the application; the scene must not load scripts, textures, fonts, or other assets from a CDN at runtime.
+- The camera is deferred. Do not request camera permissions, initialize video devices, or register face-detection tools.
+- Keep the Python assistant backend, tool execution, memory, settings, and confirmation flow intact.
 
-## Visual layout
-- Center: animated 3D core with layered rotating rings, particles, glow and adaptive detail.
-- Left panel: CPU, memory, GPU and disk readings only when real telemetry is available; unavailable readings must be labeled as unavailable rather than fabricated.
-- Right panel: voice status, recent actions and quick commands backed by existing functions.
-- Header: navigation, assistant status and settings.
-- Bottom: command input and active model/provider status.
-- Dark background, cyan/blue highlights, clear Russian labels, readable responsive layout.
+## 3D scene
+- Center: animated 3D neural reactor with a deforming icosahedral core, layered rotating rings, particles, glow, and depth.
+- Use the real Three.js/WebGL renderer; do not simulate the central reactor with Tkinter Canvas primitives.
+- Idle: low-intensity slow animation.
+- Listening: use measured microphone amplitude while the voice capture loop is active.
+- Processing: use actual request lifecycle events.
+- Speaking: use the real cloud TTS playback lifecycle.
+- Error/offline: display a distinct error color and status.
+- Adapt pixel ratio and visual intensity to avoid excessive GPU usage.
+- The current Windows implementation opens the 3D scene in the system browser and synchronizes state over loopback HTTP. The Tkinter chat/controls remain the assistant shell.
 
-## Runtime states
-- Idle: slow, low-power core animation.
-- Listening: driven by the real microphone/listening state; use input amplitude only where the platform exposes it.
-- Processing: driven by actual request lifecycle events.
-- Speaking: driven by real TTS playback state and audio level when available.
-- Error/offline: clearly distinguish failures and unavailable services.
-- Performance adaptation: reduce particles, post-processing and render resolution when frame time or device capability requires it.
-
-## Compatibility and constraints
-- Windows: preserve the current desktop shell, Python agent, voice pipeline and Hugging Face configuration.
-- Android: preserve the current Flutter shell, native voice bridge and IPC/client behavior.
-- No unrelated changes to crypto/recon modules, credentials, provider configuration, or assistant behavior.
-- Keep the legacy visualization only until the new scene is integrated and verified; then remove superseded visual assets and references.
-- Do not delete repositories, Git branches, unrelated files, or other JARVIS projects as part of this UI change without an explicit itemized deletion list.
+## Provider behavior
+- Gemini and Groq must use independent keys, model IDs, timeouts, health checks, and status labels.
+- The router tries the configured Gemini role/model first and may use Groq only after a real Gemini failure. It must not retry the same failed Gemini endpoint through multiple role profiles.
+- Provider availability is a live check, not inferred from successful local agent construction.
+- STT and TTS require internet access. When the cloud service fails, surface a specific error instead of silently switching to a different voice engine.
+- API keys must be protected in saved settings and must never be committed to source.
 
 ## Verification
-- Run Flutter formatting/analyzer/tests and available Windows/Python tests.
-- Build Windows and Android where runners/toolchains permit.
-- Verify local asset loading with network disabled.
-- Verify all visual states are connected to real events, no fake telemetry is shown, and layout adapts to desktop and mobile.
-- Report any platform build that could not be run instead of claiming it passed.
-
-## Rollout
-Implement on an isolated feature branch based on `foundation`, retain a rollback path, and merge only after tests/build checks and user review.
+- Run the Python test suite, desktop import check, and compile check.
+- Verify local scene and engine assets are bundled in the EXE and can be served without a CDN.
+- Verify provider health checks, timeout handling, missing-key behavior, Groq fallback, and TTS response decoding.
+- Verify that the scene responds to microphone amplitude, request state, and actual playback completion.
+- Build the Windows EXE in CI. Do not claim that hardware-specific microphone or speaker playback has been verified without testing on the target PC.
+- Android remains a separate follow-up; this specification does not claim that the Windows 3D scene has been integrated into the Android application.
