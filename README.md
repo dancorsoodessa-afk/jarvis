@@ -22,7 +22,7 @@ Alternatively, for the current PowerShell session:
 $env:GEMINI_API_KEY = "your_gemini_api_key"
 ```
 
-Default model: `gemini-2.5-flash`. The free tier has model-specific rate limits and may change. Do not enable billing if you require strictly free usage. Free-tier requests may be subject to Google's data-use terms; review the current policy before sending sensitive data.
+Default model: `gemini-3.8-flash`. The free tier has model-specific rate limits and may change. Do not enable billing if you require strictly free usage. Free-tier requests may be subject to Google's data-use terms; review the current policy before sending sensitive data.
 
 ## Build on Windows
 
