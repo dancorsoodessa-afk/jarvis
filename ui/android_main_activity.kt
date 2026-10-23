@@ -91,9 +91,9 @@ class MainActivity : FlutterActivity() {
                     val p = getSharedPreferences(PREFS, MODE_PRIVATE)
                     result.success(mapOf(
                         "endpoint" to p.getString(KEY_ENDPOINT, "https://api.openai.com/v1"),
-                        "model" to p.getString(KEY_MODEL, "gpt-5.6-luna"),
+                        "model" to p.getString(KEY_MODEL, "gpt-4o-mini"),
                         "apiKey" to p.getString(KEY_AI_API_KEY, ""),
-                        "model1" to p.getString(KEY_MODEL1, "gpt-5.6-luna"),
+                        "model1" to p.getString(KEY_MODEL1, "gpt-4o-mini"),
                         "model2" to p.getString(KEY_MODEL2, "openai/gpt-oss-120b"),
                         "model3" to p.getString(KEY_MODEL3, "openai/gpt-oss-20b"),
                         "key1" to p.getString(KEY_KEY1, p.getString(KEY_AI_API_KEY, "")),
@@ -456,7 +456,11 @@ class MainActivity : FlutterActivity() {
         if (threadToJoin != null && threadToJoin !== Thread.currentThread()) {
             try { threadToJoin.join(700) } catch (_: InterruptedException) {}
         }
-        try { record?.release() } catch (_: Exception) {}
+        // The recording thread releases its own AudioRecord in finally. Only
+        // release here when no worker exists to own the resource.
+        if (threadToJoin == null) {
+            try { record?.release() } catch (_: Exception) {}
+        }
         // The STT thread owns and releases its sherpa stream after decoding stops.
         // Releasing it here can race with native decode and terminate the app.
     }

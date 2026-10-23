@@ -21,7 +21,7 @@ const kBg = Color(0xFF070B12);
 const kPanel = Color(0xFF0B111B);
 const kLine = Color(0xFF18283A);
 const _defaultAiEndpoint = 'https://api.openai.com/v1';
-const _defaultModel1 = 'gpt-5.6-luna';
+const _defaultModel1 = 'gpt-4o-mini';
 const _defaultModel2 = 'openai/gpt-oss-120b';
 const _defaultModel3 = 'openai/gpt-oss-120b';
 
@@ -350,7 +350,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                         ]),
                         TextField(controller: i == 0 ? _model1 : _model2, decoration: const InputDecoration(labelText: 'Model ID', isDense: true)),
                         const SizedBox(height: 6),
-                        TextField(controller: i == 0 ? _key1 : _key2, obscureText: false, decoration: InputDecoration(labelText: i == 0 ? 'OpenAI API key' : 'Groq API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
+                        TextField(controller: i == 0 ? _key1 : _key2, obscureText: true, decoration: InputDecoration(labelText: i == 0 ? 'OpenAI API key' : 'Groq API key', hintText: i == 0 ? 'sk-…' : 'API key', isDense: true, prefixIcon: const Icon(Icons.key, size: 18, color: kCyan))),
                       ]),
                     ),
                   ),
@@ -358,19 +358,19 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 ],
                 TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OpenAI endpoint', isDense: true)),
                 const SizedBox(height: 6),
-                TextField(controller: _apiHostKey, obscureText: false, decoration: const InputDecoration(labelText: 'APIHOST key · голос Леда', isDense: true)),
+                TextField(controller: _apiHostKey, obscureText: true, decoration: const InputDecoration(labelText: 'APIHOST key · голос Леда', isDense: true)),
                 const SizedBox(height: 12),
                 const Text('COINGLASS + OKX · ТОРГОВЫЙ КОНТУР', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 const Text('Ключи остаются локально. По умолчанию OKX работает в DEMO. Реальная торговля включается отдельно.', style: TextStyle(color: Colors.white60, fontSize: 11)),
                 const SizedBox(height: 7),
-                TextField(controller: _coinglassKey, obscureText: false, decoration: const InputDecoration(labelText: 'CoinGlass API Key', isDense: true)),
+                TextField(controller: _coinglassKey, obscureText: true, decoration: const InputDecoration(labelText: 'CoinGlass API Key', isDense: true)),
                 const SizedBox(height: 6),
-                TextField(controller: _okxKey, obscureText: false, decoration: const InputDecoration(labelText: 'OKX API Key', isDense: true)),
+                TextField(controller: _okxKey, obscureText: true, decoration: const InputDecoration(labelText: 'OKX API Key', isDense: true)),
                 const SizedBox(height: 6),
-                TextField(controller: _okxSecret, obscureText: false, decoration: const InputDecoration(labelText: 'OKX Secret Key', isDense: true)),
+                TextField(controller: _okxSecret, obscureText: true, decoration: const InputDecoration(labelText: 'OKX Secret Key', isDense: true)),
                 const SizedBox(height: 6),
-                TextField(controller: _okxPass, obscureText: false, decoration: const InputDecoration(labelText: 'OKX Passphrase', isDense: true)),
+                TextField(controller: _okxPass, obscureText: true, decoration: const InputDecoration(labelText: 'OKX Passphrase', isDense: true)),
                 const SizedBox(height: 6),
                 TextField(controller: _okxEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OKX API endpoint', isDense: true)),
                 SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _okxDemo, onChanged: (v) => setDialogState(() => _okxDemo = v), title: const Text('OKX DEMO Trading'), subtitle: const Text('Рекомендуется оставить включённым для первого теста.')),
@@ -381,7 +381,7 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
                 const SizedBox(height: 7),
                 TextField(controller: _dsaEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Daily Stock Analysis API URL', hintText: 'https://твой-сервер:8000', isDense: true)),
                 const SizedBox(height: 6),
-                TextField(controller: _dsaKey, obscureText: false, decoration: const InputDecoration(labelText: 'API key / Bearer token (если нужен)', isDense: true)),
+                TextField(controller: _dsaKey, obscureText: true, decoration: const InputDecoration(labelText: 'API key / Bearer token (если нужен)', isDense: true)),
                 const SizedBox(height: 12),
                 const Text('ГОЛОС / МИКРОФОН', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold)),
                 SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, value: _voiceEnabled, onChanged: (v) => setDialogState(() => _voiceEnabled = v), title: const Text('Постоянно слушать микрофон'), subtitle: const Text('Локальный русский STT. Микрофон работает только при открытом приложении.')),
@@ -438,7 +438,14 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   Future<void> _send(String text, {bool fromVoice = false}) async {
     final clean = text.trim(); final client = _client; final attachment = _attachment;
     if (clean.isEmpty || _busy) return;
-    if (client == null) { if (mounted) setState(() => _status = 'Сначала подключите AI в настройках'); if (fromVoice) await _speak('Сначала подключите AI в настройках'); return; }
+    if (client == null) {
+      if (mounted) setState(() => _status = 'Сначала подключите AI в настройках');
+      if (fromVoice) {
+        await _speak('Сначала подключите AI в настройках');
+        if (mounted && _voiceEnabled) await _startNativeListening();
+      }
+      return;
+    }
     // Pause native STT during typed requests to avoid AudioRecord/Sherpa races.
     final resumeVoice = _android && _voiceEnabled && !fromVoice;
     if (resumeVoice) await _stopNativeListening();
@@ -457,7 +464,9 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
       if (_android && _voiceEnabled) await _speak('Произошла ошибка');
     } finally {
       if (mounted) setState(() => _busy = false);
-      if (resumeVoice && mounted && _voiceEnabled) {
+      if ((resumeVoice || fromVoice) && mounted && _voiceEnabled) {
+        // Native STT is stopped before a voice command is sent. Re-enable its
+        // loop after the response is queued so TTS completion can resume listening.
         await Future<void>.delayed(const Duration(milliseconds: 250));
         if (mounted && !_busy) await _startNativeListening();
       }
