@@ -23,7 +23,6 @@ JARVIS_SYSTEM_PROMPT = (
 )
 
 # Backward-compatible identity alias.
-BUSYA_SYSTEM_PROMPT = JARVIS_SYSTEM_PROMPT
 
 
 def _attach_self_improvement_tools(agent) -> None:
@@ -41,7 +40,7 @@ def _attach_self_improvement_tools(agent) -> None:
                          description="Откатить последнюю резервную копию, созданную инструментом write_source.")
 
 
-def _set_busya_identity(agent) -> None:
+def _set_jarvis_identity(agent) -> None:
     provider = agent.provider
     if hasattr(provider, "system_prompt"):
         provider.system_prompt = JARVIS_SYSTEM_PROMPT
@@ -52,7 +51,7 @@ def _set_busya_identity(agent) -> None:
 def main():
     settings = Settings.from_env()
     agent = build_agent(settings)
-    _set_busya_identity(agent)
+    _set_jarvis_identity(agent)
     _attach_self_improvement_tools(agent)
     args = sys.argv[1:]
 
