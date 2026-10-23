@@ -65,6 +65,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   bool _voiceRunning = false;
   bool _ttsSpeaking = false;
   bool _voiceStarting = false;
+  int _voiceRestartAttempts = 0;
   bool _wakeArmed = false;
   String _status = 'Запуск JARVIS…';
   String _streamText = '';
@@ -97,7 +98,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         onStatus: (status) {
           debugPrint('JARVIS speech status: $status');
           if (!mounted) return;
-          if (status == 'notListening' && _voiceRunning && !_ttsSpeaking && !_busy) {
+          if (status == 'notListening' && _voiceRunning && !_voiceStarting && !_ttsSpeaking && !_busy) {
             _scheduleVoiceRestart();
           }
         },
@@ -158,15 +159,20 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         listenMode: stt.ListenMode.dictation,
         localeId: 'ru_RU',
       );
+      _voiceRestartAttempts = 0;
       _voiceRunning = true;
       if (mounted) {
         setState(() => _status = _wakeArmed ? 'Слушаю команду…' : 'Слушаю · жду «Джарвис»');
         _setVisual(JarvisVisualState.listening);
       }
     } catch (e) {
-      _voiceRunning = false;
-      if (mounted) setState(() => _status = 'Ошибка микрофона: $e');
-      _scheduleVoiceRestart(const Duration(seconds: 2));
+      final canRetry = _voiceRestartAttempts < 3;
+      _voiceRunning = canRetry;
+      if (canRetry) _voiceRestartAttempts++;
+      if (mounted) setState(() => _status = canRetry
+          ? 'Ошибка микрофона, повтор $_voiceRestartAttempts/3: $e'
+          : 'Микрофон остановлен после 3 неудачных попыток: $e');
+      if (canRetry) _scheduleVoiceRestart(const Duration(seconds: 2));
     } finally {
       _voiceStarting = false;
     }
