@@ -34,48 +34,41 @@ GitHub Actions also builds the Windows executables on pushes and pull requests t
 
 ## Быстрый старт для Windows
 
-Если нужен обычный графический JARVIS, **не запускай \`jarvis.exe\` вручную**. Основной интерфейс — \`JARVIS Desktop.exe\`.
+Текущая Windows-сборка — однофайловое графическое приложение `release/JARVIS.exe`, создаваемое из `jarvis_desktop.py`. Отдельные `JARVIS Desktop.exe` и CLI EXE текущий workflow не выпускает.
 
 ### Вариант A — готовый Windows-пакет
 
-1. Скачай артефакт \`JARVIS-Windows-x64\` из GitHub Actions.
-2. Распакуй весь пакет в одну папку. **Не вытаскивай только один EXE:** рядом должны находиться \`piper\\\` и остальные файлы пакета.
-3. Запусти **\`JARVIS Desktop.exe\`**.
-4. Настрой провайдера ИИ и голос в окне настроек.
-5. Ключи API храни в настройках/переменных окружения и **не добавляй их в Git**.
+1. Скачай артефакт `JARVIS-Windows-x64` из GitHub Actions.
+2. Сохрани EXE на диск и запусти `JARVIS.exe`.
+3. Настрой Hugging Face token и модель в приложении или через переменные окружения.
+4. Не добавляй токены, память и runtime-логи в Git.
 
-Готовый пакет содержит два EXE:
-- \`JARVIS Desktop.exe\` — основной графический интерфейс.
-- \`JARVIS.exe\` — ядро/CLI.
+Это one-file сборка: обязательные ресурсы STT/TTS встраиваются в EXE. Отдельная папка Piper для запуска релизного файла не требуется.
 
-### Вариант B — запуск из исходников
+### Вариант B — сборка из исходников
 
-Требуется Windows x64, Python и зависимости проекта:
+Требуется Windows x64 и Python 3.12:
 
-~~~
+```powershell
 powershell -ExecutionPolicy Bypass -File scripts\\build_exe.ps1
-.\\release\\JARVIS Desktop.exe
-~~~
+.\\release\\JARVIS.exe
+```
 
-После сборки папка \`release\\\` является готовым комплектом. Скрипт сборки также создаёт \`JARVIS-Windows-x64.zip\`.
+Скрипт запускает тесты, загружает ресурсы STT/TTS и создаёт однофайловый EXE в `release/`.
 
 ### Flutter UI
 
 Для разработки Flutter-интерфейса:
 
-~~~
+```powershell
 cd ui
 flutter pub get
 flutter run -d windows
-~~~
+```
 
-Для release-сборки:
+Для release-сборки: `flutter build windows`.
 
-~~~
-flutter build windows
-~~~
-
-Flutter UI может запускать агент через IPC. Если готового Windows EXE нет, **Flutter сам по себе не заменяет Python-ядро**: для полной работы агента нужен собранный JARVIS или доступный Python-окружению backend/IPC-процесс. В обычной готовой Windows-установке используй \`JARVIS Desktop.exe\` из папки \`release\\\`.
+Flutter UI может запускать Python-агент через IPC. HTML-файл `ui/jarvis_desktop.html` пока является прототипом нейронного интерфейса и не встроен в текущий Windows EXE. Не считать визуальный прототип частью релиза до интеграции и smoke-тестирования.
 
 ## Переменные окружения
 
@@ -121,10 +114,10 @@ cd "C:\\путь\\к\\JARVIS"
 
 ### ИИ не отвечает
 
-- Проверь \`JARVIS_CHAT_URL\`, \`JARVIS_CHAT_KEY\` и \`JARVIS_CHAT_MODEL\`.
-- Для локального API проверь, что сервер действительно запущен и открывает \`/v1/models\`.
-- Если \`JARVIS_CHAT_MODEL\` пустой, JARVIS пытается выбрать первую модель из \`/v1/models\`.
-- Проверь HF токен и идентификатор модели в Hugging Face Inference Providers.
+- Проверь `HF_TOKEN` или сохранённый `JARVIS_CHAT_KEY`.
+- Проверь `JARVIS_CHAT_MODEL` и доступность этой модели через Hugging Face Inference Providers.
+- Endpoint принудительно фиксирован на `https://router.huggingface.co/v1/chat/completions`; `JARVIS_CHAT_URL` не меняет его.
+- При HTTP 401/403 проверь токен и разрешения доступа к модели; при 429 проверь лимиты провайдера.
 
 ### Нет голоса / ошибка TTS
 
@@ -201,7 +194,7 @@ flutter pub get
 flutter run -d windows        # or: flutter build windows
 ```
 
-The Flutter UI can spawn the agent through IPC. The native Windows desktop UI is `jarvis_desktop.py` and is packaged as `JARVIS-Desktop.exe` by CI.
+The Flutter UI can spawn the Python agent through IPC on desktop. The current Windows release is built from `jarvis_desktop.py` as a single-file `release/JARVIS.exe`; the HTML neural interface remains a prototype and is not integrated into that EXE.
 Preview of the reactor animation without Flutter: open `ui/jarvis_reactor.html`.
 
 ## Android
@@ -214,7 +207,7 @@ Before publishing a release, verify:
 1. `git pull origin foundation`
 2. `powershell -ExecutionPolicy Bypass -File scripts\\build_exe.ps1`
 3. `dist\\jarvis.exe` starts and `/status`, `/calc`, `/now`, `/volume`, `/exit` work.
-4. Verify the selected free/local AI provider and model through environment variables.
+4. Verify the Hugging Face token and model ID through environment variables.
 5. Run the Flutter UI smoke test if the UI is part of the release.
 6. Test the **Jarvis wake word** and TTS interruption on a real Windows microphone. No clap activation is used.
 
