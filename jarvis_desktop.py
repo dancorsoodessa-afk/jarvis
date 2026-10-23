@@ -119,7 +119,7 @@ class JarvisDesktop(tk.Tk):
             "name": "JARVIS",
             "provider": "huggingface",
             "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
-            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "Qwen/Qwen2.5-7B-Instruct-1M",
+            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "Qwen/Qwen2.5-7B-Instruct",
             "api_key": self.settings.get("hf_token") or os.environ.get("HF_TOKEN") or "",
         }
         defaults = {
@@ -171,7 +171,7 @@ class JarvisDesktop(tk.Tk):
         self.settings.setdefault("tts_enabled", True)
         self.settings.setdefault("tts_gender", "male")
         self.settings.setdefault("tts_engine", "auto")
-        self.settings.setdefault("tts_voice", "Dmitri Medium")
+        self.settings.setdefault("tts_voice", "ElevenLabs cloud voice")
         self.settings.setdefault("elevenlabs_api_key", os.environ.get("JARVIS_ELEVENLABS_API_KEY", ""))
         self.settings.setdefault("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w")
         self.settings.setdefault("elevenlabs_model", "eleven_flash_v2_5")
@@ -1056,7 +1056,7 @@ class JarvisDesktop(tk.Tk):
 
         voice_frame = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         voice_frame.pack(fill="x", pady=10)
-        tk.Label(voice_frame, text="ГОЛОС JARVIS / ELEVENLABS + PIPER", bg="#091b29", fg=CYAN,
+        tk.Label(voice_frame, text="ГОЛОС JARVIS / ОБЛАЧНЫЙ TTS", bg="#091b29", fg=CYAN,
                  font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 6))
         voice_fields = {}
         for label, key, default, secret in (
@@ -1091,7 +1091,7 @@ class JarvisDesktop(tk.Tk):
             self.settings["tts_enabled"] = bool(tts_var.get())
             for k, e in voice_fields.items():
                 self.settings[k] = e.get().strip()
-            if self.settings.get("tts_engine", "auto").strip().lower() not in {"auto", "elevenlabs", "piper", "off"}:
+            if self.settings.get("tts_engine", "auto").strip().lower() not in {"auto", "elevenlabs", "cloud", "off"}:
                 self.settings["tts_engine"] = "auto"
             self._apply_saved_settings()
             self._save_settings()
