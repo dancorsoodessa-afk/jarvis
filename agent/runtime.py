@@ -4,15 +4,13 @@ from .config import Settings
 from .core import JarvisAgent
 from .logging_setup import get as get_log
 from .memory import KnowledgeGraph, MemoryStore, SessionMemory, relevant_notes
-from .providers.local_vulkan import LocalVulkanProvider
 from .providers.openai_chat import OpenAIChatProvider
-from .providers.hybrid import HybridProvider
 from .model_router import RoleRouterProvider
 from .reminders import ReminderService
 from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint, universal
 from .tools.registry import ToolRegistry
 from . import stt, tts
-from .skills import NoteStore, calculate, now, wikipedia_search, dictionary_lookup, news_search, youtube_search, youtube_download, google_maps_search, open_website, play_music, location_lookup, face_recognition_check, todo_add, todo_list, todo_done
+from .skills import NoteStore, calculate, now, wikipedia_search, dictionary_lookup, news_search, youtube_search, youtube_download, google_maps_search, open_website, play_music, location_lookup, todo_add, todo_list, todo_done
 
 
 def _send_email(to: str, subject: str, body: str) -> str:
@@ -92,7 +90,6 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("open_website",open_website,description="Открыть сайт в браузере.",parameters={"url":"адрес сайта"})
     tools.register("play_music",play_music,description="Открыть локальный музыкальный файл.",parameters={"path":"путь к аудиофайлу"})
     tools.register("location",location_lookup,description="Определить примерное местоположение по публичному IP; GPS устройства не используется.")
-    tools.register("face_check",face_recognition_check,description="Локальное обнаружение лица через OpenCV; сравнение требует отдельной модели.",parameters={"image_path":"изображение","reference_path":"эталон, необязательно"})
     tools.register("todo_add",todo_add,description="Добавить задачу в список дел.",parameters={"text":"текст задачи","path":"файл todo.json, необязательно"})
     tools.register("todo_list",todo_list,description="Показать активные задачи.",parameters={"path":"файл todo.json, необязательно"})
     tools.register("todo_done",todo_done,description="Отметить задачу выполненной.",parameters={"task_id":"номер задачи","path":"файл todo.json, необязательно"})
