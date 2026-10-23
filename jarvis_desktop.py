@@ -157,7 +157,7 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_URL"] = self.settings["url"]
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
         os.environ["GEMINI_API_KEY"] = profile["api_key"]
-        os.environ["GROQ_API_KEY"] = str(self.settings.get("groq_api_key") or "")
+        os.environ["GROQ_API_KEY"] = str(self.settings.get("groq_api_key") or (os.environ.get("GROQ_API_KEY") if "groq_api_key" not in self.settings else "") or "")
         os.environ["JARVIS_GROQ_MODEL"] = str(self.settings.get("groq_model") or "openai/gpt-oss-120b")
         os.environ["JARVIS_GROQ_TIMEOUT"] = str(self.settings.get("groq_timeout") or "30")
         os.environ["JARVIS_GEMINI_TIMEOUT"] = str(self.settings.get("gemini_timeout") or "30")
@@ -186,6 +186,8 @@ class JarvisDesktop(tk.Tk):
             self.settings.pop(obsolete, None)
         self.settings.setdefault("tts_engine", "gemini")
         self.settings.setdefault("tts_voice", "Charon")
+        if self.settings.get("tts_voice") in {"Windows system voice", "Dmitri", "Microsoft David", "Microsoft Zira", ""}:
+            self.settings["tts_voice"] = "Charon"
         self.settings.setdefault("tts_model", "gemini-3.8-flash-tts")
         self.settings.setdefault("tts_timeout", "45")
         tts_engine = str(self.settings.get("tts_engine", "gemini")).strip().lower() or "gemini"
@@ -388,7 +390,7 @@ class JarvisDesktop(tk.Tk):
                       highlightthickness=1).pack(fill="x",padx=10,pady=3)
         tk.Label(right,text="AI-МАРШРУТИЗАЦИЯ",bg="#070d16",fg=MUTED,
                  font=("Consolas",8,"bold")).pack(anchor="w",padx=14,pady=(15,5))
-        tk.Label(right,text="Google Gemini API\nЕдиный бесплатный ключ\nОблачный ИИ и распознавание речи",
+        tk.Label(right,text="Gemini — основной ИИ\nGroq — отдельный резерв\nОблачный STT и TTS",
                  bg="#070d16",fg="#8297a5",justify="left",font=("Segoe UI",8),wraplength=235).pack(anchor="w",padx=14)
     def _set_visual_state(self, state, level=None):
         self._visual_state = state
@@ -1004,7 +1006,7 @@ class JarvisDesktop(tk.Tk):
         win.grab_set()
         tk.Label(win, text="ЦЕНТР УПРАВЛЕНИЯ JARVIS", bg=PANEL, fg=CYAN,
                  font=("Segoe UI", 19, "bold")).pack(anchor="w", padx=24, pady=(22, 4))
-        tk.Label(win, text="Только Gemini API Google. Бесплатный ключ Google AI Studio используется для ИИ и распознавания голоса.",
+        tk.Label(win, text="Gemini — основной ИИ, Groq — независимый резерв. Gemini также обслуживает облачный STT и TTS.",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(0, 16))
 
         body = tk.Frame(win, bg=PANEL)
