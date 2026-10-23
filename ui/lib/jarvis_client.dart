@@ -103,25 +103,52 @@ class JarvisIpc {
     throw StateError('AI-сервер не сообщил доступных моделей');
   }
 
+  Future<void> _probeChat(String base, String key, String model, String label) async {
+    final selected = model.trim().isEmpty ? await _autoModel(base, key) : model.trim();
+    final request = await _httpClient!.postUrl(Uri.parse(base + '/chat/completions'));
+    _headers(key).forEach(request.headers.set);
+    final bytes = utf8.encode(jsonEncode({
+      'model': selected,
+      'messages': [
+        {'role': 'user', 'content': 'Ответь только одним словом: OK'}
+      ],
+      'stream': false,
+      'max_tokens': 8,
+    }));
+    request.contentLength = bytes.length;
+    request.add(bytes);
+    final response = await request.close();
+    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(label + ': ' + _error(response.statusCode, body));
+    }
+    try {
+      final json = jsonDecode(body);
+      final choices = json is Map ? json['choices'] : null;
+      final message = choices is List && choices.isNotEmpty ? choices.first['message'] : null;
+      final text = message is Map ? message['content']?.toString().trim() : null;
+      if (text == null || text.isEmpty) throw StateError('$label: AI вернул пустой ответ');
+    } on FormatException {
+      throw StateError('$label: сервер вернул некорректный JSON');
+    }
+  }
+
   Future<void> checkConnection() async {
     if (!_standalone) return;
-    // Connection validation is intentionally best-effort. Some compatible
-    // providers do not expose /models even though chat/completions works.
+    // Validate the actual chat endpoint; /models alone does not prove that
+    // the configured model can answer, and HTTP errors must never be ignored.
     try {
-      await _check(_apiUrl!, _apiKey!, 'Основной AI');
+      await _probeChat(_apiUrl!, _apiKey!, _model ?? '', 'Основной AI');
       return;
     } catch (primary) {
       if ((_fallbackUrl ?? '').isNotEmpty && (_fallbackKey ?? '').isNotEmpty) {
         try {
-          await _check(_fallbackUrl!, _fallbackKey!, 'Резервный AI');
+          await _probeChat(_fallbackUrl!, _fallbackKey!, _fallbackModel ?? '', 'Резервный AI');
           return;
         } catch (fallback) {
           throw StateError('Основной AI недоступен: $primary. Резервный AI недоступен: $fallback');
         }
       }
-      // Do not block a configured provider solely because /models is absent
-      // or temporarily rate-limited. The real chat request will decide.
-      if (_retryable(primary)) return;
       rethrow;
     }
   }
