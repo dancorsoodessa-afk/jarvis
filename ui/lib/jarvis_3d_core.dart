@@ -20,7 +20,7 @@ class Jarvis3DCore extends StatelessWidget {
   @override
   Widget build(BuildContext context) => RepaintBoundary(
     child: CustomPaint(
-      painter: _NeuralCorePainter(phase, color, state, voiceLevel.clamp(0.0, 1.0)),
+      painter: _NeuralCorePainter(phase, color, state, voiceLevel.clamp(0.0, 1.0).toDouble()),
       child: const SizedBox.expand(),
     ),
   );
@@ -61,7 +61,7 @@ class _NeuralCorePainter extends CustomPainter {
       JarvisVisualState.error => .65,
       JarvisVisualState.exiting => .04,
     };
-    return (base + voiceLevel * (state == JarvisVisualState.listening ? .95 : .25)).clamp(0.0, 1.0);
+    return (base + voiceLevel * (state == JarvisVisualState.listening ? .95 : .25)).clamp(0.0, 1.0).toDouble();
   }
 
   _Point3 _rotate(_Point3 p, double ax, double ay, double az) {
@@ -78,7 +78,7 @@ class _NeuralCorePainter extends CustomPainter {
   _ProjectedPoint _project(_Point3 p, Offset c, double radius, double ax, double ay, double az) {
     final q = _rotate(p, ax, ay, az);
     final focal = radius * 3.5;
-    final perspective = focal / (focal - q.z * radius).clamp(-radius * 2.5, radius * 2.5);
+    final perspective = focal / (focal - q.z * radius).clamp(radius * .5, radius * 6).toDouble();
     return _ProjectedPoint(Offset(c.dx + q.x * radius * perspective, c.dy + q.y * radius * perspective), q.z, perspective);
   }
 
@@ -86,7 +86,7 @@ class _NeuralCorePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
     final c = Offset(size.width * .5, size.height * .48);
-    final radius = math.min(size.width * .235, size.height * .31).clamp(20.0, 180.0);
+    final radius = math.min(size.width * .235, size.height * .31).clamp(20.0, 180.0).toDouble();
     final activity = _activity;
     final breath = 1 + .025 * math.sin(phase * 2) + activity * .045 * math.sin(phase * 5.5);
     final r = radius * breath;
@@ -105,7 +105,7 @@ class _NeuralCorePainter extends CustomPainter {
       for (int i = 0; i <= 120; i++) {
         final a = i / 120 * math.pi * 2;
         final p = _Point3(math.cos(a) * spec.$1, math.sin(a) * spec.$1 * spec.$2, 0);
-        final projected = _project(p, c, r, spec.$3 + .6, ay * (spec.$1.isEven ? 1 : -.6), az);
+        final projected = _project(p, c, r, spec.$3 + .6, ay * (spec.$1 > 1.8 ? 1 : -.6), az);
         if (i == 0) { path.moveTo(projected.point.dx, projected.point.dy); } else { path.lineTo(projected.point.dx, projected.point.dy); }
       }
       canvas.drawPath(path, Paint()..style = PaintingStyle.stroke..strokeWidth = 1.0..color = color.withValues(alpha: .24 + activity * .18));
@@ -185,7 +185,7 @@ class _NeuralCorePainter extends CustomPainter {
       final pulse = .75 + .25 * math.sin(phase * 3 + i * .8);
       final dotR = (1.0 + activity * 1.7) * pulse * p.scale;
       canvas.drawCircle(p.point, dotR * 2.5, Paint()..color = color.withValues(alpha: .10 + activity * .14));
-      canvas.drawCircle(p.point, dotR, Paint()..color = Color.lerp(color, Colors.white, (p.depth.clamp(0.0, 1.0) * .5))!.withValues(alpha: .55 + p.depth.clamp(0.0, 1.0) * .4));
+      canvas.drawCircle(p.point, dotR, Paint()..color = Color.lerp(color, Colors.white, (p.depth.clamp(0.0, 1.0).toDouble() * .5))!.withValues(alpha: .55 + p.depth.clamp(0.0, 1.0).toDouble() * .4));
     }
 
     // Bright central energy nucleus, expanding while the assistant processes or speaks.
