@@ -115,7 +115,7 @@ class _ReactorPainter extends CustomPainter {
           path.lineTo(point.dx, point.dy);
         }
       }
-      meshPaint.color = color.withValues(alpha: (0.10 + 0.07 * intensity).clamp(0.0, 0.32));
+      meshPaint.color = color.withValues(alpha: (0.10 + 0.07 * intensity).clamp(0.0, 0.32).toDouble());
       canvas.drawPath(path, meshPaint);
     }
     for (var column = 0; column < meshColumns; column++) {
@@ -130,7 +130,7 @@ class _ReactorPainter extends CustomPainter {
           path.lineTo(point.dx, point.dy);
         }
       }
-      meshPaint.color = color.withValues(alpha: (0.08 + 0.06 * intensity).clamp(0.0, 0.28));
+      meshPaint.color = color.withValues(alpha: (0.08 + 0.06 * intensity).clamp(0.0, 0.28).toDouble());
       canvas.drawPath(path, meshPaint);
     }
     for (var i = 0; i < 32; i++) {
@@ -139,7 +139,7 @@ class _ReactorPainter extends CustomPainter {
       final point = projectMeshPoint(latitude, longitude);
       final dot = Paint()
         ..color = (i % 5 == 0 ? Colors.white : color)
-            .withValues(alpha: (0.35 + 0.25 * intensity).clamp(0.0, 0.9));
+            .withValues(alpha: (0.35 + 0.25 * intensity).clamp(0.0, 0.9).toDouble());
       canvas.drawCircle(point, radius * 0.0045 * intensity, dot);
     }
 
@@ -157,7 +157,7 @@ class _ReactorPainter extends CustomPainter {
       final particleRadius = radius * (0.004 + 0.009 * depth) * intensity;
       final alpha = (0.18 + 0.42 * depth) * intensity;
       final particlePaint = Paint()
-        ..color = (i % 9 == 0 ? Colors.white : color).withValues(alpha: alpha.clamp(0.0, 1.0));
+        ..color = (i % 9 == 0 ? Colors.white : color).withValues(alpha: alpha.clamp(0.0, 1.0).toDouble());
       canvas.drawCircle(point, particleRadius, particlePaint);
     }
 
@@ -182,9 +182,9 @@ class _ReactorPainter extends CustomPainter {
     final breathing = math.sin(t * 0.65) * radius * 0.018;
     final headCenter = Offset(center.dx + math.sin(t * 0.37) * radius * 0.035, center.dy - radius * 0.10 + breathing);
     final headR = radius * 0.31;
-    final talking = state == JarvisVisualState.speaking ? (0.5 + 0.5 * math.sin(t * 5.0)).clamp(0.0, 1.0) : 0.0;
-    final listening = state == JarvisVisualState.listening ? (0.5 + 0.5 * math.sin(t * 3.2)).clamp(0.0, 1.0) : 0.0;
-    final thinking = state == JarvisVisualState.thinking ? (0.5 + 0.5 * math.sin(t * 1.6)).clamp(0.0, 1.0) : 0.0;
+    final talking = state == JarvisVisualState.speaking ? (0.5 + 0.5 * math.sin(t * 5.0)).clamp(0.0, 1.0).toDouble() : 0.0;
+    final listening = state == JarvisVisualState.listening ? (0.5 + 0.5 * math.sin(t * 3.2)).clamp(0.0, 1.0).toDouble() : 0.0;
+    final thinking = state == JarvisVisualState.thinking ? (0.5 + 0.5 * math.sin(t * 1.6)).clamp(0.0, 1.0).toDouble() : 0.0;
 
     final silhouette = Paint()..shader = RadialGradient(
       center: const Alignment(-0.28, -0.32),
