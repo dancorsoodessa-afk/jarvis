@@ -53,7 +53,7 @@ class TestSTT(unittest.TestCase):
             with mock.patch("urllib.request.urlopen", return_value=Response()) as urlopen:
                 self.assertEqual(stt.transcribe(str(audio)), "hello")
                 request = urlopen.call_args.args[0]
-                self.assertTrue(request.full_url.startswith("https://api.gemini.com/openai/v1/audio/transcriptions"))
+                self.assertTrue(request.full_url.startswith("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"))
                 self.assertIn("key=test-token", request.full_url)
 
     def test_transcribe_tool_registered(self):
