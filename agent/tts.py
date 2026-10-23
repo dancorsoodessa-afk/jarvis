@@ -148,13 +148,25 @@ def _write_audio(audio: bytes) -> Path:
     fd, name = tempfile.mkstemp(prefix="jarvis_gemini_tts_", suffix=".wav")
     os.close(fd)
     path = Path(name)
-    path.write_bytes(audio)
-    # Gemini returns a complete WAV for non-streaming audio responses.
-    with path.open("rb") as handle:
-        if handle.read(4) != b"RIFF":
-            path.unlink(missing_ok=True)
-            raise RuntimeError("Gemini TTS вернул аудио не в WAV-формате.")
-    return path
+    try:
+        # Gemini Interactions API returns raw 24 kHz mono signed 16-bit PCM.
+        # Accept a complete WAV too, in case the provider changes response framing.
+        if audio[:4] == b"RIFF":
+            path.write_bytes(audio)
+        else:
+            import wave
+            with wave.open(str(path), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(24000)
+                wav.writeframes(audio)
+        with path.open("rb") as handle:
+            if handle.read(4) != b"RIFF":
+                raise RuntimeError("Не удалось сформировать WAV из ответа Gemini TTS.")
+        return path
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
 
 
 def speak(text: str) -> Path:
