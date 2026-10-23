@@ -46,6 +46,8 @@ class TestModelConfirmation(unittest.TestCase):
             model="test-model",
             api_key="test-key",
         )
+        # This test uses a local HTTP fixture to test confirmation flow, not endpoint policy.
+        provider._ensure_endpoint = lambda: None
         registry = ToolRegistry()
         registry.register(
             "wipe",
