@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "jarvis-agent"
 version = "1.0.0"
-description = "Cloud-first personal AI desktop assistant for Windows x64 using Hugging Face"
+description = "Cloud-first personal AI desktop assistant with Gemini, Groq fallback, cloud speech, and Three.js reactor"
 authors = ["Jarvis Developer"]
 license = "MIT"
 readme = "README.md"
