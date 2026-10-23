@@ -34,15 +34,26 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         shared_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         shared_key = settings.chat_key or __import__("os").environ.get("GEMINI_API_KEY", "")
         default_model = settings.chat_model or "gemini-3.8-flash"
+        timeout = max(5, min(180, int(settings.gemini_timeout)))
         fast = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.fast_model or default_model,
-                                  history=history, fallback_models=[settings.reasoning_model, settings.coding_model, settings.additional_model])
+                                  timeout=timeout, history=history, fallback_models=[settings.reasoning_model, settings.coding_model, settings.additional_model])
         reasoning = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.reasoning_model or default_model,
-                                       history=history, fallback_models=[settings.fast_model, settings.coding_model, settings.additional_model])
+                                       timeout=timeout, history=history, fallback_models=[settings.fast_model, settings.coding_model, settings.additional_model])
         coding = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.coding_model or default_model,
-                                    history=history, fallback_models=[settings.fast_model, settings.reasoning_model, settings.additional_model])
+                                    timeout=timeout, history=history, fallback_models=[settings.fast_model, settings.reasoning_model, settings.additional_model])
         additional = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.additional_model or default_model,
-                                        history=history, fallback_models=[settings.fast_model, settings.reasoning_model, settings.coding_model])
-        provider = RoleRouterProvider({"fast": fast, "reasoning": reasoning, "coding": coding, "additional": additional})
+                                        timeout=timeout, history=history, fallback_models=[settings.fast_model, settings.reasoning_model, settings.coding_model])
+        providers = {"fast": fast, "reasoning": reasoning, "coding": coding, "additional": additional}
+        # Groq is an independent optional cloud backend, not another Gemini role.
+        if settings.groq_key:
+            providers["groq"] = OpenAIChatProvider(
+                url="https://api.groq.com/openai/v1/chat/completions",
+                api_key=settings.groq_key,
+                model=settings.groq_model or "openai/gpt-oss-120b",
+                timeout=max(5, min(180, int(settings.groq_timeout))),
+                history=history,
+            )
+        provider = RoleRouterProvider(providers, fallback_order=("fast", "reasoning", "coding", "additional", "groq"))
     else:
         raise RuntimeError("JARVIS поддерживает только Gemini API Google.")
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
