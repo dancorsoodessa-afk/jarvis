@@ -358,7 +358,7 @@ class JarvisDesktop(tk.Tk):
         tk.Label(right, text="REAL-TIME SYSTEM STATUS", bg="#070d16", fg=MUTED,
                  font=("Consolas", 7)).pack(anchor="w", padx=14, pady=(0,12))
         self.metrics = {}
-        for name in ("Core","AI Provider","Memory","Tools","Voice","TTS"):
+        for name in ("Core","AI Provider","Gemini API","Groq API","Memory","Tools","Voice","TTS"):
             row=tk.Frame(right,bg="#0a131f",highlightbackground="#13283a",highlightthickness=1)
             row.pack(fill="x",padx=10,pady=4)
             tk.Label(row,text=name,bg="#0a131f",fg=MUTED,font=("Consolas",8)).pack(side="left",padx=9,pady=9)
@@ -488,6 +488,7 @@ class JarvisDesktop(tk.Tk):
                 self.events.put(("ready", agent, generation))
                 if generation == self._agent_generation:
                     threading.Thread(target=self._warmup_stt, daemon=True).start()
+                    threading.Thread(target=self._check_provider_health, args=(agent, generation), daemon=True).start()
             except Exception as exc:
                 self.events.put(("agent_error", str(exc), generation))
         threading.Thread(target=work, daemon=True).start()
@@ -498,6 +499,14 @@ class JarvisDesktop(tk.Tk):
         self._agent_start_pending = False
         self.status.config(text="● ЗАПУСК ЗАВИС", fg=RED)
         self._append("SYSTEM", "Ядро не запустилось за 30 секунд. Повторите запуск; подробности могут быть в журнале JARVIS.")
+
+    def _check_provider_health(self, agent, generation):
+        try:
+            provider = getattr(agent, "provider", None)
+            checks = provider.health_checks() if provider and hasattr(provider, "health_checks") else {}
+            self.events.put(("provider_health", checks, generation))
+        except Exception as exc:
+            self.events.put(("provider_health", {"Gemini API": "ERROR: " + str(exc)[:160]}, generation))
 
     def _warmup_stt(self):
         try:
@@ -620,6 +629,18 @@ class JarvisDesktop(tk.Tk):
                         self._append("JARVIS", f"Система готова. Активных модулей: {len(self.tool_names)} из {len(TOOLS)}.")
                         if self.settings.get("voice_enabled", True):
                             self._start_voice_loop()
+                    elif kind == "provider_health":
+                        if len(event) > 2 and event[2] != self._agent_generation:
+                            continue
+                        for label, result in event[1].items():
+                            if label not in self.metrics:
+                                continue
+                            status_text = str(result).split(":", 1)[0].upper()
+                            color = GREEN if status_text == "ONLINE" else YELLOW if status_text == "CONFIGURED" else RED
+                            self.metrics[label].config(text=status_text[:18], fg=color)
+                        gemini_status = event[1].get("Gemini API", "UNKNOWN")
+                        groq_status = event[1].get("Groq API", "NOT CONFIGURED")
+                        self._append("SYSTEM", f"Проверка провайдеров — Gemini: {gemini_status}; Groq: {groq_status}")
                     elif kind == "stt_ready":
                         self.metrics["Voice"].config(text="READY", fg=GREEN)
                         self.side_voice.config(text="◉ ГОЛОС — ГОТОВ", fg=GREEN)
