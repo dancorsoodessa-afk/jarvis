@@ -7,7 +7,7 @@ JARVIS is a Windows desktop assistant with a graphical interface, memory, OS too
 - **Primary cloud AI:** Google Gemini API using the official OpenAI-compatible endpoint.
 - **Independent chat fallback:** Groq Cloud, configured with its own optional API key, model, timeout, and live endpoint check. If Groq is not configured, it is explicitly reported as unavailable.
 - **Voice recognition:** microphone capture on the PC plus cloud Gemini transcription; requires internet and the Gemini API key.
-- **Voice output:** cloud Gemini TTS with a configurable voice, model, and timeout. No ElevenLabs and no Windows System.Speech dependency.
+- **Voice output:** cloud Gemini TTS with a configurable voice, model, and timeout.
 - **3D interface:** real Three.js/WebGL neural reactor served locally and opened in the browser. The scene reacts to live microphone level and the assistant's listening, thinking, speaking, and error states.
 - **Camera:** not implemented; JARVIS does not request camera access.
 
@@ -42,7 +42,7 @@ The build script runs tests before packaging. The executable is written to `rele
 
 - Input: microphone audio is recorded locally and sent to Gemini for Russian transcription.
 - Output: Gemini cloud TTS generates a WAV voice response using the same Gemini API key.
-- Internet access is required for both cloud recognition and speech generation. If the service is unavailable, JARVIS reports the error instead of silently switching to a system voice.
+- Internet access is required for both cloud recognition and speech generation. If a service is unavailable, JARVIS reports the error rather than silently switching to a different voice engine.
 - Configure the TTS model, voice, and request timeout in the control center.
 - Check Windows microphone permissions and the selected input device if recording fails.
 
