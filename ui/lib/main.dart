@@ -235,6 +235,15 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
     if (value == '__MIC_SOURCE_READY__') { if (mounted) setState(() => _status = 'Микрофон подключён · проверяю сигнал…'); return; }
     if (value.startsWith('__MIC_LEVEL__:')) { if (mounted) setState(() => _status = 'Микрофон работает · сигнал ${value.substring(14)}'); return; }
     if (value == '__LISTENING__') { _listening = true; if (mounted) setState(() => _status = 'Слушаю…'); return; }
+    // These are native control/status events, not recognized speech. Letting
+    // them fall through would stop the microphone on every VAD/TTS transition.
+    if (value == '__VAD_READY__' || value == '__VAD_SPEECH_BEGIN__' || value == '__VAD_SPEECH_END__') return;
+    if (value == '__TTS_START__') { if (mounted) setState(() => _status = 'JARVIS отвечает…'); return; }
+    if (value == '__TTS_DONE__' || value == '__TTS_INTERRUPTED__') {
+      _listening = false;
+      if (_voiceEnabled && !_busy) Future<void>.delayed(const Duration(milliseconds: 180), () { if (mounted) _startNativeListening(); });
+      return;
+    }
     if (value.startsWith('__ERROR__:')) {
       _listening = false;
       if (mounted) setState(() => _status = 'Ошибка голоса: ${value.substring(10)}');
