@@ -3,7 +3,7 @@ a = Analysis(
     ["jarvis_desktop.py"],
     pathex=["."],
     binaries=[],
-    datas=[("docs", "docs")],
+    datas=[("docs", "docs"), ("ui/jarvis_3d.html", "ui")],
     hiddenimports=[
         "numpy",
         "sounddevice",
