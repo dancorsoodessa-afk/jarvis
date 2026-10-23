@@ -51,11 +51,29 @@ jobs:
                   text = text.replace("<application", permission + "\n    <application", 1)
           if "android.speech.RecognitionService" not in text:
               text = text.replace("<application", '    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n    <application', 1)
+          # Flutter 3.47 rejects Android projects that do not declare v2 embedding.
+          embedding = '        <meta-data android:name="flutterEmbedding" android:value="2" />'
+          if 'android:name="flutterEmbedding"' not in text:
+              text = text.replace("    </application>", embedding + "\n    </application>", 1)
           p.write_text(text, encoding="utf-8")
           PY
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
+      - name: Diagnose removed Android v1 embedding
+        working-directory: ui
+        shell: bash
+        run: |
+          set +e
+          echo "Flutter version:"
+          flutter --version
+          echo "Legacy embedding references in project sources:"
+          grep -RInE 'io\\.flutter\\.app\\.(FlutterActivity|FlutterApplication)|PluginRegistry\\.Registrar|registerWith\\(Registrar' android lib . --exclude-dir=.git --exclude-dir=build --exclude-dir=.dart_tool --exclude='*.lock' 2>/dev/null | head -200
+          echo "Legacy embedding references in installed Dart packages:"
+          grep -RInE 'io\\.flutter\\.app\\.(FlutterActivity|FlutterApplication)|PluginRegistry\\.Registrar|registerWith\\(Registrar' "$HOME/.pub-cache/hosted/pub.dev" 2>/dev/null | head -200
+          echo "Embedding metadata in Android manifest:"
+          grep -n -E 'flutterEmbedding|FlutterActivity|application' android/app/src/main/AndroidManifest.xml || true
+          exit 0
       - name: Analyze Dart
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings

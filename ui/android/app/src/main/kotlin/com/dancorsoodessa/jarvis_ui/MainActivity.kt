@@ -11,6 +11,7 @@ import android.speech.tts.TextToSpeech
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
 
@@ -205,7 +206,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         )
     }
 
-    private fun saveSettings(call: MethodChannel.MethodCall) {
+    private fun saveSettings(call: MethodCall) {
         val p = getSharedPreferences("jarvis_settings", MODE_PRIVATE).edit()
         fun s(name: String) { call.argument<String>(name)?.let { p.putString(name, it) } }
         s("endpoint"); s("model"); s("apiKey"); s("apiHostKey")
