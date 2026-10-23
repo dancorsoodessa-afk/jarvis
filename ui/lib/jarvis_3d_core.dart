@@ -138,7 +138,7 @@ class _NeuralCorePainter extends CustomPainter {
       canvas.drawPath(path, Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = meridian % 3 == 0 ? 1.05 : .65
-        ..color = color.withValues(alpha: (.13 + (avgDepth + 1) * .19).clamp(.08, .48)));
+        ..color = color.withValues(alpha: (.13 + (avgDepth + 1) * .19).clamp(.08, .48).toDouble()));
     }
 
     for (int latitude = -5; latitude <= 5; latitude++) {
@@ -154,7 +154,7 @@ class _NeuralCorePainter extends CustomPainter {
         if (step == 0) { path.moveTo(projected.point.dx, projected.point.dy); } else { path.lineTo(projected.point.dx, projected.point.dy); }
       }
       final avgDepth = depthSum / 121;
-      canvas.drawPath(path, Paint()..style = PaintingStyle.stroke..strokeWidth = .65..color = color.withValues(alpha: (.12 + (avgDepth + 1) * .17).clamp(.07, .38)));
+      canvas.drawPath(path, Paint()..style = PaintingStyle.stroke..strokeWidth = .65..color = color.withValues(alpha: (.12 + (avgDepth + 1) * .17).clamp(.07, .38).toDouble()));
     }
     canvas.restore();
 
