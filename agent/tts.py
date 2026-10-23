@@ -1,158 +1,189 @@
-"""Keyless Windows speech output; optional ElevenLabs remains supported."""
+"""Cloud speech synthesis using Gemini TTS; no Windows system voice or third-party TTS provider."""
 from __future__ import annotations
 
 import base64
 import json
 import os
-import subprocess
-import sys
 import tempfile
 import threading
-import time
 import urllib.error
 import urllib.request
-import wave
 from pathlib import Path
 
 _PLAYBACK_LOCK = threading.Lock()
 _PLAYBACK_ACTIVE = False
 _PLAYBACK_TOKEN = 0
-_PLAYBACK_PROCESS = None
-DEFAULT_ELEVEN_VOICE = "srULqtwUV9XZPg1ZCO5w"
-DEFAULT_ELEVEN_MODEL = "eleven_flash_v2_5"
+_PLAYBACK_PATH: Path | None = None
+
+DEFAULT_TTS_MODEL = "gemini-3.8-flash-tts"
+DEFAULT_TTS_VOICE = "Charon"
+TTS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
 
 
-def _eleven_key() -> str:
-    return (os.environ.get("JARVIS_ELEVENLABS_API_KEY") or os.environ.get("ELEVENLABS_API_KEY") or "").strip()
-
-
-def _eleven_voice() -> str:
-    return (os.environ.get("JARVIS_ELEVENLABS_VOICE_ID") or DEFAULT_ELEVEN_VOICE).strip()
+def _api_key() -> str:
+    return (os.environ.get("GEMINI_API_KEY") or os.environ.get("JARVIS_CHAT_KEY") or "").strip()
 
 
 def available_engines() -> list[str]:
-    result = ["windows"] if sys.platform == "win32" else []
-    if _eleven_key() and _eleven_voice():
-        result.append("elevenlabs")
-    return result
+    return ["gemini"] if _api_key() else []
 
 
 def current_engine() -> str:
-    mode = os.environ.get("JARVIS_TTS", "auto").strip().lower()
+    mode = os.environ.get("JARVIS_TTS", "gemini").strip().lower()
     if mode == "off":
         return "off"
-    if mode in {"auto", "windows", "system"}:
-        if sys.platform == "win32":
-            return "windows"
-        if mode in {"windows", "system"}:
-            raise RuntimeError("Системная озвучка доступна только в Windows.")
-        return "elevenlabs" if _eleven_key() else "off"
-    if mode in {"elevenlabs", "cloud"}:
-        return "elevenlabs" if _eleven_key() else "off"
-    raise RuntimeError("Выберите windows, elevenlabs или off для озвучки.")
+    if mode not in {"auto", "gemini", "cloud"}:
+        raise RuntimeError("JARVIS поддерживает облачную озвучку Gemini или режим off.")
+    return "gemini" if _api_key() else "off"
 
 
-def set_gender(gender: str) -> None:
-    if str(gender).strip().lower() not in {"male", "мужской", ""}:
-        raise ValueError("Для текущей конфигурации доступен установленный системный голос Windows.")
+def health_check(timeout: float | None = None) -> str:
+    """Check that cloud TTS is configured; does not spend API quota on a test utterance."""
+    if current_engine() == "off":
+        raise RuntimeError("Для облачной озвучки нужен GEMINI_API_KEY.")
+    return "configured"
 
 
-def stop() -> None:
-    global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PROCESS
-    with _PLAYBACK_LOCK:
-        _PLAYBACK_TOKEN += 1
-        process = _PLAYBACK_PROCESS
-        _PLAYBACK_PROCESS = None
-        _PLAYBACK_ACTIVE = False
-    if process is not None:
+def set_gender(_gender: str) -> None:
+    """Voice character is selected by Gemini voice name, not OS voice gender."""
+
+
+def _timeout() -> float:
+    try:
+        return max(5.0, min(120.0, float(os.environ.get("JARVIS_TTS_TIMEOUT", "45"))))
+    except (TypeError, ValueError):
+        return 45.0
+
+
+def _generate_audio(text: str) -> bytes:
+    key = _api_key()
+    if not key:
+        raise RuntimeError("Облачная озвучка требует GEMINI_API_KEY. Укажите ключ Gemini в Центре управления.")
+    model = (os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
+    voice = (os.environ.get("JARVIS_TTS_VOICE") or DEFAULT_TTS_VOICE).strip()
+    payload = {
+        "model": model,
+        "input": "Speak naturally and clearly in Russian. Read the following text verbatim:\n" + text,
+        "response_format": {"type": "audio"},
+        "generation_config": {"speech_config": [{"voice": voice}]},
+    }
+    request = urllib.request.Request(
+        TTS_ENDPOINT,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"x-goog-api-key": key, "Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    retryable = {429, 500, 502, 503, 504}
+    for attempt in range(3):
         try:
-            process.terminate()
-        except Exception:
-            pass
-    if sys.platform == "win32":
-        try:
-            import winsound
-            winsound.PlaySound(None, 0)
-        except Exception:
-            pass
+            with urllib.request.urlopen(request, timeout=_timeout()) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            audio = result.get("output_audio", {}).get("data", "")
+            if not audio:
+                raise RuntimeError("Gemini TTS не вернул аудиоданные. Проверьте доступность модели и ключ.")
+            return base64.b64decode(audio, validate=True)
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:400]
+            if exc.code in retryable and attempt < 2:
+                import time
+                time.sleep(0.8 * (2 ** attempt))
+                continue
+            raise RuntimeError(f"Ошибка облачной озвучки Gemini: HTTP {exc.code}. {detail}") from exc
+        except urllib.error.URLError as exc:
+            if attempt < 2:
+                import time
+                time.sleep(0.8 * (2 ** attempt))
+                continue
+            raise RuntimeError(f"Не удалось подключиться к Gemini TTS: {exc.reason}") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+            if isinstance(exc, ValueError) and "Incorrect padding" not in str(exc):
+                raise
+            raise RuntimeError("Gemini TTS вернул некорректный аудиоответ.") from exc
+    raise RuntimeError("Gemini TTS временно недоступен после повторных попыток.")
 
 
-def is_playing() -> bool:
-    global _PLAYBACK_ACTIVE, _PLAYBACK_PROCESS
-    with _PLAYBACK_LOCK:
-        if _PLAYBACK_PROCESS is not None and _PLAYBACK_PROCESS.poll() is not None:
-            _PLAYBACK_PROCESS = None
-            _PLAYBACK_ACTIVE = False
-        return _PLAYBACK_ACTIVE
-
-
-def _temp_wav() -> Path:
-    fd, name = tempfile.mkstemp(prefix="jarvis_tts_cloud_", suffix=".wav")
+def _write_audio(audio: bytes) -> Path:
+    if not audio:
+        raise RuntimeError("Gemini TTS вернул пустой аудиофайл.")
+    fd, name = tempfile.mkstemp(prefix="jarvis_gemini_tts_", suffix=".wav")
     os.close(fd)
-    return Path(name)
+    path = Path(name)
+    path.write_bytes(audio)
+    # Gemini returns a complete WAV for non-streaming audio responses.
+    with path.open("rb") as handle:
+        if handle.read(4) != b"RIFF":
+            path.unlink(missing_ok=True)
+            raise RuntimeError("Gemini TTS вернул аудио не в WAV-формате.")
+    return path
 
 
 def speak(text: str) -> Path:
     text = " ".join(str(text).split())[:4000]
     if not text:
         raise RuntimeError("Пустой текст для озвучки.")
-    if current_engine() != "elevenlabs":
-        raise RuntimeError("Создание аудиофайла доступно только при включённом ElevenLabs.")
-    voice = _eleven_voice()
-    model = os.environ.get("JARVIS_ELEVENLABS_MODEL", DEFAULT_ELEVEN_MODEL).strip()
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}?output_format=pcm_22050"
-    payload = json.dumps({"text": text, "model_id": model, "language_code": "ru"}).encode("utf-8")
-    request = urllib.request.Request(url, data=payload, headers={"xi-api-key": _eleven_key(), "Content-Type": "application/json", "Accept": "audio/pcm"}, method="POST")
-    try:
-        with urllib.request.urlopen(request, timeout=45) as response:
-            pcm = response.read()
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:400]
-        raise RuntimeError(f"Ошибка ElevenLabs: HTTP {exc.code}. {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Не удалось подключиться к ElevenLabs: {exc.reason}") from exc
-    if not pcm:
-        raise RuntimeError("Сервис ElevenLabs вернул пустой аудиофайл.")
-    out = _temp_wav()
-    try:
-        with wave.open(str(out), "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(22050)
-            wav.writeframes(pcm)
-    except Exception:
-        out.unlink(missing_ok=True)
-        raise
-    return out
+    if current_engine() != "gemini":
+        raise RuntimeError("Облачная озвучка Gemini не настроена.")
+    return _write_audio(_generate_audio(text))
 
 
 def speak_and_play(text: str):
-    global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PROCESS
-    text = " ".join(str(text).split())[:4000]
-    if not text:
-        raise RuntimeError("Пустой текст для озвучки.")
-    if current_engine() == "windows":
-        encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
-        script = "Add-Type -AssemblyName System.Speech; $b=[Convert]::FromBase64String('" + encoded + "'); $t=[Text.Encoding]::UTF8.GetString($b); $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak($t); $s.Dispose()"
-        encoded_script = base64.b64encode(script.encode("utf-16le")).decode("ascii")
-        stop()
-        process = subprocess.Popen(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded_script],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        )
-        with _PLAYBACK_LOCK:
-            _PLAYBACK_TOKEN += 1
-            token = _PLAYBACK_TOKEN
-            _PLAYBACK_PROCESS = process
-            _PLAYBACK_ACTIVE = True
-        def watch():
-            global _PLAYBACK_ACTIVE, _PLAYBACK_PROCESS
-            process.wait()
+    global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PATH
+    path = speak(text)
+    stop()
+    with _PLAYBACK_LOCK:
+        _PLAYBACK_TOKEN += 1
+        token = _PLAYBACK_TOKEN
+        _PLAYBACK_ACTIVE = True
+        _PLAYBACK_PATH = path
+
+    def play():
+        global _PLAYBACK_ACTIVE, _PLAYBACK_PATH
+        try:
+            if os.name == "nt":
+                import winsound
+                winsound.PlaySound(str(path), winsound.SND_FILENAME)
+            else:
+                import sounddevice as sd
+                import soundfile as sf
+                audio, rate = sf.read(str(path), dtype="float32")
+                sd.play(audio, rate, blocking=True)
+        except Exception as exc:
+            raise RuntimeError(f"Не удалось воспроизвести облачную речь: {exc}") from exc
+        finally:
             with _PLAYBACK_LOCK:
                 if _PLAYBACK_TOKEN == token:
-                    _PLAYBACK_PROCESS = None
                     _PLAYBACK_ACTIVE = False
-        threading.Thread(target=watch, daemon=True).start()
-        return None
-    return speak(text)
+                    _PLAYBACK_PATH = None
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    # Playback remains asynchronous so the UI stays responsive.
+    threading.Thread(target=play, daemon=True).start()
+    return None
+
+
+def stop() -> None:
+    global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PATH
+    with _PLAYBACK_LOCK:
+        _PLAYBACK_TOKEN += 1
+        path = _PLAYBACK_PATH
+        _PLAYBACK_PATH = None
+        _PLAYBACK_ACTIVE = False
+    if os.name == "nt":
+        try:
+            import winsound
+            winsound.PlaySound(None, winsound.SND_PURGE)
+        except Exception:
+            pass
+    try:
+        if path:
+            path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def is_playing() -> bool:
+    with _PLAYBACK_LOCK:
+        return _PLAYBACK_ACTIVE
