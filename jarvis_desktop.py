@@ -51,8 +51,7 @@ def _safe_model_id(value: str | None, fallback: str) -> str:
 _SECRET_SETTING_KEYS = {
     "api_key",
     "hf_token",
-    
-    
+    "gemini_api_key",
     "elevenlabs_api_key",
 }
 
@@ -162,9 +161,12 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_FAST_MODEL"] = merged["0"]["model"]
         os.environ["JARVIS_REASONING_MODEL"] = merged["1"]["model"]
         os.environ["JARVIS_CODING_MODEL"] = merged["2"]["model"]
-        self.settings["additional_model"] = _safe_model_id(
+        additional_model = _safe_model_id(
             self.settings.get("additional_model") or os.environ.get("JARVIS_ADDITIONAL_MODEL"),
             merged["0"]["model"],
+        )
+        self.settings["additional_model"] = (
+            additional_model if additional_model.lower().startswith("gemini-") else merged["0"]["model"]
         )
         os.environ["JARVIS_ADDITIONAL_MODEL"] = self.settings["additional_model"]
         # Independent consultant providers. Keep secrets out of the repository;
