@@ -7,7 +7,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'jarvis_client.dart';
-import 'jarvis_reactor.dart';
+import 'jarvis_3d_core.dart';
 
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
@@ -42,7 +42,7 @@ class _Msg {
   final bool isUser;
 }
 
-class _JarvisHomePageState extends State<JarvisHomePage> {
+class _JarvisHomePageState extends State<JarvisHomePage> with SingleTickerProviderStateMixin {
   JarvisIpc? _jarvis;
   final _input = TextEditingController();
   final _endpoint = TextEditingController();
@@ -58,6 +58,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   final FlutterTts _tts = FlutterTts();
   StreamSubscription<String>? _partialSub;
   Timer? _visualTimer;
+  late final AnimationController _coreController = AnimationController(vsync: this, duration: const Duration(seconds: 14))..repeat();
+  double _voiceLevel = 0;
   Timer? _voiceRestartTimer;
   int _speechSession = 0;
   bool _busy = false;
@@ -154,6 +156,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         listenFor: const Duration(minutes: 1),
         pauseFor: const Duration(seconds: 4),
         partialResults: true,
+        onSoundLevelChange: (level) {
+          final normalized = ((level + 2) / 12).clamp(0.0, 1.0).toDouble();
+          if (mounted && (normalized - _voiceLevel).abs() > 0.035) {
+            setState(() => _voiceLevel = normalized);
+          }
+        },
         cancelOnError: false,
         listenMode: stt.ListenMode.dictation,
         localeId: 'ru_RU',
@@ -478,6 +486,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _partialSub?.cancel();
     _visualTimer?.cancel();
     _voiceRestartTimer?.cancel();
+    _coreController.dispose();
     _speech.stop();
     _tts.stop();
     _jarvis?.dispose();
@@ -525,7 +534,15 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             height: 272,
             width: double.infinity,
             child: Stack(alignment: Alignment.center, children: [
-              Positioned.fill(child: JarvisReactor(color: _visualColor, state: _visualState)),
+              Positioned.fill(child: AnimatedBuilder(
+                animation: _coreController,
+                builder: (context, child) => Jarvis3DCore(
+                  phase: _coreController.value * 6.283185307179586,
+                  color: _visualColor,
+                  state: _visualState,
+                  voiceLevel: _voiceLevel,
+                ),
+              )),
               Positioned(
                 bottom: 12,
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
