@@ -8,8 +8,6 @@ import sys
 
 from agent.runtime import build_agent
 from agent.config import Settings
-from agent.multi_agent import ThreeAgentProvider
-from agent.providers.openai_chat import OpenAIChatProvider
 from agent import ipc
 from agent.tools import self_modify
 
@@ -43,45 +41,17 @@ def _attach_self_improvement_tools(agent) -> None:
                          description="Откатить последнюю резервную копию, созданную инструментом write_source.")
 
 
-def _attach_free_secondary_agents(agent, settings: Settings) -> None:
-    if settings.provider != "openai-compatible":
-        return
-    deepseek = None
-    glm = None
-    if settings.deepseek_model:
-        deepseek = OpenAIChatProvider(
-            url=settings.deepseek_url or settings.chat_url,
-            api_key=settings.deepseek_key or settings.chat_key,
-            model=settings.deepseek_model,
-        )
-    if settings.glm_model:
-        glm = OpenAIChatProvider(
-            url=settings.glm_url or settings.chat_url,
-            api_key=settings.glm_key or settings.chat_key,
-            model=settings.glm_model,
-        )
-    if deepseek is not None or glm is not None:
-        agent.provider = ThreeAgentProvider(agent.provider, deepseek, glm)
-
-
 def _set_busya_identity(agent) -> None:
     provider = agent.provider
-    target = provider.main if isinstance(provider, ThreeAgentProvider) else provider
-    if hasattr(target, "system_prompt"):
-        target.system_prompt = BUSYA_SYSTEM_PROMPT
-    if hasattr(target, "name"):
-        try:
-            target.name = "Буся ИИ"
-        except Exception:
-            pass
-    if isinstance(provider, ThreeAgentProvider):
-        provider.name = "Джарвис · 3 агента"
+    if hasattr(provider, "system_prompt"):
+        provider.system_prompt = JARVIS_SYSTEM_PROMPT
+    if hasattr(provider, "name"):
+        provider.name = "Джарвис ИИ"
 
 
 def main():
     settings = Settings.from_env()
     agent = build_agent(settings)
-    _attach_free_secondary_agents(agent, settings)
     _set_busya_identity(agent)
     _attach_self_improvement_tools(agent)
     args = sys.argv[1:]
