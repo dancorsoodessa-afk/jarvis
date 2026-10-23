@@ -12,8 +12,8 @@ import 'jarvis_reactor.dart';
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
-const kFreePrimaryUrl = 'https://router.huggingface.co/v1';
-const kFreePrimaryModel = 'Qwen/Qwen3-4B-Instruct-2507';
+const kFreePrimaryUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
+const kFreePrimaryModel = 'gemini-3.8-flash';
 const kFreeFallbackUrl = '';
 const kFreeFallbackModel = '';
 
@@ -254,7 +254,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       final storedFallbackEndpoint = prefs.getString('fallback_endpoint')?.trim() ?? '';
       final storedFallbackModel = prefs.getString('fallback_model')?.trim() ?? '';
 
-      // JARVIS XXX uses Hugging Face Inference Router only. Migrate old provider settings.
+      // JARVIS Android uses the official Gemini OpenAI-compatible endpoint.
       final usingOldProvider = storedEndpoint != kFreePrimaryUrl;
       if (usingOldProvider) {
         _endpoint.text = kFreePrimaryUrl;
@@ -370,13 +370,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       builder: (ctx) => AlertDialog(
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Align(alignment: Alignment.centerLeft, child: Text('Hugging Face Inference API', style: TextStyle(fontWeight: FontWeight.bold))),
-          TextField(controller: _endpoint, readOnly: true, decoration: const InputDecoration(labelText: 'AI URL · только Hugging Face', hintText: 'https://router.huggingface.co/v1')),
-          TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'Hugging Face Token')),
+          const Align(alignment: Alignment.centerLeft, child: Text('Google Gemini API', style: TextStyle(fontWeight: FontWeight.bold))),
+          TextField(controller: _endpoint, readOnly: true, decoration: const InputDecoration(labelText: 'AI URL · Gemini', hintText: 'https://router.huggingface.co/v1')),
+          TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'Gemini API Key')),
           TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'Qwen/Qwen3-4B-Instruct-2507')),
           const SizedBox(height: 8),
           const Text(
-            'Подключение выполняется через Hugging Face Inference Providers. Нужен действующий токен и доступ к выбранной модели.',
+            'Подключение выполняется через Google Gemini API. Создайте ключ в Google AI Studio; бесплатный тариф имеет ограничения.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 4),
@@ -517,7 +517,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('JARVIS XXX', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w600)),
-        actions: [if (_android) IconButton(tooltip: 'Настройки Hugging Face', onPressed: _settings, icon: const Icon(Icons.tune))],
+        actions: [if (_android) IconButton(tooltip: 'Настройки Gemini', onPressed: _settings, icon: const Icon(Icons.tune))],
       ),
       body: SafeArea(
         child: Column(children: [
