@@ -60,8 +60,13 @@ def health_check(timeout: float | None = None) -> str:
         raise RuntimeError("Gemini TTS вернул некорректный JSON при проверке доступности.") from exc
 
 
-def set_gender(_gender: str) -> None:
-    """Voice character is selected by Gemini voice name, not OS voice gender."""
+def set_gender(gender: str) -> None:
+    """Map the legacy gender toggle to Gemini's available voice profiles."""
+    value = str(gender).strip().lower()
+    if value in {"female", "женский"}:
+        os.environ["JARVIS_TTS_VOICE"] = "Aoede"
+    else:
+        os.environ["JARVIS_TTS_VOICE"] = "Charon"
 
 
 def _timeout() -> float:
