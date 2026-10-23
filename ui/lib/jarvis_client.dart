@@ -121,7 +121,7 @@ class JarvisIpc {
       }
       // Do not block a configured provider solely because /models is absent
       // or temporarily rate-limited. The real chat request will decide.
-      if (_retryable(primary)) return;
+      if (primary.toString().contains('HTTP 404') || primary.toString().contains('HTTP 405')) return;
       rethrow;
     }
   }
