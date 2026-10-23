@@ -2,7 +2,7 @@ name: JARVIS Windows tests
 
 on:
   push:
-    branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928]
+    branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928, feature/gemini-cloud-provider]
     paths:
       - "agent/**"
       - "tests/**"
