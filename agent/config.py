@@ -6,6 +6,13 @@ DEFAULT_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat
 DEFAULT_MODEL = "gemini-3.8-flash"
 
 
+def _timeout_env(name: str, default: int = 30) -> int:
+    try:
+        return max(5, min(180, int(os.environ.get(name, str(default)) or str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
 def normalize_chat_url(_value: str | None) -> str:
     return DEFAULT_CHAT_URL
 
@@ -46,10 +53,10 @@ class Settings:
             reasoning_model=os.environ.get("JARVIS_REASONING_MODEL", default_model).strip() or default_model,
             coding_model=os.environ.get("JARVIS_CODING_MODEL", default_model).strip() or default_model,
             additional_model=os.environ.get("JARVIS_ADDITIONAL_MODEL", default_model).strip() or default_model,
-            gemini_timeout=int(os.environ.get("JARVIS_GEMINI_TIMEOUT", "30") or "30"),
+            gemini_timeout=_timeout_env("JARVIS_GEMINI_TIMEOUT", 30),
             groq_key=os.environ.get("GROQ_API_KEY", "").strip(),
             groq_model=os.environ.get("JARVIS_GROQ_MODEL", "openai/gpt-oss-120b").strip() or "openai/gpt-oss-120b",
-            groq_timeout=int(os.environ.get("JARVIS_GROQ_TIMEOUT", "30") or "30"),
+            groq_timeout=_timeout_env("JARVIS_GROQ_TIMEOUT", 30),
             memory_path=os.environ.get("JARVIS_MEMORY", "jarvis_memory.json").strip() or "jarvis_memory.json",
             kg_path=os.environ.get("JARVIS_KG"),
         )
