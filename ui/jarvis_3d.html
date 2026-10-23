@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JARVIS — 3D Reactor</title>
+<style>
+:root{color-scheme:dark;--glow:#65eaff;--bg:#030811;--panel:rgba(5,17,30,.76);--muted:#7594a8}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:Segoe UI,Arial,sans-serif;color:#e7faff}
+#stage{position:fixed;inset:0}canvas{display:block;width:100%;height:100%}
+.vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 28%,rgba(1,5,12,.42) 75%,#02050b 100%)}
+.grid{position:fixed;inset:0;pointer-events:none;opacity:.14;background-image:linear-gradient(rgba(55,180,220,.14) 1px,transparent 1px),linear-gradient(90deg,rgba(55,180,220,.14) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse at center,#000,transparent 76%)}
+.top{position:fixed;top:28px;left:34px;right:34px;display:flex;justify-content:space-between;align-items:flex-start;gap:20px;pointer-events:none}
+.brand{font-size:11px;letter-spacing:.38em;color:var(--glow);font-weight:700}.title{font-size:clamp(22px,3vw,40px);letter-spacing:.13em;font-weight:300;margin-top:8px;text-shadow:0 0 24px color-mix(in srgb,var(--glow),transparent 45%)}.subtitle{font-size:10px;letter-spacing:.2em;color:var(--muted);margin-top:8px}
+.status{border:1px solid color-mix(in srgb,var(--glow),transparent 52%);background:var(--panel);padding:12px 16px;min-width:190px;backdrop-filter:blur(12px)}.status small{display:block;font-size:9px;letter-spacing:.2em;color:var(--muted)}.status strong{display:block;margin-top:7px;font-size:12px;letter-spacing:.14em;color:var(--glow)}
+.bottom{position:fixed;left:34px;right:34px;bottom:26px;display:flex;justify-content:space-between;align-items:flex-end;gap:20px;pointer-events:none}
+.readout{display:flex;gap:22px;flex-wrap:wrap}.item{border-left:1px solid color-mix(in srgb,var(--glow),transparent 45%);padding-left:11px}.item small{display:block;color:var(--muted);font-size:9px;letter-spacing:.15em}.item strong{display:block;margin-top:5px;color:#c9f8ff;font-size:11px;letter-spacing:.08em;font-weight:500}
+.hint{font-size:9px;color:#547186;letter-spacing:.14em;text-align:right;line-height:1.8}
+.center-label{position:fixed;left:50%;top:50%;transform:translate(-50%,155px);font-size:9px;letter-spacing:.42em;color:var(--glow);opacity:.82;pointer-events:none;text-shadow:0 0 16px var(--glow)}
+#fatal{display:none;position:fixed;inset:0;place-items:center;background:#030811;color:#ff8295;padding:32px;text-align:center}
+@media(max-width:700px){.top{left:16px;right:16px;top:16px}.bottom{left:16px;right:16px;bottom:14px}.status{min-width:145px;padding:9px}.subtitle{max-width:230px}.hint{display:none}.center-label{transform:translate(-50%,135px)}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
+</head>
+<body>
+<div id="stage"></div><div class="grid"></div><div class="vignette"></div>
+<div class="top"><div><div class="brand">JARVIS / SYSTEMS INTERFACE</div><div class="title">NEURAL REACTOR</div><div class="subtitle">LIVE 3D COMPUTATION CORE · AUDIO-REACTIVE GEOMETRY</div></div><div class="status"><small>CORE STATUS</small><strong id="state">INITIALIZING</strong><small style="margin-top:12px">CLOUD LINK</small><strong id="link">CONNECTING</strong></div></div>
+<div class="center-label" id="center">NEURAL CORE · ONLINE</div>
+<div class="bottom"><div class="readout"><div class="item"><small>ENGINE</small><strong>THREE.JS / WEBGL</strong></div><div class="item"><small>ACTIVITY</small><strong id="activity">STANDBY</strong></div><div class="item"><small>INPUT LEVEL</small><strong id="level">0.00</strong></div><div class="item"><small>RENDER MODE</small><strong>REALTIME 3D</strong></div></div><div class="hint">VOICE · REASONING · RESPONSE<br>SCENE GEOMETRY IS LIVE</div></div>
+<div id="fatal">3D engine failed to initialize. Check the internet connection and WebGL support.</div>
+<script type="module">
+import * as THREE from 'three';
+const root=document.querySelector('#stage');
+const stateLabel=document.querySelector('#state'), linkLabel=document.querySelector('#link'), activityLabel=document.querySelector('#activity'), levelLabel=document.querySelector('#level'), centerLabel=document.querySelector('#center');
+const colors={IDLE:0x35cce9,LISTENING:0x54f2ff,THINKING:0xffbd55,SPEAKING:0xb987ff,ERROR:0xff476d};
+let currentState='IDLE',targetLevel=0,level=0,clock=new THREE.Clock();
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x030811);scene.fog=new THREE.FogExp2(0x030811,.035);
+const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,.1,100);camera.position.set(0,.2,8.7);
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.35;root.appendChild(renderer.domElement);
+scene.add(new THREE.AmbientLight(0x1b506a,1.8));
+const keyLight=new THREE.PointLight(0x31d8ff,36,14);keyLight.position.set(3,2,4);scene.add(keyLight);
+const rimLight=new THREE.PointLight(0x744cff,22,12);rimLight.position.set(-4,-2,-1);scene.add(rimLight);
+const rig=new THREE.Group();scene.add(rig);
+const coreGeo=new THREE.IcosahedronGeometry(1.22,5);
+const coreMat=new THREE.MeshStandardMaterial({color:0x0a344a,emissive:0x087b9d,emissiveIntensity:2.4,metalness:.58,roughness:.23,wireframe:false});
+const core=new THREE.Mesh(coreGeo,coreMat);rig.add(core);
+const wire=new THREE.Mesh(new THREE.IcosahedronGeometry(1.37,2),new THREE.MeshBasicMaterial({color:0x51e7ff,wireframe:true,transparent:true,opacity:.42}));rig.add(wire);
+const shell=new THREE.Mesh(new THREE.IcosahedronGeometry(1.72,2),new THREE.MeshBasicMaterial({color:0x1484a3,wireframe:true,transparent:true,opacity:.12}));rig.add(shell);
+const rings=[];
+for(let i=0;i<5;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1.85+i*.13,.008+(i%2)*.004,8,180),new THREE.MeshBasicMaterial({color:i%2?0x866cff:0x3de5ff,transparent:true,opacity:.68-i*.07}));ring.rotation.set(.55+i*.31,.25+i*.49,.12+i*.22);rig.add(ring);rings.push(ring)}
+const particleCount=2100, positions=new Float32Array(particleCount*3), sizes=new Float32Array(particleCount);
+for(let i=0;i<particleCount;i++){const radius=2.1+Math.random()*4.2,theta=Math.random()*Math.PI*2,phi=Math.acos(2*Math.random()-1);positions[i*3]=radius*Math.sin(phi)*Math.cos(theta);positions[i*3+1]=radius*Math.sin(phi)*Math.sin(theta);positions[i*3+2]=radius*Math.cos(phi);sizes[i]=Math.random()}
+const pGeo=new THREE.BufferGeometry();pGeo.setAttribute('position',new THREE.BufferAttribute(positions,3));pGeo.setAttribute('aSize',new THREE.BufferAttribute(sizes,1));
+const pMat=new THREE.PointsMaterial({color:0x4dcff0,size:.018,transparent:true,opacity:.72,depthWrite:false});const particles=new THREE.Points(pGeo,pMat);scene.add(particles);
+const orbitDots=[];for(let i=0;i<18;i++){const dot=new THREE.Mesh(new THREE.SphereGeometry(.025+(i%3)*.008,10,10),new THREE.MeshBasicMaterial({color:i%3?0x7eeeff:0xc6a2ff}));dot.userData={a:i/18*Math.PI*2,r:2.12+(i%4)*.12,speed:.12+(i%5)*.035,tilt:i*.38};rig.add(dot);orbitDots.push(dot)}
+const original=coreGeo.attributes.position.array.slice();
+function applyState(s,l){currentState=colors[s]?s:'IDLE';targetLevel=Math.max(0,Math.min(1,Number(l)||0));const c=new THREE.Color(colors[currentState]);coreMat.emissive.copy(c);coreMat.color.copy(c).multiplyScalar(.16);wire.material.color.copy(c);shell.material.color.copy(c);pMat.color.copy(c);keyLight.color.copy(c);centerLabel.style.color='#'+c.getHexString();document.documentElement.style.setProperty('--glow','#'+c.getHexString());stateLabel.textContent=currentState.replace('LISTENING','LISTENING').replace('THINKING','PROCESSING');activityLabel.textContent=currentState==='IDLE'?'STANDBY':currentState==='LISTENING'?'VOICE INPUT':currentState==='THINKING'?'AI COMPUTATION':currentState==='SPEAKING'?'VOICE OUTPUT':'FAULT';centerLabel.textContent=currentState==='IDLE'?'NEURAL CORE · ONLINE':currentState==='LISTENING'?'AUDIO SIGNAL · RECEIVING':currentState==='THINKING'?'NEURAL NETWORK · PROCESSING':currentState==='SPEAKING'?'VOICE SYNTHESIS · ACTIVE':'SYSTEM FAULT'}
+async function poll(){try{const r=await fetch('/state',{cache:'no-store'});if(!r.ok)throw new Error('status '+r.status);const data=await r.json();linkLabel.textContent='CONNECTED';applyState(data.state||'IDLE',data.level||0)}catch(e){linkLabel.textContent='LOCAL LINK LOST'}setTimeout(poll,180)}
+poll();
+function animate(){const t=clock.getElapsedTime();level+=(targetLevel-level)*.16;const active=currentState!=='IDLE';rig.rotation.y=t*(active?.16:.055);rig.rotation.x=Math.sin(t*.23)*.09+level*.12;core.rotation.y=-t*.11;wire.rotation.y=t*.08;wire.rotation.x=-t*.06;shell.rotation.y=-t*.035;
+const arr=coreGeo.attributes.position.array;for(let i=0;i<arr.length;i+=3){const x=original[i],y=original[i+1],z=original[i+2];const wave=Math.sin(x*5+t*1.7)*Math.cos(y*4.4-t*1.2)*Math.sin(z*4+t);const d=1+wave*(.018+level*.12);arr[i]=x*d;arr[i+1]=y*d;arr[i+2]=z*d}coreGeo.attributes.position.needsUpdate=true;coreGeo.computeVertexNormals();
+core.scale.setScalar(1+Math.sin(t*2.1)*.018+level*.09);coreMat.emissiveIntensity=1.7+level*3.5+(active?.35:0);wire.scale.setScalar(1+level*.07);shell.scale.setScalar(1+Math.sin(t*.7)*.025+level*.12);
+rings.forEach((r,i)=>{r.rotation.z+=.0018*(i%2?1:-1)*(1+level*5);r.rotation.x+=.0008*(i+1);r.scale.setScalar(1+Math.sin(t*(.6+i*.13)+i)*.025+level*.06)});
+orbitDots.forEach((d,i)=>{const u=d.userData,a=u.a+t*u.speed*(currentState==='THINKING'?3:1);d.position.set(Math.cos(a)*u.r,Math.sin(a*1.13+u.tilt)*u.r*.68,Math.sin(a)*u.r*.74);d.scale.setScalar(1+level*.9)});
+particles.rotation.y=t*.012;particles.rotation.x=Math.sin(t*.09)*.04;camera.position.x=Math.sin(t*.12)*.13;camera.lookAt(0,0,0);levelLabel.textContent=level.toFixed(2);renderer.render(scene,camera);requestAnimationFrame(animate)}
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.8))});
+try{animate()}catch(e){document.querySelector('#fatal').style.display='grid';throw e}
+</script>
+</body>
+</html>
