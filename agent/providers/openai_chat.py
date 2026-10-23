@@ -172,53 +172,63 @@ class OpenAIChatProvider:
 
     def _request_stream(self, payload: dict) -> dict:
         data = json.dumps({**payload, "stream": True}, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(self.url, data=data, headers=self._auth_headers(stream=True))
-        content_parts: list[str] = []
-        tool_calls: list[dict] = []
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                for raw in resp:
-                    line = raw.decode("utf-8", errors="replace").strip()
-                    if not line.startswith("data:"):
-                        continue
-                    chunk = line[5:].strip()
-                    if chunk == "[DONE]":
-                        break
-                    try:
-                        piece = json.loads(chunk)["choices"][0].get("delta", {})
-                    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
-                        continue
-                    delta = piece.get("content") or ""
-                    if delta:
-                        content_parts.append(delta)
-                        if self.on_delta:
-                            try:
-                                self.on_delta(delta)
-                            except Exception:
-                                pass
-                    for tc in piece.get("tool_calls") or []:
-                        idx = tc.get("index", 0)
-                        while len(tool_calls) <= idx:
-                            tool_calls.append({"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
-                        dst = tool_calls[idx]
-                        if tc.get("id"):
-                            dst["id"] = tc["id"]
-                        fn = tc.get("function") or {}
-                        if fn.get("name"):
-                            dst["function"]["name"] += fn["name"]
-                        if fn.get("arguments"):
-                            dst["function"]["arguments"] += fn["arguments"]
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:500]
-            if exc.code == 503:
-                raise RuntimeError("Gemini временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
-            raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
-        msg: dict = {"role": "assistant", "content": "".join(content_parts)}
-        if tool_calls:
-            msg["tool_calls"] = tool_calls
-        return {"choices": [{"message": msg}]}
+        headers = self._auth_headers(stream=True)
+        retryable = {429, 500, 502, 503, 504}
+        for attempt in range(4):
+            req = urllib.request.Request(self.url, data=data, headers=headers)
+            content_parts: list[str] = []
+            tool_calls: list[dict] = []
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    for raw in resp:
+                        line = raw.decode("utf-8", errors="replace").strip()
+                        if not line.startswith("data:"):
+                            continue
+                        chunk = line[5:].strip()
+                        if chunk == "[DONE]":
+                            break
+                        try:
+                            piece = json.loads(chunk)["choices"][0].get("delta", {})
+                        except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+                            continue
+                        delta = piece.get("content") or ""
+                        if delta:
+                            content_parts.append(delta)
+                            if self.on_delta:
+                                try:
+                                    self.on_delta(delta)
+                                except Exception:
+                                    pass
+                        for tc in piece.get("tool_calls") or []:
+                            idx = tc.get("index", 0)
+                            while len(tool_calls) <= idx:
+                                tool_calls.append({"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                            dst = tool_calls[idx]
+                            if tc.get("id"):
+                                dst["id"] = tc["id"]
+                            fn = tc.get("function") or {}
+                            if fn.get("name"):
+                                dst["function"]["name"] += fn["name"]
+                            if fn.get("arguments"):
+                                dst["function"]["arguments"] += fn["arguments"]
+                msg: dict = {"role": "assistant", "content": "".join(content_parts)}
+                if tool_calls:
+                    msg["tool_calls"] = tool_calls
+                return {"choices": [{"message": msg}]}
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")[:500]
+                if exc.code in retryable and attempt < 3:
+                    time.sleep(1.0 * (2 ** attempt))
+                    continue
+                if exc.code == 503:
+                    raise RuntimeError("Gemini временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
+                raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
+            except urllib.error.URLError as exc:
+                if attempt < 3:
+                    time.sleep(1.0 * (2 ** attempt))
+                    continue
+                raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
+        raise RuntimeError("Gemini временно недоступен после нескольких попыток.")
 
     def _extract(self, body: dict) -> dict:
         try:
