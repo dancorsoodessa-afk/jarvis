@@ -55,6 +55,9 @@ class OpenAIChatProvider:
         if parsed.scheme != "https" or parsed.hostname not in allowed_hosts or not parsed.path.endswith("/chat/completions"):
             raise RuntimeError("Разрешены только защищённые официальные endpoint Gemini и Groq.")
 
+    def _provider_name(self) -> str:
+        return "Groq" if urllib.parse.urlsplit(self.url).hostname == "api.groq.com" else "Gemini"
+
     def _messages(self, prompt) -> list[dict]:
         messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
@@ -120,7 +123,7 @@ class OpenAIChatProvider:
                     time.sleep(1.0 * (2 ** attempt))
                     continue
                 if exc.code == 503:
-                    raise RuntimeError("Gemini временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
+                    raise RuntimeError(f"{self._provider_name()} временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
                 raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
             except urllib.error.URLError as exc:
                 if attempt < 3:
@@ -129,7 +132,7 @@ class OpenAIChatProvider:
                 raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
                 raise RuntimeError("ИИ вернул некорректный JSON-ответ") from exc
-        raise RuntimeError("Gemini временно недоступен после нескольких попыток.")
+        raise RuntimeError(f"{self._provider_name()} временно недоступен после нескольких попыток.")
 
     def _models_url(self) -> str:
         parsed = urllib.parse.urlsplit(self.url)
