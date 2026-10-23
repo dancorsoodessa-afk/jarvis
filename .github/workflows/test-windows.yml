@@ -13,9 +13,11 @@ on:
       - "poetry.lock"
       - ".github/workflows/test-windows.yml"
   pull_request:
-    branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928]
+    branches: [foundation]
     paths:
       - "agent/**"
+      - "ui/**"
+      - "scripts/prepare_3d_assets.ps1"
       - "tests/**"
       - "jarvis_desktop.py"
       - "pyproject.toml"
