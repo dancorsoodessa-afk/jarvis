@@ -1025,9 +1025,28 @@ class JarvisDesktop(tk.Tk):
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
         tk.Label(shared_key_row, text="GEMINI API KEY (GOOGLE AI STUDIO)", bg="#091b29", fg=CYAN, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
-        shared_key = tk.Entry(shared_key_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•", exportselection=False)
+        shared_key = tk.Entry(shared_key_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="", exportselection=True)
         shared_key.insert(0, str(self.settings.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY", "")))
-        shared_key.pack(fill="x", padx=14, pady=(0, 12), ipady=7)
+        shared_key.pack(fill="x", padx=14, pady=(0, 6), ipady=8)
+        # Make paste reliable in packaged Tkinter builds and provide an explicit clipboard action.
+        def paste_gemini_key():
+            try:
+                value = self.clipboard_get().strip()
+                if value:
+                    shared_key.delete(0, "end")
+                    shared_key.insert(0, value)
+                    shared_key.icursor("end")
+                    shared_key.focus_set()
+            except tk.TclError:
+                messagebox.showwarning("Буфер обмена", "Не удалось прочитать ключ из буфера обмена.", parent=win)
+        paste_row = tk.Frame(shared_key_row, bg="#091b29")
+        paste_row.pack(fill="x", padx=14, pady=(0, 12))
+        tk.Button(paste_row, text="ВСТАВИТЬ ИЗ БУФЕРА", command=paste_gemini_key,
+                  bg="#0e667a", fg=TEXT, activebackground="#148aa1", relief="flat", padx=12, pady=6).pack(side="left")
+        tk.Label(paste_row, text="Ctrl+V также поддерживается; ключ сохраняется локально.",
+                 bg="#091b29", fg=MUTED, font=("Segoe UI", 8)).pack(side="left", padx=10)
+        shared_key.bind("<Control-v>", lambda _e: self.after(20, lambda: shared_key.icursor("end")))
+        shared_key.bind("<Control-V>", lambda _e: self.after(20, lambda: shared_key.icursor("end")))
 
         additional_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
         additional_row.pack(fill="x", pady=(2, 10))
