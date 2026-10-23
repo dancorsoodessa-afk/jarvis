@@ -6,28 +6,28 @@ from agent.providers.openai_chat import OpenAIChatProvider
 
 
 class TestCloudOnlyConfiguration(unittest.TestCase):
-    def test_provider_is_always_huggingface(self):
-        for value in (None, "", "huggingface", "openai", "openrouter", "local-vulkan", "ollama"):
-            self.assertEqual(normalize_provider(value), "huggingface")
+    def test_provider_is_always_gemini(self):
+        for value in (None, "", "gemini", "openai", "openrouter", "local-vulkan", "ollama"):
+            self.assertEqual(normalize_provider(value), "gemini")
 
-    def test_endpoint_is_always_huggingface(self):
+    def test_endpoint_is_always_gemini(self):
         self.assertEqual(normalize_chat_url(""), DEFAULT_CHAT_URL)
         self.assertEqual(normalize_chat_url("http://localhost:11434/v1/chat/completions"), DEFAULT_CHAT_URL)
         self.assertEqual(normalize_chat_url("https://openrouter.ai/api/v1/chat/completions"), DEFAULT_CHAT_URL)
 
     def test_settings_do_not_expose_local_model_fields(self):
         settings = Settings.from_env()
-        self.assertEqual(settings.provider, "huggingface")
+        self.assertEqual(settings.provider, "gemini")
         self.assertEqual(settings.chat_url, DEFAULT_CHAT_URL)
         self.assertFalse(hasattr(settings, "llama_cli"))
         self.assertFalse(hasattr(settings, "use_local"))
 
-    def test_provider_rejects_non_huggingface_endpoint(self):
+    def test_provider_rejects_non_gemini_endpoint(self):
         provider = OpenAIChatProvider(url="http://127.0.0.1:1234/v1/chat/completions", api_key="test", model="test")
-        with self.assertRaisesRegex(RuntimeError, "только через HTTPS API Hugging Face"):
+        with self.assertRaisesRegex(RuntimeError, "использует только защищённый официальный Gemini API Google"):
             provider._ensure_endpoint()
 
-    def test_provider_defaults_to_huggingface_endpoint(self):
+    def test_provider_defaults_to_gemini_endpoint(self):
         provider = OpenAIChatProvider(url="", api_key="test", model="test")
         provider._ensure_endpoint()
         self.assertEqual(provider.url, DEFAULT_CHAT_URL)

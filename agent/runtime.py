@@ -28,12 +28,12 @@ def _send_email(to: str, subject: str, body: str) -> str:
 
 def build_agent(settings: Settings | None = None) -> JarvisAgent:
     settings=settings or Settings.from_env(); log=get_log("runtime"); log.info("Старт агента (provider=%s)",settings.provider); memory=MemoryStore(settings.memory_path)
-    if settings.provider == "huggingface":
+    if settings.provider == "gemini":
         session = SessionMemory(memory)
         history = session.load_history()
-        shared_url = "https://router.huggingface.co/v1/chat/completions"
-        shared_key = settings.chat_key or __import__("os").environ.get("HF_TOKEN", "")
-        default_model = settings.chat_model or "Qwen/Qwen2.5-7B-Instruct"
+        shared_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        shared_key = settings.chat_key or __import__("os").environ.get("GEMINI_API_KEY", "")
+        default_model = settings.chat_model or "gemini-3.8-flash"
         fast = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.fast_model or default_model,
                                   history=history, fallback_models=[settings.reasoning_model, settings.coding_model, settings.additional_model])
         reasoning = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.reasoning_model or default_model,
@@ -44,7 +44,7 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
                                         history=history, fallback_models=[settings.fast_model, settings.reasoning_model, settings.coding_model])
         provider = RoleRouterProvider({"fast": fast, "reasoning": reasoning, "coding": coding, "additional": additional})
     else:
-        raise RuntimeError("JARVIS поддерживает только Hugging Face Inference API.")
+        raise RuntimeError("JARVIS поддерживает только Gemini API Google.")
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
     tools=ToolRegistry()
     tools.register("inspect_file",universal.inspect_file,description="Прочитать и проанализировать локальный файл: TXT, MD, CSV, JSON, XML, Python, PDF, DOCX, XLSX и другие поддерживаемые форматы.",parameters={"path":"путь к файлу или папке"})

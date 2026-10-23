@@ -1,12 +1,10 @@
-"""Cloud-only text-to-speech via ElevenLabs.
-
-No local TTS model or executable is bundled. Speech output is optional and requires
-an ElevenLabs API key; text chat remains usable without it.
-"""
+"""Keyless Windows speech output; optional ElevenLabs remains supported."""
 from __future__ import annotations
 
+import base64
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -19,6 +17,7 @@ from pathlib import Path
 _PLAYBACK_LOCK = threading.Lock()
 _PLAYBACK_ACTIVE = False
 _PLAYBACK_TOKEN = 0
+_PLAYBACK_PROCESS = None
 DEFAULT_ELEVEN_VOICE = "srULqtwUV9XZPg1ZCO5w"
 DEFAULT_ELEVEN_MODEL = "eleven_flash_v2_5"
 
@@ -32,39 +31,58 @@ def _eleven_voice() -> str:
 
 
 def available_engines() -> list[str]:
-    return ["elevenlabs"] if _eleven_key() and _eleven_voice() else []
+    result = ["windows"] if sys.platform == "win32" else []
+    if _eleven_key() and _eleven_voice():
+        result.append("elevenlabs")
+    return result
 
 
 def current_engine() -> str:
     mode = os.environ.get("JARVIS_TTS", "auto").strip().lower()
     if mode == "off":
         return "off"
-    if mode in {"auto", "elevenlabs", "cloud"}:
-        return "elevenlabs" if available_engines() else "off"
-    raise RuntimeError("Поддерживается только облачный TTS ElevenLabs; локальные движки отключены.")
+    if mode in {"auto", "windows", "system"}:
+        if sys.platform == "win32":
+            return "windows"
+        if mode in {"windows", "system"}:
+            raise RuntimeError("Системная озвучка доступна только в Windows.")
+        return "elevenlabs" if _eleven_key() else "off"
+    if mode in {"elevenlabs", "cloud"}:
+        return "elevenlabs" if _eleven_key() else "off"
+    raise RuntimeError("Выберите windows, elevenlabs или off для озвучки.")
 
 
 def set_gender(gender: str) -> None:
-    value = str(gender).strip().lower()
-    if value not in {"male", "мужской", ""}:
-        raise ValueError("Для выбранного облачного голоса доступна текущая конфигурация голоса.")
+    if str(gender).strip().lower() not in {"male", "мужской", ""}:
+        raise ValueError("Для текущей конфигурации доступен установленный системный голос Windows.")
 
 
 def stop() -> None:
-    global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN
+    global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PROCESS
+    with _PLAYBACK_LOCK:
+        _PLAYBACK_TOKEN += 1
+        process = _PLAYBACK_PROCESS
+        _PLAYBACK_PROCESS = None
+        _PLAYBACK_ACTIVE = False
+    if process is not None:
+        try:
+            process.terminate()
+        except Exception:
+            pass
     if sys.platform == "win32":
         try:
             import winsound
             winsound.PlaySound(None, 0)
         except Exception:
             pass
-    with _PLAYBACK_LOCK:
-        _PLAYBACK_TOKEN += 1
-        _PLAYBACK_ACTIVE = False
 
 
 def is_playing() -> bool:
+    global _PLAYBACK_ACTIVE, _PLAYBACK_PROCESS
     with _PLAYBACK_LOCK:
+        if _PLAYBACK_PROCESS is not None and _PLAYBACK_PROCESS.poll() is not None:
+            _PLAYBACK_PROCESS = None
+            _PLAYBACK_ACTIVE = False
         return _PLAYBACK_ACTIVE
 
 
@@ -79,31 +97,22 @@ def speak(text: str) -> Path:
     if not text:
         raise RuntimeError("Пустой текст для озвучки.")
     if current_engine() != "elevenlabs":
-        raise RuntimeError("Облачная озвучка выключена или не настроена. Задайте ELEVENLABS_API_KEY.")
+        raise RuntimeError("Создание аудиофайла доступно только при включённом ElevenLabs.")
     voice = _eleven_voice()
     model = os.environ.get("JARVIS_ELEVENLABS_MODEL", DEFAULT_ELEVEN_MODEL).strip()
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}?output_format=pcm_22050"
-    payload = json.dumps({
-        "text": text,
-        "model_id": model,
-        "language_code": "ru",
-        "voice_settings": {"stability": 0.5, "similarity_boost": 0.8, "style": 0.0, "use_speaker_boost": True},
-    }).encode("utf-8")
-    request = urllib.request.Request(
-        url, data=payload,
-        headers={"xi-api-key": _eleven_key(), "Content-Type": "application/json", "Accept": "audio/pcm"},
-        method="POST",
-    )
+    payload = json.dumps({"text": text, "model_id": model, "language_code": "ru"}).encode("utf-8")
+    request = urllib.request.Request(url, data=payload, headers={"xi-api-key": _eleven_key(), "Content-Type": "application/json", "Accept": "audio/pcm"}, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=45) as response:
             pcm = response.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:400]
-        raise RuntimeError(f"Ошибка облачной озвучки: HTTP {exc.code}. {detail}") from exc
+        raise RuntimeError(f"Ошибка ElevenLabs: HTTP {exc.code}. {detail}") from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"Не удалось подключиться к облачной озвучке: {exc.reason}") from exc
+        raise RuntimeError(f"Не удалось подключиться к ElevenLabs: {exc.reason}") from exc
     if not pcm:
-        raise RuntimeError("Сервис озвучки вернул пустой аудиофайл.")
+        raise RuntimeError("Сервис ElevenLabs вернул пустой аудиофайл.")
     out = _temp_wav()
     try:
         with wave.open(str(out), "wb") as wav:
@@ -117,34 +126,33 @@ def speak(text: str) -> Path:
     return out
 
 
-def speak_and_play(text: str) -> Path:
-    global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN
-    path = speak(text)
-    if sys.platform != "win32":
-        return path
-    import winsound
-    stop()
-    try:
-        with wave.open(str(path), "rb") as wav:
-            duration = wav.getnframes() / max(1, wav.getframerate())
-    except Exception:
-        duration = 0.0
-    with _PLAYBACK_LOCK:
-        token = _PLAYBACK_TOKEN
-        _PLAYBACK_ACTIVE = True
-    winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)
-
-    def _cleanup() -> None:
-        global _PLAYBACK_ACTIVE
-        if duration:
-            time.sleep(duration + 0.1)
+def speak_and_play(text: str):
+    global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PROCESS
+    text = " ".join(str(text).split())[:4000]
+    if not text:
+        raise RuntimeError("Пустой текст для озвучки.")
+    if current_engine() == "windows":
+        encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+        script = "Add-Type -AssemblyName System.Speech; $b=[Convert]::FromBase64String('" + encoded + "'); $t=[Text.Encoding]::UTF8.GetString($b); $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak($t); $s.Dispose()"
+        encoded_script = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+        stop()
+        process = subprocess.Popen(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded_script],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        )
         with _PLAYBACK_LOCK:
-            if _PLAYBACK_TOKEN == token:
-                _PLAYBACK_ACTIVE = False
-        try:
-            path.unlink()
-        except OSError:
-            pass
-
-    threading.Thread(target=_cleanup, daemon=True).start()
-    return path
+            _PLAYBACK_TOKEN += 1
+            token = _PLAYBACK_TOKEN
+            _PLAYBACK_PROCESS = process
+            _PLAYBACK_ACTIVE = True
+        def watch():
+            global _PLAYBACK_ACTIVE, _PLAYBACK_PROCESS
+            process.wait()
+            with _PLAYBACK_LOCK:
+                if _PLAYBACK_TOKEN == token:
+                    _PLAYBACK_PROCESS = None
+                    _PLAYBACK_ACTIVE = False
+        threading.Thread(target=watch, daemon=True).start()
+        return None
+    return speak(text)
