@@ -101,11 +101,11 @@ jobs:
               'implementation("androidx.appcompat:appcompat:1.6.1")',
           ]
           # Use a dedicated block instead of fragile text insertion into Flutter's generated block.
-          t += '\n\n// JARVIS native voice runtime dependencies (kept explicit for CI).\ndependencies {\n'
+          t += chr(10) + chr(10) + "// JARVIS native voice runtime dependencies (kept explicit for CI)." + chr(10) + "dependencies {" + chr(10)
           for dep in deps:
               if dep not in t:
-                  t += f'    {dep}\n'
-          t += '}\n'
+                  t += f'    {dep}' + chr(10)
+          t += '}' + chr(10)
           for dep in deps:
               if dep not in t:
                   raise SystemExit(f'Missing Gradle dependency declaration: {dep}')
@@ -120,7 +120,7 @@ jobs:
           t = p.read_text()
           for n in ['android.permission.INTERNET', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS', 'android.permission.FOREGROUND_SERVICE', 'android.permission.FOREGROUND_SERVICE_MICROPHONE', 'android.permission.POST_NOTIFICATIONS']:
               if n not in t:
-                  t = t.replace('</manifest>', f'    <uses-permission android:name="{n}" />\n</manifest>', 1)
+                  t = t.replace('</manifest>', f'    <uses-permission android:name="{n}" />' + chr(10) + '</manifest>', 1)
           p.write_text(t)
           PY
           echo "=== Verify Sherpa JVM classes ==="
