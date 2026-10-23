@@ -39,7 +39,6 @@ jobs:
           set -euo pipefail
           rm -rf android
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
-          rm -rf test
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
           echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
@@ -146,10 +145,13 @@ jobs:
           grep -q "__MIC_LEVEL__" android_main_activity.kt
           grep -q "microphone_permission_missing" android_main_activity.kt
           grep -q "silero_vad.onnx" android_main_activity.kt
-          grep -q "https://router.huggingface.co/v1" lib/main.dart
+          grep -q "https://router.huggingface.co/v1" lib/ai_config.dart
           ! grep -q "https://api.groq.com/openai/v1\|https://api.openai.com/v1" lib/main.dart
           ! grep -q "WakeClapService\|startWakeService\|WAKE_ACTION" android_main_activity.kt
           ! grep -R -q --exclude-dir=.git "double clap\|двойной хлоп" .
+      - name: Run Flutter tests
+        working-directory: ui
+        run: flutter test
       - name: Analyze Dart code
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
