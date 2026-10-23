@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 
-SUPPORTED_PROVIDERS = ("gemini",)
+SUPPORTED_PROVIDERS = ("gemini", "groq")
 DEFAULT_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 DEFAULT_MODEL = "gemini-3.8-flash"
 
@@ -24,6 +24,10 @@ class Settings:
     reasoning_model: str = DEFAULT_MODEL
     coding_model: str = DEFAULT_MODEL
     additional_model: str = DEFAULT_MODEL
+    gemini_timeout: int = 30
+    groq_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_timeout: int = 30
     memory_path: str = "jarvis_memory.json"
     kg_path: str | None = None
 
@@ -42,6 +46,10 @@ class Settings:
             reasoning_model=os.environ.get("JARVIS_REASONING_MODEL", default_model).strip() or default_model,
             coding_model=os.environ.get("JARVIS_CODING_MODEL", default_model).strip() or default_model,
             additional_model=os.environ.get("JARVIS_ADDITIONAL_MODEL", default_model).strip() or default_model,
+            gemini_timeout=int(os.environ.get("JARVIS_GEMINI_TIMEOUT", "30") or "30"),
+            groq_key=os.environ.get("GROQ_API_KEY", "").strip(),
+            groq_model=os.environ.get("JARVIS_GROQ_MODEL", "openai/gpt-oss-120b").strip() or "openai/gpt-oss-120b",
+            groq_timeout=int(os.environ.get("JARVIS_GROQ_TIMEOUT", "30") or "30"),
             memory_path=os.environ.get("JARVIS_MEMORY", "jarvis_memory.json").strip() or "jarvis_memory.json",
             kg_path=os.environ.get("JARVIS_KG"),
         )
