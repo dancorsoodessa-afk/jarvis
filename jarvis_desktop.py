@@ -51,9 +51,6 @@ _SECRET_SETTING_KEYS = {
     "api_key",
     "gemini_api_key",
     "hf_token",
-    
-    
-    "elevenlabs_api_key",
 }
 
 def _transform_settings_secrets(value, transform):
@@ -177,21 +174,21 @@ class JarvisDesktop(tk.Tk):
         self.settings.setdefault("voice_enabled", True)
         self.settings.setdefault("tts_enabled", True)
         self.settings.setdefault("tts_gender", "male")
-        self.settings.setdefault("tts_engine", "auto")
-        self.settings.setdefault("tts_voice", "Windows system voice")
-        self.settings.setdefault("elevenlabs_api_key", os.environ.get("JARVIS_ELEVENLABS_API_KEY", ""))
-        self.settings.setdefault("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w")
-        self.settings.setdefault("elevenlabs_model", "eleven_flash_v2_5")
-        os.environ["JARVIS_ELEVENLABS_API_KEY"] = self.settings.get("elevenlabs_api_key", "")
-        os.environ["JARVIS_ELEVENLABS_VOICE_ID"] = self.settings.get("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w")
-        os.environ["JARVIS_ELEVENLABS_MODEL"] = self.settings.get("elevenlabs_model", "eleven_flash_v2_5")
-        tts_engine = str(self.settings.get("tts_engine", "auto")).strip().lower() or "auto"
-        if tts_engine == "piper":
-            tts_engine = "auto"
-        if tts_engine not in {"auto", "windows", "system", "elevenlabs", "cloud", "off"}:
-            tts_engine = "auto"
+        # Remove obsolete ElevenLabs settings from legacy profiles and persisted settings.
+        for obsolete in ("elevenlabs_api_key", "elevenlabs_voice_id", "elevenlabs_model"):
+            self.settings.pop(obsolete, None)
+        self.settings.setdefault("tts_engine", "gemini")
+        self.settings.setdefault("tts_voice", "Charon")
+        self.settings.setdefault("tts_model", "gemini-3.8-flash-tts")
+        self.settings.setdefault("tts_timeout", "45")
+        tts_engine = str(self.settings.get("tts_engine", "gemini")).strip().lower() or "gemini"
+        if tts_engine not in {"gemini", "off"}:
+            tts_engine = "gemini"
         self.settings["tts_engine"] = tts_engine
         os.environ["JARVIS_TTS"] = tts_engine
+        os.environ["JARVIS_TTS_VOICE"] = str(self.settings.get("tts_voice") or "Charon")
+        os.environ["JARVIS_TTS_MODEL"] = str(self.settings.get("tts_model") or "gemini-3.8-flash-tts")
+        os.environ["JARVIS_TTS_TIMEOUT"] = str(self.settings.get("tts_timeout") or "45")
 
     def _save_settings(self):
         APP_DIR.mkdir(parents=True, exist_ok=True)
@@ -282,7 +279,6 @@ class JarvisDesktop(tk.Tk):
         nav("◎  OSINT / НАБЛЮДЕНИЕ", lambda: self._open_module_details("osint","OSINT-инструменты","Инструменты разведки и поиска",True))
         nav("📎  ФАЙЛЫ И ВЛОЖЕНИЯ", self.pick_attachments)
         nav("🎙  ГОЛОСОВОЙ РЕЖИМ", self.start_voice)
-        nav("📷  ПРОВЕРИТЬ ВЕБ-КАМЕРУ", lambda: self._command_from_hud("Проверь веб-камеру и обнаружь лицо через инструмент face_check. Сообщи результат проверки."))
 
         tk.Frame(side, bg="#183044", height=1).pack(fill="x", padx=14, pady=14)
         tk.Label(side, text="СОСТОЯНИЕ МОДУЛЕЙ", bg="#070d16", fg=MUTED,
@@ -1109,11 +1105,10 @@ class JarvisDesktop(tk.Tk):
                  font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 6))
         voice_fields = {}
         for label, key, default, secret in (
-            ("Движок TTS", "tts_engine", self.settings.get("tts_engine", "auto"), False),
-            ("Название голоса", "tts_voice", self.settings.get("tts_voice", "Windows system voice"), False),
-            ("ElevenLabs API-ключ", "elevenlabs_api_key", self.settings.get("elevenlabs_api_key", ""), True),
-            ("ElevenLabs Voice ID", "elevenlabs_voice_id", self.settings.get("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w"), False),
-            ("ElevenLabs модель", "elevenlabs_model", self.settings.get("elevenlabs_model", "eleven_flash_v2_5"), False),
+            ("Облачный TTS", "tts_engine", self.settings.get("tts_engine", "gemini"), False),
+            ("Голос Gemini", "tts_voice", self.settings.get("tts_voice", "Charon"), False),
+            ("Модель TTS", "tts_model", self.settings.get("tts_model", "gemini-3.8-flash-tts"), False),
+            ("Тайм-аут TTS, сек.", "tts_timeout", self.settings.get("tts_timeout", "45"), False),
         ):
             row = tk.Frame(voice_frame, bg="#091b29")
             row.pack(fill="x", padx=14, pady=4)
@@ -1141,8 +1136,8 @@ class JarvisDesktop(tk.Tk):
             self.settings["tts_enabled"] = bool(tts_var.get())
             for k, e in voice_fields.items():
                 self.settings[k] = e.get().strip()
-            if self.settings.get("tts_engine", "auto").strip().lower() not in {"auto", "windows", "system", "elevenlabs", "cloud", "off"}:
-                self.settings["tts_engine"] = "auto"
+            if self.settings.get("tts_engine", "gemini").strip().lower() not in {"gemini", "off"}:
+                self.settings["tts_engine"] = "gemini"
             self._apply_saved_settings()
             self._save_settings()
             win.destroy()
