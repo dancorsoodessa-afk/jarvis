@@ -462,6 +462,12 @@ class JarvisDesktop(tk.Tk):
             if tts.is_playing():
                 tts.stop()
                 self.events.put(("voice_status", "Перебивание: TTS остановлен, слушаю вас."))
+        last_level_event = [0.0]
+        def on_audio_level(level):
+            now = time.monotonic()
+            if now - last_level_event[0] >= 0.08:
+                last_level_event[0] = now
+                self.events.put(("audio_level", max(0.0, min(1.0, float(level)))))
         def work():
             wake_words = ("jarvis", "джарвис")
             while self._voice_loop_running and self.settings.get("voice_enabled", True):
@@ -471,7 +477,9 @@ class JarvisDesktop(tk.Tk):
                         max_seconds=10.0,
                         start_timeout=2.0,
                         on_speech_start=on_speech_start,
+                        on_audio_level=on_audio_level,
                     )
+                    self.events.put(("voice_capture_done",))
                     if not heard or not self._voice_loop_running:
                         continue
                     normalized = " ".join(heard.lower().split())
@@ -490,7 +498,9 @@ class JarvisDesktop(tk.Tk):
                             max_seconds=10.0,
                             start_timeout=4.0,
                             on_speech_start=on_speech_start,
+                            on_audio_level=on_audio_level,
                         )
+                        self.events.put(("voice_capture_done",))
                     elif not activated and time.monotonic() < self._voice_armed_until:
                         command = normalized
                     else:
@@ -591,7 +601,6 @@ class JarvisDesktop(tk.Tk):
                         self._replace_streaming_reply(self._streaming_reply)
                     elif kind == "reply":
                         reply = event[1]
-                        self._set_visual_state("SPEAKING", 0.65)
                         if getattr(self, "_streaming_reply", ""):
                             self._replace_streaming_reply(reply, final=True)
                         else:
@@ -601,9 +610,24 @@ class JarvisDesktop(tk.Tk):
                         self.send_button.config(state="normal")
                         self.attach_button.config(state="normal")
                         self.status.config(text="● ONLINE", fg=GREEN)
-                        self._set_visual_state("IDLE", 0.0)
                         if self.settings.get("tts_enabled", True):
+                            self._set_visual_state("SPEAKING", 0.65)
                             threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
+                        else:
+                            self._set_visual_state("IDLE", 0.0)
+                    elif kind == "audio_level":
+                        if not self.busy and self._visual_state not in {"THINKING", "SPEAKING", "ERROR"}:
+                            self._set_visual_state("LISTENING", event[1])
+                        else:
+                            self._visual_level = max(0.0, min(1.0, float(event[1])))
+                    elif kind == "voice_capture_done":
+                        if not self.busy and self._visual_state == "LISTENING":
+                            self._set_visual_state("IDLE", 0.0)
+                    elif kind == "tts_started":
+                        self._set_visual_state("SPEAKING", 0.7)
+                    elif kind == "tts_done":
+                        if not self.busy:
+                            self._set_visual_state("IDLE", 0.0)
                     elif kind == "voice_text":
                         self._set_visual_state("LISTENING", 0.75)
                         if self.busy:
@@ -661,7 +685,9 @@ class JarvisDesktop(tk.Tk):
         # This function runs on a worker thread. Never call Tk widgets here:
         # Tkinter is not thread-safe and a UI exception used to prevent TTS itself.
         try:
+            self.events.put(("tts_started",))
             tts.speak_and_play(text)
+            self.events.put(("tts_done",))
         except Exception as exc:
             self.events.put(("tts_error", str(exc)))
 
