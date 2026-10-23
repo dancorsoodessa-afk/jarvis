@@ -36,7 +36,7 @@ jobs:
       - name: Generate Android platform
         working-directory: ui
         run: |
-          set -e
+          set -euo pipefail
           rm -rf android
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
           rm -rf test
@@ -49,7 +49,7 @@ jobs:
       - name: Install native Android voice engine
         working-directory: ui
         run: |
-          set -e
+          set -euo pipefail
           root=android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
           mkdir -p "$root"
           cp android_main_activity.kt "$root/MainActivity.kt"
@@ -74,35 +74,59 @@ jobs:
       - name: Install isolated crypto modules
         working-directory: ui
         run: |
+          set -euo pipefail
           mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/crypto/providers
           cp crypto/*.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/crypto/
           cp crypto/providers/*.kt android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/crypto/providers/
       - name: Configure Android
         working-directory: ui
         run: |
-          set -e
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('android/settings.gradle.kts')
-          t=p.read_text()
-          t=t.replace('maven { url = uri("https://jitpack.io") }', '')
           import re
-          t=re.sub(r'(dependencyResolutionManagement \{.*?repositories \{)', r'\1\n        maven { url = uri("https://jitpack.io") }', t, count=1, flags=re.S)
+          p = Path('android/settings.gradle.kts')
+          t = p.read_text()
+          t = t.replace('maven { url = uri("https://jitpack.io") }', '')
+          t = re.sub(r'(dependencyResolutionManagement \\{.*?repositories \\{)', r'\\1\\n        maven { url = uri("https://jitpack.io") }', t, count=1, flags=re.S)
           p.write_text(t)
-          p=Path('android/app/build.gradle.kts')
-          t=p.read_text()
-          t=t.replace('applicationId = "com.dancorsoodessa.jarvis_ui"','applicationId = "com.dancorsoodessa.jarvis"')
-          for dep in ['implementation(files("libs/sherpa-onnx-1.13.8.aar"))','implementation(files("libs/sherpa-onnx-jvm-1.13.8.jar"))','implementation("androidx.core:core-ktx:1.12.0")','implementation("androidx.appcompat:appcompat:1.6.1")']:
-              if dep not in t: t=t.replace('dependencies {','dependencies {\n    '+dep,1)
+
+          p = Path('android/app/build.gradle.kts')
+          t = p.read_text()
+          t = t.replace('applicationId = "com.dancorsoodessa.jarvis_ui"', 'applicationId = "com.dancorsoodessa.jarvis"')
+          deps = [
+              'implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))',
+              'implementation(files("$projectDir/libs/sherpa-onnx-jvm-1.13.8.jar"))',
+              'implementation("androidx.core:core-ktx:1.12.0")',
+              'implementation("androidx.appcompat:appcompat:1.6.1")',
+          ]
+          # Use a dedicated block instead of fragile text insertion into Flutter's generated block.
+          t += '\\n\\n// JARVIS native voice runtime dependencies (kept explicit for CI).\\ndependencies {\\n'
+          for dep in deps:
+              if dep not in t:
+                  t += f'    {dep}\\n'
+          t += '}\\n'
+          for dep in deps:
+              if dep not in t:
+                  raise SystemExit(f'Missing Gradle dependency declaration: {dep}')
+          for f in ['android/app/libs/sherpa-onnx-1.13.8.aar', 'android/app/libs/sherpa-onnx-jvm-1.13.8.jar']:
+              if not Path(f).is_file() or Path(f).stat().st_size < 1000:
+                  raise SystemExit(f'Missing or invalid Sherpa artifact: {f}')
           p.write_text(t)
-          p=Path('pubspec.yaml'); p.write_text(p.read_text().replace('version: 0.1.0','version: 0.1.2',1))
-          p=Path('android/app/src/main/AndroidManifest.xml'); t=p.read_text()
-          for n in ['android.permission.INTERNET','android.permission.RECORD_AUDIO','android.permission.MODIFY_AUDIO_SETTINGS','android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_MICROPHONE','android.permission.POST_NOTIFICATIONS']:
+
+          p = Path('pubspec.yaml')
+          p.write_text(p.read_text().replace('version: 0.1.0', 'version: 0.1.2', 1))
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          t = p.read_text()
+          for n in ['android.permission.INTERNET', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS', 'android.permission.FOREGROUND_SERVICE', 'android.permission.FOREGROUND_SERVICE_MICROPHONE', 'android.permission.POST_NOTIFICATIONS']:
               if n not in t:
-                  marker='</manifest>'
-                  t=t.replace(marker, f'    <uses-permission android:name="{n}" />\n'+marker, 1)
+                  t = t.replace('</manifest>', f'    <uses-permission android:name="{n}" />\\n</manifest>', 1)
           p.write_text(t)
           PY
+          echo "=== Verify Sherpa JVM classes ==="
+          jar tf android/app/libs/sherpa-onnx-jvm-1.13.8.jar | grep -E '^com/k2fsa/sherpa/onnx/(OnlineRecognizer|Vad|OfflineTts)\\.class$'
+          echo "=== Verify Gradle declarations ==="
+          grep -n 'sherpa-onnx' android/app/build.gradle.kts
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
@@ -116,8 +140,8 @@ jobs:
           grep -q "__MIC_LEVEL__" android_main_activity.kt
           grep -q "microphone_permission_missing" android_main_activity.kt
           grep -q "silero_vad.onnx" android_main_activity.kt
-          ! grep -q "WakeClapService\|startWakeService\|WAKE_ACTION" android_main_activity.kt
-          ! grep -R -q --exclude-dir=.git "double clap\|двойной хлоп" .
+          ! grep -q "WakeClapService\\|startWakeService\\|WAKE_ACTION" android_main_activity.kt
+          ! grep -R -q --exclude-dir=.git "double clap\\|двойной хлоп" .
       - name: Analyze Dart code
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
@@ -136,7 +160,7 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$apk"
           "$ZIPALIGN" -c -v 4 "$apk"
           unzip -l "$apk" | grep -q "lib/arm64-v8a/"
-          ! unzip -l "$apk" | grep -q "lib/armeabi-v7a/\|lib/x86_64/"
+          ! unzip -l "$apk" | grep -q "lib/armeabi-v7a/\\|lib/x86_64/"
           "$AAPT" dump badging "$apk" | tee apk-manifest.txt
           grep -q "^package: name='com.dancorsoodessa.jarvis'" apk-manifest.txt
           grep -q "versionName='0.1.2'" apk-manifest.txt
