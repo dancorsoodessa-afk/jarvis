@@ -88,7 +88,7 @@ jobs:
           p = Path('android/settings.gradle.kts')
           t = p.read_text()
           t = t.replace('maven { url = uri("https://jitpack.io") }', '')
-          t = re.sub(r'(dependencyResolutionManagement \\{.*?repositories \\{)', r'\\1\\n        maven { url = uri("https://jitpack.io") }', t, count=1, flags=re.S)
+          t = t.replace('repositories {', 'repositories {\n        maven { url = uri("https://jitpack.io") }', 1)
           p.write_text(t)
 
           p = Path('android/app/build.gradle.kts')
@@ -101,11 +101,11 @@ jobs:
               'implementation("androidx.appcompat:appcompat:1.6.1")',
           ]
           # Use a dedicated block instead of fragile text insertion into Flutter's generated block.
-          t += '\\n\\n// JARVIS native voice runtime dependencies (kept explicit for CI).\\ndependencies {\\n'
+          t += '\n\n// JARVIS native voice runtime dependencies (kept explicit for CI).\ndependencies {\n'
           for dep in deps:
               if dep not in t:
-                  t += f'    {dep}\\n'
-          t += '}\\n'
+                  t += f'    {dep}\n'
+          t += '}\n'
           for dep in deps:
               if dep not in t:
                   raise SystemExit(f'Missing Gradle dependency declaration: {dep}')
@@ -120,7 +120,7 @@ jobs:
           t = p.read_text()
           for n in ['android.permission.INTERNET', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS', 'android.permission.FOREGROUND_SERVICE', 'android.permission.FOREGROUND_SERVICE_MICROPHONE', 'android.permission.POST_NOTIFICATIONS']:
               if n not in t:
-                  t = t.replace('</manifest>', f'    <uses-permission android:name="{n}" />\\n</manifest>', 1)
+                  t = t.replace('</manifest>', f'    <uses-permission android:name="{n}" />\n</manifest>', 1)
           p.write_text(t)
           PY
           echo "=== Verify Sherpa JVM classes ==="
@@ -140,8 +140,8 @@ jobs:
           grep -q "__MIC_LEVEL__" android_main_activity.kt
           grep -q "microphone_permission_missing" android_main_activity.kt
           grep -q "silero_vad.onnx" android_main_activity.kt
-          ! grep -q "WakeClapService\\|startWakeService\\|WAKE_ACTION" android_main_activity.kt
-          ! grep -R -q --exclude-dir=.git "double clap\\|двойной хлоп" .
+          ! grep -q "WakeClapService\|startWakeService\|WAKE_ACTION" android_main_activity.kt
+          ! grep -R -q --exclude-dir=.git "double clap\|двойной хлоп" .
       - name: Analyze Dart code
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
