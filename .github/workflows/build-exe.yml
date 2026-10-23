@@ -49,6 +49,7 @@ jobs:
           if-no-files-found: error
 
       - name: Опубликовать прямой EXE-релиз
+        if: github.ref == 'refs/heads/foundation'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
