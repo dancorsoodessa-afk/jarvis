@@ -211,6 +211,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     setState(() {
       _heardText = text;
       _status = _wakeArmed ? 'Слышу команду: $text' : 'Слышу: $text';
+      if (isFinal) _voiceLevel = 0.0;
     });
     _setVisual(JarvisVisualState.listening);
     if (!isFinal) return;
