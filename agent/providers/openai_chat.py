@@ -5,6 +5,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+import time
 from typing import Optional
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -104,17 +105,29 @@ class OpenAIChatProvider:
 
     def _request(self, payload: dict) -> dict:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(self.url, data=data, headers=self._auth_headers())
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:500]
-            raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise RuntimeError("ИИ вернул некорректный JSON-ответ") from exc
+        headers = self._auth_headers()
+        retryable = {429, 500, 502, 503, 504}
+        for attempt in range(4):
+            req = urllib.request.Request(self.url, data=data, headers=headers)
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")[:500]
+                if exc.code in retryable and attempt < 3:
+                    time.sleep(1.0 * (2 ** attempt))
+                    continue
+                if exc.code == 503:
+                    raise RuntimeError("Gemini временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
+                raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
+            except urllib.error.URLError as exc:
+                if attempt < 3:
+                    time.sleep(1.0 * (2 ** attempt))
+                    continue
+                raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                raise RuntimeError("ИИ вернул некорректный JSON-ответ") from exc
+        raise RuntimeError("Gemini временно недоступен после нескольких попыток.")
 
     def _models_url(self) -> str:
         parsed = urllib.parse.urlsplit(self.url)
@@ -197,6 +210,8 @@ class OpenAIChatProvider:
                             dst["function"]["arguments"] += fn["arguments"]
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:500]
+            if exc.code == 503:
+                raise RuntimeError("Gemini временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
             raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
