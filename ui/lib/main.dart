@@ -397,7 +397,19 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _send(String text, {bool speakReply = false}) async {
     text = text.trim();
-    if (text.isEmpty || _jarvis == null || _busy) return;
+    if (text.isEmpty || _busy) return;
+    if (_jarvis == null) {
+      const message = 'AI не подключён. Откройте настройки и подключите Gemini.';
+      if (mounted) {
+        setState(() {
+          _status = message;
+          _messages.add(_Msg(message, isUser: false));
+        });
+        _setVisual(JarvisVisualState.error);
+      }
+      if (speakReply) await _speak(message);
+      return;
+    }
     if (await _handleTimer(text)) { _input.clear(); return; }
     _input.clear();
     setState(() {
