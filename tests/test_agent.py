@@ -70,8 +70,8 @@ class TestAgent(unittest.TestCase):
 class TestSettings(unittest.TestCase):
     def test_free_provider_is_default(self):
         settings = Settings.from_env()
-        self.assertEqual(settings.provider, "huggingface")
-        self.assertEqual(settings.provider, "huggingface")
+        self.assertEqual(settings.provider, "gemini")
+        self.assertEqual(settings.provider, "gemini")
 
 
 class TestOpenAIChatProvider(unittest.TestCase):
