@@ -34,7 +34,7 @@ GitHub Actions also builds the Windows executables on pushes and pull requests t
 
 ## Быстрый старт для Windows
 
-Текущая Windows-сборка — однофайловое графическое приложение `release/JARVIS.exe`, создаваемое из `jarvis_desktop.py`. Отдельные `JARVIS Desktop.exe` и CLI EXE текущий workflow не выпускает.
+Текущая Windows-сборка — однофайловое графическое приложение `release/JARVIS.exe`, создаваемое из `jarvis_desktop.py`. Отдельные `JARVIS.exe` и CLI EXE текущий workflow не выпускает.
 
 ### Вариант A — готовый Windows-пакет
 
@@ -159,13 +159,13 @@ Get-ChildItem
 Запустить Desktop:
 
 ~~~
-.\\JARVIS Desktop.exe
+.\\JARVIS.exe
 ~~~
 
 Проверить, что EXE существует:
 
 ~~~
-Test-Path ".\\JARVIS Desktop.exe"
+Test-Path ".\\JARVIS.exe"
 ~~~
 
 ## AI provider — Hugging Face only
@@ -201,7 +201,7 @@ The Android workflow generates the Flutter Android platform during CI and builds
 Before publishing a release, verify:
 1. `git pull origin foundation`
 2. `powershell -ExecutionPolicy Bypass -File scripts\\build_exe.ps1`
-3. `dist\\jarvis.exe` starts and `/status`, `/calc`, `/now`, `/volume`, `/exit` work.
+3. `release\\JARVIS.exe` starts, the main window opens, settings save, and voice/tool smoke tests pass.
 4. Verify the Hugging Face token and model ID through environment variables.
 5. Run the Flutter UI smoke test if the UI is part of the release.
 6. Test the **Jarvis wake word** and TTS interruption on a real Windows microphone. No clap activation is used.
