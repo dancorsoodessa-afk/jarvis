@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $vendor = Join-Path (Get-Location) "ui\vendor"
 New-Item -ItemType Directory -Force -Path $vendor | Out-Null
 
-$base = "https://raw.githubusercontent.com/mrdoob/three.js/r180/build"
+$base = "https://raw.githubusercontent.com/mrdoob/three.js/0af9729d0c143a86a1d725d6e2c3ad83301f3f34/build"
 $files = @("three.module.js", "three.core.js")
 foreach ($file in $files) {
     $destination = Join-Path $vendor $file
@@ -15,4 +15,4 @@ foreach ($file in $files) {
         throw "Three.js engine asset is missing or incomplete: $destination"
     }
 }
-Write-Host "Three.js r180 assets are ready." -ForegroundColor Green
+Write-Host "Three.js r180 (pinned commit 0af9729d) assets are ready." -ForegroundColor Green
