@@ -547,7 +547,8 @@ class JarvisDesktop(tk.Tk):
         tts_engine = tts.current_engine()
         tts_ok = self.settings.get("tts_enabled", True) and tts_engine != "off"
         self.metrics["Voice"].config(text="ON" if stt_ok else "OFF", fg=GREEN if stt_ok else RED)
-        self.metrics["TTS"].config(text=tts_engine.upper() if tts_ok else "OFF", fg=GREEN if tts_ok else RED)
+        tts_label = "KEY SET" if tts_ok else "NO KEY"
+        self.metrics["TTS"].config(text=tts_label, fg=YELLOW if tts_ok else RED)
 
     def _drain_events(self):
         try:
@@ -626,6 +627,7 @@ class JarvisDesktop(tk.Tk):
                     elif kind == "tts_started":
                         self._set_visual_state("SPEAKING", 0.7)
                     elif kind == "tts_done":
+                        self.metrics["TTS"].config(text="ONLINE", fg=GREEN)
                         if not self.busy:
                             self._set_visual_state("IDLE", 0.0)
                     elif kind == "voice_text":
