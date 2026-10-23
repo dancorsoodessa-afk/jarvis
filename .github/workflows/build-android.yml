@@ -43,8 +43,6 @@ jobs:
           mkdir -p android/app/libs
           curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar -o android/app/libs/sherpa-onnx-1.13.8.aar
           echo "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  android/app/libs/sherpa-onnx-1.13.8.aar" | sha256sum -c -
-          curl -L --fail --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-jvm-1.13.8.jar -o android/app/libs/sherpa-onnx-jvm-1.13.8.jar
-          echo "77b7b047fade4eadada96b568eb92615049aaf1dc317c7244e46c1ea38b9a63b  android/app/libs/sherpa-onnx-jvm-1.13.8.jar" | sha256sum -c -
           test ! -e test/widget_test.dart
       - name: Install native Android voice engine
         working-directory: ui
@@ -96,7 +94,6 @@ jobs:
           t = t.replace('applicationId = "com.dancorsoodessa.jarvis_ui"', 'applicationId = "com.dancorsoodessa.jarvis"')
           deps = [
               'implementation(files("$projectDir/libs/sherpa-onnx-1.13.8.aar"))',
-              'implementation(files("$projectDir/libs/sherpa-onnx-jvm-1.13.8.jar"))',
               'implementation("androidx.core:core-ktx:1.12.0")',
               'implementation("androidx.appcompat:appcompat:1.6.1")',
           ]
@@ -109,7 +106,7 @@ jobs:
           for dep in deps:
               if dep not in t:
                   raise SystemExit(f'Missing Gradle dependency declaration: {dep}')
-          for f in ['android/app/libs/sherpa-onnx-1.13.8.aar', 'android/app/libs/sherpa-onnx-jvm-1.13.8.jar']:
+          for f in ['android/app/libs/sherpa-onnx-1.13.8.aar']:
               if not Path(f).is_file() or Path(f).stat().st_size < 1000:
                   raise SystemExit(f'Missing or invalid Sherpa artifact: {f}')
           p.write_text(t)
@@ -123,8 +120,9 @@ jobs:
                   t = t.replace('</manifest>', f'    <uses-permission android:name="{n}" />' + chr(10) + '</manifest>', 1)
           p.write_text(t)
           PY
-          echo "=== Verify Sherpa JVM classes ==="
-          jar tf android/app/libs/sherpa-onnx-jvm-1.13.8.jar | grep -F 'com/k2fsa/sherpa/onnx/OnlineRecognizer.class'
+          echo "=== Verify Sherpa Android AAR classes ==="
+          unzip -p android/app/libs/sherpa-onnx-1.13.8.aar classes.jar > /tmp/sherpa-classes.jar
+          jar tf /tmp/sherpa-classes.jar | grep -F 'com/k2fsa/sherpa/onnx/OnlineRecognizer.class'
           echo "=== Verify Gradle declarations ==="
           grep -n 'sherpa-onnx' android/app/build.gradle.kts
       - name: Get dependencies
