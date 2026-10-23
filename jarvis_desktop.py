@@ -443,6 +443,10 @@ class JarvisDesktop(tk.Tk):
         try:
             provider = getattr(agent, "provider", None)
             checks = provider.health_checks() if provider and hasattr(provider, "health_checks") else {}
+            try:
+                checks["TTS"] = tts.health_check()
+            except Exception as exc:
+                checks["TTS"] = "ERROR: " + str(exc)[:160]
             self.events.put(("provider_health", checks, generation))
         except Exception as exc:
             self.events.put(("provider_health", {"Gemini API": "ERROR: " + str(exc)[:160]}, generation))
