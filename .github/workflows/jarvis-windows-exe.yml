@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - foundation
+      - feature/gemini-cloud-provider
     paths:
       - "agent/**"
       - "tests/**"
