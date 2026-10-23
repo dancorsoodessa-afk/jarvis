@@ -44,8 +44,8 @@ jobs:
       - name: Publish versioned release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: windows-688
-          name: JARVIS Windows 688
+          tag_name: windows-${{ github.run_number }}
+          name: JARVIS Windows Build ${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           make_latest: true
           fail_on_unmatched_files: true
