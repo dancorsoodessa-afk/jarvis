@@ -95,6 +95,7 @@ def listen_for_phrase(
     max_seconds: float = 120.0,
     start_timeout: float = 4.0,
     on_speech_start=None,
+    on_audio_level=None,
 ) -> str:
     """Записать одну фразу автоматически по уровню речи и распознать её."""
     import numpy as np
@@ -125,6 +126,11 @@ def listen_for_phrase(
                     continue
                 block = np.asarray(data[:, 0], dtype=np.int16).copy()
                 level = _rms(block)
+                if on_audio_level:
+                    try:
+                        on_audio_level(level)
+                    except Exception:
+                        pass
                 if not started:
                     idle_blocks += 1
                     if level >= speech_threshold:
