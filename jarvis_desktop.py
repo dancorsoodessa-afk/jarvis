@@ -119,13 +119,13 @@ class JarvisDesktop(tk.Tk):
             "name": "JARVIS",
             "provider": "gemini",
             "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
-            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "gemini-2.5-flash",
+            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "gemini-3.8-flash",
             "api_key": self.settings.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY") or "",
         }
         defaults = {
             "0": legacy,
-            "1": {"name": "Gemini Reasoning", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-2.5-flash", "api_key": legacy["api_key"]},
-            "2": {"name": "Gemini Coding", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-2.5-flash", "api_key": legacy["api_key"]},
+            "1": {"name": "Gemini Reasoning", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-3.8-flash", "api_key": legacy["api_key"]},
+            "2": {"name": "Gemini Coding", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-3.8-flash", "api_key": legacy["api_key"]},
         }
         merged = {}
         for key, default in defaults.items():
@@ -137,7 +137,7 @@ class JarvisDesktop(tk.Tk):
             # A previous misconfiguration may have put the endpoint URL in Model.
             # Restore the profile's known-good model ID instead of sending the URL as "model".
             merged[key]["model"] = _safe_model_id(merged[key].get("model"), default["model"])
-            if merged[key]["model"] == "gemini-2.5-flash":
+            if merged[key]["model"] == "gemini-3.8-flash":
                 merged[key]["model"] = default["model"]
         profile = merged[str(active)]
         self.settings["active_agent"] = active
@@ -377,7 +377,7 @@ class JarvisDesktop(tk.Tk):
                       highlightthickness=1).pack(fill="x",padx=10,pady=3)
         tk.Label(right,text="AI-МАРШРУТИЗАЦИЯ",bg="#070d16",fg=MUTED,
                  font=("Consolas",8,"bold")).pack(anchor="w",padx=14,pady=(15,5))
-        tk.Label(right,text="Hugging Face Inference API\nОдин токен для всех моделей\nЛокальные инструменты и голос",
+        tk.Label(right,text="Google Gemini API\nЕдиный бесплатный ключ\nОблачный ИИ и распознавание речи",
                  bg="#070d16",fg="#8297a5",justify="left",font=("Segoe UI",8),wraplength=235).pack(anchor="w",padx=14)
     def _set_visual_state(self, state, level=None):
         self._visual_state = state
@@ -1016,9 +1016,9 @@ class JarvisDesktop(tk.Tk):
         active = int(self.settings.get("active_agent", 0) or 0)
         names = ("FAST / Обычные", "REASONING / Рассуждения", "CODING / Код")
         defaults = (
-            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
-            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
-            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
+            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
+            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
+            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
         )
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
@@ -1031,7 +1031,7 @@ class JarvisDesktop(tk.Tk):
         additional_row.pack(fill="x", pady=(2, 10))
         tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
         additional_model = tk.Entry(additional_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
-        additional_model.insert(0, str(self.settings.get("additional_model", "gemini-2.5-flash")))
+        additional_model.insert(0, str(self.settings.get("additional_model", "gemini-3.8-flash")))
         additional_model.pack(fill="x", padx=14, pady=(0, 12), ipady=6)
 
         entries = []
@@ -1090,11 +1090,11 @@ class JarvisDesktop(tk.Tk):
         def save():
             new_profiles = {}
             for i, fields in enumerate(entries):
-                new_profiles[str(i)] = {"provider": "gemini", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "gemini-2.5-flash", "api_key": shared_key.get().strip(), "name": names[i]}
+                new_profiles[str(i)] = {"provider": "gemini", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "gemini-3.8-flash", "api_key": shared_key.get().strip(), "name": names[i]}
             self.settings["agents"] = new_profiles
             self.settings["gemini_api_key"] = shared_key.get().strip()
             self.settings.pop("hf_token", None)
-            self.settings["additional_model"] = additional_model.get().strip() or "gemini-2.5-flash"
+            self.settings["additional_model"] = additional_model.get().strip() or "gemini-3.8-flash"
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
