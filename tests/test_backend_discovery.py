@@ -22,10 +22,14 @@ class TestCloudOnlyConfiguration(unittest.TestCase):
         self.assertFalse(hasattr(settings, "llama_cli"))
         self.assertFalse(hasattr(settings, "use_local"))
 
-    def test_provider_rejects_non_gemini_endpoint(self):
-        provider = OpenAIChatProvider(url="http://127.0.0.1:1234/v1/chat/completions", api_key="test", model="test")
-        with self.assertRaisesRegex(RuntimeError, "использует только защищённый официальный Gemini API Google"):
-            provider._ensure_endpoint()
+    def test_provider_rejects_unsupported_or_insecure_endpoint(self):
+        for url in (
+            "http://api.groq.com/openai/v1/chat/completions",
+            "https://openrouter.ai/api/v1/chat/completions",
+        ):
+            provider = OpenAIChatProvider(url=url, api_key="test", model="test")
+            with self.assertRaisesRegex(RuntimeError, "Разрешены только защищённые официальные endpoint Gemini и Groq"):
+                provider._ensure_endpoint()
 
     def test_provider_defaults_to_gemini_endpoint(self):
         provider = OpenAIChatProvider(url="", api_key="test", model="test")
