@@ -156,6 +156,13 @@ class OpenAIChatProvider:
                 body = json.loads(response.read().decode("utf-8"))
             if not isinstance(body, dict) or not isinstance(body.get("data"), list):
                 raise RuntimeError("Провайдер ответил, но формат списка моделей неожиданный.")
+            available = {
+                str(item.get("id", "")).strip()
+                for item in body["data"]
+                if isinstance(item, dict) and item.get("id")
+            }
+            if self.model and available and self.model not in available:
+                raise RuntimeError(f"Модель {self.model} отсутствует в списке доступных моделей этого ключа.")
             return "ONLINE"
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:250]
