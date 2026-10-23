@@ -97,15 +97,23 @@ jobs:
               'implementation("androidx.core:core-ktx:1.12.0")',
               'implementation("androidx.appcompat:appcompat:1.6.1")',
           ]
-          # Use a dedicated block instead of fragile text insertion into Flutter's generated block.
-          t += chr(10) + chr(10) + "// JARVIS native voice runtime dependencies (kept explicit for CI)." + chr(10) + "dependencies {" + chr(10)
+          # Put local AAR and AndroidX dependencies inside the app module's
+          # existing dependencies block so Gradle reliably adds them to the
+          # Kotlin compile classpath.
+          start = t.find("dependencies {")
+          if start < 0:
+              raise SystemExit("Gradle app module has no dependencies block")
+          end = t.find("\\n}", start)
+          if end < 0:
+              raise SystemExit("Could not locate end of Gradle dependencies block")
+          block = t[start:end]
+          missing = [dep for dep in deps if dep not in t]
+          if missing:
+              insertion = "".join("    " + dep + chr(10) for dep in missing)
+              t = t[:end] + chr(10) + insertion.rstrip() + t[end:]
           for dep in deps:
               if dep not in t:
-                  t += f'    {dep}' + chr(10)
-          t += '}' + chr(10)
-          for dep in deps:
-              if dep not in t:
-                  raise SystemExit(f'Missing Gradle dependency declaration: {dep}')
+                  raise SystemExit(f"Missing Gradle dependency declaration: {dep}")
           for f in ['android/app/libs/sherpa-onnx-1.13.8.aar']:
               if not Path(f).is_file() or Path(f).stat().st_size < 1000:
                   raise SystemExit(f'Missing or invalid Sherpa artifact: {f}')
