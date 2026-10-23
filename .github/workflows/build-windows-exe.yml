@@ -8,6 +8,7 @@ on:
       - 'jarvis_desktop.spec'
       - 'agent/**'
       - 'docs/**'
+      - 'ui/**'
       - '.github/workflows/build-windows-exe.yml'
   workflow_dispatch:
 
