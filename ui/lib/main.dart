@@ -413,6 +413,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> with SingleTickerProvid
       _busy = true;
       _streamText = '';
       _visualState = JarvisVisualState.thinking;
+      _voiceLevel = 0;
       _status = 'Думаю…';
     });
     try {
@@ -442,7 +443,10 @@ class _JarvisHomePageState extends State<JarvisHomePage> with SingleTickerProvid
 
   void _setVisual(JarvisVisualState state) {
     if (!mounted) return;
-    setState(() => _visualState = state);
+    setState(() {
+      _visualState = state;
+      if (state != JarvisVisualState.listening) _voiceLevel = 0;
+    });
     _visualTimer?.cancel();
   }
 
