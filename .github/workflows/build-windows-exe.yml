@@ -32,7 +32,7 @@ jobs:
       - name: Install build and runtime dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller requests pillow sounddevice numpy pycaw comtypes pypdf python-docx openpyxl opencv-python-headless==4.11.0.86
+          python -m pip install pyinstaller requests pillow sounddevice numpy pycaw comtypes pypdf python-docx openpyxl
       - name: Compile Python modules
         shell: pwsh
         run: |
@@ -41,7 +41,7 @@ jobs:
       - name: Smoke-test imports and advertised tools
         shell: pwsh
         run: |
-          python -c "import cv2; from agent.runtime import build_agent; from agent.tools_catalog import TOOLS; a=build_agent(); missing=sorted({x[0] for x in TOOLS}-set(a.tools.names())); assert not missing, f'Missing advertised tools: {missing}'; assert not cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml').empty(); print(f'OK: {len(a.tools.names())} tools registered; OpenCV cascade loaded')"
+          python -c "from agent.runtime import build_agent; from agent.tools_catalog import TOOLS; a=build_agent(); missing=sorted({x[0] for x in TOOLS}-set(a.tools.names())); assert not missing, f'Missing advertised tools: {missing}'; print(f'OK: {len(a.tools.names())} tools registered')"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build desktop executable
         run: pyinstaller --clean --noconfirm jarvis_desktop.spec
