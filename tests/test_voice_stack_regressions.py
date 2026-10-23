@@ -50,6 +50,21 @@ class TestCloudVoiceRegressions(unittest.TestCase):
         self.assertEqual(payload["response_format"], {"type": "audio"})
         self.assertEqual(result, audio)
 
+    def test_raw_gemini_pcm_is_wrapped_in_wav(self):
+        import wave
+        import tempfile
+        from pathlib import Path
+        pcm = b"\x00\x00" * 120
+        path = tts._write_audio(pcm)
+        try:
+            with wave.open(str(path), "rb") as audio_file:
+                self.assertEqual(audio_file.getframerate(), 24000)
+                self.assertEqual(audio_file.getnchannels(), 1)
+                self.assertEqual(audio_file.getsampwidth(), 2)
+                self.assertEqual(audio_file.readframes(audio_file.getnframes()), pcm)
+        finally:
+            path.unlink(missing_ok=True)
+
     def test_tts_can_be_disabled(self):
         with mock.patch.dict(os.environ, {"JARVIS_TTS": "off"}):
             self.assertEqual(tts.current_engine(), "off")
