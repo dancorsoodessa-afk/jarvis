@@ -1,49 +1,36 @@
-import json
-import threading
 import unittest
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from unittest import mock
 
-from agent.config import DEFAULT_CHAT_URL, Settings, normalize_provider
-from agent.core_router import discover_chat_endpoint
+from agent.config import DEFAULT_CHAT_URL, Settings, normalize_chat_url, normalize_provider
+from agent.providers.openai_chat import OpenAIChatProvider
 
 
-class TestBackendDiscovery(unittest.TestCase):
-    def test_all_provider_aliases_are_pinned_to_huggingface(self):
-        self.assertEqual(normalize_provider("dragon"), "huggingface")
-        self.assertEqual(normalize_provider("dragon local"), "huggingface")
-        self.assertEqual(normalize_provider("openrouter"), "huggingface")
+class TestCloudOnlyConfiguration(unittest.TestCase):
+    def test_provider_is_always_huggingface(self):
+        for value in (None, "", "huggingface", "openai", "openrouter", "local-vulkan", "ollama"):
+            self.assertEqual(normalize_provider(value), "huggingface")
 
-    def test_settings_no_longer_hardcodes_ollama(self):
+    def test_endpoint_is_always_huggingface(self):
+        self.assertEqual(normalize_chat_url(""), DEFAULT_CHAT_URL)
+        self.assertEqual(normalize_chat_url("http://localhost:11434/v1/chat/completions"), DEFAULT_CHAT_URL)
+        self.assertEqual(normalize_chat_url("https://openrouter.ai/api/v1/chat/completions"), DEFAULT_CHAT_URL)
+
+    def test_settings_do_not_expose_local_model_fields(self):
         settings = Settings.from_env()
         self.assertEqual(settings.provider, "huggingface")
         self.assertEqual(settings.chat_url, DEFAULT_CHAT_URL)
+        self.assertFalse(hasattr(settings, "llama_cli"))
+        self.assertFalse(hasattr(settings, "use_local"))
 
-    def test_discovers_healthy_endpoint(self):
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                if self.path == "/v1/models":
-                    body = json.dumps({"data": [{"id": "dragon-test-model"}]}).encode()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                else:
-                    self.send_response(404)
-                    self.end_headers()
+    def test_provider_rejects_non_huggingface_endpoint(self):
+        provider = OpenAIChatProvider(url="http://127.0.0.1:1234/v1/chat/completions", api_key="test", model="test")
+        with self.assertRaisesRegex(RuntimeError, "только через HTTPS API Hugging Face"):
+            provider._ensure_endpoint()
 
-            def log_message(self, *args):
-                pass
-
-        server = HTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        self.addCleanup(server.shutdown)
-        self.addCleanup(server.server_close)
-
-        endpoint = f"http://127.0.0.1:{server.server_port}/v1/chat/completions"
-        found, models = discover_chat_endpoint(endpoint, timeout=1.0)
-        self.assertEqual(found, endpoint)
-        self.assertEqual(models, ["dragon-test-model"])
+    def test_provider_defaults_to_huggingface_endpoint(self):
+        provider = OpenAIChatProvider(url="", api_key="test", model="test")
+        provider._ensure_endpoint()
+        self.assertEqual(provider.url, DEFAULT_CHAT_URL)
 
 
 if __name__ == "__main__":
