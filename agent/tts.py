@@ -136,8 +136,6 @@ def _generate_audio(text: str) -> bytes:
                 continue
             raise RuntimeError(f"Не удалось подключиться к Gemini TTS: {exc.reason}") from exc
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
-            if isinstance(exc, ValueError) and "Incorrect padding" not in str(exc):
-                raise
             raise RuntimeError("Gemini TTS вернул некорректный аудиоответ.") from exc
     raise RuntimeError("Gemini TTS временно недоступен после повторных попыток.")
 
