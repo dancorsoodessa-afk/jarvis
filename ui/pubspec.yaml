@@ -1,5 +1,5 @@
 name: jarvis_ui
-description: JARVIS XXX Android UI with Hugging Face and animated reactor
+description: JARVIS Android UI with Google Gemini API and animated reactor
 publish_to: "none"
 version: 0.3.1
 
