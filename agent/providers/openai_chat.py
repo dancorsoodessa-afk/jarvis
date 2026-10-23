@@ -32,7 +32,7 @@ class OpenAIChatProvider:
                  system_prompt: Optional[str] = None, fallback_models: Optional[list[str]] = None):
         self.url = (url or os.environ.get("JARVIS_CHAT_URL", "")).strip()
         configured_key = api_key if api_key is not None else os.environ.get("JARVIS_CHAT_KEY", "")
-        self.api_key = (configured_key or os.environ.get("GROQ_API_KEY", "")).strip()
+        self.api_key = (configured_key or os.environ.get("GEMINI_API_KEY", "")).strip()
         self.model = (model or os.environ.get("JARVIS_CHAT_MODEL", "")).strip()
         self.timeout = timeout
         self.history: list[dict] = history if history is not None else []
@@ -50,8 +50,8 @@ class OpenAIChatProvider:
         if not self.url:
             self.url = DEFAULT_CHAT_URL
         parsed = urlsplit(self.url)
-        if parsed.scheme != "https" or parsed.hostname != "api.groq.com" or not parsed.path.endswith("/chat/completions"):
-            raise RuntimeError("JARVIS использует только защищённый API GroqCloud.")
+        if parsed.scheme != "https" or parsed.hostname != "generativelanguage.googleapis.com" or not parsed.path.endswith("/chat/completions"):
+            raise RuntimeError("JARVIS использует только защищённый официальный Gemini API Google.")
 
     def _messages(self, prompt) -> list[dict]:
         messages = [{"role": "system", "content": self.system_prompt}]
@@ -95,7 +95,7 @@ class OpenAIChatProvider:
     def _auth_headers(self, *, stream: bool = False) -> dict:
         if not self.api_key:
             raise RuntimeError(
-                "Не задан ключ GroqCloud. Создайте бесплатный API-ключ на console.groq.com и вставьте его в Центре управления JARVIS."
+                "Не задан GEMINI_API_KEY. Создайте бесплатный ключ в Google AI Studio и вставьте его в Центр управления JARVIS."
             )
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
         if stream:
