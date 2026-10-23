@@ -17,7 +17,7 @@ class TestCloudOnlyConfiguration(unittest.TestCase):
 
     def test_settings_do_not_expose_local_model_fields(self):
         settings = Settings.from_env()
-        self.assertEqual(settings.provider, "huggingface")
+        self.assertEqual(settings.provider, "gemini")
         self.assertEqual(settings.chat_url, DEFAULT_CHAT_URL)
         self.assertFalse(hasattr(settings, "llama_cli"))
         self.assertFalse(hasattr(settings, "use_local"))
