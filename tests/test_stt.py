@@ -46,11 +46,11 @@ class TestSTT(unittest.TestCase):
             def __enter__(self): return self
             def __exit__(self, *args): pass
             def read(self): return b'{"text":"hello"}'
-        with tempfile.NamedTemporaryFile(suffix=".wav") as audio:
-            audio.write(b"RIFF-test")
-            audio.flush()
+        with tempfile.TemporaryDirectory() as folder:
+            audio = Path(folder) / "sample.wav"
+            audio.write_bytes(b"RIFF-test")
             with mock.patch("urllib.request.urlopen", return_value=Response()) as urlopen:
-                self.assertEqual(stt.transcribe(audio.name), "hello")
+                self.assertEqual(stt.transcribe(str(audio)), "hello")
                 request = urlopen.call_args.args[0]
                 self.assertTrue(request.full_url.startswith("https://router.huggingface.co/"))
                 self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
