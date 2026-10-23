@@ -1016,15 +1016,15 @@ class JarvisDesktop(tk.Tk):
         active = int(self.settings.get("active_agent", 0) or 0)
         names = ("FAST / Обычные", "REASONING / Рассуждения", "CODING / Код")
         defaults = (
-            ("huggingface", DEFAULT_URL, "gemini-2.5-flash"),
-            ("huggingface", DEFAULT_URL, "gemini-2.5-flash"),
-            ("huggingface", DEFAULT_URL, "gemini-2.5-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
         )
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
         tk.Label(shared_key_row, text="GEMINI API KEY (GOOGLE AI STUDIO)", bg="#091b29", fg=CYAN, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
         shared_key = tk.Entry(shared_key_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•", exportselection=False)
-        shared_key.insert(0, str(self.settings.get("hf_token") or os.environ.get("HF_TOKEN", "")))
+        shared_key.insert(0, str(self.settings.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY", "")))
         shared_key.pack(fill="x", padx=14, pady=(0, 12), ipady=7)
 
         additional_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
