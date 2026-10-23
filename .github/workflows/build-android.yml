@@ -97,18 +97,18 @@ jobs:
               'implementation("androidx.core:core-ktx:1.12.0")',
               'implementation("androidx.appcompat:appcompat:1.6.1")',
           ]
-          # Put local AAR and AndroidX dependencies inside the app module's
-          # existing dependencies block so Gradle reliably adds them to the
-          # Kotlin compile classpath.
+          # Flutter's generated Kotlin DSL template can omit a dependencies
+          # block entirely. Add one when absent; otherwise insert dependencies
+          # before the matching closing brace using a newline-aware search.
+          missing = [dep for dep in deps if dep not in t]
           start = t.find("dependencies {")
           if start < 0:
-              raise SystemExit("Gradle app module has no dependencies block")
-          end = t.find("\\n}", start)
-          if end < 0:
-              raise SystemExit("Could not locate end of Gradle dependencies block")
-          block = t[start:end]
-          missing = [dep for dep in deps if dep not in t]
-          if missing:
+              if missing:
+                  t = t.rstrip() + chr(10) + chr(10) + "dependencies {" + chr(10) + "".join("    " + dep + chr(10) for dep in missing) + "}" + chr(10)
+          elif missing:
+              end = t.find(chr(10) + "}", start)
+              if end < 0:
+                  raise SystemExit("Could not locate end of Gradle dependencies block")
               insertion = "".join("    " + dep + chr(10) for dep in missing)
               t = t[:end] + chr(10) + insertion.rstrip() + t[end:]
           for dep in deps:
