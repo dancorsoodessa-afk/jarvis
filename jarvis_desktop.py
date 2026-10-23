@@ -49,6 +49,7 @@ def _safe_model_id(value: str | None, fallback: str) -> str:
 
 _SECRET_SETTING_KEYS = {
     "api_key",
+    "gemini_api_key",
     "hf_token",
     
     
