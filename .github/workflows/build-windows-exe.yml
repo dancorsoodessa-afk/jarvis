@@ -34,6 +34,11 @@ jobs:
         run: |
           python -m compileall -q agent jarvis_desktop.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Smoke-test imports and advertised tools
+        shell: pwsh
+        run: |
+          python -c "import cv2; from agent.runtime import build_agent; from agent.tools_catalog import TOOLS; a=build_agent(); missing=sorted({x[0] for x in TOOLS}-set(a.tools.names())); assert not missing, f'Missing advertised tools: {missing}'; assert not cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml').empty(); print(f'OK: {len(a.tools.names())} tools registered; OpenCV cascade loaded')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build desktop executable
         run: pyinstaller --clean --noconfirm jarvis_desktop.spec
       - name: Prepare release asset
