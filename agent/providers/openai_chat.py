@@ -142,6 +142,26 @@ class OpenAIChatProvider:
             path = path.rstrip("/") + "/models"
         return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
+    def health_check(self) -> str:
+        """Actively verify credentials and endpoint reachability without generating tokens."""
+        self._ensure_endpoint()
+        url = self._models_url()
+        headers = {"Accept": "application/json", "Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=min(self.timeout, 12)) as response:
+                body = json.loads(response.read().decode("utf-8"))
+            if not isinstance(body, dict) or not isinstance(body.get("data"), list):
+                raise RuntimeError("Провайдер ответил, но формат списка моделей неожиданный.")
+            return "ONLINE"
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:250]
+            raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"Сеть недоступна: {exc.reason}") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise RuntimeError("Провайдер вернул некорректный JSON.") from exc
+
     def discover_model(self) -> str:
         if self.model:
             return self._normalize_model(self.model)
