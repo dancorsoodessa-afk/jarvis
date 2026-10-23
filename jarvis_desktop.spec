@@ -10,6 +10,8 @@ a = Analysis(
         "pycaw",
         "pycaw.pycaw",
         "comtypes",
+        "cv2",
+        "cv2.data",
     ],
     hookspath=[],
     runtime_hooks=[],
