@@ -315,7 +315,11 @@ class MainActivity : FlutterActivity() {
                 initVad()
                 voiceInitialized = true
             } catch (e: Exception) {
+                // Release the active guard on initialization failure, otherwise the
+                // voice loop remains permanently stuck and retries can never start.
+                synchronized(voiceLock) { voiceActive = false }
                 eventSink?.success("__ERROR__:local_stt_init_" + e.javaClass.simpleName + ":" + (e.message ?: ""))
+                scheduleRecognition(1500)
                 return
             }
         }
