@@ -1,85 +1,74 @@
-"""Локальное распознавание речи JARVIS.
+"""Cloud speech-to-text via Hugging Face Inference Providers.
 
-Единственный STT-движок: faster-whisper.
-Модель поставляется вместе с Windows-сборкой, поэтому сеть для STT не нужна.
-Сегментацию речи выполняет agent.voice; Whisper не запускает второй VAD.
+Microphone capture remains local; speech recognition is performed remotely.
+No Whisper model is downloaded or loaded on the PC.
 """
 from __future__ import annotations
 
+import json
 import os
-import sys
-import threading
+import urllib.error
+import urllib.request
 from pathlib import Path
 
-_MODEL = None
-_MODEL_LOCK = threading.Lock()
+DEFAULT_STT_MODEL = "openai/whisper-large-v3-turbo"
+DEFAULT_STT_URL = f"https://router.huggingface.co/hf-inference/models/{DEFAULT_STT_MODEL}"
 
 
-def _model_dir() -> Path:
-    override = os.environ.get("JARVIS_STT_MODEL_PATH", "").strip()
-    if override:
-        return Path(override)
-    if getattr(sys, "frozen", False):
-        return Path(sys._MEIPASS) / "stt_model"
-    return Path(__file__).resolve().parent.parent / "vendor" / "stt_model"
+def _token() -> str:
+    return (os.environ.get("HF_TOKEN") or os.environ.get("JARVIS_CHAT_KEY") or "").strip()
 
 
 def available_engines() -> list[str]:
-    try:
-        import faster_whisper  # noqa: F401
-        return ["faster-whisper"]
-    except ImportError:
-        return []
+    return ["huggingface"] if _token() else []
 
 
 def current_engine() -> str:
-    mode = os.environ.get("JARVIS_STT", "faster-whisper").strip().lower()
+    mode = os.environ.get("JARVIS_STT", "huggingface").strip().lower()
     if mode == "off":
         return "off"
-    return "faster-whisper" if "faster-whisper" in available_engines() else "off"
-
-
-def _get_model():
-    global _MODEL
-    with _MODEL_LOCK:
-        if _MODEL is None:
-            try:
-                from faster_whisper import WhisperModel
-            except ImportError as exc:
-                raise RuntimeError("faster-whisper не установлен") from exc
-            model_path = _model_dir()
-            source = str(model_path) if model_path.exists() else "small"
-            _MODEL = WhisperModel(
-                source,
-                device="cpu",
-                compute_type="int8",
-                cpu_threads=max(1, int(os.environ.get("JARVIS_STT_THREADS", "6") or 6)),
-                num_workers=1,
-            )
-    return _MODEL
+    return "huggingface" if _token() else "off"
 
 
 def warmup() -> None:
-    """Загрузить модель заранее, чтобы первая команда не тормозила."""
-    if current_engine() != "off":
-        _get_model()
+    """No local model to warm up."""
 
 
 def transcribe(audio_path: str) -> str:
     if current_engine() == "off":
-        raise RuntimeError("Распознавание речи отключено или faster-whisper не установлен.")
+        raise RuntimeError("Облачное распознавание речи недоступно: задайте HF_TOKEN или включите текстовый ввод.")
     path = Path(audio_path)
-    if not path.exists():
+    if not path.is_file():
         raise ValueError(f"Файл не найден: {audio_path}")
-    model = _get_model()
-    segments, _info = model.transcribe(
-        str(path),
-        language="ru",
-        beam_size=1,
-        best_of=1,
-        temperature=0.0,
-        # agent.voice already segments speech and removes trailing silence.
-        vad_filter=False,
-        condition_on_previous_text=False,
+    token = _token()
+    url = os.environ.get("JARVIS_STT_URL", DEFAULT_STT_URL).strip()
+    if not url.startswith("https://router.huggingface.co/"):
+        raise RuntimeError("Распознавание речи разрешено только через Hugging Face Router.")
+    data = path.read_bytes()
+    if not data:
+        raise ValueError("Аудиофайл пустой.")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "audio/wav", "Accept": "application/json"},
+        method="POST",
     )
-    return " ".join(segment.text.strip() for segment in segments).strip()
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            body = response.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:400]
+        raise RuntimeError(f"Ошибка облачного распознавания речи: HTTP {exc.code}. {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Не удалось подключиться к облачному распознаванию речи: {exc.reason}") from exc
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise RuntimeError("Сервис распознавания вернул неподдерживаемый ответ.")
+    if isinstance(payload, dict):
+        text = payload.get("text")
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+        if payload.get("error"):
+            raise RuntimeError(f"Ошибка Hugging Face STT: {str(payload['error'])[:400]}")
+    raise RuntimeError("Сервис распознавания не вернул распознанный текст.")
