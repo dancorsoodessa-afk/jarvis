@@ -11,6 +11,8 @@ def test_three_js_scene_is_present_and_bundled_by_pyinstaller():
     spec = Path(__file__).resolve().parents[1] / "jarvis_desktop.spec"
     spec_text = spec.read_text(encoding="utf-8")
     assert '"ui/jarvis_3d.html", "ui"' in spec_text, "PyInstaller must bundle the 3D scene under ui/"
+    assert '"ui/vendor", "ui/vendor"' in spec_text, "PyInstaller must bundle local Three.js modules"
+    assert not scene.read_text(encoding="utf-8").__contains__("cdn.jsdelivr.net"), "Runtime scene must not depend on a CDN"
 
 
 def test_visual_server_serves_scene_and_live_state():
@@ -21,6 +23,11 @@ def test_visual_server_serves_scene_and_live_state():
             assert response.status == 200
             assert "NEURAL REACTOR" in html
             assert "three.module.js" in html
+            assert "/vendor/three.module.js" in html
+        with urlopen(url + "vendor/three.module.js", timeout=10) as response:
+            module = response.read().decode("utf-8")
+            assert response.status == 200
+            assert "three.core.js" in module
         with urlopen(url + "state", timeout=3) as response:
             state = json.loads(response.read().decode("utf-8"))
             assert response.status == 200
