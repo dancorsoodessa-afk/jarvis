@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 import 'jarvis_client.dart';
+import 'ai_config.dart';
 
 const kCyan = Color(0xFF08E6FF);
 const kGreen = Color(0xFF45F0B0);
@@ -20,11 +21,6 @@ const kAmber = Color(0xFFFFC857);
 const kBg = Color(0xFF070B12);
 const kPanel = Color(0xFF0B111B);
 const kLine = Color(0xFF18283A);
-const _defaultAiEndpoint = 'https://router.huggingface.co/v1';
-const _defaultModel1 = 'Qwen/Qwen2.5-7B-Instruct-1M';
-const _defaultModel2 = 'openai/gpt-oss-120b';
-const _defaultModel3 = 'meta-llama/Llama-3.3-70B-Instruct';
-
 void main() => runApp(const BusyaApp());
 
 class BusyaApp extends StatelessWidget {
@@ -54,8 +50,8 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
   static const _voice = MethodChannel('jarvis.voice');
   static const _voiceEvents = EventChannel('jarvis.voice.events');
   JarvisIpc? _client;
-  final _input = TextEditingController(), _endpoint = TextEditingController(text: _defaultAiEndpoint),
-      _model1 = TextEditingController(text: _defaultModel1), _model2 = TextEditingController(text: _defaultModel2), _model3 = TextEditingController(text: _defaultModel3),
+  final _input = TextEditingController(), _endpoint = TextEditingController(text: jarvisDefaultAiEndpoint),
+      _model1 = TextEditingController(text: jarvisDefaultModel1), _model2 = TextEditingController(text: jarvisDefaultModel2), _model3 = TextEditingController(text: jarvisDefaultModel3),
       _key1 = TextEditingController(), _key2 = TextEditingController(), _key3 = TextEditingController(), _apiHostKey = TextEditingController(), _dsaEndpoint = TextEditingController(), _dsaKey = TextEditingController();
   final _coinglassKey = TextEditingController(), _okxKey = TextEditingController(), _okxSecret = TextEditingController(), _okxPass = TextEditingController(), _okxEndpoint = TextEditingController(text: 'https://www.okx.com');
   bool _okxDemo = true;
@@ -113,11 +109,11 @@ class _BusyaHomePageState extends State<BusyaHomePage> with SingleTickerProvider
         final dsaEndpoint = raw['dsaEndpoint']?.toString() ?? '';
         final dsaApiKey = raw['dsaApiKey']?.toString() ?? '';
         if (endpoint.contains('router.huggingface.co')) _endpoint.text = endpoint;
-        else _endpoint.text = _defaultAiEndpoint;
+        else _endpoint.text = jarvisDefaultAiEndpoint;
         // Migration: older builds could save a Groq Qwen model into the OpenAI primary slot.
-        final migratedModel1 = model1.isNotEmpty && !model1.startsWith('gpt-4') ? model1 : (model.isNotEmpty && !model.startsWith('gpt-4') ? model : _defaultModel1);
-        final migratedModel2 = model2.isNotEmpty ? model2 : _defaultModel2;
-        final migratedModel3 = model3.isNotEmpty ? model3 : _defaultModel3;
+        final migratedModel1 = model1.isNotEmpty && !model1.startsWith('gpt-4') ? model1 : (model.isNotEmpty && !model.startsWith('gpt-4') ? model : jarvisDefaultModel1);
+        final migratedModel2 = model2.isNotEmpty && !model2.contains('70b-versatile') ? model2 : jarvisDefaultModel2;
+        final migratedModel3 = model3.isNotEmpty ? model3 : jarvisDefaultModel3;
         _model1.text = migratedModel1;
         _model2.text = migratedModel2;
         _model3.text = migratedModel3;
