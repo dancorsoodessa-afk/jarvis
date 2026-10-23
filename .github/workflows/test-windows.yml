@@ -5,6 +5,8 @@ on:
     branches: [foundation, pc-overhaul-3d-elevenlabs-final-20260928]
     paths:
       - "agent/**"
+      - "ui/**"
+      - "scripts/prepare_3d_assets.ps1"
       - "tests/**"
       - "jarvis_desktop.py"
       - "pyproject.toml"
@@ -39,6 +41,9 @@ jobs:
         run: |
           python -m pip install -e ".[all]"
           python -m pip install "pytest>=9,<10"
+      - name: Prepare pinned local Three.js assets
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prepare_3d_assets.ps1
       - name: Run tests
         shell: pwsh
         run: pytest tests/ -q
