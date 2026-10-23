@@ -15,10 +15,15 @@ class TestCloudVoiceRegressions(unittest.TestCase):
             with mock.patch.object(stt, "_token", return_value=""):
                 self.assertEqual(stt.current_engine(), "off")
 
-    def test_tts_auto_has_free_windows_fallback(self):
+    def test_tts_auto_uses_gemini_when_key_is_configured(self):
         with mock.patch.dict(os.environ, {"JARVIS_TTS": "auto"}):
-            with mock.patch.object(tts.sys, "platform", "win32"):
-                self.assertEqual(tts.current_engine(), "windows")
+            with mock.patch.object(tts, "_api_key", return_value="test-key"):
+                self.assertEqual(tts.current_engine(), "gemini")
+
+    def test_tts_auto_is_off_without_gemini_key(self):
+        with mock.patch.dict(os.environ, {"JARVIS_TTS": "auto"}):
+            with mock.patch.object(tts, "_api_key", return_value=""):
+                self.assertEqual(tts.current_engine(), "off")
 
     def test_tts_can_be_disabled(self):
         with mock.patch.dict(os.environ, {"JARVIS_TTS": "off"}):
@@ -26,7 +31,7 @@ class TestCloudVoiceRegressions(unittest.TestCase):
 
     def test_tts_rejects_unknown_engine(self):
         with mock.patch.dict(os.environ, {"JARVIS_TTS": "unknown"}):
-            with self.assertRaisesRegex(RuntimeError, "Выберите windows"):
+            with self.assertRaisesRegex(RuntimeError, "облачную озвучку Gemini"):
                 tts.current_engine()
 
 
