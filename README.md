@@ -34,7 +34,7 @@ GitHub Actions also builds the Windows executables on pushes and pull requests t
 
 ## Быстрый старт для Windows
 
-Текущая Windows-сборка — однофайловое графическое приложение `release/JARVIS.exe`, создаваемое из `jarvis_desktop.py`. Отдельные `JARVIS.exe` и CLI EXE текущий workflow не выпускает.
+Текущая Windows-сборка — однофайловое графическое приложение `release/JARVIS.exe`, создаваемое из `jarvis_desktop.py`. Отдельный CLI EXE текущий workflow не выпускает.
 
 ### Вариант A — готовый Windows-пакет
 
