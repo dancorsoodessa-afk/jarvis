@@ -63,7 +63,17 @@ def _generate_audio(text: str) -> bytes:
     voice = (os.environ.get("JARVIS_TTS_VOICE") or DEFAULT_TTS_VOICE).strip()
     payload = {
         "model": model,
-        "input": "Speak naturally and clearly in Russian. Read the following text verbatim:\n" + text,
+        "input": [{
+            "type": "user_input",
+            "content": [{
+                "type": "text",
+                "text": text,
+                "annotations": [{
+                    "type": "speech_metadata",
+                    "style": "Speak naturally and clearly in Russian.",
+                }],
+            }],
+        }],
         "response_format": {"type": "audio"},
         "generation_config": {"speech_config": [{"voice": voice}]},
     }
@@ -78,7 +88,16 @@ def _generate_audio(text: str) -> bytes:
         try:
             with urllib.request.urlopen(request, timeout=_timeout()) as response:
                 result = json.loads(response.read().decode("utf-8"))
+            # The SDK exposes output_audio, but the raw REST response stores audio
+            # in steps[].content[].data. Accept both shapes defensively.
             audio = result.get("output_audio", {}).get("data", "")
+            if not audio:
+                for step in result.get("steps", []):
+                    if not isinstance(step, dict) or step.get("type") != "model_output":
+                        continue
+                    for block in step.get("content", []):
+                        if isinstance(block, dict) and block.get("type") == "audio" and block.get("data"):
+                            audio = block["data"]
             if not audio:
                 raise RuntimeError("Gemini TTS не вернул аудиоданные. Проверьте доступность модели и ключ.")
             return base64.b64decode(audio, validate=True)
