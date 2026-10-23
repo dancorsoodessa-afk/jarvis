@@ -119,13 +119,13 @@ class JarvisDesktop(tk.Tk):
             "name": "JARVIS",
             "provider": "huggingface",
             "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
-            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "Qwen/Qwen2.5-7B-Instruct-1M",
+            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "Qwen/Qwen2.5-7B-Instruct",
             "api_key": self.settings.get("hf_token") or os.environ.get("HF_TOKEN") or "",
         }
         defaults = {
             "0": legacy,
-            "1": {"name": "Hugging Face Reasoning", "provider": "huggingface", "url": DEFAULT_URL, "model": "Qwen/Qwen2.5-7B-Instruct-1M", "api_key": legacy["api_key"]},
-            "2": {"name": "Hugging Face Coding", "provider": "huggingface", "url": DEFAULT_URL, "model": "Qwen/Qwen2.5-7B-Instruct-1M", "api_key": legacy["api_key"]},
+            "1": {"name": "Hugging Face Reasoning", "provider": "huggingface", "url": DEFAULT_URL, "model": "Qwen/Qwen2.5-7B-Instruct", "api_key": legacy["api_key"]},
+            "2": {"name": "Hugging Face Coding", "provider": "huggingface", "url": DEFAULT_URL, "model": "Qwen/Qwen2.5-7B-Instruct", "api_key": legacy["api_key"]},
         }
         merged = {}
         for key, default in defaults.items():
@@ -171,14 +171,20 @@ class JarvisDesktop(tk.Tk):
         self.settings.setdefault("tts_enabled", True)
         self.settings.setdefault("tts_gender", "male")
         self.settings.setdefault("tts_engine", "auto")
-        self.settings.setdefault("tts_voice", "Dmitri Medium")
+        self.settings.setdefault("tts_voice", "ElevenLabs cloud voice")
         self.settings.setdefault("elevenlabs_api_key", os.environ.get("JARVIS_ELEVENLABS_API_KEY", ""))
         self.settings.setdefault("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w")
         self.settings.setdefault("elevenlabs_model", "eleven_flash_v2_5")
         os.environ["JARVIS_ELEVENLABS_API_KEY"] = self.settings.get("elevenlabs_api_key", "")
         os.environ["JARVIS_ELEVENLABS_VOICE_ID"] = self.settings.get("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w")
         os.environ["JARVIS_ELEVENLABS_MODEL"] = self.settings.get("elevenlabs_model", "eleven_flash_v2_5")
-        os.environ["JARVIS_TTS"] = str(self.settings.get("tts_engine", "auto")).strip().lower() or "auto"
+        tts_engine = str(self.settings.get("tts_engine", "auto")).strip().lower() or "auto"
+        if tts_engine == "piper":
+            tts_engine = "auto"
+        if tts_engine not in {"auto", "elevenlabs", "cloud", "off"}:
+            tts_engine = "auto"
+        self.settings["tts_engine"] = tts_engine
+        os.environ["JARVIS_TTS"] = tts_engine
 
     def _save_settings(self):
         APP_DIR.mkdir(parents=True, exist_ok=True)
@@ -1008,9 +1014,9 @@ class JarvisDesktop(tk.Tk):
         active = int(self.settings.get("active_agent", 0) or 0)
         names = ("FAST / Обычные", "REASONING / Рассуждения", "CODING / Код")
         defaults = (
-            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct-1M"),
-            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct-1M"),
-            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct-1M"),
+            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct"),
+            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct"),
+            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct"),
         )
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
@@ -1023,7 +1029,7 @@ class JarvisDesktop(tk.Tk):
         additional_row.pack(fill="x", pady=(2, 10))
         tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
         additional_model = tk.Entry(additional_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
-        additional_model.insert(0, str(self.settings.get("additional_model", "Qwen/Qwen2.5-7B-Instruct-1M")))
+        additional_model.insert(0, str(self.settings.get("additional_model", "Qwen/Qwen2.5-7B-Instruct")))
         additional_model.pack(fill="x", padx=14, pady=(0, 12), ipady=6)
 
         entries = []
@@ -1056,12 +1062,12 @@ class JarvisDesktop(tk.Tk):
 
         voice_frame = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         voice_frame.pack(fill="x", pady=10)
-        tk.Label(voice_frame, text="ГОЛОС JARVIS / ELEVENLABS + PIPER", bg="#091b29", fg=CYAN,
+        tk.Label(voice_frame, text="ГОЛОС JARVIS / ОБЛАЧНЫЙ TTS", bg="#091b29", fg=CYAN,
                  font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 6))
         voice_fields = {}
         for label, key, default, secret in (
             ("Движок TTS", "tts_engine", self.settings.get("tts_engine", "auto"), False),
-            ("Локальный голос", "tts_voice", self.settings.get("tts_voice", "Dmitri Medium"), False),
+            ("Название голоса", "tts_voice", self.settings.get("tts_voice", "ElevenLabs cloud voice"), False),
             ("ElevenLabs API-ключ", "elevenlabs_api_key", self.settings.get("elevenlabs_api_key", ""), True),
             ("ElevenLabs Voice ID", "elevenlabs_voice_id", self.settings.get("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w"), False),
             ("ElevenLabs модель", "elevenlabs_model", self.settings.get("elevenlabs_model", "eleven_flash_v2_5"), False),
@@ -1082,16 +1088,16 @@ class JarvisDesktop(tk.Tk):
         def save():
             new_profiles = {}
             for i, fields in enumerate(entries):
-                new_profiles[str(i)] = {"provider": "huggingface", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "Qwen/Qwen2.5-7B-Instruct-1M", "api_key": shared_key.get().strip(), "name": names[i]}
+                new_profiles[str(i)] = {"provider": "huggingface", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "Qwen/Qwen2.5-7B-Instruct", "api_key": shared_key.get().strip(), "name": names[i]}
             self.settings["agents"] = new_profiles
             self.settings["hf_token"] = shared_key.get().strip()
-            self.settings["additional_model"] = additional_model.get().strip() or "Qwen/Qwen2.5-7B-Instruct-1M"
+            self.settings["additional_model"] = additional_model.get().strip() or "Qwen/Qwen2.5-7B-Instruct"
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
             for k, e in voice_fields.items():
                 self.settings[k] = e.get().strip()
-            if self.settings.get("tts_engine", "auto").strip().lower() not in {"auto", "elevenlabs", "piper", "off"}:
+            if self.settings.get("tts_engine", "auto").strip().lower() not in {"auto", "elevenlabs", "cloud", "off"}:
                 self.settings["tts_engine"] = "auto"
             self._apply_saved_settings()
             self._save_settings()

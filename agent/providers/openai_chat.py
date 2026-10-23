@@ -44,14 +44,14 @@ class OpenAIChatProvider:
         self.last_used_model = self.model
 
     def _ensure_endpoint(self) -> None:
-        if self.url:
-            return
-        from agent.core_router import discover_chat_endpoint
-        self.url, models = discover_chat_endpoint(self.url)
+        from urllib.parse import urlsplit
+        from agent.config import DEFAULT_CHAT_URL
+
         if not self.url:
-            raise RuntimeError("URL API не задан. Укажите адрес OpenAI-совместимого API в настройках JARVIS.")
-        if not self.model and models:
-            self._discovered_model = models[0]
+            self.url = DEFAULT_CHAT_URL
+        parsed = urlsplit(self.url)
+        if parsed.scheme != "https" or parsed.hostname != "router.huggingface.co":
+            raise RuntimeError("JARVIS работает только через HTTPS API Hugging Face.")
 
     def _messages(self, prompt) -> list[dict]:
         messages = [{"role": "system", "content": self.system_prompt}]

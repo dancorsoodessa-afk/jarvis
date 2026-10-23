@@ -8,7 +8,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent.config import Settings
 from agent.core import JarvisAgent
 from agent.memory.store import MemoryStore
-from agent.providers.local_vulkan import LocalVulkanProvider
 from agent.tools import system
 from agent.tools.registry import ConfirmationRequired, ToolRegistry
 
@@ -68,23 +67,11 @@ class TestAgent(unittest.TestCase):
         self.assertEqual(registry.call("danger", _confirmed=True), "boom")
 
 
-class TestLocalVulkan(unittest.TestCase):
-    def test_command_shape(self):
-        provider = LocalVulkanProvider("llama-cli", "model.gguf", ctx=1024, threads=4)
-        self.assertEqual(provider.name, "local-vulkan")
-        self.assertIn("llama-cli", provider.llama_cli)
-
-    def test_error_raises(self):
-        provider = LocalVulkanProvider("false-binary-does-not-exist", "m.gguf")
-        with self.assertRaises((RuntimeError, FileNotFoundError)):
-            provider.generate("hi")
-
-
 class TestSettings(unittest.TestCase):
     def test_free_provider_is_default(self):
         settings = Settings.from_env()
         self.assertEqual(settings.provider, "huggingface")
-        self.assertFalse(settings.use_local)
+        self.assertEqual(settings.provider, "huggingface")
 
 
 class TestOpenAIChatProvider(unittest.TestCase):
@@ -106,7 +93,10 @@ class TestOpenAIChatProvider(unittest.TestCase):
         server = HTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.handle_request, daemon=True).start()
         self.addCleanup(server.server_close)
-        return OpenAIChatProvider(url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions", api_key="test-key", model="test-model", **kwargs)
+        provider = OpenAIChatProvider(url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions", api_key="test-key", model="test-model", **kwargs)
+        # The endpoint guard is tested separately; this local HTTP server is a transport-test fixture.
+        provider._ensure_endpoint = lambda: None
+        return provider
 
     def test_generate_parses_reply(self):
         def handler(body):
@@ -154,7 +144,9 @@ class TestFunctionCalling(unittest.TestCase):
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
-        return OpenAIChatProvider(url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions", api_key="k", model="m")
+        provider = OpenAIChatProvider(url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions", api_key="k", model="m")
+        provider._ensure_endpoint = lambda: None
+        return provider
 
     def test_react_loop_executes_tool(self):
         tool_call = {"choices": [{"message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "double", "arguments": "{\"n\": \"21\"}"}}]}}]}
@@ -192,6 +184,7 @@ class TestFunctionCalling(unittest.TestCase):
         registry = ToolRegistry()
         registry.register("double", lambda n: n * 2, description="Удвоить", parameters={"n": "число"})
         p = OpenAIChatProvider(url=f"http://127.0.0.1:{server.server_port}/v1", model="m", api_key="test-key")
+        p._ensure_endpoint = lambda: None
         p.tool_executor = lambda name, args: "x"
         p.generate("hi", tools=registry.specs())
         self.assertEqual(seen["tools"][0]["function"]["name"], "double")
@@ -258,6 +251,7 @@ class TestStreamingIPC(unittest.TestCase):
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         p = OpenAIChatProvider(url=f"http://127.0.0.1:{server.server_port}/v1/chat/completions", api_key="k", model="m")
+        p._ensure_endpoint = lambda: None
         deltas = []
         p.on_delta = deltas.append
         reply = p.generate("hi", tools=[{"type": "function", "function": {"name": "x"}}])

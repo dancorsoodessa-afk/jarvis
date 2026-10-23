@@ -1,88 +1,53 @@
 import os
 from dataclasses import dataclass
 
-
 SUPPORTED_PROVIDERS = ("huggingface",)
 DEFAULT_CHAT_URL = "https://router.huggingface.co/v1/chat/completions"
+DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 
 
-def normalize_chat_url(value: str | None) -> str:
-    """Force all cloud AI traffic through Hugging Face Inference API."""
+def normalize_chat_url(_value: str | None) -> str:
+    """JARVIS sends chat requests only to Hugging Face Inference Providers."""
     return DEFAULT_CHAT_URL
 
 
-
-def normalize_provider(value: str | None) -> str:
-    provider = (value or "huggingface").strip().lower()
-    provider = provider.replace("_", "-").replace(" ", "-")
-    aliases = {
-        "openai": "openai-compatible",
-        "openai-compatible-api": "openai-compatible",
-        "openai-compatible-client": "openai-compatible",
-        "openai-compatible-provider": "openai-compatible",
-        "dragon": "openai-compatible",
-        "dragon-local": "openai-compatible",
-        "dragon-ai": "openai-compatible",
-        "local": "local-vulkan",
-        "vulkan": "local-vulkan",
-        "llama": "local-vulkan",
-        "llama-cpp": "local-vulkan",
-    }
+def normalize_provider(_value: str | None) -> str:
+    """Local and third-party providers are intentionally unsupported."""
     return "huggingface"
 
 
 @dataclass
 class Settings:
-    """Runtime settings for Hugging Face Inference API."""
+    """Runtime settings for the cloud-only Hugging Face provider."""
 
     provider: str = "huggingface"
-    chat_url: str = ""
+    chat_url: str = DEFAULT_CHAT_URL
     chat_key: str = ""
-    chat_model: str = "Qwen/Qwen2.5-7B-Instruct-1M"
-    fast_model: str = "Qwen/Qwen2.5-7B-Instruct-1M"
-    reasoning_model: str = "Qwen/Qwen2.5-7B-Instruct-1M"
-    coding_model: str = "Qwen/Qwen2.5-7B-Instruct-1M"
-    additional_model: str = "Qwen/Qwen2.5-7B-Instruct-1M"
-    llama_cli: str = "llama-cli"
-    model: str = "model.gguf"
-    ctx: int = 2048
-    threads: int = 6
+    chat_model: str = DEFAULT_MODEL
+    fast_model: str = DEFAULT_MODEL
+    reasoning_model: str = DEFAULT_MODEL
+    coding_model: str = DEFAULT_MODEL
+    additional_model: str = DEFAULT_MODEL
     memory_path: str = "jarvis_memory.json"
     kg_path: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.provider = normalize_provider(self.provider)
-
-    @property
-    def use_local(self) -> bool:
-        return self.provider == "local-vulkan"
+        self.chat_url = DEFAULT_CHAT_URL
 
     @classmethod
     def from_env(cls) -> "Settings":
-        provider = normalize_provider(os.environ.get("JARVIS_PROVIDER"))
-        if os.environ.get("JARVIS_LOCAL") == "1":
-            provider = "local-vulkan"
-        try:
-            ctx = max(256, int(os.environ.get("JARVIS_CTX", "2048")))
-        except ValueError:
-            ctx = 2048
-        try:
-            threads = max(1, int(os.environ.get("JARVIS_THREADS", "6")))
-        except ValueError:
-            threads = 6
+        default_model = os.environ.get("JARVIS_CHAT_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
         return cls(
-            provider=provider,
-            chat_url=normalize_chat_url(os.environ.get("JARVIS_CHAT_URL")),
-            chat_key=os.environ.get("JARVIS_CHAT_KEY", "") or os.environ.get("HF_TOKEN", ""),
-            chat_model=os.environ.get("JARVIS_CHAT_MODEL", "Qwen/Qwen2.5-7B-Instruct-1M").strip() or "Qwen/Qwen2.5-7B-Instruct-1M",
-            fast_model=os.environ.get("JARVIS_FAST_MODEL", os.environ.get("JARVIS_CHAT_MODEL", "Qwen/Qwen2.5-7B-Instruct-1M")).strip() or "Qwen/Qwen2.5-7B-Instruct-1M",
-            reasoning_model=os.environ.get("JARVIS_REASONING_MODEL", "Qwen/Qwen2.5-7B-Instruct-1M").strip() or "Qwen/Qwen2.5-7B-Instruct-1M",
-            coding_model=os.environ.get("JARVIS_CODING_MODEL", "Qwen/Qwen2.5-7B-Instruct-1M").strip() or "Qwen/Qwen2.5-7B-Instruct-1M",
-            additional_model=os.environ.get("JARVIS_ADDITIONAL_MODEL", "Qwen/Qwen2.5-7B-Instruct-1M").strip() or "Qwen/Qwen2.5-7B-Instruct-1M",
-            llama_cli=os.environ.get("JARVIS_LLAMA_CLI", "llama-cli").strip(),
-            model=os.environ.get("JARVIS_MODEL", "model.gguf").strip(),
-            ctx=ctx,
-            threads=threads,
-            memory_path=os.environ.get("JARVIS_MEMORY", "jarvis_memory.json"),
+            provider="huggingface",
+            chat_url=DEFAULT_CHAT_URL,
+            chat_key=os.environ.get("HF_TOKEN", "").strip()
+            or os.environ.get("JARVIS_CHAT_KEY", "").strip(),
+            chat_model=default_model,
+            fast_model=os.environ.get("JARVIS_FAST_MODEL", default_model).strip() or default_model,
+            reasoning_model=os.environ.get("JARVIS_REASONING_MODEL", default_model).strip() or default_model,
+            coding_model=os.environ.get("JARVIS_CODING_MODEL", default_model).strip() or default_model,
+            additional_model=os.environ.get("JARVIS_ADDITIONAL_MODEL", default_model).strip() or default_model,
+            memory_path=os.environ.get("JARVIS_MEMORY", "jarvis_memory.json").strip() or "jarvis_memory.json",
             kg_path=os.environ.get("JARVIS_KG"),
         )

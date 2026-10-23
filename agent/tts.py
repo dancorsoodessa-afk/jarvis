@@ -1,16 +1,16 @@
-"""TTS JARVIS: локальный Piper + опциональный ElevenLabs.
+"""Cloud-only text-to-speech via ElevenLabs.
 
-Локальный Piper является основным движком. Каждый ответ получает отдельный
-временный WAV, а воспроизведение защищено от гонок при перебивании.
+No local TTS model or executable is bundled. Speech output is optional and requires
+an ElevenLabs API key; text chat remains usable without it.
 """
 from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 import wave
@@ -21,87 +21,33 @@ _PLAYBACK_ACTIVE = False
 _PLAYBACK_TOKEN = 0
 DEFAULT_ELEVEN_VOICE = "srULqtwUV9XZPg1ZCO5w"
 DEFAULT_ELEVEN_MODEL = "eleven_flash_v2_5"
-DEFAULT_ELEVEN_FORMAT = "pcm_22050"
-
-
-def _piper_dir() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys._MEIPASS) / "piper"
-    return Path(__file__).resolve().parent.parent / "vendor" / "piper"
-
-
-def _piper_paths() -> tuple[str, Path]:
-    configured = os.environ.get("JARVIS_PIPER", "").strip()
-    executable = Path(configured) if configured else _piper_dir() / "piper.exe"
-    voice = Path(os.environ.get(
-        "JARVIS_PIPER_VOICE",
-        str(_piper_dir() / "ru_RU-dmitri-medium.onnx"),
-    ))
-    if not executable.exists():
-        raise RuntimeError(f"Piper не найден: {executable}")
-    if not voice.exists():
-        raise RuntimeError(f"Русская модель голоса Dmitri не найдена: {voice}")
-    return str(executable), voice
 
 
 def _eleven_key() -> str:
-    return (
-        os.environ.get("JARVIS_ELEVENLABS_API_KEY")
-        or os.environ.get("ELEVENLABS_API_KEY")
-        or ""
-    ).strip()
+    return (os.environ.get("JARVIS_ELEVENLABS_API_KEY") or os.environ.get("ELEVENLABS_API_KEY") or "").strip()
 
 
 def _eleven_voice() -> str:
-    return (
-        os.environ.get("JARVIS_ELEVENLABS_VOICE_ID")
-        or DEFAULT_ELEVEN_VOICE
-    ).strip()
+    return (os.environ.get("JARVIS_ELEVENLABS_VOICE_ID") or DEFAULT_ELEVEN_VOICE).strip()
 
 
-def _eleven_model() -> str:
-    return (
-        os.environ.get("JARVIS_ELEVENLABS_MODEL")
-        or DEFAULT_ELEVEN_MODEL
-    ).strip()
+def available_engines() -> list[str]:
+    return ["elevenlabs"] if _eleven_key() and _eleven_voice() else []
+
+
+def current_engine() -> str:
+    mode = os.environ.get("JARVIS_TTS", "auto").strip().lower()
+    if mode == "off":
+        return "off"
+    if mode in {"auto", "elevenlabs", "cloud"}:
+        return "elevenlabs" if available_engines() else "off"
+    raise RuntimeError("Поддерживается только облачный TTS ElevenLabs; локальные движки отключены.")
 
 
 def set_gender(gender: str) -> None:
     value = str(gender).strip().lower()
     if value not in {"male", "мужской", ""}:
-        raise ValueError("В этой сборке установлен русский мужской голос.")
-    os.environ["JARVIS_TTS_GENDER"] = "male"
-
-
-def _engine_setting() -> str:
-    return os.environ.get("JARVIS_TTS", "local").strip().lower()
-
-
-def available_engines() -> list[str]:
-    result = []
-    try:
-        _piper_paths()
-        result.append("piper")
-    except Exception:
-        pass
-    if _eleven_key() and _eleven_voice():
-        result.append("elevenlabs")
-    return result
-
-
-def current_engine() -> str:
-    mode = _engine_setting()
-    if mode == "elevenlabs":
-        return "elevenlabs" if "elevenlabs" in available_engines() else "piper"
-    if mode in {"local", "piper"}:
-        return "piper" if "piper" in available_engines() else "off"
-    if mode == "off":
-        return "off"
-    if mode == "auto":
-        return "piper" if "piper" in available_engines() else (
-            "elevenlabs" if "elevenlabs" in available_engines() else "off"
-        )
-    raise RuntimeError(f"Неизвестный TTS-движок: {mode}")
+        raise ValueError("Для выбранного облачного голоса доступна текущая конфигурация голоса.")
 
 
 def stop() -> None:
@@ -122,74 +68,43 @@ def is_playing() -> bool:
         return _PLAYBACK_ACTIVE
 
 
-def _temp_wav(prefix: str) -> Path:
-    fd, name = tempfile.mkstemp(prefix=prefix, suffix=".wav")
+def _temp_wav() -> Path:
+    fd, name = tempfile.mkstemp(prefix="jarvis_tts_cloud_", suffix=".wav")
     os.close(fd)
     return Path(name)
 
 
-def _speak_piper(text: str) -> Path:
-    piper, voice = _piper_paths()
-    out = _temp_wav("jarvis_tts_")
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    try:
-        subprocess.run(
-            [piper, "--model", str(voice), "--output_file", str(out)],
-            input=text.encode("utf-8"),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            check=True,
-            timeout=60,
-            creationflags=flags,
-        )
-    except Exception:
-        try:
-            out.unlink()
-        except OSError:
-            pass
-        raise
-    return out
-
-
-def _speak_elevenlabs(text: str) -> Path:
-    key = _eleven_key()
+def speak(text: str) -> Path:
+    text = " ".join(str(text).split())[:4000]
+    if not text:
+        raise RuntimeError("Пустой текст для озвучки.")
+    if current_engine() != "elevenlabs":
+        raise RuntimeError("Облачная озвучка выключена или не настроена. Задайте ELEVENLABS_API_KEY.")
     voice = _eleven_voice()
-    if not key:
-        raise RuntimeError("ElevenLabs API-ключ не задан.")
-    if not voice:
-        raise RuntimeError("ElevenLabs Voice ID не задан.")
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}?output_format={DEFAULT_ELEVEN_FORMAT}"
+    model = os.environ.get("JARVIS_ELEVENLABS_MODEL", DEFAULT_ELEVEN_MODEL).strip()
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}?output_format=pcm_22050"
     payload = json.dumps({
         "text": text,
-        "model_id": _eleven_model(),
+        "model_id": model,
         "language_code": "ru",
-        "voice_settings": {
-            "stability": 0.5,
-            "similarity_boost": 0.8,
-            "style": 0.0,
-            "use_speaker_boost": True,
-            "speed": 1.0,
-        },
+        "voice_settings": {"stability": 0.5, "similarity_boost": 0.8, "style": 0.0, "use_speaker_boost": True},
     }).encode("utf-8")
     request = urllib.request.Request(
-        url,
-        data=payload,
-        headers={
-            "xi-api-key": key,
-            "Content-Type": "application/json",
-            "Accept": "audio/pcm",
-        },
+        url, data=payload,
+        headers={"xi-api-key": _eleven_key(), "Content-Type": "application/json", "Accept": "audio/pcm"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=45) as response:
             pcm = response.read()
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"ElevenLabs HTTP {exc.code}: {detail}") from exc
+        detail = exc.read().decode("utf-8", errors="replace")[:400]
+        raise RuntimeError(f"Ошибка облачной озвучки: HTTP {exc.code}. {detail}") from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"ElevenLabs сеть недоступна: {exc.reason}") from exc
-    out = _temp_wav("jarvis_tts_eleven_")
+        raise RuntimeError(f"Не удалось подключиться к облачной озвучке: {exc.reason}") from exc
+    if not pcm:
+        raise RuntimeError("Сервис озвучки вернул пустой аудиофайл.")
+    out = _temp_wav()
     try:
         with wave.open(str(out), "wb") as wav:
             wav.setnchannels(1)
@@ -197,30 +112,9 @@ def _speak_elevenlabs(text: str) -> Path:
             wav.setframerate(22050)
             wav.writeframes(pcm)
     except Exception:
-        try:
-            out.unlink()
-        except OSError:
-            pass
+        out.unlink(missing_ok=True)
         raise
     return out
-
-
-def speak(text: str) -> Path:
-    text = " ".join(str(text).split())
-    if not text:
-        raise RuntimeError("Пустой текст для озвучки.")
-    text = text[:4000]
-    engine = current_engine()
-    if engine == "elevenlabs":
-        try:
-            return _speak_elevenlabs(text)
-        except Exception:
-            if "piper" not in available_engines():
-                raise
-            return _speak_piper(text)
-    if engine == "piper":
-        return _speak_piper(text)
-    raise RuntimeError("TTS недоступен.")
 
 
 def speak_and_play(text: str) -> Path:
@@ -228,27 +122,22 @@ def speak_and_play(text: str) -> Path:
     path = speak(text)
     if sys.platform != "win32":
         return path
-
     import winsound
-    import time
-
     stop()
     try:
         with wave.open(str(path), "rb") as wav:
             duration = wav.getnframes() / max(1, wav.getframerate())
     except Exception:
         duration = 0.0
-
     with _PLAYBACK_LOCK:
         token = _PLAYBACK_TOKEN
         _PLAYBACK_ACTIVE = True
-
     winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)
 
-    def _clear_after_playback() -> None:
+    def _cleanup() -> None:
         global _PLAYBACK_ACTIVE
-        if duration > 0:
-            time.sleep(duration + 0.05)
+        if duration:
+            time.sleep(duration + 0.1)
         with _PLAYBACK_LOCK:
             if _PLAYBACK_TOKEN == token:
                 _PLAYBACK_ACTIVE = False
@@ -257,5 +146,5 @@ def speak_and_play(text: str) -> Path:
         except OSError:
             pass
 
-    threading.Thread(target=_clear_after_playback, daemon=True).start()
+    threading.Thread(target=_cleanup, daemon=True).start()
     return path
