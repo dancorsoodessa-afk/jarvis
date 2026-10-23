@@ -50,6 +50,7 @@ def _safe_model_id(value: str | None, fallback: str) -> str:
 _SECRET_SETTING_KEYS = {
     "api_key",
     "gemini_api_key",
+    "groq_api_key",
     "hf_token",
 }
 
@@ -153,8 +154,11 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_URL"] = self.settings["url"]
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
         os.environ["GEMINI_API_KEY"] = profile["api_key"]
+        os.environ["GROQ_API_KEY"] = str(self.settings.get("groq_api_key") or "")
+        os.environ["JARVIS_GROQ_MODEL"] = str(self.settings.get("groq_model") or "openai/gpt-oss-120b")
+        os.environ["JARVIS_GROQ_TIMEOUT"] = str(self.settings.get("groq_timeout") or "30")
+        os.environ["JARVIS_GEMINI_TIMEOUT"] = str(self.settings.get("gemini_timeout") or "30")
         os.environ.pop("HF_TOKEN", None)
-        os.environ.pop("GROQ_API_KEY", None)
         os.environ["JARVIS_CHAT_MODEL"] = profile["model"]
         os.environ["JARVIS_FAST_MODEL"] = merged["0"]["model"]
         os.environ["JARVIS_REASONING_MODEL"] = merged["1"]["model"]
@@ -1064,6 +1068,29 @@ class JarvisDesktop(tk.Tk):
         shared_key.bind("<Control-v>", lambda _e: self.after(20, lambda: shared_key.icursor("end")))
         shared_key.bind("<Control-V>", lambda _e: self.after(20, lambda: shared_key.icursor("end")))
 
+        groq_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
+        groq_row.pack(fill="x", pady=(0, 10))
+        tk.Label(groq_row, text="РЕЗЕРВНЫЙ ПРОВАЙДЕР GROQ (НЕ ЗАВИСИТ ОТ GEMINI)", bg="#091b29", fg=TEXT,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
+        groq_key = tk.Entry(groq_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•", exportselection=False)
+        groq_key.insert(0, str(self.settings.get("groq_api_key") or os.environ.get("GROQ_API_KEY", "")))
+        groq_key.pack(fill="x", padx=14, pady=(0, 6), ipady=8)
+        groq_fields = {}
+        for label, key, default in (
+            ("Модель Groq", "groq_model", self.settings.get("groq_model", "openai/gpt-oss-120b")),
+            ("Тайм-аут Groq, сек.", "groq_timeout", self.settings.get("groq_timeout", "30")),
+            ("Тайм-аут Gemini, сек.", "gemini_timeout", self.settings.get("gemini_timeout", "30")),
+        ):
+            row = tk.Frame(groq_row, bg="#091b29")
+            row.pack(fill="x", padx=14, pady=3)
+            tk.Label(row, text=label, width=22, anchor="w", bg="#091b29", fg=MUTED).pack(side="left")
+            entry = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
+            entry.insert(0, str(default))
+            entry.pack(side="left", fill="x", expand=True, ipady=6)
+            groq_fields[key] = entry
+        tk.Label(groq_row, text="Ключ создаётся отдельно в GroqCloud. Без ключа резервный провайдер отключён.",
+                 bg="#091b29", fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=14, pady=(6, 10))
+
         additional_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
         additional_row.pack(fill="x", pady=(2, 10))
         tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
@@ -1129,6 +1156,9 @@ class JarvisDesktop(tk.Tk):
                 new_profiles[str(i)] = {"provider": "gemini", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "gemini-3.8-flash", "api_key": shared_key.get().strip(), "name": names[i]}
             self.settings["agents"] = new_profiles
             self.settings["gemini_api_key"] = shared_key.get().strip()
+            self.settings["groq_api_key"] = groq_key.get().strip()
+            for key, entry in groq_fields.items():
+                self.settings[key] = entry.get().strip()
             self.settings.pop("hf_token", None)
             self.settings["additional_model"] = additional_model.get().strip() or "gemini-3.8-flash"
             self.settings["active_agent"] = active
