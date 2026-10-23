@@ -17,20 +17,17 @@ AI strategy:
 - Model is replaceable; Jarvis is not tied to one runtime
 - Все облачные запросы принудительно направляются на `https://router.huggingface.co/v1/chat/completions`
 
-## Build jarvis.exe (Windows x64)
+## Build JARVIS for Windows x64
 
-On your Windows PC, from the project root:
+From the project root on Windows with Python 3.12:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\\build_exe.ps1
 ```
 
-The build script installs the project with all Windows extras, runs the full unittest suite, and then creates `dist\\jarvis.exe`.
+The script runs `pytest tests/ -q`, downloads the pinned-by-path STT/TTS assets, and builds the single-file GUI executable `release/JARVIS.exe` from `jarvis_desktop.py`. The release artifact is the GUI application, not a separate console/CLI EXE.
 
-Result: `dist\\jarvis.exe` — single console exe, with the optional Windows audio and screenshot dependencies bundled.
-
-GitHub Actions also builds the Windows executables on pushes and pull requests targeting `foundation`; the resulting package is uploaded as a workflow artifact.
-
+GitHub Actions runs the same build script on the configured branches. Feature-branch builds are validation artifacts only; publishing the public “latest” Windows release is restricted to `foundation`.
 
 ## Быстрый старт для Windows
 
