@@ -376,7 +376,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель Gemini', hintText: 'gemini-2.5-flash')), 
           const SizedBox(height: 8),
           const Text(
-            'Подключение выполняется через Google Gemini API. Создайте ключ в Google AI Studio. Бесплатный доступ зависит от модели и текущих лимитов.',
+            'Создайте ключ: https://aistudio.google.com/apikey. Используйте ключ Google Gemini API. Бесплатный доступ зависит от модели и текущих лимитов.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 4),
