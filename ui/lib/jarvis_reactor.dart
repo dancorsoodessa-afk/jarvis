@@ -74,6 +74,42 @@ class _ReactorPainter extends CustomPainter {
       canvas.restore();
     }
 
+    // Depth particles: orbit in two planes and pulse with the active runtime state.
+    // This keeps the reactor animated offline and makes listening/thinking/speaking visibly distinct.
+    for (var i = 0; i < 72; i++) {
+      final seed = i * math.pi * 2 / 72;
+      final orbitSpeed = state == JarvisVisualState.thinking ? 1.65 : (state == JarvisVisualState.listening ? 1.25 : 0.72);
+      final angle = seed + t * orbitSpeed * (i.isEven ? 0.16 : -0.11);
+      final depth = 0.5 + 0.5 * math.sin(angle * 1.7 + i * 0.71);
+      final orbitX = radius * (0.48 + 0.25 * depth);
+      final orbitY = radius * (0.18 + 0.15 * depth);
+      final point = Offset(center.dx + math.cos(angle) * orbitX,
+          center.dy + math.sin(angle) * orbitY + math.sin(angle * 1.4) * radius * 0.035);
+      final particleRadius = radius * (0.004 + 0.009 * depth) * intensity;
+      final alpha = (0.18 + 0.42 * depth) * intensity;
+      final particlePaint = Paint()
+        ..color = (i % 9 == 0 ? Colors.white : color).withValues(alpha: alpha.clamp(0.0, 1.0));
+      canvas.drawCircle(point, particleRadius, particlePaint);
+    }
+
+    // State-driven energy rays expand under load, rather than showing fabricated telemetry.
+    if (state == JarvisVisualState.thinking || state == JarvisVisualState.speaking || state == JarvisVisualState.listening) {
+      final rayPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.7
+        ..color = color.withValues(alpha: 0.16 * intensity);
+      for (var i = 0; i < 24; i++) {
+        final a = t * speed * 0.08 + i * math.pi * 2 / 24;
+        final innerR = radius * (0.38 + 0.025 * math.sin(t * 2 + i));
+        final outerR = radius * (0.62 + 0.08 * intensity + 0.025 * math.sin(t * 1.4 + i * 0.8));
+        canvas.drawLine(
+          Offset(center.dx + math.cos(a) * innerR, center.dy + math.sin(a) * innerR * 0.62),
+          Offset(center.dx + math.cos(a) * outerR, center.dy + math.sin(a) * outerR * 0.62),
+          rayPaint,
+        );
+      }
+    }
+
     final breathing = math.sin(t * 0.65) * radius * 0.018;
     final headCenter = Offset(center.dx + math.sin(t * 0.37) * radius * 0.035, center.dy - radius * 0.10 + breathing);
     final headR = radius * 0.31;
