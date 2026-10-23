@@ -178,7 +178,13 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_ELEVENLABS_API_KEY"] = self.settings.get("elevenlabs_api_key", "")
         os.environ["JARVIS_ELEVENLABS_VOICE_ID"] = self.settings.get("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w")
         os.environ["JARVIS_ELEVENLABS_MODEL"] = self.settings.get("elevenlabs_model", "eleven_flash_v2_5")
-        os.environ["JARVIS_TTS"] = str(self.settings.get("tts_engine", "auto")).strip().lower() or "auto"
+        tts_engine = str(self.settings.get("tts_engine", "auto")).strip().lower() or "auto"
+        if tts_engine == "piper":
+            tts_engine = "auto"
+        if tts_engine not in {"auto", "elevenlabs", "cloud", "off"}:
+            tts_engine = "auto"
+        self.settings["tts_engine"] = tts_engine
+        os.environ["JARVIS_TTS"] = tts_engine
 
     def _save_settings(self):
         APP_DIR.mkdir(parents=True, exist_ok=True)
