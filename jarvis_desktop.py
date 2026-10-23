@@ -391,81 +391,150 @@ class JarvisDesktop(tk.Tk):
         self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
 
     def _draw_orb(self):
-        """Высокопроизводительный псевдо-3D ARC Reactor: глубина, орбиты, сетка и реакция на голос/AI."""
+        """Render a live perspective-projected neural sphere; no fake hardware telemetry."""
         self.canvas.delete("all")
-        w=max(430,self.canvas.winfo_width()); h=max(300,self.canvas.winfo_height())
-        cx,cy=w*0.43,h*0.48
-        phase=self._orb_phase; state=self._visual_state; level=self._visual_level
-        speed={"IDLE":0.014,"LISTENING":0.085,"THINKING":0.12,"SPEAKING":0.10,"ERROR":0.17}.get(state,0.03)
-        core=RED if state=="ERROR" else (YELLOW if state=="THINKING" else CYAN)
-        dark="#06121c"; faint="#0a2837"; dim="#17566d"; bright="#49cfe8"
+        w = max(430, self.canvas.winfo_width())
+        h = max(300, self.canvas.winfo_height())
+        cx, cy = w * .43, h * .47
+        phase, state, level = self._orb_phase, self._visual_state, self._visual_level
+        palette = {
+            "IDLE": ("#37d5ee", "#9af5ff", "#10384a"),
+            "LISTENING": ("#48f0b4", "#b6ffe1", "#0d463a"),
+            "THINKING": ("#8b7cff", "#d0c8ff", "#29204e"),
+            "SPEAKING": ("#39c6ff", "#b7edff", "#103b5a"),
+            "ERROR": ("#ff526b", "#ffc0c8", "#4b1422"),
+            "CONFIRMATION": ("#72f5ce", "#d2fff0", "#12463e"),
+        }
+        core, bright, dark = palette.get(state, palette["IDLE"])
+        activity = {"IDLE": .12, "LISTENING": .3, "THINKING": .78,
+                    "SPEAKING": .52, "ERROR": .7, "CONFIRMATION": .88}.get(state, .2)
+        activity = min(1.0, activity + level * (.85 if state == "LISTENING" else .2))
+        speed = {"IDLE": .018, "LISTENING": .075, "THINKING": .105,
+                 "SPEAKING": .09, "ERROR": .13, "CONFIRMATION": .12}.get(state, .03)
+        radius = min(w * .18, h * .255) * (1 + .025 * math.sin(phase * 2) + activity * .025 * math.sin(phase * 4))
+        ax = .24 + math.sin(phase * .3) * .16
+        ay = phase * (.2 + activity * .8)
+        az = math.sin(phase * .2) * .12
 
-        # Perspective grid behind the reactor.
-        horizon=cy+h*.08
-        for i in range(9):
-            y=horizon+i*i*2.2
-            self.canvas.create_line(0,y,w,y,fill="#0b2431",width=1)
-        for i in range(-8,9):
-            self.canvas.create_line(cx+i*34,horizon,cx+i*105,h,fill="#0a202c",width=1)
+        # Perspective floor grid and low-cost atmospheric glow.
+        horizon = cy + h * .10
+        for i in range(7):
+            y = horizon + i * i * 3
+            self.canvas.create_line(0, y, w, y, fill="#0b2431", width=1)
+        for i in range(-6, 7):
+            self.canvas.create_line(cx + i * 42, horizon, cx + i * 115, h, fill="#0a202c", width=1)
+        for mul, color in ((2.0, "#0a2634"), (1.55, "#0c3040"), (1.2, "#103d4b")):
+            rr = radius * mul
+            self.canvas.create_oval(cx - rr, cy - rr * .76, cx + rr, cy + rr * .76,
+                                    outline=color, width=2 if mul == 1.2 else 1)
 
-        # Depth particles orbiting the reactor.
-        for i in range(46):
-            a=phase*(0.10+(i%5)*0.018)+i*math.tau/46
-            depth=0.45+0.55*(0.5+0.5*math.sin(a*1.7+i))
-            rx=118+62*depth; ry=52+34*depth
-            x=cx+math.cos(a)*rx; y=cy+math.sin(a)*ry
-            size=0.7+2.0*depth*(0.5+0.5*level)
-            self.canvas.create_oval(x-size,y-size,x+size,y+size,fill=bright if i%11==0 else dim,outline="")
+        def rotate(point):
+            x, y, z = point
+            ca, sa = math.cos(ay), math.sin(ay)
+            x, z = x * ca + z * sa, -x * sa + z * ca
+            ca, sa = math.cos(ax), math.sin(ax)
+            y, z = y * ca - z * sa, y * sa + z * ca
+            ca, sa = math.cos(az), math.sin(az)
+            return x * ca - y * sa, x * sa + y * ca, z
 
-        # Tilted orbital rings create the 3D illusion.
-        for idx,(rx,ry,tilt,rot) in enumerate(((168,78,.0,.12),(145,64,.38,-.18),(116,48,-.52,.25),(88,36,.72,-.31))):
-            a0=phase*rot+tilt
-            pts=[]
-            for j in range(73):
-                a=a0+math.tau*j/72
-                x=cx+math.cos(a)*rx
-                y=cy+math.sin(a)*ry
-                # slight vertical perspective wobble
-                y += math.sin(a+tilt)*10*(idx+1)/4
-                pts.append((x,y))
-            for j in range(len(pts)-1):
-                self.canvas.create_line(*pts[j],*pts[j+1],fill=("#257f98" if idx<2 else faint),width=1)
+        def project(point, scale=1.0):
+            x, y, z = rotate(point)
+            perspective = 3.5 / max(.55, 3.5 - z)
+            return cx + x * radius * scale * perspective, cy + y * radius * scale * perspective, z
 
-        # Rotating scanner beam and radial energy spokes.
-        sweep=phase%math.tau
-        sx=cx+math.cos(sweep)*175; sy=cy+math.sin(sweep)*92
-        self.canvas.create_line(cx,cy,sx,sy,fill=core,width=2)
-        for i in range(18):
-            a=sweep+i*math.tau/18
-            r1=58+8*math.sin(phase+i); r2=112+22*level+12*math.sin(phase*1.4+i*.7)
-            self.canvas.create_line(cx+math.cos(a)*r1,cy+math.sin(a)*r1*.58,
-                                    cx+math.cos(a)*r2,cy+math.sin(a)*r2*.58,
-                                    fill=core if i%3==0 else dim,width=1)
+        # Tilted orbital loops are actual projected 3D circles.
+        for idx, (orbit_scale, tilt, direction) in enumerate(((1.48, .78, 1), (1.72, 1.12, -1), (1.94, .46, 1))):
+            points = []
+            for j in range(49):
+                a = j * math.tau / 48 + phase * direction * (.12 + idx * .035)
+                points.append(project((math.cos(a) * orbit_scale, math.sin(a) * orbit_scale * .34, 0), 1.0))
+            for j in range(len(points) - 1):
+                col = core if (j + idx * 7) % 12 < 3 else "#164d61"
+                self.canvas.create_line(points[j][0], points[j][1], points[j + 1][0], points[j + 1][1],
+                                        fill=col, width=1 if idx else 2)
 
-        # Central reactor with layered glow.
-        pulse=1+.08*math.sin(phase*3.0)+level*.22
-        for mul,col in ((2.9,"#0c3040"),(2.25,"#10485b"),(1.65,dim),(1.15,core)):
-            rr=38*pulse*mul
-            self.canvas.create_oval(cx-rr,cy-rr*.62,cx+rr,cy+rr*.62,outline=col,width=1)
-        rr=35*pulse
-        self.canvas.create_oval(cx-rr,cy-rr,cx+rr,cy+rr,fill=dark,outline=core,width=2)
-        self.canvas.create_oval(cx-rr*.62,cy-rr*.62,cx+rr*.62,cy+rr*.62,fill="#0b3a4a",outline=bright,width=2)
-        self.canvas.create_oval(cx-rr*.28,cy-rr*.28,cx+rr*.28,cy+rr*.28,fill=core,outline="")
-        self.canvas.create_text(cx,cy-4,text="J",fill="#f5ffff",font=("Segoe UI",25,"bold"))
-        self.canvas.create_text(cx,cy+19,text=state,fill=core,font=("Consolas",7,"bold"))
+        # 3D latitude/longitude wireframe with activity-driven deformation.
+        for meridian in range(10):
+            longitude = meridian * math.pi / 10 + phase * .09
+            points = []
+            for step in range(29):
+                lat = -math.pi / 2 + step * math.pi / 28
+                deform = 1 + activity * .065 * math.sin(phase * 2 + longitude * 3 + lat * 4)
+                point = (math.cos(lat) * math.cos(longitude) * deform,
+                         math.sin(lat) * deform,
+                         math.cos(lat) * math.sin(longitude) * deform)
+                points.append(project(point))
+            for j in range(len(points) - 1):
+                col = core if (points[j][2] + points[j + 1][2]) > .15 else "#123b4d"
+                self.canvas.create_line(points[j][0], points[j][1], points[j + 1][0], points[j + 1][1],
+                                        fill=col, width=1 if meridian % 3 == 0 else 1)
 
-        labels=("CORE","VOICE","AI","TOOLS","MEMORY","FILES","SYSTEM","NET")
-        for i in range(8):
-            a=phase*(.16 if i%2 else -.11)+i*math.tau/8
-            rx,ry=(168,78) if i%2==0 else (145,64)
-            nx,ny=cx+math.cos(a)*rx,cy+math.sin(a)*ry
-            self.canvas.create_oval(nx-5,ny-5,nx+5,ny+5,fill=core if i in (0,4) else "#123d4e",outline=dim)
-            self.canvas.create_text(nx,ny+(16 if ny<cy else -16),text=labels[i],fill="#82aebe",font=("Consolas",6,"bold"))
+        for latitude in range(-3, 4):
+            lat = latitude * math.pi / 8
+            points = []
+            for step in range(41):
+                lon = step * math.tau / 40
+                deform = 1 + activity * .055 * math.sin(phase * 2.4 + lon * 3 + lat * 4)
+                point = (math.cos(lat) * math.cos(lon) * deform,
+                         math.sin(lat) * deform,
+                         math.cos(lat) * math.sin(lon) * deform)
+                points.append(project(point))
+            for j in range(len(points) - 1):
+                col = core if (points[j][2] + points[j + 1][2]) > .15 else "#123b4d"
+                self.canvas.create_line(points[j][0], points[j][1], points[j + 1][0], points[j + 1][1],
+                                        fill=col, width=1)
 
-        self.canvas.create_text(cx,h-18,text="J A R V I S  //  A.R.C. 3D REACTOR  //  "+state,
-                                fill=core,font=("Consolas",8,"bold"))
-        self._orb_phase+=speed
-        self._orb_after=self.after(50,self._draw_orb)
+        # A rotating neural network: connected points move with the real visual state.
+        nodes = []
+        count = 32
+        golden = math.pi * (3 - math.sqrt(5))
+        for i in range(count):
+            yy = 1 - 2 * (i + .5) / count
+            ring = math.sqrt(max(0, 1 - yy * yy))
+            angle = i * golden + phase * (.12 + activity * .42)
+            wobble = 1 + activity * .07 * math.sin(phase * 3 + i * .7)
+            nodes.append(project((math.cos(angle) * ring * 1.08 * wobble,
+                                  yy * 1.08 * wobble,
+                                  math.sin(angle) * ring * 1.08 * wobble)))
+        for i, point in enumerate(nodes):
+            for j in (i + 2, i + 5):
+                if j >= len(nodes):
+                    continue
+                other = nodes[j]
+                if math.hypot(point[0] - other[0], point[1] - other[1]) < radius * .72:
+                    self.canvas.create_line(point[0], point[1], other[0], other[1],
+                                            fill="#174b5d" if point[2] + other[2] < 0 else core, width=1)
+        for i, point in enumerate(nodes):
+            dot = 1.2 + activity * 1.8 * (.5 + .5 * math.sin(phase * 3 + i))
+            x, y = point[0], point[1]
+            self.canvas.create_oval(x - dot * 2, y - dot * 2, x + dot * 2, y + dot * 2,
+                                    fill="#123b4d", outline="")
+            self.canvas.create_oval(x - dot, y - dot, x + dot, y + dot,
+                                    fill=bright if point[2] > .1 else core, outline="")
+
+        # Central energy nucleus breathes while listening, thinking, and speaking.
+        pulse = 1 + .07 * math.sin(phase * 3) + level * .18 + activity * .035
+        rr = radius * .24 * pulse
+        self.canvas.create_oval(cx - rr * 2.1, cy - rr * 2.1, cx + rr * 2.1, cy + rr * 2.1,
+                                fill=dark, outline=core, width=2)
+        self.canvas.create_oval(cx - rr * 1.35, cy - rr * 1.35, cx + rr * 1.35, cy + rr * 1.35,
+                                fill="#0b3a4a", outline=bright, width=2)
+        self.canvas.create_oval(cx - rr * .45, cy - rr * .45, cx + rr * .45, cy + rr * .45,
+                                fill=bright, outline="")
+        self.canvas.create_text(cx, cy, text="J", fill="#f5ffff", font=("Segoe UI", 18, "bold"))
+
+        # Live module nodes and state label; telemetry values are not fabricated.
+        labels = ("CORE", "VOICE", "AI", "TOOLS", "MEMORY", "FILES", "SYSTEM", "NET")
+        for i, label in enumerate(labels):
+            a = phase * (.13 if i % 2 else -.1) + i * math.tau / len(labels)
+            nx, ny = cx + math.cos(a) * radius * 1.82, cy + math.sin(a) * radius * .82
+            self.canvas.create_oval(nx - 3, ny - 3, nx + 3, ny + 3, fill=core, outline="")
+            self.canvas.create_text(nx, ny + (11 if ny < cy else -11), text=label,
+                                    fill="#82aebe", font=("Consolas", 6, "bold"))
+        self.canvas.create_text(cx, h - 15, text="J A R V I S  //  LIVE 3D NEURAL CORE  //  " + state,
+                                fill=core, font=("Consolas", 8, "bold"))
+        self._orb_phase += speed
+        self._orb_after = self.after(50, self._draw_orb)
 
     def _start_agent(self):
         # Ignore stale results when settings are saved/reloaded more than once.
