@@ -704,11 +704,11 @@ class JarvisDesktop(tk.Tk):
                         self._append("VOICE", "STT: " + event[1])
                     elif kind == "reply_delta":
                         self._streaming_reply = getattr(self, "_streaming_reply", "") + str(event[1])
-                        self._set_visual_state("THINKING", 0.7)
+                        self._set_visual_state("THINKING")
                         self._replace_streaming_reply(self._streaming_reply)
                     elif kind == "reply":
                         reply = event[1]
-                        self._set_visual_state("SPEAKING", 0.65)
+                        self._set_visual_state("SPEAKING")
                         if getattr(self, "_streaming_reply", ""):
                             self._replace_streaming_reply(reply, final=True)
                         else:
@@ -718,11 +718,11 @@ class JarvisDesktop(tk.Tk):
                         self.send_button.config(state="normal")
                         self.attach_button.config(state="normal")
                         self.status.config(text="● ONLINE", fg=GREEN)
-                        self._set_visual_state("IDLE", 0.0)
+                        self._set_visual_state("IDLE")
                         if self.settings.get("tts_enabled", True):
                             threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
                     elif kind == "voice_text":
-                        self._set_visual_state("LISTENING", 0.75)
+                        self._set_visual_state("LISTENING")
                         if self.busy:
                             continue
                         self.input.delete(0, "end")
