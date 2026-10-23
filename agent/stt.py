@@ -54,6 +54,13 @@ def warmup() -> None:
     health_check()
 
 
+def _request_timeout() -> float:
+    try:
+        return max(5.0, min(180.0, float(os.environ.get("JARVIS_STT_TIMEOUT", "45") or "45")))
+    except (TypeError, ValueError):
+        return 45.0
+
+
 def transcribe(audio_path: str) -> str:
     token = _token()
     if current_engine() == "off" or not token:
@@ -83,7 +90,7 @@ def transcribe(audio_path: str) -> str:
     retryable = {429, 500, 502, 503, 504}
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(request, timeout=90) as response:
+            with urllib.request.urlopen(request, timeout=_request_timeout()) as response:
                 result = json.loads(response.read().decode("utf-8"))
             break
         except urllib.error.HTTPError as exc:
