@@ -388,8 +388,7 @@ class JarvisDesktop(tk.Tk):
                  bg="#070d16",fg="#8297a5",justify="left",font=("Segoe UI",8),wraplength=235).pack(anchor="w",padx=14)
     def _set_visual_state(self, state, level=None):
         self._visual_state = state
-        if level is not None:
-            self._visual_level = max(0.0, min(1.0, float(level)))
+        self._visual_level = 0.0 if level is None else max(0.0, min(1.0, float(level)))
         labels = {
             "IDLE": "СИСТЕМА ГОТОВА",
             "LISTENING": "СЛУШАЮ ВАС",
