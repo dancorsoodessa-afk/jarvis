@@ -48,7 +48,10 @@ The build script runs tests before packaging. The executable is written to `rele
 
 ## Run from source
 
+Prepare the pinned local Three.js engine once, then launch the app:
+
 ```powershell
+powershell -ExecutionPolicy Bypass -File scripts\prepare_3d_assets.ps1
 python -m agent
 python jarvis_desktop.py
 ```
