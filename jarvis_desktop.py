@@ -184,6 +184,8 @@ class JarvisDesktop(tk.Tk):
         # Remove obsolete ElevenLabs settings from legacy profiles and persisted settings.
         for obsolete in ("elevenlabs_api_key", "elevenlabs_voice_id", "elevenlabs_model"):
             self.settings.pop(obsolete, None)
+        for obsolete_env in ("JARVIS_ELEVENLABS_API_KEY", "JARVIS_ELEVENLABS_VOICE_ID", "JARVIS_ELEVENLABS_MODEL"):
+            os.environ.pop(obsolete_env, None)
         self.settings.setdefault("tts_engine", "gemini")
         self.settings.setdefault("tts_voice", "Charon")
         if self.settings.get("tts_voice") in {"Windows system voice", "Dmitri", "Microsoft David", "Microsoft Zira", ""}:
