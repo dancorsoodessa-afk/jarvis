@@ -22,6 +22,21 @@ def start_visual_server(state_provider: Callable[[], dict]):
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
+            if self.path in {"/vendor/three.module.js", "/vendor/three.core.js"}:
+                vendor_name = self.path.rsplit("/", 1)[-1]
+                vendor_path = scene_path.parent / "vendor" / vendor_name
+                try:
+                    body = vendor_path.read_bytes()
+                except OSError:
+                    self.send_error(500, "Bundled Three.js engine asset is missing")
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "text/javascript; charset=utf-8")
+                self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if self.path == "/state":
                 body = json.dumps(state_provider(), ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
