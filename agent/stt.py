@@ -49,7 +49,7 @@ def transcribe(audio_path: str) -> str:
     url = os.environ.get("JARVIS_STT_URL", DEFAULT_STT_URL).strip().rstrip("/")
     if not url.startswith("https://generativelanguage.googleapis.com/"):
         raise RuntimeError("Распознавание речи разрешено только через Google Gemini API.")
-    endpoint = f"{url}/{DEFAULT_STT_MODEL}:generateContent?{urllib.parse.urlencode({'key': token})}"
+    endpoint = f"{url}/{DEFAULT_STT_MODEL}:generateContent"
     payload = {
         "contents": [{
             "parts": [
@@ -61,7 +61,7 @@ def transcribe(audio_path: str) -> str:
     request = urllib.request.Request(
         endpoint,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={"Content-Type": "application/json", "Accept": "application/json", "x-goog-api-key": token},
         method="POST",
     )
     try:
