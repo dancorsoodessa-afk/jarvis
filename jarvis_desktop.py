@@ -1067,7 +1067,7 @@ class JarvisDesktop(tk.Tk):
         voice_fields = {}
         for label, key, default, secret in (
             ("Движок TTS", "tts_engine", self.settings.get("tts_engine", "auto"), False),
-            ("Локальный голос", "tts_voice", self.settings.get("tts_voice", "Dmitri Medium"), False),
+            ("Название голоса", "tts_voice", self.settings.get("tts_voice", "ElevenLabs cloud voice"), False),
             ("ElevenLabs API-ключ", "elevenlabs_api_key", self.settings.get("elevenlabs_api_key", ""), True),
             ("ElevenLabs Voice ID", "elevenlabs_voice_id", self.settings.get("elevenlabs_voice_id", "srULqtwUV9XZPg1ZCO5w"), False),
             ("ElevenLabs модель", "elevenlabs_model", self.settings.get("elevenlabs_model", "eleven_flash_v2_5"), False),
