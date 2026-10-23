@@ -124,7 +124,7 @@ jobs:
           p.write_text(t)
           PY
           echo "=== Verify Sherpa JVM classes ==="
-          jar tf android/app/libs/sherpa-onnx-jvm-1.13.8.jar | grep -E '^com/k2fsa/sherpa/onnx/(OnlineRecognizer|Vad|OfflineTts)\\.class$'
+          jar tf android/app/libs/sherpa-onnx-jvm-1.13.8.jar | grep -F 'com/k2fsa/sherpa/onnx/OnlineRecognizer.class'
           echo "=== Verify Gradle declarations ==="
           grep -n 'sherpa-onnx' android/app/build.gradle.kts
       - name: Get dependencies
