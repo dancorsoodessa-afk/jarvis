@@ -264,5 +264,5 @@ class _ReactorPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ReactorPainter oldDelegate) => oldDelegate.color != color || oldDelegate.state != state;
+  bool shouldRepaint(_ReactorPainter oldDelegate) => oldDelegate.color != color || oldDelegate.state != state || oldDelegate.activity != activity;
 }
