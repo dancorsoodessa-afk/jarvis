@@ -10,6 +10,10 @@ import urllib.request
 from pathlib import Path
 
 DEFAULT_STT_MODEL = "gemini-3.8-flash"
+
+
+def _model() -> str:
+    return (os.environ.get("JARVIS_STT_MODEL") or DEFAULT_STT_MODEL).strip()
 DEFAULT_STT_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
 
 
@@ -33,7 +37,7 @@ def health_check(timeout: float = 10.0) -> str:
     token = _token()
     if not token:
         raise RuntimeError("Не задан GEMINI_API_KEY для облачного распознавания речи.")
-    url = DEFAULT_STT_URL + DEFAULT_STT_MODEL + "?" + urllib.parse.urlencode({"key": token})
+    url = DEFAULT_STT_URL + _model() + "?" + urllib.parse.urlencode({"key": token})
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=max(5.0, min(20.0, float(timeout)))) as response:
@@ -82,7 +86,7 @@ def transcribe(audio_path: str) -> str:
         ]}],
         "generationConfig": {"temperature": 0, "maxOutputTokens": 1024}
     }
-    url = DEFAULT_STT_URL + DEFAULT_STT_MODEL + ":generateContent?" + urllib.parse.urlencode({"key": token})
+    url = DEFAULT_STT_URL + _model() + ":generateContent?" + urllib.parse.urlencode({"key": token})
     request = urllib.request.Request(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                                      headers={"Content-Type": "application/json", "Accept": "application/json"},
                                      method="POST")
