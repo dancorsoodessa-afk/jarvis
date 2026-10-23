@@ -4,11 +4,15 @@ on:
   push:
     branches: [foundation]
     paths:
-      - 'jarvis_desktop.py'
-      - 'jarvis_desktop.spec'
       - 'agent/**'
       - 'docs/**'
       - 'ui/**'
+      - 'tests/**'
+      - 'scripts/build_exe.ps1'
+      - 'jarvis_desktop.py'
+      - 'jarvis_desktop.spec'
+      - 'pyproject.toml'
+      - 'poetry.lock'
       - '.github/workflows/build-windows-exe.yml'
   workflow_dispatch:
 
@@ -16,41 +20,39 @@ permissions:
   contents: write
 
 concurrency:
-  group: jarvis-windows-${{ github.ref }}
+  group: jarvis-windows-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - name: Install build and runtime dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install pyinstaller requests pillow sounddevice numpy pycaw comtypes pypdf python-docx openpyxl
+          python-version: '3.12'
       - name: Compile Python modules
         shell: pwsh
         run: |
           python -m compileall -q agent jarvis_desktop.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Smoke-test imports and advertised tools
+      - name: Run tests and build packaged executable
         shell: pwsh
         run: |
-          python -c "from agent.runtime import build_agent; from agent.tools_catalog import TOOLS; a=build_agent(); missing=sorted({x[0] for x in TOOLS}-set(a.tools.names())); assert not missing, f'Missing advertised tools: {missing}'; print(f'OK: {len(a.tools.names())} tools registered')"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Build desktop executable
-        run: pyinstaller --clean --noconfirm jarvis_desktop.spec
-      - name: Prepare release asset
-        shell: pwsh
-        run: |
-          if (!(Test-Path 'dist/jarvis_desktop.exe')) { throw 'PyInstaller output dist/jarvis_desktop.exe was not found' }
-          Copy-Item 'dist/jarvis_desktop.exe' 'dist/JARVIS.exe' -Force
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_exe.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Build script failed with exit code $LASTEXITCODE" }
+          if (!(Test-Path 'release/JARVIS.exe')) { throw 'release/JARVIS.exe was not created' }
+          if ((Get-Item 'release/JARVIS.exe').Length -lt 1MB) { throw 'JARVIS.exe is unexpectedly small' }
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-Windows-x64
+          path: release/JARVIS.exe
+          if-no-files-found: error
+          retention-days: 14
       - name: Publish versioned release
         uses: softprops/action-gh-release@v2
         with:
@@ -59,4 +61,4 @@ jobs:
           target_commitish: ${{ github.sha }}
           make_latest: true
           fail_on_unmatched_files: true
-          files: dist/JARVIS.exe
+          files: release/JARVIS.exe
