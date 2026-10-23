@@ -100,6 +100,8 @@ class JarvisDesktop(tk.Tk):
         self._visual_level = 0.0
         self.settings = _load_saved_settings()
         self._apply_saved_settings()
+        if getattr(self, "_legacy_tts_settings_removed", False):
+            self._save_settings()
         self._build_style()
         self._build_ui()
         # The Three.js scene is served locally; no camera access is requested.
@@ -181,8 +183,10 @@ class JarvisDesktop(tk.Tk):
         self.settings.setdefault("voice_enabled", True)
         self.settings.setdefault("tts_enabled", True)
         self.settings.setdefault("tts_gender", "male")
-        # Remove obsolete ElevenLabs settings from legacy profiles and persisted settings.
-        for obsolete in ("elevenlabs_api_key", "elevenlabs_voice_id", "elevenlabs_model"):
+        # Remove obsolete third-party TTS settings and persist the migration once.
+        obsolete_keys = ("elevenlabs_api_key", "elevenlabs_voice_id", "elevenlabs_model")
+        self._legacy_tts_settings_removed = any(key in self.settings for key in obsolete_keys)
+        for obsolete in obsolete_keys:
             self.settings.pop(obsolete, None)
         for obsolete_env in ("JARVIS_ELEVENLABS_API_KEY", "JARVIS_ELEVENLABS_VOICE_ID", "JARVIS_ELEVENLABS_MODEL"):
             os.environ.pop(obsolete_env, None)
