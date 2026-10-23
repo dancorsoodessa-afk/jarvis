@@ -841,6 +841,7 @@ class JarvisDesktop(tk.Tk):
         attachment_payload=self._build_attachment_payload()
         self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
         self.status.config(text="● PROCESSING",fg=CYAN)
+        self._set_visual_state("THINKING", 0.55)
         def work():
             provider = getattr(self.agent, "provider", None)
             try:
