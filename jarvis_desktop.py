@@ -866,6 +866,9 @@ class JarvisDesktop(tk.Tk):
         if not self.settings.get("voice_enabled", True):
             self._append("VOICE", "Голос выключен. Включите его в настройках.")
             return
+        if not getattr(self, "_stt_online", False):
+            self._append("VOICE", "Облачное распознавание ещё проверяется или недоступно. Повторите после статуса ONLINE.")
+            return
         # A manual click explicitly arms command capture: the user should not
         # have to say the wake word after pressing the microphone button.
         self._voice_armed_until = float("inf")
