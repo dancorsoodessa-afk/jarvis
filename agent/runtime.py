@@ -33,7 +33,7 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         history = session.load_history()
         shared_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         shared_key = settings.chat_key or __import__("os").environ.get("GEMINI_API_KEY", "")
-        default_model = settings.chat_model or "gemini-2.5-flash"
+        default_model = settings.chat_model or "gemini-3.8-flash"
         fast = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.fast_model or default_model,
                                   history=history, fallback_models=[settings.reasoning_model, settings.coding_model, settings.additional_model])
         reasoning = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.reasoning_model or default_model,
