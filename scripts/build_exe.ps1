@@ -27,12 +27,13 @@ Copy-Item "dist\jarvis_desktop.exe" "$release\JARVIS.exe"
 
 @"
 JARVIS — Windows x64
-Chat AI: Hugging Face Inference Providers (internet and HF_TOKEN required).
-Speech recognition: Hugging Face cloud API (HF_TOKEN required).
-Speech output: optional ElevenLabs cloud API (ELEVENLABS_API_KEY required).
+Chat AI: Google Gemini API (internet and GEMINI_API_KEY required).
+Speech recognition: Google Gemini API (GEMINI_API_KEY required).
+Speech output: Google Gemini cloud TTS (GEMINI_API_KEY required).
+Optional backup chat provider: Groq API (GROQ_API_KEY configured in the JARVIS control center).
 No local AI models are bundled.
 
-Configuration: Windows environment variables HF_TOKEN and, optionally, ELEVENLABS_API_KEY.
+Configuration: enter GEMINI_API_KEY in the JARVIS control center. Optionally configure GROQ_API_KEY there as a backup chat provider.
 "@ | Set-Content -Path "$release\README.txt" -Encoding UTF8
 
 Write-Host ""
