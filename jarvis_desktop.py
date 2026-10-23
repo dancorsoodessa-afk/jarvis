@@ -29,8 +29,9 @@ RED = "#ff647c"
 YELLOW = "#ffcf6b"
 APP_DIR = Path(os.environ.get("APPDATA", Path.home())) / "JARVIS"
 SETTINGS_FILE = APP_DIR / "settings.json"
-DEFAULT_PROVIDER = "huggingface"
-DEFAULT_URL = "https://router.huggingface.co/v1/chat/completions"
+DEFAULT_PROVIDER = "gemini"
+DEFAULT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 def _safe_endpoint(value: str | None) -> str:
@@ -115,30 +116,36 @@ class JarvisDesktop(tk.Tk):
             profiles = {}
         active = int(self.settings.get("active_agent", 0) or 0)
         active = max(0, min(2, active))
+        # Never reuse a saved Hugging Face token for Gemini; require a Gemini key separately.
+        gemini_key = (self.settings.get("gemini_api_key")
+                      or os.environ.get("GEMINI_API_KEY")
+                      or os.environ.get("JARVIS_CHAT_KEY")
+                      or "")
+        saved_model = (self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or DEFAULT_MODEL).strip()
+        if not saved_model.lower().startswith("gemini-"):
+            saved_model = DEFAULT_MODEL
         legacy = {
             "name": "JARVIS",
-            "provider": "huggingface",
-            "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
-            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "Qwen/Qwen2.5-7B-Instruct",
-            "api_key": self.settings.get("hf_token") or os.environ.get("HF_TOKEN") or "",
+            "provider": "gemini",
+            "url": DEFAULT_URL,
+            "model": saved_model,
+            "api_key": gemini_key,
         }
         defaults = {
             "0": legacy,
-            "1": {"name": "Hugging Face Reasoning", "provider": "huggingface", "url": DEFAULT_URL, "model": "Qwen/Qwen2.5-7B-Instruct", "api_key": legacy["api_key"]},
-            "2": {"name": "Hugging Face Coding", "provider": "huggingface", "url": DEFAULT_URL, "model": "Qwen/Qwen2.5-7B-Instruct", "api_key": legacy["api_key"]},
+            "1": {"name": "Gemini Reasoning", "provider": "gemini", "url": DEFAULT_URL, "model": DEFAULT_MODEL, "api_key": gemini_key},
+            "2": {"name": "Gemini Coding", "provider": "gemini", "url": DEFAULT_URL, "model": DEFAULT_MODEL, "api_key": gemini_key},
         }
         merged = {}
         for key, default in defaults.items():
             value = profiles.get(key, {})
             merged[key] = {**default, **(value if isinstance(value, dict) else {})}
-            merged[key]["provider"] = "huggingface"
+            merged[key]["provider"] = "gemini"
             merged[key]["url"] = DEFAULT_URL
             merged[key]["api_key"] = legacy["api_key"]
-            # A previous misconfiguration may have put the endpoint URL in Model.
-            # Restore the profile's known-good model ID instead of sending the URL as "model".
-            merged[key]["model"] = _safe_model_id(merged[key].get("model"), default["model"])
-            if merged[key]["model"] == "Qwen/Qwen2.5-7B-Instruct":
-                merged[key]["model"] = default["model"]
+            # Migrate old provider model IDs to a valid Gemini default.
+            candidate = _safe_model_id(merged[key].get("model"), default["model"])
+            merged[key]["model"] = candidate if candidate.lower().startswith("gemini-") else default["model"]
         profile = merged[str(active)]
         self.settings["active_agent"] = active
         self.settings["agents"] = merged
@@ -147,10 +154,10 @@ class JarvisDesktop(tk.Tk):
         profile["url"] = self.settings["url"]
         self.settings["model"] = profile["model"]
         self.settings["api_key"] = profile["api_key"]
-        os.environ["JARVIS_PROVIDER"] = "huggingface"
-        os.environ["JARVIS_CHAT_URL"] = self.settings["url"]
+        os.environ["JARVIS_PROVIDER"] = "gemini"
+        os.environ["JARVIS_CHAT_URL"] = DEFAULT_URL
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
-        os.environ["HF_TOKEN"] = profile["api_key"]
+        os.environ["GEMINI_API_KEY"] = profile["api_key"]
         os.environ["JARVIS_CHAT_MODEL"] = profile["model"]
         os.environ["JARVIS_FAST_MODEL"] = merged["0"]["model"]
         os.environ["JARVIS_REASONING_MODEL"] = merged["1"]["model"]
@@ -375,7 +382,7 @@ class JarvisDesktop(tk.Tk):
                       highlightthickness=1).pack(fill="x",padx=10,pady=3)
         tk.Label(right,text="AI-МАРШРУТИЗАЦИЯ",bg="#070d16",fg=MUTED,
                  font=("Consolas",8,"bold")).pack(anchor="w",padx=14,pady=(15,5))
-        tk.Label(right,text="Hugging Face Inference API\nОдин токен для всех моделей\nЛокальные инструменты и голос",
+        tk.Label(right,text="Google Gemini API\nОдин API-ключ для моделей\nЛокальные инструменты и голос",
                  bg="#070d16",fg="#8297a5",justify="left",font=("Segoe UI",8),wraplength=235).pack(anchor="w",padx=14)
     def _set_visual_state(self, state, level=None):
         self._visual_state = state
@@ -388,7 +395,12 @@ class JarvisDesktop(tk.Tk):
             "SPEAKING": "ОТВЕЧАЮ",
             "ERROR": "ОШИБКА",
         }
-        self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
+        state_colors = {
+            "IDLE": CYAN, "LISTENING": GREEN, "THINKING": "#a99aff",
+            "SPEAKING": "#39c6ff", "ERROR": RED, "CONFIRMATION": "#72f5ce",
+        }
+        self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE",
+                             fg=state_colors.get(state, CYAN))
 
     def _draw_orb(self):
         """Render a live perspective-projected neural sphere; no fake hardware telemetry."""
@@ -1063,7 +1075,7 @@ class JarvisDesktop(tk.Tk):
         win.grab_set()
         tk.Label(win, text="ЦЕНТР УПРАВЛЕНИЯ JARVIS", bg=PANEL, fg=CYAN,
                  font=("Segoe UI", 19, "bold")).pack(anchor="w", padx=24, pady=(22, 4))
-        tk.Label(win, text="Только Hugging Face Inference API. Укажите HF токен и модель из каталога Hugging Face.",
+        tk.Label(win, text="Google Gemini API. Создайте ключ в Google AI Studio и выберите модель Gemini.",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(0, 16))
 
         body = tk.Frame(win, bg=PANEL)
@@ -1083,22 +1095,22 @@ class JarvisDesktop(tk.Tk):
         active = int(self.settings.get("active_agent", 0) or 0)
         names = ("FAST / Обычные", "REASONING / Рассуждения", "CODING / Код")
         defaults = (
-            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct"),
-            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct"),
-            ("huggingface", DEFAULT_URL, "Qwen/Qwen2.5-7B-Instruct"),
+            ("gemini", DEFAULT_URL, DEFAULT_MODEL),
+            ("gemini", DEFAULT_URL, DEFAULT_MODEL),
+            ("gemini", DEFAULT_URL, DEFAULT_MODEL),
         )
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
-        tk.Label(shared_key_row, text="HUGGING FACE API TOKEN", bg="#091b29", fg=CYAN, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
+        tk.Label(shared_key_row, text="GOOGLE GEMINI API KEY", bg="#091b29", fg=CYAN, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
         shared_key = tk.Entry(shared_key_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•", exportselection=False)
-        shared_key.insert(0, str(self.settings.get("hf_token") or os.environ.get("HF_TOKEN", "")))
+        shared_key.insert(0, str(self.settings.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY") or os.environ.get("JARVIS_CHAT_KEY", "")))
         shared_key.pack(fill="x", padx=14, pady=(0, 12), ipady=7)
 
         additional_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
         additional_row.pack(fill="x", pady=(2, 10))
         tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
         additional_model = tk.Entry(additional_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
-        additional_model.insert(0, str(self.settings.get("additional_model", "Qwen/Qwen2.5-7B-Instruct")))
+        additional_model.insert(0, str(self.settings.get("additional_model", DEFAULT_MODEL)))
         additional_model.pack(fill="x", padx=14, pady=(0, 12), ipady=6)
 
         entries = []
@@ -1117,7 +1129,7 @@ class JarvisDesktop(tk.Tk):
                       bg="#0e667a", fg=TEXT, relief="flat", padx=10, pady=5).pack(side="right")
             fields = {}
             for label, key, default, secret in (
-                ("Модель Hugging Face", "model", p.get("model", dmodel), False),
+                ("Модель Gemini", "model", p.get("model", dmodel), False),
             ):
                 row = tk.Frame(card, bg="#091b29")
                 row.pack(fill="x", padx=14, pady=4)
@@ -1157,10 +1169,15 @@ class JarvisDesktop(tk.Tk):
         def save():
             new_profiles = {}
             for i, fields in enumerate(entries):
-                new_profiles[str(i)] = {"provider": "huggingface", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "Qwen/Qwen2.5-7B-Instruct", "api_key": shared_key.get().strip(), "name": names[i]}
+                model = fields["model"].get().strip()
+                if not model.lower().startswith("gemini-"):
+                    model = DEFAULT_MODEL
+                new_profiles[str(i)] = {"provider": "gemini", "url": DEFAULT_URL, "model": model, "api_key": shared_key.get().strip(), "name": names[i]}
             self.settings["agents"] = new_profiles
-            self.settings["hf_token"] = shared_key.get().strip()
-            self.settings["additional_model"] = additional_model.get().strip() or "Qwen/Qwen2.5-7B-Instruct"
+            self.settings["gemini_api_key"] = shared_key.get().strip()
+            self.settings.pop("hf_token", None)
+            additional = additional_model.get().strip()
+            self.settings["additional_model"] = additional if additional.lower().startswith("gemini-") else DEFAULT_MODEL
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
