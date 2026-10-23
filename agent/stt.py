@@ -57,16 +57,30 @@ def transcribe(audio_path: str) -> str:
     request = urllib.request.Request(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                                      headers={"Content-Type": "application/json", "Accept": "application/json"},
                                      method="POST")
-    try:
-        with urllib.request.urlopen(request, timeout=90) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"Ошибка распознавания Gemini: HTTP {exc.code}. {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Не удалось подключиться к Gemini STT: {exc.reason}") from exc
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise RuntimeError("Gemini STT вернул некорректный JSON.") from exc
+    result = None
+    retryable = {429, 500, 502, 503, 504}
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=90) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
+            if exc.code in retryable and attempt < 2:
+                import time
+                time.sleep(1.0 * (2 ** attempt))
+                continue
+            raise RuntimeError(f"Ошибка распознавания Gemini: HTTP {exc.code}. {detail}") from exc
+        except urllib.error.URLError as exc:
+            if attempt < 2:
+                import time
+                time.sleep(1.0 * (2 ** attempt))
+                continue
+            raise RuntimeError(f"Не удалось подключиться к Gemini STT: {exc.reason}") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise RuntimeError("Gemini STT вернул некорректный JSON.") from exc
+    if result is None:
+        raise RuntimeError("Gemini STT временно недоступен после повторных попыток.")
     try:
         text = "".join(part.get("text", "") for part in result["candidates"][0]["content"]["parts"])
     except (KeyError, IndexError, TypeError):
