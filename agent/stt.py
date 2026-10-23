@@ -28,8 +28,30 @@ def current_engine() -> str:
     return "gemini" if _token() else "off"
 
 
+def health_check(timeout: float = 10.0) -> str:
+    """Verify Gemini credentials, model availability, and network reachability without transcribing audio."""
+    token = _token()
+    if not token:
+        raise RuntimeError("Не задан GEMINI_API_KEY для облачного распознавания речи.")
+    url = DEFAULT_STT_URL + DEFAULT_STT_MODEL + "?" + urllib.parse.urlencode({"key": token})
+    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=max(5.0, min(20.0, float(timeout)))) as response:
+            body = json.loads(response.read().decode("utf-8"))
+        if not isinstance(body, dict) or not body.get("name"):
+            raise RuntimeError("Gemini STT вернул неожиданный ответ проверки модели.")
+        return "ONLINE"
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:300]
+        raise RuntimeError(f"Gemini STT: HTTP {exc.code}. {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Gemini STT: сеть недоступна ({exc.reason}).") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RuntimeError("Gemini STT вернул некорректный JSON при проверке доступности.") from exc
+
+
 def warmup() -> None:
-    """No local model to warm up."""
+    health_check()
 
 
 def transcribe(audio_path: str) -> str:
