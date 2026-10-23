@@ -74,6 +74,75 @@ class _ReactorPainter extends CustomPainter {
       canvas.restore();
     }
 
+    // Project a rotating, deforming 3D wireframe sphere into the canvas.
+    // The mesh changes its radius and rotation with the live JARVIS state.
+    final meshRadius = radius * (0.43 + 0.018 * math.sin(t * 1.7) * intensity);
+    final rotationY = t * 0.22 * speed;
+    final rotationX = math.sin(t * 0.31) * 0.28;
+    final meshRows = 9;
+    final meshColumns = 20;
+
+    Offset projectMeshPoint(double latitude, double longitude) {
+      final deformation = 1.0 +
+          0.045 * math.sin(longitude * 3 + t * speed) *
+              math.cos(latitude * 4 + t * 0.6) * intensity;
+      final x = math.cos(latitude) * math.sin(longitude) * deformation;
+      final y = math.sin(latitude) * deformation;
+      final z = math.cos(latitude) * math.cos(longitude) * deformation;
+      final rotatedX = x * math.cos(rotationY) + z * math.sin(rotationY);
+      final rotatedZ = -x * math.sin(rotationY) + z * math.cos(rotationY);
+      final rotatedY = y * math.cos(rotationX) - rotatedZ * math.sin(rotationX);
+      final depth = y * math.sin(rotationX) + rotatedZ * math.cos(rotationX);
+      final perspective = 1 / (1.32 - depth * 0.24);
+      return Offset(
+        center.dx + rotatedX * meshRadius * perspective,
+        center.dy + rotatedY * meshRadius * perspective,
+      );
+    }
+
+    final meshPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.72
+      ..strokeCap = StrokeCap.round;
+    for (var row = 1; row < meshRows; row++) {
+      final latitude = -math.pi / 2 + math.pi * row / meshRows;
+      final path = Path();
+      for (var column = 0; column <= meshColumns; column++) {
+        final point = projectMeshPoint(latitude, math.pi * 2 * column / meshColumns);
+        if (column == 0) {
+          path.moveTo(point.dx, point.dy);
+        } else {
+          path.lineTo(point.dx, point.dy);
+        }
+      }
+      meshPaint.color = color.withValues(alpha: (0.10 + 0.07 * intensity).clamp(0.0, 0.32));
+      canvas.drawPath(path, meshPaint);
+    }
+    for (var column = 0; column < meshColumns; column++) {
+      final longitude = math.pi * 2 * column / meshColumns;
+      final path = Path();
+      for (var row = 0; row <= meshRows; row++) {
+        final latitude = -math.pi / 2 + math.pi * row / meshRows;
+        final point = projectMeshPoint(latitude, longitude);
+        if (row == 0) {
+          path.moveTo(point.dx, point.dy);
+        } else {
+          path.lineTo(point.dx, point.dy);
+        }
+      }
+      meshPaint.color = color.withValues(alpha: (0.08 + 0.06 * intensity).clamp(0.0, 0.28));
+      canvas.drawPath(path, meshPaint);
+    }
+    for (var i = 0; i < 32; i++) {
+      final latitude = -math.pi / 2 + math.pi * (i + 0.5) / 32;
+      final longitude = (i * 2.399963229728653 + t * speed * 0.12) % (math.pi * 2);
+      final point = projectMeshPoint(latitude, longitude);
+      final dot = Paint()
+        ..color = (i % 5 == 0 ? Colors.white : color)
+            .withValues(alpha: (0.35 + 0.25 * intensity).clamp(0.0, 0.9));
+      canvas.drawCircle(point, radius * 0.0045 * intensity, dot);
+    }
+
     // Depth particles: orbit in two planes and pulse with the active runtime state.
     // This keeps the reactor animated offline and makes listening/thinking/speaking visibly distinct.
     for (var i = 0; i < 72; i++) {
