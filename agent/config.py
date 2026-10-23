@@ -1,26 +1,26 @@
 import os
 from dataclasses import dataclass
 
-SUPPORTED_PROVIDERS = ("huggingface",)
-DEFAULT_CHAT_URL = "https://router.huggingface.co/v1/chat/completions"
-DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+SUPPORTED_PROVIDERS = ("gemini",)
+DEFAULT_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 def normalize_chat_url(_value: str | None) -> str:
-    """JARVIS sends chat requests only to Hugging Face Inference Providers."""
+    """Use Google's OpenAI-compatible Gemini API endpoint."""
     return DEFAULT_CHAT_URL
 
 
 def normalize_provider(_value: str | None) -> str:
-    """Local and third-party providers are intentionally unsupported."""
-    return "huggingface"
+    """JARVIS cloud chat is configured for Google Gemini."""
+    return "gemini"
 
 
 @dataclass
 class Settings:
-    """Runtime settings for the cloud-only Hugging Face provider."""
+    """Runtime settings for the Google Gemini cloud provider."""
 
-    provider: str = "huggingface"
+    provider: str = "gemini"
     chat_url: str = DEFAULT_CHAT_URL
     chat_key: str = ""
     chat_model: str = DEFAULT_MODEL
@@ -39,9 +39,9 @@ class Settings:
     def from_env(cls) -> "Settings":
         default_model = os.environ.get("JARVIS_CHAT_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
         return cls(
-            provider="huggingface",
+            provider="gemini",
             chat_url=DEFAULT_CHAT_URL,
-            chat_key=os.environ.get("HF_TOKEN", "").strip()
+            chat_key=os.environ.get("GEMINI_API_KEY", "").strip()
             or os.environ.get("JARVIS_CHAT_KEY", "").strip(),
             chat_model=default_model,
             fast_model=os.environ.get("JARVIS_FAST_MODEL", default_model).strip() or default_model,

@@ -32,7 +32,12 @@ jobs:
         working-directory: ui
         run: |
           set -e
+          MAIN_ACTIVITY="$(mktemp)"
+          cp android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt "$MAIN_ACTIVITY"
+          rm -rf android
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
+          cp "$MAIN_ACTIVITY" android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt
+          rm -f "$MAIN_ACTIVITY"
           rm -rf test
       - name: Configure Android permissions
         working-directory: ui
