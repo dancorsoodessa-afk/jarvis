@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 
-SUPPORTED_PROVIDERS = ("gemini", "groq")
+SUPPORTED_PROVIDERS = ("gemini",)
 DEFAULT_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 DEFAULT_MODEL = "gemini-3.8-flash"
 
