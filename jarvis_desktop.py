@@ -804,7 +804,15 @@ class JarvisDesktop(tk.Tk):
     def send(self, text=None):
         if text is None: text=self.input.get()
         text=text.strip()
-        if not text or self.agent is None or self.busy: return
+        if not text:
+            self._append("SYSTEM", "Введите команду или используйте кнопку «Голос».")
+            return
+        if self.busy:
+            self._append("SYSTEM", "Предыдущая команда ещё выполняется. Дождитесь ответа.")
+            return
+        if self.agent is None:
+            self._append("SYSTEM", "Ядро ещё не готово или не запустилось. Проверьте статус и API-ключ в настройках.")
+            return
         context=self._build_attachment_context()
         shown = text + (
             "\n📎 " + ", ".join(x["name"] for x in self.attachments)
@@ -841,14 +849,22 @@ class JarvisDesktop(tk.Tk):
 
     def start_voice(self):
         if not self.settings.get("voice_enabled", True):
-            self._append("VOICE", "Голос выключен. Нажмите кнопку «Голос: ВЫКЛ», чтобы включить.")
+            self._append("VOICE", "Голос выключен. Включите его в настройках.")
             return
+        # A manual click explicitly arms command capture: the user should not
+        # have to say the wake word after pressing the microphone button.
+        self._voice_armed_until = float("inf")
         if self._voice_loop_running:
-            self._append("VOICE", "Голосовой режим уже слушает.")
+            self.voice_button.config(text="🎙 СЛУШАЮ КОМАНДУ")
+            self._append("VOICE", "Микрофон активен. Говорите команду сейчас — слово «Джарвис» не обязательно.")
             return
         self._start_voice_loop()
-        if not self._voice_loop_running:
-            self._append("VOICE", "Голосовой ввод недоступен. Проверьте зависимости STT.")
+        if self._voice_loop_running:
+            self._append("VOICE", "Микрофон включён. Говорите команду сейчас — слово «Джарвис» не обязательно.")
+        else:
+            devices = voice.audio_devices()
+            detail = " Доступные микрофоны: " + ", ".join(devices) if devices else " Windows не обнаружил входной микрофон."
+            self._append("VOICE", "Голосовой ввод не запущен. Проверьте разрешение микрофона в Windows и API-ключ Gemini." + detail)
 
     def _draw_tool_avatar(self, canvas, kind, seed):
         palette = {
