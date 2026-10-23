@@ -280,6 +280,7 @@ class JarvisDesktop(tk.Tk):
         nav("◎  OSINT / НАБЛЮДЕНИЕ", lambda: self._open_module_details("osint","OSINT-инструменты","Инструменты разведки и поиска",True))
         nav("📎  ФАЙЛЫ И ВЛОЖЕНИЯ", self.pick_attachments)
         nav("🎙  ГОЛОСОВОЙ РЕЖИМ", self.start_voice)
+        nav("📷  ПРОВЕРИТЬ ВЕБ-КАМЕРУ", lambda: self._command_from_hud("Проверь веб-камеру и обнаружь лицо через инструмент face_check. Сообщи результат проверки."))
 
         tk.Frame(side, bg="#183044", height=1).pack(fill="x", padx=14, pady=14)
         tk.Label(side, text="СОСТОЯНИЕ МОДУЛЕЙ", bg="#070d16", fg=MUTED,
