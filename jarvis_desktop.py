@@ -138,7 +138,9 @@ class JarvisDesktop(tk.Tk):
             # Migrate stale OpenRouter/Hugging Face model IDs to the configured Gemini model.
             # Old saved profiles must never override the selected provider with incompatible model IDs.
             saved_model = str(merged[key].get("model") or "").strip()
-            if saved_model != default["model"]:
+            # Migrate stale non-Gemini model IDs, but preserve valid custom Gemini
+            # model names selected by the user in the control center.
+            if not saved_model.lower().startswith("gemini-"):
                 merged[key]["model"] = default["model"]
             else:
                 merged[key]["model"] = _safe_model_id(saved_model, default["model"])
