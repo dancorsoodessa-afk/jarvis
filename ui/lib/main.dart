@@ -182,7 +182,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   String? _extractWakeCommand(String text) {
     final normalized = text.toLowerCase().replaceAll(RegExp(r'[,.!?;:]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-    final match = RegExp(r'\b(?:джарвис|jarvis)\b').firstMatch(normalized);
+    final match = RegExp(r'(^|[^a-zа-яё0-9])(?:джарвис|jarvis)(?=$|[^a-zа-яё0-9])').firstMatch(normalized);
     if (match == null) return null;
     final command = normalized.substring(match.end).trim();
     return command.isEmpty ? '' : command;
@@ -309,7 +309,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
     try {
       await _saveSettings();
-      if (mounted) setState(() => _status = 'Проверяю основной и резервный AI…');
+      if (mounted) setState(() => _status = 'Проверяю ответ Gemini…');
       _setVisual(JarvisVisualState.thinking);
       await _jarvis?.dispose();
       _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model, fallbackUrl: '', fallbackKey: '', fallbackModel: '');
@@ -371,9 +371,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Align(alignment: Alignment.centerLeft, child: Text('Google Gemini API', style: TextStyle(fontWeight: FontWeight.bold))),
-          TextField(controller: _endpoint, readOnly: true, decoration: const InputDecoration(labelText: 'AI URL · Gemini', hintText: 'https://router.huggingface.co/v1')),
+          TextField(controller: _endpoint, readOnly: true, decoration: const InputDecoration(labelText: 'AI URL · Gemini', hintText: 'https://generativelanguage.googleapis.com/v1beta/openai')),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'Gemini API Key')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'Qwen/Qwen3-4B-Instruct-2507')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель Gemini', hintText: 'gemini-3.8-flash')),
           const SizedBox(height: 8),
           const Text(
             'Подключение выполняется через Google Gemini API. Создайте ключ в Google AI Studio; бесплатный тариф имеет ограничения.',
