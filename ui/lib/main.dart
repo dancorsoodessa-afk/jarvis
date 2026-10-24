@@ -632,7 +632,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             LayoutBuilder(
               builder: (context, constraints) {
                 final core =             SizedBox(
-              height: sceneHeight,
+              height: constraints.maxWidth < 760 ? sceneHeight - 76 : sceneHeight,
               width: double.infinity,
               child: Stack(
                 alignment: Alignment.center,
@@ -687,7 +687,42 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 ],
               ),
             );
-                if (constraints.maxWidth < 760) return core;
+                if (constraints.maxWidth < 760) {
+                  // Keep both HUD panels visible on phones without shrinking
+                  // the reactor into an unusable sliver.
+                  return SizedBox(
+                    height: sceneHeight,
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          height: 68,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _hudMiniPanel('СИСТЕМА', Icons.memory_rounded, [
+                                  ['ЯДРО', _visualLabel],
+                                  ['ГОЛОС', _voiceRunning ? 'АКТИВЕН' : 'ОЖИДАНИЕ'],
+                                  ['АКТИВНОСТЬ', '${(_voiceLevel * 100).round()}%'],
+                                  ['РЕЖИМ', _busy ? 'ВЫЧИСЛЕНИЕ' : 'ГОТОВНОСТЬ'],
+                                ]),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _hudMiniPanel('СВЯЗЬ И AI', Icons.hub_outlined, [
+                                  ['ОБЛАКО', connected ? 'ОНЛАЙН' : 'ОФЛАЙН'],
+                                  ['ПРОВАЙДЕР', connected ? 'GEMINI · OK' : 'GEMINI · WAIT'],
+                                  ['МИКРОФОН', _voiceReady ? 'ГОТОВ' : 'ОЖИДАНИЕ'],
+                                  ['ПОТОК', _streamText.isNotEmpty ? 'ПЕРЕДАЧА' : 'В ОЖИДАНИИ'],
+                                ]),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(child: core),
+                      ],
+                    ),
+                  );
+                }
                 return SizedBox(
                   height: sceneHeight,
                   child: Row(
@@ -933,6 +968,45 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _hudMiniPanel(String title, IconData icon, List<List<String>> rows) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xCC06111D),
+        border: Border.all(color: _visualColor.withValues(alpha: 0.28)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 13, color: _visualColor),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 9, letterSpacing: 0.7, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Expanded(
+            child: Text(
+              rows.map((row) => '${row[0]}: ${row[1]}').join('  ·  '),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 8, height: 1.25, color: _visualColor.withValues(alpha: 0.9)),
+            ),
+          ),
+        ],
       ),
     );
   }
