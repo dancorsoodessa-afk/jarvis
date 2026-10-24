@@ -1,5 +1,6 @@
 """Runtime tool registry with optional per-tool switches."""
 
+import inspect
 import json
 import os
 from collections.abc import Callable
@@ -58,6 +59,18 @@ class ToolRegistry:
         entry = self._tools[name]
         props = {k: {"type": "string", "description": v}
                  for k, v in entry.parameters.items()}
+        # Keep optional callable arguments optional in the JSON schema.
+        # Marking every argument required causes models to invent values for
+        # parameters that already have safe defaults (for example destination="").
+        try:
+            signature = inspect.signature(entry.fn)
+        except (TypeError, ValueError):
+            signature = None
+        required = []
+        for parameter_name in props:
+            parameter = signature.parameters.get(parameter_name) if signature else None
+            if parameter is None or parameter.default is inspect.Parameter.empty:
+                required.append(parameter_name)
         return {
             "type": "function",
             "function": {
@@ -66,7 +79,7 @@ class ToolRegistry:
                 "parameters": {
                     "type": "object",
                     "properties": props,
-                    "required": list(props),
+                    "required": required,
                 },
             },
         }
