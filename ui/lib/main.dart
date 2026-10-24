@@ -104,9 +104,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     try {
       final mic = await Permission.microphone.request();
       if (!mic.isGranted) {
-        if (mounted) setState(() => _status = mic.isPermanentlyDenied
-            ? 'Микрофон заблокирован. Разрешите микрофон в настройках Android.'
-            : 'Нужно разрешение на микрофон.');
+        if (mounted) {
+          setState(() {
+            _status = mic.isPermanentlyDenied
+                ? 'Микрофон заблокирован. Разрешите микрофон в настройках Android.'
+                : 'Нужно разрешение на микрофон.';
+          });
+        }
         return;
       }
       // Voice startup is non-fatal: a broken native speech/TTS engine
@@ -159,12 +163,14 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       await _speech.stop();
       await _speech.listen(
         onResult: (result) => _onSpeechResult(result, session),
-        listenFor: const Duration(minutes: 1),
-        pauseFor: const Duration(seconds: 4),
-        partialResults: true,
-        cancelOnError: false,
-        listenMode: stt.ListenMode.dictation,
-        localeId: 'ru_RU',
+        listenOptions: stt.SpeechListenOptions(
+          listenFor: const Duration(minutes: 1),
+          pauseFor: const Duration(seconds: 4),
+          partialResults: true,
+          cancelOnError: false,
+          listenMode: stt.ListenMode.dictation,
+          localeId: 'ru_RU',
+        ),
         onSoundLevelChange: (level) {
           if (!mounted) return;
           final activity = ((level + 2.0) / 12.0).clamp(0.0, 1.0).toDouble();
@@ -183,9 +189,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       final canRetry = _voiceRestartAttempts < 3;
       _voiceRunning = canRetry;
       if (canRetry) _voiceRestartAttempts++;
-      if (mounted) setState(() => _status = canRetry
-          ? 'Ошибка микрофона, повтор $_voiceRestartAttempts/3: $e'
-          : 'Микрофон остановлен после 3 неудачных попыток: $e');
+      if (mounted) {
+        setState(() {
+          _status = canRetry
+              ? 'Ошибка микрофона, повтор $_voiceRestartAttempts/3: $e'
+              : 'Микрофон остановлен после 3 неудачных попыток: $e';
+        });
+      }
       if (canRetry) _scheduleVoiceRestart(const Duration(seconds: 2));
     } finally {
       _voiceStarting = false;
@@ -274,9 +284,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       final storedEndpoint = prefs.getString('endpoint')?.trim() ?? '';
       final storedModel = prefs.getString('model')?.trim() ?? '';
       final storedKey = prefs.getString('api_key')?.trim() ?? '';
-      final storedFallbackEndpoint = prefs.getString('fallback_endpoint')?.trim() ?? '';
-      final storedFallbackModel = prefs.getString('fallback_model')?.trim() ?? '';
-
       // JARVIS Android uses the official Gemini OpenAI-compatible endpoint.
       final usingOldProvider = storedEndpoint != kFreePrimaryUrl;
       if (usingOldProvider) {
@@ -374,10 +381,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _returnToIdle(const Duration(milliseconds: 1100));
     await _partialSub?.cancel();
     _partialSub = _jarvis!.partials().listen((text) {
-      if (mounted) setState(() {
-        _streamText = text;
-        if (text.isNotEmpty) _visualState = JarvisVisualState.speaking;
-      });
+      if (mounted) {
+        setState(() {
+          _streamText = text;
+          if (text.isNotEmpty) _visualState = JarvisVisualState.speaking;
+        });
+      }
     });
   }
 
@@ -387,8 +396,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     await _speech.stop();
     _voiceRunning = false;
     _wakeArmed = false;
+    final dialogContext = context;
     final shouldConnect = await showDialog<bool>(
-      context: context,
+      context: dialogContext,
       builder: (ctx) => AlertDialog(
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
