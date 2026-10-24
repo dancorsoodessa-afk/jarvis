@@ -685,7 +685,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                     ),
                   ),
                 ],
-              ),;
+              ),
+            );
                 if (constraints.maxWidth < 760) return core;
                 return SizedBox(
                   height: sceneHeight,
