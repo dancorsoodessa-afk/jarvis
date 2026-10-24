@@ -636,7 +636,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             LayoutBuilder(
               builder: (context, constraints) {
                 final core =             SizedBox(
-              height: constraints.maxWidth < 760 ? sceneHeight - 76 : sceneHeight,
+              height: constraints.maxWidth < 760 ? sceneHeight - 92 : sceneHeight,
               width: double.infinity,
               child: Stack(
                 alignment: Alignment.center,
@@ -699,7 +699,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                     child: Column(
                       children: [
                         SizedBox(
-                          height: 68,
+                          height: 88,
                           child: Row(
                             children: [
                               Expanded(
@@ -977,39 +977,47 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Widget _hudMiniPanel(String title, IconData icon, List<List<String>> rows) {
+    final first = rows.take(2).toList();
+    final second = rows.skip(2).take(2).toList();
+
+    Widget item(List<String> row) => Expanded(
+      child: Padding(
+        padding: const EdgeInsets.only(right: 4, top: 2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(row[0], maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 9, color: Colors.white.withValues(alpha: 0.72))),
+            const SizedBox(height: 2),
+            Text(row[1], maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _visualColor)),
+          ],
+        ),
+      ),
+    );
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xCC06111D),
-        border: Border.all(color: _visualColor.withValues(alpha: 0.28)),
-        borderRadius: BorderRadius.circular(10),
+        color: const Color(0xE6081421),
+        border: Border.all(color: _visualColor.withValues(alpha: 0.30)),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 13, color: _visualColor),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 9, letterSpacing: 0.7, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          Expanded(
-            child: Text(
-              rows.map((row) => '${row[0]}: ${row[1]}').join('  ·  '),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 8, height: 1.25, color: _visualColor.withValues(alpha: 0.9)),
-            ),
-          ),
+          Row(children: [
+            Icon(icon, size: 15, color: _visualColor),
+            const SizedBox(width: 6),
+            Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10, letterSpacing: 0.35, fontWeight: FontWeight.w800))),
+          ]),
+          const SizedBox(height: 4),
+          Expanded(child: Column(children: [
+            Expanded(child: Row(children: first.map(item).toList())),
+            Expanded(child: Row(children: second.map(item).toList())),
+          ])),
         ],
       ),
     );
