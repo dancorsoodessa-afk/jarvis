@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -44,6 +45,7 @@ class _Msg {
 
 class _JarvisHomePageState extends State<JarvisHomePage> {
   JarvisIpc? _jarvis;
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
   final _input = TextEditingController();
   final _endpoint = TextEditingController();
   final _apiKey = TextEditingController();
@@ -285,7 +287,20 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       final prefs = await SharedPreferences.getInstance();
       final storedEndpoint = prefs.getString('endpoint')?.trim() ?? '';
       final storedModel = prefs.getString('model')?.trim() ?? '';
-      final storedKey = prefs.getString('api_key')?.trim() ?? '';
+      final legacyKey = prefs.getString('api_key')?.trim() ?? '';
+      var storedKey = await _secureStorage.read(key: 'api_key') ?? '';
+      if (storedKey.isEmpty && legacyKey.isNotEmpty) {
+        await _secureStorage.write(key: 'api_key', value: legacyKey);
+        storedKey = legacyKey;
+      }
+      await prefs.remove('api_key');
+      final legacyFallbackKey = prefs.getString('fallback_key')?.trim() ?? '';
+      var storedFallbackKey = await _secureStorage.read(key: 'fallback_key') ?? '';
+      if (storedFallbackKey.isEmpty && legacyFallbackKey.isNotEmpty) {
+        await _secureStorage.write(key: 'fallback_key', value: legacyFallbackKey);
+        storedFallbackKey = legacyFallbackKey;
+      }
+      await prefs.remove('fallback_key');
       // JARVIS Android uses the official Gemini OpenAI-compatible endpoint.
       final usingOldProvider = storedEndpoint != kFreePrimaryUrl;
       if (usingOldProvider) {
@@ -300,7 +315,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       }
 
       _fallbackEndpoint.text = '';
-      _fallbackKey.text = prefs.getString('fallback_key')?.trim() ?? '';
+      _fallbackKey.text = storedFallbackKey.trim();
       _fallbackModel.text = '';
       // Do not initialize native microphone/speech services during startup.
       // Voice is initialized only after the main UI is visible, preventing
@@ -324,9 +339,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _endpoint.text = kFreePrimaryUrl;
     await prefs.setString('endpoint', kFreePrimaryUrl);
     await prefs.setString('model', _model.text.trim());
-    await prefs.setString('api_key', _apiKey.text.trim());
+    await _secureStorage.write(key: 'api_key', value: _apiKey.text.trim());
+    await prefs.remove('api_key');
     await prefs.setString('fallback_endpoint', '');
-    await prefs.setString('fallback_key', '');
+    await _secureStorage.delete(key: 'fallback_key');
+    await prefs.remove('fallback_key');
     await prefs.setString('fallback_model', '');
   }
 
