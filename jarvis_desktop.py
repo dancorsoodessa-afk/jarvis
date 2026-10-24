@@ -483,10 +483,6 @@ class JarvisDesktop(tk.Tk):
         self._voice_loop_running = True
         self.voice_button.config(text="🎙 СЛУШАЮ")
         self.voice_control.config(text="🔊  Голос: ВКЛ")
-        def on_speech_start():
-            if tts.is_playing():
-                tts.stop()
-                self.events.put(("voice_status", "Перебивание: TTS остановлен, слушаю вас."))
         last_level_event = [0.0]
         def on_audio_level(level):
             now = time.monotonic()
@@ -497,12 +493,15 @@ class JarvisDesktop(tk.Tk):
             wake_words = ("jarvis", "джарвис")
             while self._voice_loop_running and self.settings.get("voice_enabled", True):
                 try:
+                    if tts.is_playing():
+                        time.sleep(0.12)
+                        continue
                     heard = voice.listen_for_phrase(
                         silence_seconds=0.55,
                         max_seconds=10.0,
                         start_timeout=2.0,
-                        on_speech_start=on_speech_start,
                         on_audio_level=on_audio_level,
+                        should_stop=tts.is_playing,
                     )
                     self.events.put(("voice_capture_done",))
                     if not heard or not self._voice_loop_running:
@@ -522,8 +521,8 @@ class JarvisDesktop(tk.Tk):
                             silence_seconds=0.55,
                             max_seconds=10.0,
                             start_timeout=4.0,
-                            on_speech_start=on_speech_start,
                             on_audio_level=on_audio_level,
+                            should_stop=tts.is_playing,
                         )
                         self.events.put(("voice_capture_done",))
                     elif not activated and time.monotonic() < self._voice_armed_until:
