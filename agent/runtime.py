@@ -19,7 +19,7 @@ def _send_email(to: str, subject: str, body: str) -> str:
     host=os.environ.get("JARVIS_SMTP_HOST","").strip(); user=os.environ.get("JARVIS_SMTP_USER","").strip(); password=os.environ.get("JARVIS_SMTP_PASSWORD","")
     if not host or not user or not password:
         raise RuntimeError("SMTP не настроен: JARVIS_SMTP_HOST, JARVIS_SMTP_USER, JARVIS_SMTP_PASSWORD")
-    port=int(os.environ.get("JARVIS_SMTP_PORT","587")); sender=os.environ.get("JARVIS_SMTP_FROM",user).strip()
+    port=int(os.environ.get("JARVIS_SMTP_PORT","587")); sender=os.environ.get("JARVIS_SMTP_FROM","").strip() or user
     msg=EmailMessage(); msg["From"]=sender; msg["To"]=to; msg["Subject"]=subject; msg.set_content(body)
     with smtplib.SMTP(host,port,timeout=30) as smtp:
         smtp.starttls(); smtp.login(user,password); smtp.send_message(msg)
