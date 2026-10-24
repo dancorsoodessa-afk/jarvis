@@ -188,7 +188,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     } catch (e) {
       final canRetry = _voiceRestartAttempts < 3;
       _voiceRunning = canRetry;
-      if (canRetry) _voiceRestartAttempts++;
+      if (canRetry) {
+        _voiceRestartAttempts++;
+      }
       if (mounted) {
         setState(() {
           _status = canRetry
