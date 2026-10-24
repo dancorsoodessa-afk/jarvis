@@ -49,6 +49,8 @@ class JarvisIpc {
   final String? _fallbackKey;
   final String? _fallbackModel;
   bool _listening = false;
+  StreamSubscription<String>? _stdoutSub;
+  StreamSubscription<String>? _stderrSub;
   int _nextId = 0;
   int? _activeId;
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
@@ -168,22 +170,51 @@ class JarvisIpc {
     }
   }
 
+  void _failPending(Object error) {
+    for (final entry in _pending.entries) {
+      if (!entry.value.isCompleted) entry.value.completeError(error);
+    }
+    _pending.clear();
+  }
+
   void _ensureListening() {
     if (_standalone || _listening) return;
     _listening = true;
-    final lines = _process!.stdout.transform(utf8.decoder).transform(const LineSplitter());
+    final process = _process!;
+    final lines = process.stdout.transform(utf8.decoder).transform(const LineSplitter());
     final accumulated = <int, String>{};
-    lines.listen((line) {
+    _stdoutSub = lines.listen((line) {
       if (line.trim().isEmpty) return;
-      final msg = jsonDecode(line) as Map<String, dynamic>;
-      final id = msg['id'] is int ? msg['id'] as int : null;
-      if (msg['type'] == 'delta' && id != null) {
-        accumulated[id] = (accumulated[id] ?? '') + (msg['text'] as String);
-        _deltaController.add({id: accumulated[id]!});
-      } else if (id != null) {
-        _pending.remove(id)?.complete(msg);
+      try {
+        final decoded = jsonDecode(line);
+        if (decoded is! Map<String, dynamic>) {
+          throw const FormatException('IPC ответ должен быть JSON-объектом');
+        }
+        final msg = decoded;
+        final id = msg['id'] is int ? msg['id'] as int : null;
+        if (msg['type'] == 'delta' && id != null) {
+          final delta = msg['text'];
+          if (delta is! String) throw const FormatException('IPC delta должен содержать текст');
+          accumulated[id] = (accumulated[id] ?? '') + delta;
+          _deltaController.add({id: accumulated[id]!});
+        } else if (id != null) {
+          _pending.remove(id)?.complete(msg);
+        }
+      } catch (error) {
+        // A malformed line must not terminate the listener or strand callers.
+        _failPending(StateError('Некорректный ответ IPC: $error'));
       }
+    }, onError: (Object error, StackTrace stack) {
+      _failPending(StateError('Ошибка чтения IPC: $error'));
+    }, onDone: () {
+      _failPending(StateError('Процесс JARVIS завершил вывод'));
     });
+    // Always drain stderr: otherwise a verbose child process can block on a full pipe.
+    _stderrSub = process.stderr.transform(utf8.decoder).listen((_) {},
+        onError: (Object _) {});
+    process.exitCode.then((code) {
+      _failPending(StateError('Процесс JARVIS завершился с кодом $code'));
+    }).catchError((Object _) {});
   }
 
   Future<Map<String, dynamic>> _request(Map<String, dynamic> body) {
