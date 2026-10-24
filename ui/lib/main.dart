@@ -675,7 +675,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 children: [
                   Expanded(child: _telemetryCard('CORE STATE', _visualLabel, _visualColor)),
                   const SizedBox(width: 8),
-                  Expanded(child: _telemetryCard('INPUT LEVEL', (_voiceLevel * 100).round().toString() + '%', const Color(0xFF42E8FF))),
+                  Expanded(child: _telemetryCard('INPUT LEVEL', '${(_voiceLevel * 100).round()}%', const Color(0xFF42E8FF))),
                   const SizedBox(width: 8),
                   Expanded(child: _telemetryCard('AI ENGINE', connected ? 'READY' : 'WAITING',
                     connected ? const Color(0xFF52E5B8) : const Color(0xFFFFC56B))),
@@ -767,10 +767,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                           _voiceLevel = 0;
                           _voiceRestartTimer?.cancel();
                           await _speech.stop();
-                          if (mounted) setState(() {
-                            _status = 'Голос остановлен';
-                            _visualState = JarvisVisualState.idle;
-                          });
+                          if (mounted) {
+                            setState(() {
+                              _status = 'Голос остановлен';
+                              _visualState = JarvisVisualState.idle;
+                            });
+                          }
                         } else {
                           if (!_voiceReady) await _initVoice();
                           if (_voiceReady && mounted) {
