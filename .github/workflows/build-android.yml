@@ -77,9 +77,9 @@ jobs:
           ]
           for permission in permissions:
               if permission not in text:
-                  text = text.replace("<application", permission + "\\n    <application", 1)
+                  text = text.replace("<application", permission + "\n    <application", 1)
           if "android.speech.RecognitionService" not in text:
-              text = text.replace("<application", '    <queries>\\n        <intent>\\n            <action android:name="android.speech.RecognitionService" />\\n        </intent>\\n    </queries>\\n    <application', 1)
+              text = text.replace("<application", '    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n    <application', 1)
           p.write_text(text, encoding="utf-8")
           PY
       - name: Get dependencies
