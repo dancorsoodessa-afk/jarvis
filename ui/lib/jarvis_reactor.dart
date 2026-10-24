@@ -255,7 +255,7 @@ class _EnergyCorePainter extends CustomPainter {
       final nodeSize = radius * (0.004 + 0.004 * (front + 1)) *
           (1 + voice * 0.8);
       nodePaint.color = (i % 7 == 0 ? Colors.white : color).withValues(
-        alpha: (0.22 + 0.48 * (front + 1) / 2).clamp(0.0, 0.9),
+        alpha: (0.22 + 0.48 * (front + 1) / 2).clamp(0.0, 0.9).toDouble(),
       );
       canvas.drawCircle(point, nodeSize, nodePaint);
     }
