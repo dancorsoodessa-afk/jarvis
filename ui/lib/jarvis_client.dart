@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 class JarvisReply {
   JarvisReply(this.text, this.provider, this.toolUsed, this.needsConfirmation);
@@ -297,11 +298,10 @@ class JarvisIpc {
   }
 
   Future<void> dispose() async {
+    await _stdoutSub?.cancel();
+    await _stderrSub?.cancel();
+    _failPending(StateError('JARVIS IPC остановлен'));
     await _deltaController.close();
-    for (final entry in _pending.entries) {
-      if (!entry.value.isCompleted) entry.value.completeError(StateError('JARVIS IPC остановлен'));
-    }
-    _pending.clear();
     _process?.kill();
     _httpClient?.close(force: true);
   }
