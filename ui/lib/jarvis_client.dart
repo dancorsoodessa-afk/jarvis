@@ -205,7 +205,7 @@ class JarvisIpc {
   }
 
   Future<JarvisReply> _call(String base, String key, String model, String text) async {
-    final selected = model.trim().isEmpty ? await _autoModel(base, key) : model.trim();
+    final selected = await _resolveModel(base, key, model);
     final messages = <Map<String, String>>[
       {'role': 'system', 'content': 'Ты JARVIS — AI-помощник. Отвечай на языке пользователя. Не утверждай, что выполнил действие на телефоне, если оно не было выполнено инструментом.'},
       ..._history,
