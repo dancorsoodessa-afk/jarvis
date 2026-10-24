@@ -47,7 +47,7 @@ class TestCloudVoiceRegressions(unittest.TestCase):
         text_block = payload["input"][0]["content"][0]
         self.assertEqual(text_block["text"], "Привет, Джарвис")
         self.assertEqual(text_block["annotations"][0]["type"], "speech_metadata")
-        self.assertEqual(payload["response_format"], {"type": "audio"})
+        self.assertEqual(payload["response_format"], {"type": "audio", "mime_type": "audio/wav"})
         self.assertEqual(result, audio)
 
     def test_raw_gemini_pcm_is_wrapped_in_wav(self):
