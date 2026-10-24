@@ -714,8 +714,7 @@ class JarvisDesktop(tk.Tk):
         # This function runs on a worker thread. Never call Tk widgets here:
         # Tkinter is not thread-safe and a UI exception used to prevent TTS itself.
         try:
-            self.events.put(("tts_started",))
-            tts.speak_and_play(text)
+            tts.speak_and_play(text, on_playback_start=lambda: self.events.put(("tts_started",)))
             self.events.put(("tts_done",))
         except Exception as exc:
             self.events.put(("tts_error", str(exc)))
