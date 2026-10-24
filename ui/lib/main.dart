@@ -594,7 +594,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.sizeOf(context).height;
-    final sceneHeight = (screenHeight * 0.42).clamp(270.0, 350.0).toDouble();
+    final sceneHeight = (screenHeight * 0.48).clamp(300.0, 390.0).toDouble();
     final connected = _jarvis != null;
     return Scaffold(
       appBar: AppBar(
@@ -635,6 +635,22 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: Alignment.center,
+                          radius: 0.9,
+                          colors: [
+                            _visualColor.withValues(alpha: 0.10),
+                            const Color(0xFF07111D).withValues(alpha: 0.55),
+                            Colors.transparent,
+                          ],
+                          stops: const [0, 0.58, 1],
+                        ),
+                      ),
+                    ),
+                  ),
                   Positioned.fill(child: JarvisReactor(color: _visualColor, state: _visualState, activity: _voiceLevel)),
                   Positioned(
                     top: 9,
