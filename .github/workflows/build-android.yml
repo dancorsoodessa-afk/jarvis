@@ -33,6 +33,8 @@ jobs:
         run: |
           set -e
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
+          # Remove only Flutter's generated counter-example test; preserve project tests.
+          rm -f test/widget_test.dart
       - name: Configure Android permissions
         working-directory: ui
         shell: bash
