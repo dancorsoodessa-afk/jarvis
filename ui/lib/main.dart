@@ -380,7 +380,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     await _speech.stop();
     _voiceRunning = false;
     _wakeArmed = false;
-    await showDialog<void>(
+    final shouldConnect = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('JARVIS — настройки'),
@@ -398,15 +398,19 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           const Text('Голос: автоматическое ожидание «Джарвис».', style: TextStyle(fontSize: 12)),
         ])),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
-          FilledButton(onPressed: () { Navigator.pop(ctx); _connectAndroid(); }, child: const Text('Сохранить и подключить')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Сохранить и подключить')),
         ],
       ),
     );
-    if (mounted && _jarvis != null && _voiceReady) {
+    if (!mounted) return;
+    if (shouldConnect == true) {
+      await _connectAndroid();
+    } else if (_jarvis != null && _voiceReady) {
+      // Resume the existing voice session after dismissing settings.
       _voiceRunning = true;
       _wakeArmed = false;
-      _startVoiceLoop();
+      await _startVoiceLoop();
     }
   }
 
