@@ -124,7 +124,7 @@ class JarvisDesktop(tk.Tk):
             "provider": "gemini",
             "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
             "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "gemini-3.8-flash",
-            "api_key": self.settings.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY") or "",
+            "api_key": (str(self.settings.get("gemini_api_key") or "") if "gemini_api_key" in self.settings else os.environ.get("GEMINI_API_KEY", "")),
         }
         defaults = {
             "0": legacy,
@@ -159,6 +159,7 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_URL"] = self.settings["url"]
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
         os.environ["GEMINI_API_KEY"] = profile["api_key"]
+        # An explicitly empty saved key means disconnected; do not resurrect a stale environment key.
         os.environ["GROQ_API_KEY"] = str(self.settings.get("groq_api_key") or (os.environ.get("GROQ_API_KEY") if "groq_api_key" not in self.settings else "") or "")
         os.environ["JARVIS_GROQ_MODEL"] = str(self.settings.get("groq_model") or "openai/gpt-oss-120b")
         os.environ["JARVIS_GROQ_TIMEOUT"] = str(self.settings.get("groq_timeout") or "30")
@@ -1071,6 +1072,12 @@ class JarvisDesktop(tk.Tk):
         shared_key = tk.Entry(shared_key_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="", exportselection=True)
         shared_key.insert(0, str(self.settings.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY", "")))
         shared_key.pack(fill="x", padx=14, pady=(0, 6), ipady=8)
+        def clear_entry(entry):
+            entry.delete(0, "end")
+            entry.focus_set()
+        tk.Button(shared_key_row, text="ОЧИСТИТЬ КЛЮЧ GEMINI",
+                  command=lambda: clear_entry(shared_key), bg="#572637", fg=TEXT,
+                  activebackground="#7a3046", relief="flat", padx=10, pady=5).pack(anchor="e", padx=14, pady=(0, 8))
         # Make paste reliable in packaged Tkinter builds and provide an explicit clipboard action.
         def paste_gemini_key():
             try:
@@ -1098,6 +1105,9 @@ class JarvisDesktop(tk.Tk):
         groq_key = tk.Entry(groq_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•", exportselection=False)
         groq_key.insert(0, str(self.settings.get("groq_api_key") or os.environ.get("GROQ_API_KEY", "")))
         groq_key.pack(fill="x", padx=14, pady=(0, 6), ipady=8)
+        tk.Button(groq_row, text="ОЧИСТИТЬ КЛЮЧ GROQ",
+                  command=lambda: clear_entry(groq_key), bg="#572637", fg=TEXT,
+                  activebackground="#7a3046", relief="flat", padx=10, pady=5).pack(anchor="e", padx=14, pady=(0, 8))
         groq_fields = {}
         for label, key, default in (
             ("Модель Groq", "groq_model", self.settings.get("groq_model", "openai/gpt-oss-120b")),
@@ -1198,7 +1208,32 @@ class JarvisDesktop(tk.Tk):
             win.destroy()
             self._reload_agent()
 
-        ttk.Button(win, text="СОХРАНИТЬ И ПЕРЕЗАПУСТИТЬ", style="Accent.TButton", command=save).pack(anchor="e", padx=24, pady=18)
+        action_row = tk.Frame(win, bg=PANEL)
+        action_row.pack(fill="x", padx=24, pady=18)
+        connection_status = tk.Label(action_row, text="Проверка использует сохранённые настройки.", bg=PANEL, fg=MUTED, font=("Segoe UI", 8))
+        connection_status.pack(side="left", fill="x", expand=True)
+        def test_connection():
+            agent = self.agent
+            if agent is None:
+                connection_status.config(text="Ядро ещё запускается. Сначала сохраните настройки и дождитесь запуска.", fg=YELLOW)
+                return
+            connection_status.config(text="Проверяю соединение с ИИ…", fg=YELLOW)
+            def worker():
+                try:
+                    provider = getattr(agent, "provider", None)
+                    if provider is None:
+                        raise RuntimeError("Провайдер ИИ не создан")
+                    answer = provider.generate("Ответь одним словом: подключение работает", tools=None)
+                    result = "СВЯЗЬ ЕСТЬ: " + str(answer).strip().replace("\\n", " ")[:120]
+                    color = GREEN
+                except Exception as exc:
+                    result = "НЕТ СВЯЗИ: " + str(exc)[:220]
+                    color = RED
+                self.after(0, lambda: connection_status.config(text=result, fg=color) if win.winfo_exists() else None)
+            threading.Thread(target=worker, daemon=True).start()
+        tk.Button(action_row, text="ПРОВЕРИТЬ СВЯЗЬ", command=test_connection,
+                  bg="#123e55", fg=TEXT, activebackground="#1b526c", relief="flat", padx=10, pady=7).pack(side="left", padx=(8, 10))
+        ttk.Button(action_row, text="СОХРАНИТЬ И ПЕРЕЗАПУСТИТЬ", style="Accent.TButton", command=save).pack(side="right")
 
     def _select_agent(self, idx, parent=None):
         self.settings["active_agent"] = idx
