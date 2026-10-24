@@ -374,7 +374,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       }
     } catch (e) {
       await candidate?.dispose();
-      if (mounted) setState(() => _status = 'Ошибка AI: $e');
+      if (mounted) setState(() => _status = 'Ошибка ИИ: $e');
       _setVisual(JarvisVisualState.error);
     }
   }
@@ -397,7 +397,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     if (_jarvis == null) return;
     final tools = _android ? const <String>[] : await _jarvis!.listTools();
     if (!mounted) return;
-    setState(() => _status = _android ? 'AI подключён · JARVIS активен' : 'JARVIS подключён · инструментов: ${tools.length}');
+    setState(() => _status = _android ? 'ИИ подключён · JARVIS активен' : 'JARVIS подключён · инструментов: ${tools.length}');
     _setVisual(JarvisVisualState.confirmation);
     _returnToIdle(const Duration(milliseconds: 1100));
     await _partialSub?.cancel();
@@ -424,7 +424,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Align(alignment: Alignment.centerLeft, child: Text('Google Gemini API', style: TextStyle(fontWeight: FontWeight.bold))),
-          TextField(controller: _endpoint, readOnly: true, decoration: const InputDecoration(labelText: 'AI URL · Gemini', hintText: 'https://generativelanguage.googleapis.com/v1beta/openai')),
+          TextField(controller: _endpoint, readOnly: true, decoration: const InputDecoration(labelText: 'Адрес сервера', hintText: 'https://generativelanguage.googleapis.com/v1beta/openai')),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'Gemini API Key')),
           TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель Gemini', hintText: 'gemini-3.8-flash')),
           const SizedBox(height: 8),
@@ -494,7 +494,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         final errorText = 'Ошибка: $e';
         setState(() => _messages.add(_Msg(errorText, isUser: false)));
         _setVisual(JarvisVisualState.error);
-        setState(() => _status = 'Ошибка AI: $e');
+        setState(() => _status = 'Ошибка ИИ: $e');
       }
       if (speakReply) await _speak('Произошла ошибка. Проверьте подключение к AI.');
     } finally {
@@ -700,7 +700,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                             children: [
                               Expanded(
                                 child: _hudMiniPanel('СИСТЕМА', Icons.memory_rounded, [
-                                  ['ЯДРО', _visualLabel],
+                                  ['ЯДРО', _busy ? 'РАБОТАЕТ' : 'ГОТОВО'],
                                   ['ГОЛОС', _voiceRunning ? 'АКТИВЕН' : 'ОЖИДАНИЕ'],
                                   ['АКТИВНОСТЬ', '${(_voiceLevel * 100).round()}%'],
                                   ['РЕЖИМ', _busy ? 'ВЫЧИСЛЕНИЕ' : 'ГОТОВНОСТЬ'],
@@ -708,9 +708,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                               ),
                               const SizedBox(width: 8),
                               Expanded(
-                                child: _hudMiniPanel('СВЯЗЬ И AI', Icons.hub_outlined, [
+                                child: _hudMiniPanel('СВЯЗЬ И ИИ', Icons.hub_outlined, [
                                   ['ОБЛАКО', connected ? 'ОНЛАЙН' : 'ОФЛАЙН'],
-                                  ['ПРОВАЙДЕР', connected ? 'GEMINI · OK' : 'GEMINI · WAIT'],
+                                  ['СЕРВИС', connected ? 'ПОДКЛЮЧЁН' : 'ОЖИДАНИЕ'],
                                   ['МИКРОФОН', _voiceReady ? 'ГОТОВ' : 'ОЖИДАНИЕ'],
                                   ['ПОТОК', _streamText.isNotEmpty ? 'ПЕРЕДАЧА' : 'В ОЖИДАНИИ'],
                                 ]),
@@ -731,7 +731,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                       Expanded(
                         flex: 2,
                         child: _hudSidePanel('СИСТЕМА', Icons.memory_rounded, [
-                          ['ЯДРО', _visualLabel],
+                          ['ЯДРО', _busy ? 'РАБОТАЕТ' : 'ГОТОВО'],
                           ['ГОЛОС', _voiceRunning ? 'АКТИВЕН' : 'ОЖИДАНИЕ'],
                           ['АКТИВНОСТЬ', '${(_voiceLevel * 100).round()}%'],
                           ['РЕЖИМ', _busy ? 'ВЫЧИСЛЕНИЕ' : 'ГОТОВНОСТЬ'],
@@ -742,9 +742,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                       const SizedBox(width: 10),
                       Expanded(
                         flex: 2,
-                        child: _hudSidePanel('СВЯЗЬ И AI', Icons.hub_outlined, [
+                        child: _hudSidePanel('СВЯЗЬ И ИИ', Icons.hub_outlined, [
                           ['ОБЛАКО', connected ? 'ОНЛАЙН' : 'ОФЛАЙН'],
-                          ['ПРОВАЙДЕР', connected ? 'GEMINI · OK' : 'GEMINI · WAIT'],
+                          ['СЕРВИС', connected ? 'ПОДКЛЮЧЁН' : 'ОЖИДАНИЕ'],
                           ['МИКРОФОН', _voiceReady ? 'ГОТОВ' : 'ОЖИДАНИЕ'],
                           ['ПОТОК', _streamText.isNotEmpty ? 'ПЕРЕДАЧА' : 'В ОЖИДАНИИ'],
                         ]),
@@ -762,7 +762,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                   const SizedBox(width: 6),
                   Expanded(child: _telemetryCard('УРОВЕНЬ ГОЛОСА', '${(_voiceLevel * 100).round()}%', const Color(0xFF42E8FF))),
                   const SizedBox(width: 6),
-                  Expanded(child: _telemetryCard('AI ПРОВАЙДЕР', connected ? 'GEMINI · OK' : 'GEMINI · WAIT',
+                  Expanded(child: _telemetryCard('AI ПРОВАЙДЕР', connected ? 'ПОДКЛЮЧЁН' : 'ОЖИДАНИЕ',
                     connected ? const Color(0xFF52E5B8) : const Color(0xFFFFC56B))),
                 ],
               ),
@@ -784,7 +784,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('JARVIS NEURAL SYSTEM', style: TextStyle(fontSize: 9, letterSpacing: 1.5, fontWeight: FontWeight.w700, color: Color(0xFFBDEFFF))),
+                          const Text('СИСТЕМА JARVIS', style: TextStyle(fontSize: 9, letterSpacing: 1.5, fontWeight: FontWeight.w700, color: Color(0xFFBDEFFF))),
                           const SizedBox(height: 3),
                           Text(connected ? 'Gemini подключён · готов принимать команды' : 'Подключите Gemini в настройках для запуска AI',
                             maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -835,7 +835,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                           await _speech.stop();
                           if (mounted) {
                             setState(() {
-                              _status = 'Голос остановлен';
+                              _status = 'Голосовое управление выключено';
                               _visualState = JarvisVisualState.idle;
                             });
                           }
@@ -938,7 +938,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                     icon: const Icon(Icons.arrow_upward_rounded)),
                   if (_android)
                     IconButton(
-                      tooltip: _voiceRunning ? 'Остановить голос' : 'Включить голос',
+                      tooltip: _voiceRunning ? 'Выключить голосовое управление' : 'Включить голосовое управление',
                       onPressed: _busy ? null : () async {
                         if (_voiceRunning) {
                           _speechSession++;
@@ -948,7 +948,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                           await _speech.stop();
                           if (mounted) {
                             setState(() {
-                              _status = 'Голос остановлен';
+                              _status = 'Голосовое управление выключено';
                               _visualState = JarvisVisualState.idle;
                             });
                           }
