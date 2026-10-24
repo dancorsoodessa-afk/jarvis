@@ -639,7 +639,7 @@ class JarvisDesktop(tk.Tk):
                         self.attach_button.config(state="normal")
                         self.status.config(text="● ONLINE", fg=GREEN)
                         if self.settings.get("tts_enabled", True):
-                            self._set_visual_state("SPEAKING", 0.65)
+                            self._set_visual_state("THINKING", 0.35)
                             threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
                         else:
                             self._set_visual_state("IDLE", 0.0)
