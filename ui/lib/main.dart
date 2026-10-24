@@ -593,113 +593,239 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final sceneHeight = (screenHeight * 0.39).clamp(250.0, 318.0).toDouble();
+    final connected = _jarvis != null;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('JARVIS XXX', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w600)),
-        actions: [if (_android) IconButton(tooltip: 'Настройки Gemini', onPressed: _settings, icon: const Icon(Icons.tune))],
+        title: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.bubble_chart, color: Color(0xFF42E8FF), size: 25),
+            SizedBox(width: 9),
+            Text('JARVIS', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w700)),
+            SizedBox(width: 7),
+            Text('XXX', style: TextStyle(color: Color(0xFF42E8FF), fontSize: 11, letterSpacing: 2)),
+          ],
+        ),
+        actions: [
+          IconButton(tooltip: 'Настройки AI', onPressed: _settings, icon: const Icon(Icons.tune_rounded)),
+        ],
       ),
       body: SafeArea(
-        child: Column(children: [
-          SizedBox(
-            height: 272,
-            width: double.infinity,
-            child: Stack(alignment: Alignment.center, children: [
-              Positioned.fill(child: JarvisReactor(color: _visualColor, state: _visualState, activity: _voiceLevel)),
-              Positioned(
-                bottom: 12,
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text(_visualLabel, style: TextStyle(color: _visualColor, fontSize: 11, letterSpacing: 2.2, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 5),
-                  SizedBox(width: MediaQuery.sizeOf(context).width * 0.78,
-                    child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.72), fontSize: 12))),
-                ]),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+              child: Row(
+                children: [
+                  _statusPill(connected ? 'CLOUD LINK' : 'LINK OFFLINE',
+                    connected ? const Color(0xFF52E5B8) : const Color(0xFFFF647C),
+                    connected ? Icons.cloud_done_outlined : Icons.cloud_off_outlined),
+                  const Spacer(),
+                  _statusPill(_voiceRunning ? 'VOICE ACTIVE' : 'VOICE STANDBY',
+                    _voiceRunning ? const Color(0xFF52E5B8) : const Color(0xFF8B9AA9),
+                    _voiceRunning ? Icons.graphic_eq_rounded : Icons.mic_none_rounded),
+                ],
               ),
-            ]),
-          ),
-          const Divider(height: 1, color: Color(0xFF182736)),
-          Expanded(
-            child: _messages.isEmpty && _streamText.isEmpty
-              ? Center(child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.graphic_eq, color: _visualColor, size: 30),
-                    const SizedBox(height: 12),
-                    const Text('Система готова', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 6),
-                    Text('Введите запрос или нажмите микрофон и скажите «Джарвис».',
-                      textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withValues(alpha: 0.58), fontSize: 13)),
-                  ]),
-                ))
-              : ListView.builder(
-                  controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-                  itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (_streamText.isNotEmpty && index == _messages.length) {
-                      return Align(alignment: Alignment.centerLeft, child: _messageBubble(_streamText, false));
-                    }
-                    final m = _messages[index];
-                    return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft,
-                      child: _messageBubble(m.text, m.isUser));
-                  },
-                ),
-          ),
-          if (_android && _heardText.isNotEmpty)
-            Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-              child: Row(children: [
-                Icon(Icons.graphic_eq, color: _visualColor, size: 16),
-                const SizedBox(width: 6),
-                Expanded(child: Text(_heardText, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.62), fontSize: 11))),
-              ])),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(child: TextField(
-                controller: _input, minLines: 1, maxLines: 4,
-                textInputAction: TextInputAction.newline,
-                onSubmitted: _send,
-                decoration: InputDecoration(
-                  hintText: 'Сообщение JARVIS…',
-                  filled: true, fillColor: kPanel,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-                ),
-              )),
-              const SizedBox(width: 6),
-              IconButton.filled(
-                tooltip: 'Отправить',
-                onPressed: _busy ? null : () => _send(_input.text),
-                icon: const Icon(Icons.arrow_upward),
+            ),
+            SizedBox(
+              height: sceneHeight,
+              width: double.infinity,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Positioned.fill(child: JarvisReactor(color: _visualColor, state: _visualState, activity: _voiceLevel)),
+                  Positioned(
+                    top: 9,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('NEURAL CORE', style: TextStyle(color: _visualColor.withValues(alpha: 0.82),
+                          fontSize: 10, letterSpacing: 3.4, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 4),
+                        Text(connected ? 'SYSTEM LINK ESTABLISHED' : 'AWAITING CONNECTION',
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.43), fontSize: 8, letterSpacing: 1.7)),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 8,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_visualLabel, style: TextStyle(color: _visualColor, fontSize: 11,
+                          letterSpacing: 2.2, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 5),
+                        SizedBox(
+                          width: MediaQuery.sizeOf(context).width * 0.82,
+                          child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.68), fontSize: 11)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              if (_android)
-                IconButton(
-                  tooltip: _voiceRunning ? 'Остановить микрофон' : 'Включить голос',
-                  onPressed: _busy ? null : () async {
-                    if (_voiceRunning) {
-                      _speechSession++;
-                      _voiceRunning = false;
-                      _voiceLevel = 0.0;
-                      _voiceRestartTimer?.cancel();
-                      await _speech.stop();
-                      if (mounted) setState(() { _status = 'Голос остановлен'; _visualState = JarvisVisualState.idle; });
-                    } else {
-                      if (!_voiceReady) await _initVoice();
-                      if (_voiceReady && mounted) {
-                        _voiceRunning = true;
-                        await _startVoiceLoop();
-                      }
-                    }
-                  },
-                  icon: Icon(_voiceRunning ? Icons.mic : Icons.mic_none, color: _voiceRunning ? _visualColor : null),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 9),
+              child: Row(
+                children: [
+                  Expanded(child: _telemetryCard('CORE STATE', _visualLabel, _visualColor)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _telemetryCard('INPUT LEVEL', (_voiceLevel * 100).round().toString() + '%', const Color(0xFF42E8FF))),
+                  const SizedBox(width: 8),
+                  Expanded(child: _telemetryCard('AI ENGINE', connected ? 'READY' : 'WAITING',
+                    connected ? const Color(0xFF52E5B8) : const Color(0xFFFFC56B))),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFF182736)),
+            Expanded(
+              child: _messages.isEmpty && _streamText.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.bolt_rounded, color: _visualColor, size: 28),
+                            const SizedBox(height: 10),
+                            const Text('Командный интерфейс готов',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 6),
+                            Text('Введите запрос или включите голосовое управление.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: _scroll,
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                      itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (_streamText.isNotEmpty && index == _messages.length) {
+                          return Align(alignment: Alignment.centerLeft, child: _messageBubble(_streamText, false));
+                        }
+                        final message = _messages[index];
+                        return Align(
+                          alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
+                          child: _messageBubble(message.text, message.isUser),
+                        );
+                      },
+                    ),
+            ),
+            if (_android && _heardText.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 5),
+                child: Row(
+                  children: [
+                    Icon(Icons.graphic_eq, color: _visualColor, size: 15),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(_heardText, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.62), fontSize: 11))),
+                  ],
                 ),
-            ]),
-          ),
-        ]),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _input,
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.newline,
+                      onSubmitted: _send,
+                      decoration: InputDecoration(
+                        hintText: 'Передать команду JARVIS…',
+                        filled: true,
+                        fillColor: kPanel,
+                        prefixIcon: const Icon(Icons.terminal_rounded, color: Color(0xFF42E8FF)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  IconButton.filled(tooltip: 'Отправить команду',
+                    onPressed: _busy ? null : () => _send(_input.text),
+                    icon: const Icon(Icons.arrow_upward_rounded)),
+                  if (_android)
+                    IconButton(
+                      tooltip: _voiceRunning ? 'Остановить голос' : 'Включить голос',
+                      onPressed: _busy ? null : () async {
+                        if (_voiceRunning) {
+                          _speechSession++;
+                          _voiceRunning = false;
+                          _voiceLevel = 0;
+                          _voiceRestartTimer?.cancel();
+                          await _speech.stop();
+                          if (mounted) setState(() {
+                            _status = 'Голос остановлен';
+                            _visualState = JarvisVisualState.idle;
+                          });
+                        } else {
+                          if (!_voiceReady) await _initVoice();
+                          if (_voiceReady && mounted) {
+                            _voiceRunning = true;
+                            await _startVoiceLoop();
+                          }
+                        }
+                      },
+                      icon: Icon(_voiceRunning ? Icons.mic_rounded : Icons.mic_none_rounded,
+                        color: _voiceRunning ? _visualColor : null),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  Widget _statusPill(String label, Color color, IconData icon) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.23)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 5),
+            Text(label, style: TextStyle(color: color, fontSize: 8, letterSpacing: 1.0, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
+
+  Widget _telemetryCard(String title, String value, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0A111B),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.18)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.43), fontSize: 7, letterSpacing: 1.0)),
+            const SizedBox(height: 5),
+            Text(value, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: color, fontSize: 10, letterSpacing: 0.5, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
 
   Widget _messageBubble(String text, bool isUser) => Container(
     margin: const EdgeInsets.only(bottom: 10),
