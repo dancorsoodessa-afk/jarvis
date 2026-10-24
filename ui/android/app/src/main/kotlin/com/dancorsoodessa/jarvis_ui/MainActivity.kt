@@ -2,6 +2,10 @@ package com.dancorsoodessa.jarvis_ui
 
 import android.Manifest
 import android.content.Intent
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.os.Build
+import android.os.SystemClock
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognitionListener
@@ -52,6 +56,16 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                     releaseVoice()
                     result.success(null)
                 }
+                "scheduleTimer" -> {
+                    val delayMs = call.argument<Number>("delayMs")?.toLong() ?: 0L
+                    val label = call.argument<String>("label") ?: "Таймер JARVIS"
+                    if (delayMs <= 0L) {
+                        result.error("INVALID_DELAY", "Время таймера должно быть больше нуля", null)
+                    } else {
+                        scheduleTimer(delayMs, label)
+                        result.success(null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -66,6 +80,24 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                     eventSink = null
                 }
             })
+    }
+
+    private fun scheduleTimer(delayMs: Long, label: String) {
+        val intent = Intent(this, JarvisTimerReceiver::class.java).apply {
+            putExtra(JarvisTimerReceiver.EXTRA_LABEL, label)
+        }
+        val requestCode = (System.currentTimeMillis() and 0x7fffffff).toInt()
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+        val triggerAt = SystemClock.elapsedRealtime() + delayMs
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pendingIntent)
+        } else {
+            alarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pendingIntent)
+        }
     }
 
     private fun initializeVoice(): Boolean {
