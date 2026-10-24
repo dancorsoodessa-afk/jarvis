@@ -629,7 +629,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 ],
               ),
             ),
-            SizedBox(
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final core =             SizedBox(
               height: sceneHeight,
               width: double.infinity,
               child: Stack(
@@ -683,7 +685,38 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                     ),
                   ),
                 ],
-              ),
+              ),;
+                if (constraints.maxWidth < 760) return core;
+                return SizedBox(
+                  height: sceneHeight,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: _hudSidePanel('СИСТЕМА', Icons.memory_rounded, [
+                          ['ЯДРО', _visualLabel],
+                          ['ГОЛОС', _voiceRunning ? 'АКТИВЕН' : 'ОЖИДАНИЕ'],
+                          ['АКТИВНОСТЬ', '${(_voiceLevel * 100).round()}%'],
+                          ['РЕЖИМ', _busy ? 'ВЫЧИСЛЕНИЕ' : 'ГОТОВНОСТЬ'],
+                        ]),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(flex: 5, child: core),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: _hudSidePanel('СВЯЗЬ И AI', Icons.hub_outlined, [
+                          ['ОБЛАКО', connected ? 'ОНЛАЙН' : 'ОФЛАЙН'],
+                          ['ПРОВАЙДЕР', connected ? 'GEMINI · OK' : 'GEMINI · WAIT'],
+                          ['МИКРОФОН', _voiceReady ? 'ГОТОВ' : 'ОЖИДАНИЕ'],
+                          ['ПОТОК', _streamText.isNotEmpty ? 'ПЕРЕДАЧА' : 'В ОЖИДАНИИ'],
+                        ]),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -899,6 +932,52 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _hudSidePanel(String title, IconData icon, List<List<String>> rows) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xCC06111D),
+        border: Border.all(color: _visualColor.withValues(alpha: 0.28)),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: _visualColor.withValues(alpha: 0.05), blurRadius: 18),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(icon, size: 15, color: _visualColor),
+            const SizedBox(width: 7),
+            Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10, letterSpacing: 1.4, fontWeight: FontWeight.w700))),
+          ]),
+          const SizedBox(height: 14),
+          Container(height: 1, color: _visualColor.withValues(alpha: 0.22)),
+          const SizedBox(height: 12),
+          for (final row in rows) ...[
+            Text(row[0], style: TextStyle(fontSize: 8, letterSpacing: 1.2,
+              color: Colors.white.withValues(alpha: 0.45))),
+            const SizedBox(height: 4),
+            Text(row[1], maxLines: 2, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: _visualColor, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 13),
+          ],
+          const Spacer(),
+          Row(children: [
+            Container(width: 6, height: 6, decoration: BoxDecoration(
+              shape: BoxShape.circle, color: _visualColor,
+              boxShadow: [BoxShadow(color: _visualColor.withValues(alpha: 0.7), blurRadius: 7)],
+            )),
+            const SizedBox(width: 7),
+            Expanded(child: Text('JARVIS XXX', style: TextStyle(fontSize: 8,
+              letterSpacing: 1.2, color: Colors.white.withValues(alpha: 0.5)))),
+          ]),
+        ],
       ),
     );
   }
