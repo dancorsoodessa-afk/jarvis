@@ -251,7 +251,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         )
     }
 
-    private fun saveSettings(call: MethodChannel.MethodCall) {
+    private fun saveSettings(call: MethodCall) {
         val p = getSharedPreferences("jarvis_settings", MODE_PRIVATE).edit()
         fun s(name: String) { call.argument<String>(name)?.let { p.putString(name, it) } }
         s("endpoint"); s("model"); s("apiKey"); s("apiHostKey")
