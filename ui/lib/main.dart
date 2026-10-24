@@ -77,6 +77,22 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   @override
   void initState() {
     super.initState();
+    // Install TTS callbacks before any timer or voice action can call _speak.
+    // Otherwise a timer response before microphone initialization can leave
+    // _ttsSpeaking stuck true because no completion handler resets it.
+    _tts.setStartHandler(() {
+      _ttsSpeaking = true;
+      if (mounted) _setVisual(JarvisVisualState.speaking);
+    });
+    _tts.setCompletionHandler(() {
+      _ttsSpeaking = false;
+      if (mounted) _returnToIdle(const Duration(milliseconds: 250));
+      if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
+    });
+    _tts.setCancelHandler(() {
+      _ttsSpeaking = false;
+      if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _android ? _initAndroid() : _connectDesktop();
@@ -119,19 +135,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       } catch (e) {
         debugPrint('JARVIS TTS init warning: $e');
       }
-      _tts.setStartHandler(() {
-        _ttsSpeaking = true;
-        if (mounted) _setVisual(JarvisVisualState.speaking);
-      });
-      _tts.setCompletionHandler(() {
-        _ttsSpeaking = false;
-        if (mounted) _returnToIdle(const Duration(milliseconds: 250));
-        if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
-      });
-      _tts.setCancelHandler(() {
-        _ttsSpeaking = false;
-        if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
-      });
       _voiceReady = true;
       if (mounted) setState(() => _status = 'Голос готов · скажите «Джарвис»');
     } catch (e) {
@@ -246,8 +249,10 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _speak(String text) async {
     if (!_android || text.trim().isEmpty) return;
     try {
-      _ttsSpeaking = true;
       await _tts.stop();
+      // stop() may invoke the cancel handler; set speaking only after it ends
+      // so a queued microphone restart cannot race the new utterance.
+      _ttsSpeaking = true;
       if (!_voiceReady) {
         await _tts.setLanguage('ru-RU');
         await _tts.setSpeechRate(0.48);
