@@ -7,7 +7,7 @@ from .memory import KnowledgeGraph, MemoryStore, SessionMemory, relevant_notes
 from .providers.openai_chat import OpenAIChatProvider
 from .model_router import RoleRouterProvider
 from .reminders import ReminderService
-from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint, universal
+from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint, universal, self_modify
 from .tools.registry import ToolRegistry
 from . import stt, tts
 from .skills import NoteStore, calculate, now, wikipedia_search, dictionary_lookup, news_search, youtube_search, youtube_download, google_maps_search, open_website, play_music, location_lookup, todo_add, todo_list, todo_done
@@ -58,6 +58,11 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         raise RuntimeError("JARVIS поддерживает только Gemini API Google.")
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
     tools=ToolRegistry()
+    tools.register("read_source", self_modify.read_source, description="Прочитать исходный код или конфигурацию внутри проекта JARVIS.", parameters={"path":"относительный путь внутри репозитория"})
+    tools.register("write_source", self_modify.write_source, confirm=True, description="Изменить исходный файл проекта с созданием резервной копии. Требует подтверждения.", parameters={"path":"относительный путь внутри репозитория","content":"полное новое содержимое файла"})
+    tools.register("run_self_tests", self_modify.run_tests, description="Запустить набор pytest-тестов проекта JARVIS и вернуть результаты.")
+    tools.register("git_status", self_modify.git_status, description="Показать состояние Git-репозитория JARVIS.")
+    tools.register("rollback_self_change", self_modify.rollback_last_backup, confirm=True, description="Восстановить последний резервный файл самоизменения. Требует подтверждения.")
     tools.register("inspect_file",universal.inspect_file,description="Прочитать и проанализировать локальный файл: TXT, MD, CSV, JSON, XML, Python, PDF, DOCX, XLSX и другие поддерживаемые форматы.",parameters={"path":"путь к файлу или папке"})
     tools.register("inspect_archive",universal.inspect_archive,description="Прочитать содержимое ZIP, TAR, GZ, 7Z или RAR архива.",parameters={"path":"путь к архиву"})
     tools.register("extract_archive",universal.extract_archive,confirm=True,description="Распаковать архив. Требует подтверждения.",parameters={"path":"путь к архиву","destination":"папка назначения (необязательно)"})
