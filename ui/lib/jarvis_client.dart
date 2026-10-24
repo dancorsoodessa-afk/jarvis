@@ -82,8 +82,8 @@ class JarvisIpc {
     final request = await _httpClient!.getUrl(Uri.parse(base + '/models'));
     final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
     h.forEach(request.headers.set);
-    final response = await request.close();
-    final body = await utf8.decoder.bind(response).join();
+    final response = await request.close().timeout(const Duration(seconds: 45));
+    final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 45));
     if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(label + ': ' + _error(response.statusCode, body));
   }
 
@@ -91,8 +91,8 @@ class JarvisIpc {
     final request = await _httpClient!.getUrl(Uri.parse(base + '/models'));
     final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
     h.forEach(request.headers.set);
-    final response = await request.close();
-    final body = await utf8.decoder.bind(response).join();
+    final response = await request.close().timeout(const Duration(seconds: 45));
+    final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 45));
     if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(_error(response.statusCode, body));
     final j = jsonDecode(body);
     if (j is Map && j['data'] is List) {
@@ -117,8 +117,8 @@ class JarvisIpc {
     }));
     request.contentLength = bytes.length;
     request.add(bytes);
-    final response = await request.close();
-    final body = await utf8.decoder.bind(response).join();
+    final response = await request.close().timeout(const Duration(seconds: 45));
+    final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 45));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError(label + ': ' + _error(response.statusCode, body));
     }
@@ -193,8 +193,8 @@ class JarvisIpc {
     final bytes = utf8.encode(jsonEncode({'model': selected, 'messages': messages, 'stream': false}));
     request.contentLength = bytes.length;
     request.add(bytes);
-    final response = await request.close();
-    final body = await utf8.decoder.bind(response).join();
+    final response = await request.close().timeout(const Duration(seconds: 45));
+    final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 45));
     if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(_error(response.statusCode, body));
     final j = jsonDecode(body) as Map<String, dynamic>;
     final choices = j['choices'];
