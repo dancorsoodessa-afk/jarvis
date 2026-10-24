@@ -456,10 +456,13 @@ class JarvisDesktop(tk.Tk):
         try:
             provider = getattr(agent, "provider", None)
             checks = provider.health_checks() if provider and hasattr(provider, "health_checks") else {}
-            try:
-                checks["TTS"] = tts.health_check()
-            except Exception as exc:
-                checks["TTS"] = "ERROR: " + str(exc)[:160]
+            if not self.settings.get("tts_enabled", True):
+                checks["TTS"] = "OFF"
+            else:
+                try:
+                    checks["TTS"] = tts.health_check()
+                except Exception as exc:
+                    checks["TTS"] = "ERROR: " + str(exc)[:160]
             self.events.put(("provider_health", checks, generation))
         except Exception as exc:
             self.events.put(("provider_health", {"Gemini API": "ERROR: " + str(exc)[:160]}, generation))
@@ -607,7 +610,7 @@ class JarvisDesktop(tk.Tk):
                             if label not in self.metrics:
                                 continue
                             status_text = str(result).split(":", 1)[0].upper()
-                            color = GREEN if status_text == "ONLINE" else YELLOW if status_text == "CONFIGURED" else RED
+                            color = GREEN if status_text == "ONLINE" else MUTED if status_text == "OFF" else YELLOW if status_text in {"CONFIGURED", "KEY SET"} else RED
                             self.metrics[label].config(text=status_text[:18], fg=color)
                         gemini_status = event[1].get("Gemini API", "UNKNOWN")
                         groq_status = event[1].get("Groq API", "NOT CONFIGURED")
