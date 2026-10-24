@@ -40,6 +40,8 @@ def current_engine() -> str:
 
 def health_check(timeout: float | None = None) -> str:
     """Check the TTS model endpoint and credentials without generating audio."""
+    if os.environ.get("JARVIS_TTS", "gemini").strip().lower() == "off":
+        return "OFF"
     if current_engine() == "off":
         raise RuntimeError("Для облачной озвучки нужен GEMINI_API_KEY.")
     model = (os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
