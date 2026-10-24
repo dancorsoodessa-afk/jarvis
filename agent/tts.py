@@ -95,7 +95,7 @@ def _generate_audio(text: str) -> bytes:
                 }],
             }],
         }],
-        "response_format": {"type": "audio"},
+        "response_format": {"type": "audio", "mime_type": "audio/wav"},
         "generation_config": {"speech_config": [{"voice": voice}]},
     }
     request = urllib.request.Request(
