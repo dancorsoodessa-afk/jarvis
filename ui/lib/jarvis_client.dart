@@ -61,7 +61,7 @@ class JarvisIpc {
   Stream<String> partials() => deltas.map((m) => m[activeId]).where((v) => v != null).cast<String>();
 
   Map<String, String> _headers(String key) => {
-    'Authorization': 'Bearer ' + key.trim(),
+    'Authorization': 'Bearer ${key.trim()}',
     HttpHeaders.acceptHeader: 'application/json',
     HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
   };
@@ -71,24 +71,15 @@ class JarvisIpc {
       final j = jsonDecode(body);
       if (j is Map) {
         final e = j['error'];
-        if (e is Map && (e['message']?.toString().trim().isNotEmpty ?? false)) return 'HTTP ' + code.toString() + ': ' + e['message'].toString().trim();
-        if (j['message']?.toString().trim().isNotEmpty ?? false) return 'HTTP ' + code.toString() + ': ' + j['message'].toString().trim();
+        if (e is Map && (e['message']?.toString().trim().isNotEmpty ?? false)) return 'HTTP $code: ${e['message'].toString().trim()}';
+        if (j['message']?.toString().trim().isNotEmpty ?? false) return 'HTTP $code: ${j['message'].toString().trim()}';
       }
     } catch (_) {}
-    return 'HTTP ' + code.toString() + ': ' + (body.trim().isEmpty ? 'пустой ответ сервера' : body.trim());
-  }
-
-  Future<void> _check(String base, String key, String label) async {
-    final request = await _httpClient!.getUrl(Uri.parse(base + '/models'));
-    final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
-    h.forEach(request.headers.set);
-    final response = await request.close().timeout(const Duration(seconds: 45));
-    final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 45));
-    if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(label + ': ' + _error(response.statusCode, body));
+    return 'HTTP $code: ${body.trim().isEmpty ? 'пустой ответ сервера' : body.trim()}';
   }
 
   Future<String> _autoModel(String base, String key) async {
-    final request = await _httpClient!.getUrl(Uri.parse(base + '/models'));
+    final request = await _httpClient!.getUrl(Uri.parse('$base/models'));
     final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
     h.forEach(request.headers.set);
     final response = await request.close().timeout(const Duration(seconds: 45));
@@ -105,7 +96,7 @@ class JarvisIpc {
 
   Future<void> _probeChat(String base, String key, String model, String label) async {
     final selected = model.trim().isEmpty ? await _autoModel(base, key) : model.trim();
-    final request = await _httpClient!.postUrl(Uri.parse(base + '/chat/completions'));
+    final request = await _httpClient!.postUrl(Uri.parse('$base/chat/completions'));
     _headers(key).forEach(request.headers.set);
     final bytes = utf8.encode(jsonEncode({
       'model': selected,
@@ -120,7 +111,7 @@ class JarvisIpc {
     final response = await request.close().timeout(const Duration(seconds: 45));
     final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 45));
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(label + ': ' + _error(response.statusCode, body));
+      throw StateError('$label: ${_error(response.statusCode, body)}');
     }
     try {
       final json = jsonDecode(body);
@@ -188,7 +179,7 @@ class JarvisIpc {
       ..._history,
       {'role': 'user', 'content': text},
     ];
-    final request = await _httpClient!.postUrl(Uri.parse(base + '/chat/completions'));
+    final request = await _httpClient!.postUrl(Uri.parse('$base/chat/completions'));
     _headers(key).forEach(request.headers.set);
     final bytes = utf8.encode(jsonEncode({'model': selected, 'messages': messages, 'stream': false}));
     request.contentLength = bytes.length;
