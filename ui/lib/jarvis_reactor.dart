@@ -65,7 +65,9 @@ class _ReactorPainter extends CustomPainter {
     canvas.drawCircle(center, radius, glow);
 
     final grid = Paint()..style = PaintingStyle.stroke..strokeWidth = 0.7..color = color.withValues(alpha: 0.10 * intensity);
-    for (var i = 1; i <= 4; i++) canvas.drawCircle(center, radius * i / 4, grid);
+    for (var i = 1; i <= 4; i++) {
+      canvas.drawCircle(center, radius * i / 4, grid);
+    }
 
     final orbit = Paint()..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
     final rings = [(0.94, 1.2, 0.18, 0.15, 1.0), (0.82, 2.2, 0.38, -0.45, -1.0), (0.69, 1.0, 0.30, 0.65, 1.0)];
