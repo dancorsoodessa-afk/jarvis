@@ -96,6 +96,7 @@ def listen_for_phrase(
     start_timeout: float = 4.0,
     on_speech_start=None,
     on_audio_level=None,
+    should_stop=None,
 ) -> str:
     """Записать одну фразу автоматически по уровню речи и распознать её."""
     import numpy as np
@@ -121,6 +122,8 @@ def listen_for_phrase(
             end_threshold = max(0.004, noise * 1.15)
             # A zero start timeout means wait for speech, not "give up after one block".
             while True:
+                if should_stop and should_stop():
+                    return ""
                 data, overflow = stream.read(block_size)
                 if overflow:
                     continue
