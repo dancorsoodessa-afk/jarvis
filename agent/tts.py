@@ -177,8 +177,8 @@ def speak(text: str) -> Path:
     return _write_audio(_generate_audio(text))
 
 
-def speak_and_play(text: str):
-    """Generate cloud audio, then play it on this worker thread until playback ends."""
+def speak_and_play(text: str, on_playback_start=None):
+    """Generate cloud audio, signal playback start, then play until it ends."""
     global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PATH
     path = speak(text)
     stop()
@@ -188,6 +188,8 @@ def speak_and_play(text: str):
         _PLAYBACK_ACTIVE = True
         _PLAYBACK_PATH = path
     try:
+        if on_playback_start:
+            on_playback_start()
         if os.name == "nt":
             import winsound
             winsound.PlaySound(str(path), winsound.SND_FILENAME)
