@@ -593,8 +593,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.sizeOf(context).height;
-    final sceneHeight = (screenHeight * 0.48).clamp(300.0, 390.0).toDouble();
+    final screenSize = MediaQuery.sizeOf(context);
+    final screenHeight = screenSize.height;
+    final compactLayout = screenSize.width < 760;
+    final sceneHeight = compactLayout
+        ? (screenHeight * 0.40).clamp(250.0, 330.0).toDouble()
+        : (screenHeight * 0.48).clamp(300.0, 390.0).toDouble();
     final connected = _jarvis != null;
     return Scaffold(
       appBar: AppBar(
