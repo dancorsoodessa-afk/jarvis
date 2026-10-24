@@ -93,6 +93,9 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         )
         val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
         val triggerAt = SystemClock.elapsedRealtime() + delayMs
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 4102)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pendingIntent)
         } else {
