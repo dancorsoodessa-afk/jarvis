@@ -54,6 +54,29 @@ class JarvisIpc {
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
   final _deltaController = StreamController<Map<int, String>>.broadcast();
   final List<Map<String, String>> _history = [];
+  final Map<String, String> _modelCache = {};
+  static const int _maxResponseBytes = 1024 * 1024;
+  static const Duration _requestTimeout = Duration(seconds: 45);
+
+  Future<String> _readBody(HttpClientResponse response) async {
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in response) {
+      if (bytes.length + chunk.length > _maxResponseBytes) {
+        throw StateError('Ответ AI превышает допустимый размер 1 МБ');
+      }
+      bytes.add(chunk);
+    }
+    return utf8.decode(bytes.takeBytes());
+  }
+
+  Future<String> _resolveModel(String base, String key, String configured) async {
+    if (configured.trim().isNotEmpty) return configured.trim();
+    final cached = _modelCache[base];
+    if (cached != null) return cached;
+    final selected = await _autoModel(base, key);
+    _modelCache[base] = selected;
+    return selected;
+  }
 
   bool get _standalone => _httpClient != null;
   Stream<Map<int, String>> get deltas => _deltaController.stream;
@@ -75,7 +98,8 @@ class JarvisIpc {
         if (j['message']?.toString().trim().isNotEmpty ?? false) return 'HTTP $code: ${j['message'].toString().trim()}';
       }
     } catch (_) {}
-    return 'HTTP $code: ${body.trim().isEmpty ? 'пустой ответ сервера' : body.trim()}';
+    final detail = body.trim().isEmpty ? 'пустой ответ сервера' : body.trim();
+    return 'HTTP $code: ${detail.length > 500 ? '${detail.substring(0, 500)}…' : detail}';
   }
 
   Future<String> _autoModel(String base, String key) async {
@@ -83,7 +107,7 @@ class JarvisIpc {
     final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
     h.forEach(request.headers.set);
     final response = await request.close().timeout(const Duration(seconds: 45));
-    final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 45));
+    final body = await _readBody(response).timeout(_requestTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(_error(response.statusCode, body));
     final j = jsonDecode(body);
     if (j is Map && j['data'] is List) {
@@ -95,7 +119,7 @@ class JarvisIpc {
   }
 
   Future<void> _probeChat(String base, String key, String model, String label) async {
-    final selected = model.trim().isEmpty ? await _autoModel(base, key) : model.trim();
+    final selected = await _resolveModel(base, key, model);
     final request = await _httpClient!.postUrl(Uri.parse('$base/chat/completions'));
     _headers(key).forEach(request.headers.set);
     final bytes = utf8.encode(jsonEncode({
@@ -109,7 +133,7 @@ class JarvisIpc {
     request.contentLength = bytes.length;
     request.add(bytes);
     final response = await request.close().timeout(const Duration(seconds: 45));
-    final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 45));
+    final body = await _readBody(response).timeout(_requestTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError('$label: ${_error(response.statusCode, body)}');
     }
@@ -168,8 +192,16 @@ class JarvisIpc {
     _activeId = id;
     final c = Completer<Map<String, dynamic>>();
     _pending[id] = c;
-    _process!.stdin.writeln(jsonEncode({...body, 'id': id}));
-    return c.future;
+    try {
+      _process!.stdin.writeln(jsonEncode({...body, 'id': id}));
+    } catch (e) {
+      _pending.remove(id);
+      c.completeError(StateError('Не удалось отправить запрос агенту: $e'));
+    }
+    return c.future.timeout(const Duration(seconds: 60), onTimeout: () {
+      _pending.remove(id);
+      throw TimeoutException('Агент не ответил за 60 секунд');
+    });
   }
 
   Future<JarvisReply> _call(String base, String key, String model, String text) async {
@@ -185,7 +217,7 @@ class JarvisIpc {
     request.contentLength = bytes.length;
     request.add(bytes);
     final response = await request.close().timeout(const Duration(seconds: 45));
-    final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 45));
+    final body = await _readBody(response).timeout(_requestTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(_error(response.statusCode, body));
     final j = jsonDecode(body) as Map<String, dynamic>;
     final choices = j['choices'];
@@ -198,7 +230,7 @@ class JarvisIpc {
 
   bool _retryable(Object e) {
     final s = e.toString();
-    return RegExp(r'HTTP (400|401|402|403|404|408|409|425|429|500|502|503|504)').hasMatch(s) ||
+    return RegExp(r'HTTP (408|425|429|500|502|503|504)(?:\D|$)').hasMatch(s) ||
         s.contains('SocketException') || s.contains('TimeoutException') || s.contains('Connection closed');
   }
 
@@ -235,6 +267,10 @@ class JarvisIpc {
 
   Future<void> dispose() async {
     await _deltaController.close();
+    for (final entry in _pending.entries) {
+      if (!entry.value.isCompleted) entry.value.completeError(StateError('JARVIS IPC остановлен'));
+    }
+    _pending.clear();
     _process?.kill();
     _httpClient?.close(force: true);
   }
