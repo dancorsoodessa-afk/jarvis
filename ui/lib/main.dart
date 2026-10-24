@@ -394,14 +394,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _settings() async {
     if (!_android) return;
-    final dialogContext = context;
     _speechSession++;
     await _speech.stop();
     if (!mounted) return;
     _voiceRunning = false;
     _wakeArmed = false;
     final shouldConnect = await showDialog<bool>(
-      context: dialogContext,
+      context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
