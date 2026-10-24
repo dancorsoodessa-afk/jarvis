@@ -355,7 +355,7 @@ class JarvisDesktop(tk.Tk):
                               relief="flat", font=("Segoe UI", 10))
         self.input.grid(row=0, column=0, sticky="ew", ipady=12, padx=(0,6))
         self.input.bind("<Return>", lambda _e: self.send())
-        self.voice_button = ttk.Button(compose, text="🎙 ГОЛОС", command=self.start_voice)
+        self.voice_button = ttk.Button(compose, text="🎙 ГОЛОС", command=self._on_voice_button_click)
         self.voice_button.grid(row=0,column=1,padx=3,ipadx=7,ipady=3)
         # Several voice status handlers update this control; keep a valid reference.
         self.voice_control = self.voice_button
@@ -871,6 +871,29 @@ class JarvisDesktop(tk.Tk):
                 self.events.put(("request_error", str(exc)))
         self._clear_attachments()
         threading.Thread(target=work,daemon=True).start()
+
+    def _on_voice_button_click(self):
+        """Start voice capture without allowing a voice callback to hide the main window."""
+        try:
+            was_visible = self.state() != "iconic"
+        except Exception:
+            was_visible = True
+        try:
+            self.start_voice()
+        except Exception as exc:
+            try:
+                self._append("VOICE", f"Не удалось запустить голосовой ввод: {exc}")
+            except Exception:
+                pass
+        if was_visible:
+            def keep_main_window_visible():
+                try:
+                    if self.winfo_exists() and self.state() == "iconic":
+                        self.deiconify()
+                        self.lift()
+                except Exception:
+                    pass
+            self.after(150, keep_main_window_visible)
 
     def start_voice(self):
         if not self.settings.get("voice_enabled", True):
