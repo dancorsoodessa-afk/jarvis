@@ -1120,6 +1120,7 @@ class JarvisDesktop(tk.Tk):
             entry = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
             entry.insert(0, str(default))
             entry.pack(side="left", fill="x", expand=True, ipady=6)
+            tk.Button(row, text="×", command=lambda e=entry: clear_entry(e), bg="#572637", fg=TEXT, relief="flat", width=3).pack(side="left", padx=(6, 0))
             groq_fields[key] = entry
         tk.Label(groq_row, text="Ключ создаётся отдельно в GroqCloud. Без ключа резервный провайдер отключён.",
                  bg="#091b29", fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=14, pady=(6, 10))
@@ -1129,7 +1130,8 @@ class JarvisDesktop(tk.Tk):
         tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
         additional_model = tk.Entry(additional_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
         additional_model.insert(0, str(self.settings.get("additional_model", "gemini-3.8-flash")))
-        additional_model.pack(fill="x", padx=14, pady=(0, 12), ipady=6)
+        additional_model.pack(fill="x", padx=14, pady=(0, 4), ipady=6)
+        tk.Button(additional_row, text="ОЧИСТИТЬ", command=lambda: clear_entry(additional_model), bg="#572637", fg=TEXT, relief="flat", padx=8, pady=4).pack(anchor="e", padx=14, pady=(0, 8))
 
         entries = []
         for i, title in enumerate(names):
@@ -1156,6 +1158,7 @@ class JarvisDesktop(tk.Tk):
                              show="•" if secret else "", exportselection=False)
                 e.insert(0, str(default))
                 e.pack(side="left", fill="x", expand=True, ipady=6)
+                tk.Button(row, text="×", command=lambda entry=e: clear_entry(entry), bg="#572637", fg=TEXT, relief="flat", width=3).pack(side="left", padx=(6, 0))
                 fields[key] = e
             entries.append(fields)
 
@@ -1178,6 +1181,7 @@ class JarvisDesktop(tk.Tk):
             e = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•" if secret else "")
             e.insert(0, str(default))
             e.pack(side="left", fill="x", expand=True, ipady=6)
+            tk.Button(row, text="×", command=lambda entry=e: clear_entry(entry), bg="#572637", fg=TEXT, relief="flat", width=3).pack(side="left", padx=(6, 0))
             voice_fields[key] = e
 
         voice_var = tk.BooleanVar(value=self.settings.get("voice_enabled", True))
