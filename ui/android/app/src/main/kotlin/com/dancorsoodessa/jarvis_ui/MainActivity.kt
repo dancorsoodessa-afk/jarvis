@@ -33,6 +33,26 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.dancorsoodessa.jarvis/timer")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "scheduleTimer") {
+                    result.notImplemented()
+                } else {
+                    val delayMs = call.argument<Number>("delayMs")?.toLong() ?: 0L
+                    val label = call.argument<String>("label") ?: "Таймер JARVIS"
+                    if (delayMs <= 0L) {
+                        result.error("INVALID_DELAY", "Время таймера должно быть больше нуля", null)
+                    } else {
+                        try {
+                            scheduleTimer(delayMs, label)
+                            result.success(null)
+                        } catch (error: Exception) {
+                            result.error("TIMER_FAILED", error.message ?: "Не удалось установить таймер", null)
+                        }
+                    }
+                }
+            }
+
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, voiceChannel)
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -55,16 +75,6 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                 "dispose" -> {
                     releaseVoice()
                     result.success(null)
-                }
-                "scheduleTimer" -> {
-                    val delayMs = call.argument<Number>("delayMs")?.toLong() ?: 0L
-                    val label = call.argument<String>("label") ?: "Таймер JARVIS"
-                    if (delayMs <= 0L) {
-                        result.error("INVALID_DELAY", "Время таймера должно быть больше нуля", null)
-                    } else {
-                        scheduleTimer(delayMs, label)
-                        result.success(null)
-                    }
                 }
                 else -> result.notImplemented()
             }
