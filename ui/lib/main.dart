@@ -424,6 +424,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _send(String text, {bool speakReply = false}) async {
     text = text.trim();
     if (text.isEmpty || _busy) return;
+    // Local Android timers must work even when cloud AI is not configured
+    // or temporarily offline; handle them before requiring an AI connection.
+    if (await _handleTimer(text)) { _input.clear(); return; }
     if (_jarvis == null) {
       const message = 'AI не подключён. Откройте настройки и подключите Gemini.';
       if (mounted) {
@@ -436,7 +439,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       if (speakReply) await _speak(message);
       return;
     }
-    if (await _handleTimer(text)) { _input.clear(); return; }
     _input.clear();
     setState(() {
       _messages.add(_Msg(text, isUser: true));
