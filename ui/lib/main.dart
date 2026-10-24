@@ -594,7 +594,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.sizeOf(context).height;
-    final sceneHeight = (screenHeight * 0.39).clamp(250.0, 318.0).toDouble();
+    final sceneHeight = (screenHeight * 0.42).clamp(270.0, 350.0).toDouble();
     final connected = _jarvis != null;
     return Scaffold(
       appBar: AppBar(
@@ -679,6 +679,66 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                   const SizedBox(width: 8),
                   Expanded(child: _telemetryCard('AI ENGINE', connected ? 'READY' : 'WAITING',
                     connected ? const Color(0xFF52E5B8) : const Color(0xFFFFC56B))),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _deckAction(
+                      icon: Icons.hub_outlined,
+                      label: 'СИСТЕМА',
+                      active: true,
+                      onTap: () {
+                        setState(() {
+                          _status = connected
+                              ? 'Система подключена и готова'
+                              : 'Ожидается подключение AI в настройках';
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: _deckAction(
+                      icon: _voiceRunning ? Icons.mic : Icons.mic_none,
+                      label: _voiceRunning ? 'ГОЛОС ВКЛ.' : 'ГОЛОС',
+                      active: _voiceRunning,
+                      onTap: () async {
+                        if (!_android) return;
+                        if (_voiceRunning) {
+                          _speechSession++;
+                          _voiceRunning = false;
+                          _voiceLevel = 0;
+                          _voiceRestartTimer?.cancel();
+                          await _speech.stop();
+                          if (mounted) {
+                            setState(() {
+                              _status = 'Голос остановлен';
+                              _visualState = JarvisVisualState.idle;
+                            });
+                          }
+                        } else {
+                          if (!_voiceReady) await _initVoice();
+                          if (_voiceReady && mounted) {
+                            _voiceRunning = true;
+                            await _startVoiceLoop();
+                          }
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: _deckAction(
+                      icon: Icons.tune_rounded,
+                      label: 'НАСТРОЙКИ',
+                      active: false,
+                      onTap: _settings,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -788,6 +848,51 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _deckAction({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    final color = active ? kCyan : const Color(0xFF8294A8);
+    return Material(
+      color: const Color(0xFF0A111B),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 42),
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: active ? 0.38 : 0.16)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 8,
+                    letterSpacing: 0.55,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
