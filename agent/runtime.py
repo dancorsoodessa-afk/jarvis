@@ -32,7 +32,9 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         session = SessionMemory(memory)
         history = session.load_history()
         shared_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-        shared_key = settings.chat_key or __import__("os").environ.get("GEMINI_API_KEY", "")
+        # Settings.from_env() already resolves environment keys. An empty value here
+        # must stay empty so a deliberately cleared key cannot be resurrected.
+        shared_key = settings.chat_key
         default_model = settings.chat_model or "gemini-3.8-flash"
         timeout = max(5, min(180, int(settings.gemini_timeout)))
         fast = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.fast_model or default_model,
