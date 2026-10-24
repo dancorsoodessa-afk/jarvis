@@ -73,7 +73,7 @@ class _ReactorPainter extends CustomPainter {
     for (final ring in _rings) {
       paint
         ..strokeWidth = ring.width
-        ..color = ring.dim ? color.withOpacity(0.25) : color;
+        ..color = ring.dim ? color.withValues(alpha: 0.25) : color;
       final rot = time.value * ring.speed * 2 * math.pi;
       final step = 2 * math.pi / ring.segments;
       for (var i = 0; i < ring.segments; i++) {
@@ -97,8 +97,8 @@ class _ReactorPainter extends CustomPainter {
       Paint()
         ..shader = RadialGradient(colors: [
           const Color(0xE6B4F5FF),
-          color.withOpacity(0.35),
-          color.withOpacity(0),
+          color.withValues(alpha: 0.35),
+          color.withValues(alpha: 0),
         ], stops: const [
           0,
           0.45,
