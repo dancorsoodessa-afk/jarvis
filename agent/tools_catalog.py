@@ -62,4 +62,9 @@ TOOLS = [
     ("loaderio_status", "Loader.io", "Облачные нагрузочные тесты и результаты", "web"),
     ("cloudflare_analytics", "Cloudflare APM/Analytics", "Получить телеметрию Cloudflare через API", "web"),
     ("manageengine_monitor", "ManageEngine APM", "Получить данные Applications Manager через API", "process"),
+    ("read_source", "Чтение исходников", "Читать исходный код проекта", "folder"),
+    ("write_source", "Самоизменение кода", "Изменять код с резервной копией и подтверждением", "danger"),
+    ("run_self_tests", "Проверка проекта", "Запуск тестов JARVIS", "process"),
+    ("git_status", "Состояние Git", "Показать изменения в репозитории", "process"),
+    ("rollback_self_change", "Откат изменения", "Восстановить резервную копию с подтверждением", "danger"),
 ]
