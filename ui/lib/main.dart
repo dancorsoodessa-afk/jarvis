@@ -143,14 +143,16 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _startVoiceLoop() async {
     if (!_android || !_voiceReady || _voiceStarting || _ttsSpeaking || _busy) return;
-    final mic = await Permission.microphone.status;
-    if (!mic.isGranted) {
-      if (mounted) setState(() => _status = 'Нет разрешения на микрофон');
-      return;
-    }
+    // Lock before the first await so concurrent callbacks cannot start two listeners.
     _voiceStarting = true;
-    final session = _speechSession;
     try {
+      final mic = await Permission.microphone.status;
+      if (!mic.isGranted) {
+        _voiceRunning = false;
+        if (mounted) setState(() => _status = 'Нет разрешения на микрофон');
+        return;
+      }
+      final session = _speechSession;
       await _speech.stop();
       await _speech.listen(
         onResult: (result) => _onSpeechResult(result, session),
