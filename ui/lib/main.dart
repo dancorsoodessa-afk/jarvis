@@ -487,14 +487,22 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<Duration?> _parseTimer(String text) async {
     final s = text.toLowerCase();
-    final m = RegExp(r'(?:таймер|напомни|напоминание)\s*(?:на|через)?\s*(\d+(?:[.,]\d+)?)\s*(сек|секунд(?:у|ы)?|s|мин|минут(?:у|ы)?|m|ч|час(?:а|ов)?|h)').firstMatch(s);
+    final m = RegExp(r'(?:таймер|напомни|напоминание)\s*(?:мне\s*)?(?:на|через)?\s*(\d+(?:[.,]\d+)?)\s*(сек|секунд(?:у|ы)?|s|мин|минут(?:у|ы)?|m|ч|час(?:а|ов)?|h|дн(?:я|ей)?|день)').firstMatch(s);
     if (m == null) return null;
     final value = double.tryParse(m.group(1)!.replaceAll(',', '.'));
-    if (value == null || value <= 0) return null;
+    if (value == null || !value.isFinite || value <= 0) return null;
     final u = m.group(2)!;
-    if (u == 's' || u.startsWith('сек')) return Duration(milliseconds: (value * 1000).round());
-    if (u == 'm' || u.startsWith('мин')) return Duration(milliseconds: (value * 60000).round());
-    return Duration(milliseconds: (value * 3600000).round());
+    final multiplier = u == 's' || u.startsWith('сек')
+        ? 1000.0
+        : u == 'm' || u.startsWith('мин')
+            ? 60000.0
+            : u == 'h' || u == 'ч' || u.startsWith('час')
+                ? 3600000.0
+                : 86400000.0;
+    final milliseconds = value * multiplier;
+    // Bound timers to one year and avoid overflowing Duration/AlarmManager values.
+    if (!milliseconds.isFinite || milliseconds > const Duration(days: 365).inMilliseconds) return null;
+    return Duration(milliseconds: milliseconds.round());
   }
 
   Future<bool> _handleTimer(String text) async {
