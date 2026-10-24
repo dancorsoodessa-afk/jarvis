@@ -18,7 +18,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-android:
+  validate:
+    name: Analyze and test before build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,7 +34,34 @@ jobs:
         run: |
           set -e
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
-          # Remove only Flutter's generated counter-example test; preserve project tests.
+          rm -f test/widget_test.dart
+      - name: Get dependencies
+        working-directory: ui
+        run: flutter pub get
+      - name: Analyze Dart (strict)
+        working-directory: ui
+        run: flutter analyze
+      - name: Run Flutter tests
+        working-directory: ui
+        run: flutter test
+
+  build-android:
+    name: Build release APK (only after validation)
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate Android project
+        working-directory: ui
+        run: |
+          set -e
+          flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
           rm -f test/widget_test.dart
       - name: Configure Android permissions
         working-directory: ui
@@ -49,20 +77,14 @@ jobs:
           ]
           for permission in permissions:
               if permission not in text:
-                  text = text.replace("<application", permission + "\n    <application", 1)
+                  text = text.replace("<application", permission + "\\n    <application", 1)
           if "android.speech.RecognitionService" not in text:
-              text = text.replace("<application", '    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n    <application', 1)
+              text = text.replace("<application", '    <queries>\\n        <intent>\\n            <action android:name="android.speech.RecognitionService" />\\n        </intent>\\n    </queries>\\n    <application', 1)
           p.write_text(text, encoding="utf-8")
           PY
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
-      - name: Analyze Dart
-        working-directory: ui
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-      - name: Run Flutter tests
-        working-directory: ui
-        run: flutter test
       - name: Build release APK
         working-directory: ui
         run: flutter build apk --release
