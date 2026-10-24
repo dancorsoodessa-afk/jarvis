@@ -616,16 +616,16 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
               child: Row(
                 children: [
-                  _statusPill(connected ? 'CLOUD LINK' : 'LINK OFFLINE',
+                  Expanded(child: _statusPill(connected ? 'ОБЛАКО · ОНЛАЙН' : 'ОБЛАКО · ОФЛАЙН',
                     connected ? const Color(0xFF52E5B8) : const Color(0xFFFF647C),
-                    connected ? Icons.cloud_done_outlined : Icons.cloud_off_outlined),
-                  const Spacer(),
-                  _statusPill(_voiceRunning ? 'VOICE ACTIVE' : 'VOICE STANDBY',
+                    connected ? Icons.cloud_done_outlined : Icons.cloud_off_outlined)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _statusPill(_voiceRunning ? 'ГОЛОС · АКТИВЕН' : 'ГОЛОС · ОЖИДАНИЕ',
                     _voiceRunning ? const Color(0xFF52E5B8) : const Color(0xFF8B9AA9),
-                    _voiceRunning ? Icons.graphic_eq_rounded : Icons.mic_none_rounded),
+                    _voiceRunning ? Icons.graphic_eq_rounded : Icons.mic_none_rounded)),
                 ],
               ),
             ),
@@ -686,16 +686,50 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 9),
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: Row(
                 children: [
-                  Expanded(child: _telemetryCard('CORE STATE', _visualLabel, _visualColor)),
-                  const SizedBox(width: 8),
-                  Expanded(child: _telemetryCard('INPUT LEVEL', '${(_voiceLevel * 100).round()}%', const Color(0xFF42E8FF))),
-                  const SizedBox(width: 8),
-                  Expanded(child: _telemetryCard('AI ENGINE', connected ? 'READY' : 'WAITING',
+                  Expanded(child: _telemetryCard('СОСТОЯНИЕ ЯДРА', _visualLabel, _visualColor)),
+                  const SizedBox(width: 6),
+                  Expanded(child: _telemetryCard('УРОВЕНЬ ГОЛОСА', '${(_voiceLevel * 100).round()}%', const Color(0xFF42E8FF))),
+                  const SizedBox(width: 6),
+                  Expanded(child: _telemetryCard('AI ПРОВАЙДЕР', connected ? 'GEMINI · OK' : 'GEMINI · WAIT',
                     connected ? const Color(0xFF52E5B8) : const Color(0xFFFFC56B))),
                 ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF050D17),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _visualColor.withValues(alpha: 0.22)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.memory_rounded, color: _visualColor, size: 17),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('JARVIS NEURAL SYSTEM', style: TextStyle(fontSize: 9, letterSpacing: 1.5, fontWeight: FontWeight.w700, color: Color(0xFFBDEFFF))),
+                          const SizedBox(height: 3),
+                          Text(connected ? 'Gemini подключён · готов принимать команды' : 'Подключите Gemini в настройках для запуска AI',
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.58))),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(width: 6, height: 6, decoration: BoxDecoration(
+                      shape: BoxShape.circle, color: connected ? const Color(0xFF52E5B8) : const Color(0xFFFF647C),
+                      boxShadow: [BoxShadow(color: (connected ? const Color(0xFF52E5B8) : const Color(0xFFFF647C)).withValues(alpha: 0.7), blurRadius: 8)],
+                    )),
+                  ],
+                ),
               ),
             ),
             Padding(
