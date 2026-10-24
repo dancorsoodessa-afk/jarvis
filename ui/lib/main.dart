@@ -331,6 +331,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model, fallbackUrl: '', fallbackKey: '', fallbackModel: '');
       await _jarvis!.checkConnection();
       await _finishConnect();
+      // Start hands-free voice only after the AI connection and first frame are ready.
+      // Native speech service failures remain non-fatal inside _initVoice().
+      await _initVoice();
+      if (_voiceReady && mounted) {
+        _voiceRunning = true;
+        await _startVoiceLoop();
+      }
     } catch (e) {
       if (mounted) setState(() => _status = 'Ошибка AI: $e');
       _setVisual(JarvisVisualState.error);
@@ -365,14 +372,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         if (text.isNotEmpty) _visualState = JarvisVisualState.speaking;
       });
     });
-    if (_android && _voiceReady && mounted) {
-      _voiceRunning = true;
-      Future<void>.delayed(const Duration(milliseconds: 700), () {
-        if (mounted && _voiceRunning && !_busy && !_ttsSpeaking) {
-          _startVoiceLoop();
-        }
-      });
-    }
   }
 
   Future<void> _settings() async {
