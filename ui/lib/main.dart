@@ -339,13 +339,31 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _setVisual(JarvisVisualState.error);
       return;
     }
+    JarvisIpc? candidate;
     try {
-      await _saveSettings();
       if (mounted) setState(() => _status = 'Проверяю ответ Gemini…');
       _setVisual(JarvisVisualState.thinking);
-      await _jarvis?.dispose();
-      _jarvis = await JarvisIpc.connectAi(endpoint, apiKey: key, model: model, fallbackUrl: '', fallbackKey: '', fallbackModel: '');
-      await _jarvis!.checkConnection();
+
+      // Keep the active connection alive until the replacement has passed
+      // a real chat probe. Failed settings/network attempts must not break a
+      // previously working session or leak the candidate HttpClient.
+      final next = await JarvisIpc.connectAi(
+        endpoint,
+        apiKey: key,
+        model: model,
+        fallbackUrl: '',
+        fallbackKey: '',
+        fallbackModel: '',
+      );
+      candidate = next;
+      await next.checkConnection();
+      await _saveSettings();
+
+      final previous = _jarvis;
+      _jarvis = next;
+      candidate = null;
+      await previous?.dispose();
+
       await _finishConnect();
       // Start hands-free voice only after the AI connection and first frame are ready.
       // Native speech service failures remain non-fatal inside _initVoice().
@@ -355,6 +373,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         await _startVoiceLoop();
       }
     } catch (e) {
+      await candidate?.dispose();
       if (mounted) setState(() => _status = 'Ошибка AI: $e');
       _setVisual(JarvisVisualState.error);
     }
