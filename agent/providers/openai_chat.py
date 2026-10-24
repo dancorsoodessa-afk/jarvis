@@ -253,14 +253,14 @@ class OpenAIChatProvider:
                     time.sleep(1.0 * (2 ** attempt))
                     continue
                 if exc.code == 503:
-                    raise RuntimeError("Gemini временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
+                    raise RuntimeError(f"{self._provider_name()} временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
                 raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
             except urllib.error.URLError as exc:
                 if attempt < 3:
                     time.sleep(1.0 * (2 ** attempt))
                     continue
                 raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
-        raise RuntimeError("Gemini временно недоступен после нескольких попыток.")
+        raise RuntimeError(f"{self._provider_name()} временно недоступен после нескольких попыток.")
 
     def _extract(self, body: dict) -> dict:
         try:
