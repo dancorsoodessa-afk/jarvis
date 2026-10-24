@@ -91,13 +91,12 @@ def _generate_audio(text: str) -> bytes:
                 "text": text,
                 "annotations": [{
                     "type": "speech_metadata",
-                    "speaker": "JARVIS",
                     "style": "Speak naturally and clearly in Russian, with a confident, calm assistant delivery.",
                 }],
             }],
         }],
         "response_format": {"type": "audio"},
-        "generation_config": {"speech_config": {"speakers": [{"speaker": "JARVIS", "voice": voice}]}},
+        "generation_config": {"speech_config": [{"voice": voice}]},
     }
     request = urllib.request.Request(
         TTS_ENDPOINT,
