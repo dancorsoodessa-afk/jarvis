@@ -1,10 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
     <application
         android:label="JARVIS"
         android:usesCleartextTraffic="false"
         android:theme="@style/LaunchTheme">
         <meta-data android:name="flutterEmbedding" android:value="2" />
+        <receiver android:name=".JarvisTimerReceiver" android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
