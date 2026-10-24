@@ -38,9 +38,16 @@ jobs:
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
+      - name: Verify analyzed source revision
+        working-directory: ui
+        run: |
+          set -e
+          echo "CHECKED_OUT_COMMIT=$(git -C .. rev-parse HEAD)"
+          sha256sum lib/jarvis_reactor.dart lib/main.dart
+          grep -nE 'withOpacity|withValues' lib/jarvis_reactor.dart || true
       - name: Analyze Dart (strict)
         working-directory: ui
-        run: flutter analyze
+        run: flutter analyze --no-pub
       - name: Run Flutter tests
         working-directory: ui
         run: flutter test
