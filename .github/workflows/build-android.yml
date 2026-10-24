@@ -33,7 +33,6 @@ jobs:
         run: |
           set -e
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
-          rm -rf test
       - name: Configure Android permissions
         working-directory: ui
         shell: bash
@@ -59,6 +58,9 @@ jobs:
       - name: Analyze Dart
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Run Flutter tests
+        working-directory: ui
+        run: flutter test
       - name: Build release APK
         working-directory: ui
         run: flutter build apk --release
