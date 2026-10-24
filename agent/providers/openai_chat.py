@@ -32,8 +32,13 @@ class OpenAIChatProvider:
                  history: Optional[list] = None,
                  system_prompt: Optional[str] = None, fallback_models: Optional[list[str]] = None):
         self.url = (url or os.environ.get("JARVIS_CHAT_URL", "")).strip()
-        configured_key = api_key if api_key is not None else os.environ.get("JARVIS_CHAT_KEY", "")
-        self.api_key = (configured_key or os.environ.get("GEMINI_API_KEY", "")).strip()
+        # An explicitly supplied empty key is intentional (the user cleared it).
+        # Only consult environment variables when no key argument was supplied.
+        if api_key is None:
+            configured_key = os.environ.get("JARVIS_CHAT_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
+        else:
+            configured_key = api_key
+        self.api_key = str(configured_key or "").strip()
         self.model = (model or os.environ.get("JARVIS_CHAT_MODEL", "")).strip()
         self.timeout = timeout
         self.history: list[dict] = history if history is not None else []
