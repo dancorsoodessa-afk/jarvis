@@ -53,6 +53,10 @@ _SECRET_SETTING_KEYS = {
     "api_key",
     "gemini_api_key",
     "groq_api_key",
+    "smtp_password",
+    "cloudflare_token",
+    "manageengine_key",
+    "loaderio_key",
     "hf_token",
 }
 
@@ -164,6 +168,25 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_GROQ_MODEL"] = str(self.settings.get("groq_model") or "openai/gpt-oss-120b")
         os.environ["JARVIS_GROQ_TIMEOUT"] = str(self.settings.get("groq_timeout") or "30")
         os.environ["JARVIS_GEMINI_TIMEOUT"] = str(self.settings.get("gemini_timeout") or "30")
+        # Optional integrations are configured from the control center. Explicitly
+        # cleared settings override stale process environment values.
+        integration_env = {
+            "JARVIS_SMTP_HOST": ("smtp_host", ""),
+            "JARVIS_SMTP_PORT": ("smtp_port", "587"),
+            "JARVIS_SMTP_USER": ("smtp_user", ""),
+            "JARVIS_SMTP_PASSWORD": ("smtp_password", ""),
+            "JARVIS_SMTP_FROM": ("smtp_from", ""),
+            "JARVIS_CLOUDFLARE_TOKEN": ("cloudflare_token", ""),
+            "JARVIS_MANAGEENGINE_URL": ("manageengine_url", ""),
+            "JARVIS_MANAGEENGINE_KEY": ("manageengine_key", ""),
+            "JARVIS_LOADERIO_KEY": ("loaderio_key", ""),
+        }
+        for env_name, (setting_name, default) in integration_env.items():
+            if setting_name in self.settings:
+                value = self.settings.get(setting_name)
+            else:
+                value = os.environ.get(env_name, default)
+            os.environ[env_name] = str(value or default).strip()
         os.environ.pop("HF_TOKEN", None)
         os.environ["JARVIS_CHAT_MODEL"] = profile["model"]
         os.environ["JARVIS_FAST_MODEL"] = merged["0"]["model"]
@@ -1156,6 +1179,35 @@ class JarvisDesktop(tk.Tk):
         additional_model.pack(fill="x", padx=14, pady=(0, 4), ipady=6)
         tk.Button(additional_row, text="ОЧИСТИТЬ", command=lambda: clear_entry(additional_model), bg="#572637", fg=TEXT, relief="flat", padx=8, pady=4).pack(anchor="e", padx=14, pady=(0, 8))
 
+        integration_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
+        integration_row.pack(fill="x", pady=(2, 10))
+        tk.Label(integration_row, text="ВНЕШНИЕ ИНТЕГРАЦИИ", bg="#091b29", fg=CYAN,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
+        tk.Label(integration_row, text="Ключи хранятся только в локальных настройках JARVIS. Оставьте поле пустым, если сервис не используете.",
+                 bg="#091b29", fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=14, pady=(0, 6))
+        integration_fields = {}
+        for label, key, default, secret in (
+            ("SMTP сервер", "smtp_host", self.settings.get("smtp_host", ""), False),
+            ("SMTP порт", "smtp_port", self.settings.get("smtp_port", "587"), False),
+            ("SMTP пользователь", "smtp_user", self.settings.get("smtp_user", ""), False),
+            ("SMTP пароль", "smtp_password", self.settings.get("smtp_password", ""), True),
+            ("SMTP отправитель", "smtp_from", self.settings.get("smtp_from", ""), False),
+            ("Cloudflare API token", "cloudflare_token", self.settings.get("cloudflare_token", ""), True),
+            ("ManageEngine URL", "manageengine_url", self.settings.get("manageengine_url", ""), False),
+            ("ManageEngine API key", "manageengine_key", self.settings.get("manageengine_key", ""), True),
+            ("Loader.io API key", "loaderio_key", self.settings.get("loaderio_key", ""), True),
+        ):
+            row = tk.Frame(integration_row, bg="#091b29")
+            row.pack(fill="x", padx=14, pady=3)
+            tk.Label(row, text=label, width=23, anchor="w", bg="#091b29", fg=MUTED).pack(side="left")
+            entry = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat",
+                             show="•" if secret else "", exportselection=False)
+            entry.insert(0, str(default))
+            entry.pack(side="left", fill="x", expand=True, ipady=6)
+            tk.Button(row, text="×", command=lambda e=entry: clear_entry(e), bg="#572637",
+                      fg=TEXT, relief="flat", width=3).pack(side="left", padx=(6, 0))
+            integration_fields[key] = entry
+
         entries = []
         for i, title in enumerate(names):
             dprov, durl, dmodel = defaults[i]
@@ -1219,6 +1271,8 @@ class JarvisDesktop(tk.Tk):
             self.settings["agents"] = new_profiles
             self.settings["gemini_api_key"] = shared_key.get().strip()
             self.settings["groq_api_key"] = groq_key.get().strip()
+            for key, entry in integration_fields.items():
+                self.settings[key] = entry.get().strip()
             for key, entry in groq_fields.items():
                 self.settings[key] = entry.get().strip()
             self.settings.pop("hf_token", None)
