@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class JarvisInternetScreen extends StatefulWidget {
   const JarvisInternetScreen({super.key});
@@ -8,6 +9,7 @@ class JarvisInternetScreen extends StatefulWidget {
   State<JarvisInternetScreen> createState() => _JarvisInternetScreenState();
 }
 class _JarvisInternetScreenState extends State<JarvisInternetScreen> {
+  static const _channel = MethodChannel('com.dancorsoodessa.jarvis/device');
   final _query = TextEditingController();
   bool _busy = false;
   String _result = 'Введите запрос для поиска или город для погоды.';
@@ -35,6 +37,15 @@ class _JarvisInternetScreenState extends State<JarvisInternetScreen> {
     } catch (e) {
       if (mounted) setState(() => _result = 'Ошибка запроса: $e');
     } finally { if (mounted) setState(() => _busy = false); }
+  }
+  Future<void> _openUrl() async {
+    final value = _query.text.trim();
+    try {
+      await _channel.invokeMethod<bool>('openUrl', {'url': value});
+      if (mounted) setState(() => _result = 'Передано Android для открытия URL: $value');
+    } catch (e) {
+      if (mounted) setState(() => _result = 'Не удалось открыть URL: $e');
+    }
   }
   Future<String> _search(String query) async {
     final html = await _get(Uri.https('html.duckduckgo.com', '/html/', {'q': query}));
@@ -98,6 +109,7 @@ class _JarvisInternetScreenState extends State<JarvisInternetScreen> {
       Wrap(spacing: 8, runSpacing: 8, children: [
         FilledButton.icon(onPressed: _busy ? null : () => _run(false), icon: const Icon(Icons.search), label: const Text('Поиск в интернете')),
         OutlinedButton.icon(onPressed: _busy ? null : () => _run(true), icon: const Icon(Icons.cloud), label: const Text('Погода на 3 дня')),
+        OutlinedButton.icon(onPressed: _busy ? null : _openUrl, icon: const Icon(Icons.open_in_browser), label: const Text('Открыть URL')),
       ]),
       const SizedBox(height: 16),
       SelectableText(_result, style: const TextStyle(height: 1.45)),
