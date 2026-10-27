@@ -412,9 +412,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             final latest = value is List ? (value.isEmpty ? 'нет данных' : value.last.toString()) : value.toString();
             final short = latest.length > 520 ? '${latest.substring(0, 520)}…' : latest;
             return '${entry.key.toUpperCase()}: ${short}';
-          }).join('\\n\\n');
+          }).join('\n\n');
         }
-      } else if (if (RegExp(r'фандинг|funding|открыт.{0,12}интерес|open interest|\boi\b').hasMatch(t)) {
+      } else if (RegExp(r'фандинг|funding|открыт.{0,12}интерес|open interest|\boi\b').hasMatch(t)) {
         final inst = '${symbol.replaceAll('-USDT', '')}-USDT-SWAP';
         final d = await JarvisCrypto.derivatives(symbol: inst);
         final funding = d['funding'];
