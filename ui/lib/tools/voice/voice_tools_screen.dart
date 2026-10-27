@@ -32,8 +32,9 @@ class _JarvisVoiceToolsScreenState extends State<JarvisVoiceToolsScreen> {
     try { await _tts.stop(); if (mounted) setState(() => _status = 'Озвучивание остановлено.'); }
     catch (e) { if (mounted) setState(() => _status = 'Не удалось остановить голос: $e'); }
   }
+  Future<void> _stopOnDispose() async { try { await _tts.stop(); } catch (_) {} }
   @override
-  void dispose() { unawaited(_tts.stop().catchError((Object _) {})); _text.dispose(); super.dispose(); }
+  void dispose() { unawaited(_stopOnDispose()); _text.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Голос JARVIS')),
