@@ -126,7 +126,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           }
         },
         debugLogging: false,
-        options: const [stt.SpeechToText.androidAlwaysUseStop],
+        options: [stt.SpeechToText.androidAlwaysUseStop],
       );
       if (!available) throw StateError('Распознавание речи недоступно на устройстве');
       await _tts.setLanguage('ru-RU');
