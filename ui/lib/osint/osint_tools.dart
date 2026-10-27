@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 class JarvisOsint {
  static Future<String> lookup(String kind,String value) async {
   final input=value.trim(); if(input.isEmpty)throw ArgumentError('Введите домен, IP или URL');
@@ -70,6 +71,62 @@ class JarvisOsint {
       }
     }));
     return ['USERNAME: @$username','Публичные профили (результат ориентировочный):',...results].join('\n');
+   }
+   if(kind=='Image URL / EXIF'){
+    final uri=Uri.tryParse(input);
+    if(uri==null || uri.scheme!='https' || uri.host.isEmpty) {
+      throw ArgumentError('Укажите прямую HTTPS-ссылку на изображение');
+    }
+    final request=await client.getUrl(uri).timeout(const Duration(seconds:10));
+    request.headers.set(HttpHeaders.acceptHeader,'image/*');
+    final response=await request.close().timeout(const Duration(seconds:10));
+    if(response.statusCode<200 || response.statusCode>=300) {
+      await response.drain<void>();
+      throw HttpException('HTTP ${response.statusCode} при загрузке изображения',uri:uri);
+    }
+    final declared=response.contentLength;
+    if(declared>10*1024*1024) {
+      await response.drain<void>();
+      throw ArgumentError('Изображение больше 10 МБ; проверка остановлена');
+    }
+    final bytes=BytesBuilder(copy:false);
+    await for(final chunk in response) {
+      if(bytes.length+chunk.length>10*1024*1024) {
+        throw ArgumentError('Изображение больше 10 МБ; проверка остановлена');
+      }
+      bytes.add(chunk);
+    }
+    final data=bytes.takeBytes();
+    final isJpeg=data.length>3 && data[0]==0xff && data[1]==0xd8;
+    final isPng=data.length>8 && data[0]==0x89 && data[1]==0x50 && data[2]==0x4e && data[3]==0x47;
+    var width='не определено',height='не определено';
+    if(isJpeg) {
+      var i=2;
+      while(i+8<data.length) {
+        if(data[i]!=0xff) {i++;continue;}
+        final markerByte=data[i+1];
+        if(markerByte==0xd9 || markerByte==0xda) break;
+        if(i+4>=data.length) break;
+        final segmentLength=(data[i+2]<<8)|data[i+3];
+        if(segmentLength<2 || i+2+segmentLength>data.length) break;
+        if(const [0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf].contains(markerByte) && segmentLength>=7) {
+          height=((data[i+5]<<8)|data[i+6]).toString();
+          width=((data[i+7]<<8)|data[i+8]).toString();
+          break;
+        }
+        i+=2+segmentLength;
+      }
+    } else if(isPng && data.length>=24) {
+      width=((data[16]<<24)|(data[17]<<16)|(data[18]<<8)|data[19]).toString();
+      height=((data[20]<<24)|(data[21]<<16)|(data[22]<<8)|data[23]).toString();
+    }
+    final asciiData=ascii.decode(data,allowInvalid:true);
+    final hasExif=asciiData.contains('Exif\\u0000\\u0000');
+    return ['URL: $uri','HTTP: ${response.statusCode}',
+      'Content-Type: ${response.headers.contentType??'—'}',
+      'Размер файла: ${data.length} байт','Формат: ${isJpeg?'JPEG':isPng?'PNG':'не определён'}',
+      'Ширина: $width px','Высота: $height px','EXIF-блок: ${hasExif?'обнаружен':'не обнаружен'}',
+      'SHA-256: ${sha256.convert(data)}'].join('\\n');
    }
    if(kind=='URL / TLS'){
     final u=Uri.tryParse(input.contains('://')?input:'https://$input');
