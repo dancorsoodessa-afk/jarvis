@@ -591,14 +591,17 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _pickChatAttachments() async {
     if (_busy) return;
     try {
-      final result = await FilePicker.platform.pickFiles(
-        allowMultiple: true, withData: true, type: FileType.custom,
+      final files = await FilePicker.pickFiles(
+        type: FileType.custom,
         allowedExtensions: ['pdf','docx','txt','md','csv','json','xml','yaml','yml','log','html'],
       );
-      if (!mounted || result == null) return;
+      if (!mounted || files.isEmpty) return;
       setState(() {
-        for (final file in result.files) {
-          if (!_attachments.any((f) => f.name == file.name && f.size == file.size)) _attachments.add(file);
+        for (final file in files) {
+          final size = file.lengthSync();
+          if (!_attachments.any((f) => f.name == file.name && f.lengthSync() == size)) {
+            _attachments.add(file);
+          }
         }
         _status = 'Прикреплено документов: ${_attachments.length}';
       });
@@ -609,7 +612,10 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<String> _readAttachment(PlatformFile file) async {
     final ext = (file.extension ?? '').toLowerCase();
-    final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : Uint8List(0));
+    final knownLength = file.lengthSync();
+    final length = knownLength ?? await file.length();
+    if (length > 5 * 1024 * 1024) return '[Файл ${file.name}: размер больше 5 МБ; содержимое не передано AI.]';
+    final bytes = await file.readAsBytes();
     if (bytes.length > 5 * 1024 * 1024) return '[Файл ${file.name}: размер больше 5 МБ; содержимое не передано AI.]';
     try {
       if (ext == 'pdf') {
