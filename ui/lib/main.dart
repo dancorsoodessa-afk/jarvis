@@ -130,25 +130,37 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Future<void> _toggleVoice() async {
-    if (!_android) return;
-    if (_voiceRunning || _voiceStarting) {
+    if (!_android || _voiceStarting) return;
+    if (_voiceRunning) {
       _voiceRunning = false;
       _wakeArmed = false;
       _voiceRestartTimer?.cancel();
-      try {
-        await _speech.stop();
-      } catch (_) {}
+      if (_voiceReady) {
+        try { await _speech.stop(); } catch (e) {
+          debugPrint('JARVIS speech stop failed: $e');
+        }
+      }
       if (mounted) {
         setState(() => _status = 'Голос остановлен');
         _setVisual(JarvisVisualState.idle);
       }
       return;
     }
-    await _initVoice();
-    if (!mounted || !_voiceReady) return;
-    _voiceRunning = true;
-    _wakeArmed = false;
-    await _startVoiceLoop();
+    try {
+      await _initVoice();
+      if (!mounted || !_voiceReady) return;
+      _voiceRunning = true;
+      _wakeArmed = false;
+      await _startVoiceLoop();
+    } catch (e, stack) {
+      debugPrint('JARVIS voice start failed: $e');
+      debugPrintStack(stackTrace: stack);
+      _voiceRunning = false;
+      if (mounted) {
+        setState(() => _status = 'Микрофон недоступен: $e');
+        _setVisual(JarvisVisualState.error);
+      }
+    }
   }
 
   Future<void> _startVoiceLoop() async {
@@ -350,9 +362,15 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _settings() async {
     if (!_android) return;
-    await _speech.stop();
-    _voiceRunning = false;
-    _wakeArmed = false;
+    // Opening AI settings must never call an uninitialized native speech plugin.
+    _voiceRestartTimer?.cancel();
+    if (_voiceReady && _voiceRunning) {
+      _voiceRunning = false;
+      _wakeArmed = false;
+      try { await _speech.stop(); } catch (e) {
+        debugPrint('JARVIS speech stop before settings failed: $e');
+      }
+    }
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -377,11 +395,31 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         ],
       ),
     );
-    if (mounted && _jarvis != null && _voiceReady) {
-      _voiceRunning = true;
-      _wakeArmed = false;
-      _startVoiceLoop();
-    }
+  }
+
+  Future<void> _showVoiceSettings() async {
+    if (!_android) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Настройки микрофона'),
+        content: Text(
+          'Состояние: ${_voiceReady ? "готов" : "не инициализирован"}\\n'
+          'Прослушивание: ${_voiceRunning ? "включено" : "выключено"}\\n'
+          'Распознавание запускается только после нажатия кнопки микрофона.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть')),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _toggleVoice();
+            },
+            child: Text(_voiceRunning ? 'Остановить' : 'Проверить микрофон'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _cryptoSymbol(String text) {
@@ -563,8 +601,10 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _partialSub?.cancel();
     _visualTimer?.cancel();
     _voiceRestartTimer?.cancel();
-    _speech.stop();
-    _tts.stop();
+    if (_voiceReady) {
+      try { _speech.stop(); } catch (_) {}
+      try { _tts.stop(); } catch (_) {}
+    }
     _jarvis?.dispose();
     _input.dispose();
     _endpoint.dispose();
@@ -599,24 +639,120 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     ),
   );
 
+  Widget _menuItem(IconData icon, String label, VoidCallback action) => ListTile(
+    dense: true,
+    leading: Icon(icon, size: 19, color: kCyan),
+    title: Text(label, style: const TextStyle(fontSize: 13)),
+    onTap: () {
+      Navigator.pop(context);
+      action();
+    },
+  );
+
+  void _openMenuScreen(Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+  }
+
+  void _sendFromMenu(String command) {
+    _send(command);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('JARVIS'), actions: [if (_android) IconButton(onPressed: _settings, tooltip: 'Настройки AI', icon: const Icon(Icons.settings))]),
-      drawer: _android ? Drawer(backgroundColor: kBg, child: SafeArea(child: ListView(padding: const EdgeInsets.all(14), children: [
-        const Text('J.A.R.V.I.S  /  COMMAND CENTER', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-        const Divider(color: kCyan),
-        ListTile(leading: const Icon(Icons.dashboard, color: kCyan), title: const Text('Главный экран'), onTap: () => Navigator.pop(context)),
-        ListTile(leading: const Icon(Icons.currency_bitcoin, color: kCyan), title: const Text('Криптоинструменты'), onTap: () { Navigator.pop(context); Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisCryptoScreen())); }),
-        ListTile(leading: const Icon(Icons.travel_explore, color: kCyan), title: const Text('OSINT-разведка'), subtitle: const Text('Домены · IP/ASN · URL'), onTap: () { Navigator.pop(context); Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisOsintScreen())); }),
-        const Padding(padding: EdgeInsets.fromLTRB(12, 12, 12, 4), child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: kCyan, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2))),
-        ListTile(leading: const Icon(Icons.trending_up, color: kCyan), title: const Text('Цены рынка'), subtitle: const Text('BTC · ETH · SOL · XRP'), onTap: () { Navigator.pop(context); _send('цены BTC ETH SOL XRP'); }),
-        ListTile(leading: const Icon(Icons.analytics, color: kCyan), title: const Text('Технический анализ'), subtitle: const Text('RSI · SMA · BTC'), onTap: () { Navigator.pop(context); _send('технический анализ BTC RSI SMA'); }),
-        ListTile(leading: const Icon(Icons.candlestick_chart, color: kCyan), title: const Text('Funding / Open Interest'), onTap: () { Navigator.pop(context); _send('BTC funding open interest'); }),
-        ListTile(leading: const Icon(Icons.query_stats, color: kCyan), title: const Text('CoinGlass'), subtitle: const Text('Ликвидации · CVD · Long/Short'), onTap: () { Navigator.pop(context); _send('CoinGlass ликвидации BTC CVD long short'); }),
-        ListTile(leading: const Icon(Icons.mic, color: kCyan), title: const Text('Голос'), onTap: () { Navigator.pop(context); _toggleVoice(); }),
-        ListTile(leading: const Icon(Icons.settings, color: kCyan), title: const Text('Настройки AI'), onTap: () { Navigator.pop(context); _settings(); }),
-      ]))) : null,
+      drawer: _android ? Drawer(
+        backgroundColor: kBg,
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text('J.A.R.V.I.S / ЦЕНТР УПРАВЛЕНИЯ',
+                  style: TextStyle(color: kCyan, fontWeight: FontWeight.bold, letterSpacing: 1)),
+              ),
+              const Divider(color: kCyan),
+              ListTile(
+                leading: const Icon(Icons.dashboard, color: kCyan),
+                title: const Text('Главный экран'),
+                onTap: () => Navigator.pop(context),
+              ),
+              ExpansionTile(
+                leading: const Icon(Icons.currency_bitcoin, color: kCyan),
+                title: const Text('Криптовалюта'),
+                subtitle: const Text('Все криптоинструменты в одной папке'),
+                children: [
+                  _menuItem(Icons.trending_up, 'Цены и рынки', () => _openMenuScreen(const JarvisCryptoScreen())),
+                  _menuItem(Icons.candlestick_chart, 'Графики и свечи', () => _openMenuScreen(const JarvisCryptoScreen())),
+                  _menuItem(Icons.analytics, 'RSI / SMA · теханализ', () => _openMenuScreen(const JarvisCryptoScreen())),
+                  _menuItem(Icons.show_chart, 'Funding / Open Interest', () => _openMenuScreen(const JarvisCryptoScreen())),
+                  _menuItem(Icons.query_stats, 'Ликвидации · CVD · Long/Short · CoinGlass', () => _openMenuScreen(const JarvisCryptoScreen())),
+                ],
+              ),
+              ExpansionTile(
+                leading: const Icon(Icons.travel_explore, color: kCyan),
+                title: const Text('OSINT-разведка'),
+                subtitle: const Text('Все проверки открытых источников'),
+                children: [
+                  _menuItem(Icons.language, 'Домен · DNS · RDAP', () => _openMenuScreen(const JarvisOsintScreen())),
+                  _menuItem(Icons.router, 'IP · ASN · география', () => _openMenuScreen(const JarvisOsintScreen())),
+                  _menuItem(Icons.link, 'URL · HTTP · TLS', () => _openMenuScreen(const JarvisOsintScreen())),
+                  _menuItem(Icons.alternate_email, 'Email · username', () => _openMenuScreen(const JarvisOsintScreen())),
+                  _menuItem(Icons.image_search, 'Метаданные изображения', () => _openMenuScreen(const JarvisOsintScreen())),
+                ],
+              ),
+              ExpansionTile(
+                leading: const Icon(Icons.memory, color: kCyan),
+                title: const Text('Система и диагностика'),
+                children: [
+                  _menuItem(Icons.monitor_heart, 'Статус JARVIS', () => _sendFromMenu('/status')),
+                  _menuItem(Icons.speed, 'Проверить подключение AI', () => _connectAndroid()),
+                  _menuItem(Icons.settings, 'Настройки AI и API', () => _settings()),
+                ],
+              ),
+              ExpansionTile(
+                leading: const Icon(Icons.folder, color: kCyan),
+                title: const Text('Файлы и приложения'),
+                children: [
+                  _menuItem(Icons.search, 'Поиск файлов', () => _sendFromMenu('Найди файл')),
+                  _menuItem(Icons.folder_open, 'Открыть файл или папку', () => _sendFromMenu('Открыть файл или папку')),
+                  _menuItem(Icons.apps, 'Запуск приложений', () => _sendFromMenu('Запусти приложение')),
+                ],
+              ),
+              ExpansionTile(
+                leading: const Icon(Icons.mic, color: kCyan),
+                title: const Text('Голос'),
+                children: [
+                  _menuItem(Icons.mic, 'Включить / выключить микрофон', _toggleVoice),
+                  _menuItem(Icons.tune, 'Настройки микрофона', _showVoiceSettings),
+                  _menuItem(Icons.volume_up, 'Озвучивание ответа', () => _sendFromMenu('Проверь озвучивание ответа')),
+                ],
+              ),
+              ExpansionTile(
+                leading: const Icon(Icons.public, color: kCyan),
+                title: const Text('Интернет и информация'),
+                children: [
+                  _menuItem(Icons.travel_explore, 'Поиск в интернете', () => _sendFromMenu('Найди в интернете')),
+                  _menuItem(Icons.cloud, 'Погода', () => _sendFromMenu('Покажи погоду')),
+                  _menuItem(Icons.calculate, 'Калькулятор', () => _sendFromMenu('Открой калькулятор')),
+                  _menuItem(Icons.access_time, 'Дата и время', () => _sendFromMenu('Который час')),
+                ],
+              ),
+              ExpansionTile(
+                leading: const Icon(Icons.psychology, color: kCyan),
+                title: const Text('Память и задачи'),
+                children: [
+                  _menuItem(Icons.bookmark_add, 'Запомнить факт', () => _sendFromMenu('Запомни')),
+                  _menuItem(Icons.manage_search, 'Найти в памяти', () => _sendFromMenu('Вспомни')),
+                  _menuItem(Icons.alarm, 'Напоминания и таймеры', () => _sendFromMenu('Поставь напоминание')),
+                  _menuItem(Icons.hub, 'Граф знаний', () => _sendFromMenu('Покажи граф знаний')),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ) : null,
       body: _mainContent(),
     );
   }
