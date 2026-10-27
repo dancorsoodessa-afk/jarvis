@@ -380,16 +380,16 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   String _cryptoSymbol(String text) {
     final t = text.toLowerCase();
-    if (RegExp(r'\b(eth|ethereum)\\b|эфир|эфириум').hasMatch(t)) return 'ETH-USDT';
-    if (RegExp(r'\b(sol|solana)\\b|солан').hasMatch(t)) return 'SOL-USDT';
-    if (RegExp(r'\b(xrp)\\b|рипл').hasMatch(t)) return 'XRP-USDT';
+    if (RegExp(r'\b(eth|ethereum)\b|эфир|эфириум').hasMatch(t)) return 'ETH-USDT';
+    if (RegExp(r'\b(sol|solana)\b|солан').hasMatch(t)) return 'SOL-USDT';
+    if (RegExp(r'\b(xrp)\b|рипл').hasMatch(t)) return 'XRP-USDT';
     return 'BTC-USDT';
   }
 
   Future<bool> _handleCryptoTool(String text) async {
     if (!_android) return false;
     final t = text.toLowerCase();
-    final isCrypto = RegExp(r'крипт|биткоин|bitcoin|\\bbtc\\b|эфир|эфириум|\\beth\\b|солан|\\bsol\\b|рипл|\\bxrp\\b|rsi|sma|фандинг|funding|открыт.{0,12}интерес|open interest|техническ.{0,12}анализ|индикатор').hasMatch(t);
+    final isCrypto = RegExp(r'крипт|биткоин|bitcoin|\bbtc\b|эфир|эфириум|\beth\b|солан|\bsol\b|рипл|\bxrp\b|rsi|sma|фандинг|funding|открыт.{0,12}интерес|open interest|техническ.{0,12}анализ|индикатор').hasMatch(t);
     if (!isCrypto) return false;
     final symbol = _cryptoSymbol(text);
     setState(() {
@@ -400,7 +400,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     });
     try {
       String result;
-      if (RegExp(r'фандинг|funding|открыт.{0,12}интерес|open interest|\\boi\\b').hasMatch(t)) {
+      if (RegExp(r'фандинг|funding|открыт.{0,12}интерес|open interest|\boi\b').hasMatch(t)) {
         final inst = '${symbol.replaceAll('-USDT', '')}-USDT-SWAP';
         final d = await JarvisCrypto.derivatives(symbol: inst);
         final funding = d['funding'];
@@ -417,10 +417,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           'Изменение: ${val('change_pct')}%\n'
           'SMA20: ${val('sma20')}\nSMA50: ${val('sma50')}\nRSI14: ${val('rsi14')}';
       } else {
-        final symbols = RegExp(r'\bbtc\\b|биткоин|bitcoin').hasMatch(t) ? ['BTC-USDT'] :
-          RegExp(r'\beth\\b|эфир|эфириум').hasMatch(t) ? ['ETH-USDT'] :
-          RegExp(r'\bsol\\b|солан').hasMatch(t) ? ['SOL-USDT'] :
-          RegExp(r'\bxrp\\b|рипл').hasMatch(t) ? ['XRP-USDT'] :
+        final allMarkets = RegExp(r'все|рынк|обзор').hasMatch(t) || (RegExp(r'\bbtc\b').hasMatch(t) && RegExp(r'\beth\b').hasMatch(t) && RegExp(r'\bsol\b').hasMatch(t));
+        final symbols = allMarkets ? ['BTC-USDT', 'ETH-USDT', 'SOL-USDT', 'XRP-USDT'] :
+          RegExp(r'\bbtc\b|биткоин|bitcoin').hasMatch(t) ? ['BTC-USDT'] :
+          RegExp(r'\beth\b|эфир|эфириум').hasMatch(t) ? ['ETH-USDT'] :
+          RegExp(r'\bsol\b|солан').hasMatch(t) ? ['SOL-USDT'] :
+          RegExp(r'\bxrp\b|рипл').hasMatch(t) ? ['XRP-USDT'] :
           ['BTC-USDT', 'ETH-USDT', 'SOL-USDT', 'XRP-USDT'];
         final rows = await JarvisCrypto.tickers(symbols: symbols);
         result = rows.map((row) {
