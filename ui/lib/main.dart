@@ -84,6 +84,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   bool _busy = false;
   bool _showCryptoDashboard = false;
   bool _voiceReady = false;
+  bool _ttsReady = false;
   bool _voiceRunning = false;
   bool _ttsSpeaking = false;
   bool _voiceStarting = false;
@@ -104,8 +105,36 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     });
   }
 
+  Future<void> _initTts() async {
+    if (!_android || _ttsReady) return;
+    try {
+      await _tts.setLanguage('ru-RU');
+      await _tts.setSpeechRate(0.48);
+      await _tts.setVolume(1.0);
+      await _tts.setPitch(1.0);
+      _tts.setStartHandler(() {
+        _ttsSpeaking = true;
+        if (mounted) _setVisual(JarvisVisualState.speaking);
+      });
+      _tts.setCompletionHandler(() {
+        _ttsSpeaking = false;
+        if (mounted) _returnToIdle(const Duration(milliseconds: 250));
+        if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
+      });
+      _tts.setCancelHandler(() {
+        _ttsSpeaking = false;
+        if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
+      });
+      _ttsReady = true;
+    } catch (e) {
+      _ttsReady = false;
+      if (mounted) setState(() => _status = 'Озвучивание недоступно: $e');
+    }
+  }
+
   Future<void> _initVoice() async {
     if (!_android || _voiceReady) return;
+    await _initTts();
     try {
       final available = await _speech.initialize(
         onStatus: (status) {
@@ -140,23 +169,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         options: [stt.SpeechToText.androidAlwaysUseStop],
       );
       if (!available) throw StateError('Распознавание речи недоступно на устройстве');
-      await _tts.setLanguage('ru-RU');
-      await _tts.setSpeechRate(0.48);
-      await _tts.setVolume(1.0);
-      await _tts.setPitch(1.0);
-      _tts.setStartHandler(() {
-        _ttsSpeaking = true;
-        if (mounted) _setVisual(JarvisVisualState.speaking);
-      });
-      _tts.setCompletionHandler(() {
-        _ttsSpeaking = false;
-        if (mounted) _returnToIdle(const Duration(milliseconds: 250));
-        if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
-      });
-      _tts.setCancelHandler(() {
-        _ttsSpeaking = false;
-        if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
-      });
       _voiceReady = true;
       if (mounted) setState(() => _status = 'Голос готов · скажите «Джарвис»');
     } catch (e) {
@@ -288,7 +300,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Future<void> _speak(String text) async {
-    if (!_android || text.trim().isEmpty || !_voiceReady) return;
+    if (!_android || text.trim().isEmpty) return;
+    if (!_ttsReady) await _initTts();
+    if (!_ttsReady) return;
     try {
       _ttsSpeaking = true;
       await _tts.stop();
