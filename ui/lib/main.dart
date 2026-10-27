@@ -1,5 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
+import 'package:archive/archive.dart';
+import 'package:xml/xml.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,6 +26,7 @@ import 'tools/apps/apps_screen.dart';
 import 'tools/audio/audio_screen.dart';
 import 'tools/voice/voice_tools_screen.dart';
 import 'tools/screenshot/screenshot_screen.dart';
+import 'tools/prompts/prompt_library_screen.dart';
 
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
@@ -67,6 +73,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   final _coinglassKey = TextEditingController();
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
+  final List<PlatformFile> _attachments = <PlatformFile>[];
   final stt.SpeechToText _speech = stt.SpeechToText();
   final FlutterTts _tts = FlutterTts();
   StreamSubscription<String>? _partialSub;
@@ -565,9 +572,72 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     return true;
   }
 
+
+  Future<void> _pickChatAttachments() async {
+    if (_busy) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true, withData: true, type: FileType.custom,
+        allowedExtensions: ['pdf','docx','txt','md','csv','json','xml','yaml','yml','log','html'],
+      );
+      if (!mounted || result == null) return;
+      setState(() {
+        for (final file in result.files) {
+          if (!_attachments.any((f) => f.name == file.name && f.size == file.size)) _attachments.add(file);
+        }
+        _status = 'Прикреплено документов: \${_attachments.length}';
+      });
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Не удалось прикрепить документы: $e');
+    }
+  }
+
+  Future<String> _readAttachment(PlatformFile file) async {
+    final ext = (file.extension ?? '').toLowerCase();
+    final bytes = file.bytes ?? await file.xFile.readAsBytes();
+    if (bytes.length > 5 * 1024 * 1024) return '[Файл \${file.name}: размер больше 5 МБ; содержимое не передано AI.]';
+    try {
+      if (ext == 'pdf') {
+        final document = PdfDocument(inputBytes: bytes);
+        try { return PdfTextExtractor(document).extractText(); } finally { document.dispose(); }
+      }
+      if (ext == 'docx') {
+        final archive = ZipDecoder().decodeBytes(bytes);
+        final xmlFile = archive.findFile('word/document.xml');
+        if (xmlFile == null) return '[Не удалось найти текст документа DOCX.]';
+        final xml = XmlDocument.parse(utf8.decode(xmlFile.content as List<int>, allowMalformed: true));
+        return xml.findAllElements('w:p').map((p) => p.findAllElements('w:t').map((t) => t.innerText).join()).where((s) => s.trim().isNotEmpty).join('\n');
+      }
+      if (const {'txt','md','csv','json','xml','yaml','yml','log','html'}.contains(ext)) return utf8.decode(bytes, allowMalformed: true);
+      return '[Файл \${file.name}: формат пока не поддерживает извлечение текста.]';
+    } catch (e) { return '[Не удалось прочитать \${file.name}: $e]'; }
+  }
+
+  Future<void> _openPromptLibrary() async {
+    final prompt = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(builder: (_) => const JarvisPromptLibraryScreen()),
+    );
+    if (!mounted || prompt == null) return;
+    setState(() {
+      _input.text = prompt;
+      _input.selection = TextSelection.collapsed(offset: _input.text.length);
+      _status = 'Промпт вставлен в чат';
+    });
+  }
+
   Future<void> _send(String text, {bool speakReply = false}) async {
     text = text.trim();
-    if (text.isEmpty || _busy) return;
+    if (_busy || (text.isEmpty && _attachments.isEmpty)) return;
+    if (_attachments.isNotEmpty) {
+      final files = List<PlatformFile>.from(_attachments);
+      setState(() => _status = 'Читаю вложения: \${files.length}…');
+      final sections = <String>[];
+      for (final file in files) {
+        sections.add('--- ДОКУМЕНТ: \${file.name} ---\n\${await _readAttachment(file)}');
+      }
+      text = '\${text.isEmpty ? 'Проанализируй прикреплённые документы и кратко изложи их содержание.' : text}\n\nСОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n\${sections.join('\n\n')}';
+      if (mounted) setState(() => _attachments.clear());
+    }
     if (await _handleTimer(text)) { _input.clear(); return; }
     if (await _handleCryptoTool(text)) { _input.clear(); return; }
     if (_jarvis == null) {
@@ -815,6 +885,15 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 ],
               ),
               ExpansionTile(
+                leading: const Icon(Icons.article_outlined, color: kCyan),
+                title: const Text('Промпты и документы'),
+                children: [
+                  _menuItem(Icons.library_books, 'Библиотека всех промптов', _openPromptLibrary),
+                  _menuItem(Icons.attach_file, 'Прикрепить документ к чату', _pickChatAttachments),
+                  _menuItem(Icons.folder_open, 'Просмотр файлов устройства', () => _openMenuScreen(const JarvisFilesScreen())),
+                ],
+              ),
+              ExpansionTile(
                 leading: const Icon(Icons.psychology, color: kCyan),
                 title: const Text('Память и задачи'),
                 children: [
@@ -862,8 +941,17 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: m.isUser ? kPanel : kBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kCyan.withValues(alpha: 0.25))), child: Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Flexible(child: SelectableText(m.text, style: TextStyle(fontSize: compact ? 15 : 17, height: 1.35))), if (!m.isUser) IconButton(onPressed: () { Clipboard.setData(ClipboardData(text: m.text)); setState(() => _status = 'Текст скопирован'); }, icon: const Icon(Icons.copy, size: 18))])));
         })),
         if (_android && _heardText.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('🎙 $_heardText', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))),
-        Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
-          Expanded(child: TextField(controller: _input, minLines: 2, maxLines: 4, textInputAction: TextInputAction.newline, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Введите команду или вопрос…', border: OutlineInputBorder()))),
+        if (_attachments.isNotEmpty) Padding(
+          padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
+          child: SizedBox(height: 36, child: ListView(scrollDirection: Axis.horizontal, children: _attachments.map((file) => Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: InputChip(avatar: const Icon(Icons.description, size: 16), label: Text(file.name, overflow: TextOverflow.ellipsis),
+              onDeleted: _busy ? null : () => setState(() => _attachments.remove(file))),
+          )).toList())),
+        ),
+        Padding(padding: const EdgeInsets.fromLTRB(8, 4, 12, 12), child: Row(children: [
+          IconButton(tooltip: 'Прикрепить документы', onPressed: _busy ? null : _pickChatAttachments, icon: const Icon(Icons.attach_file, color: kCyan)),
+          Expanded(child: TextField(controller: _input, minLines: 2, maxLines: 4, textInputAction: TextInputAction.newline, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Введите вопрос или прикрепите документы…', border: OutlineInputBorder()))),
           if (_android) IconButton(
             tooltip: _voiceRunning ? 'Остановить голос' : 'Включить голос',
             onPressed: _busy ? null : _toggleVoice,
