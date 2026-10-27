@@ -51,6 +51,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   final _fallbackEndpoint = TextEditingController();
   final _fallbackKey = TextEditingController();
   final _fallbackModel = TextEditingController();
+  final _coinglassKey = TextEditingController();
   static const _platform = MethodChannel('com.dancorsoodessa.jarvis/timer');
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
@@ -362,6 +363,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           TextField(controller: _fallbackEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Резервный AI URL')),
           TextField(controller: _fallbackKey, obscureText: true, decoration: const InputDecoration(labelText: 'Резервный API Key')),
           TextField(controller: _fallbackModel, decoration: const InputDecoration(labelText: 'Резервная Model')),
+          TextField(controller: _coinglassKey, obscureText: true, autocorrect: false, enableSuggestions: false, decoration: const InputDecoration(labelText: 'CoinGlass API Key (не сохраняется)')),
           const SizedBox(height: 8),
           const Text('Голос: автоматическое ожидание «Джарвис».', style: TextStyle(fontSize: 12)),
         ])),
@@ -389,7 +391,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<bool> _handleCryptoTool(String text) async {
     if (!_android) return false;
     final t = text.toLowerCase();
-    final isCrypto = RegExp(r'крипт|биткоин|bitcoin|\bbtc\b|эфир|эфириум|\beth\b|солан|\bsol\b|рипл|\bxrp\b|rsi|sma|фандинг|funding|открыт.{0,12}интерес|open interest|техническ.{0,12}анализ|индикатор').hasMatch(t);
+    final isCrypto = RegExp(r'крипт|биткоин|bitcoin|\bbtc\b|эфир|эфириум|\beth\b|солан|\bsol\b|рипл|\bxrp\b|rsi|sma|фандинг|funding|открыт.{0,12}интерес|open interest|техническ.{0,12}анализ|индикатор|coinglass|ликвидац|лонг|шорт|cvd|long.?short').hasMatch(t);
     if (!isCrypto) return false;
     final symbol = _cryptoSymbol(text);
     setState(() {
@@ -400,7 +402,19 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     });
     try {
       String result;
-      if (RegExp(r'фандинг|funding|открыт.{0,12}интерес|open interest|\boi\b').hasMatch(t)) {
+      if (RegExp(r'coinglass|ликвидац|лонг|шорт|cvd|long.?short').hasMatch(t)) {
+        if (_coinglassKey.text.trim().isEmpty) {
+          result = 'Для ликвидаций, Long/Short, CVD и агрегированного Open Interest нужен CoinGlass API key. Откройте настройки JARVIS и укажите ключ в поле CoinGlass API Key.';
+        } else {
+          final data = await JarvisCrypto.coinglassSnapshot(apiKey: _coinglassKey.text.trim(), symbol: symbol.replaceAll('-USDT', ''), interval: '1h');
+          result = data.entries.map((entry) {
+            final value = entry.value;
+            final latest = value is List ? (value.isEmpty ? 'нет данных' : value.last.toString()) : value.toString();
+            final short = latest.length > 520 ? '${latest.substring(0, 520)}…' : latest;
+            return '${entry.key.toUpperCase()}: ${short}';
+          }).join('\\n\\n');
+        }
+      } else if (if (RegExp(r'фандинг|funding|открыт.{0,12}интерес|open interest|\boi\b').hasMatch(t)) {
         final inst = '${symbol.replaceAll('-USDT', '')}-USDT-SWAP';
         final d = await JarvisCrypto.derivatives(symbol: inst);
         final funding = d['funding'];
@@ -554,6 +568,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _fallbackEndpoint.dispose();
     _fallbackKey.dispose();
     _fallbackModel.dispose();
+    _coinglassKey.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -612,7 +627,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           ])),
         ])),
         SizedBox(height: 34, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
-          _quickTool('BTC', 'цена BTC'), _quickTool('RSI / SMA', 'технический анализ BTC RSI SMA'), _quickTool('Funding', 'BTC funding open interest'), _quickTool('Все рынки', 'цены BTC ETH SOL XRP'),
+          _quickTool('BTC', 'цена BTC'), _quickTool('RSI / SMA', 'технический анализ BTC RSI SMA'), _quickTool('Funding', 'BTC funding open interest'), _quickTool('Ликвидации', 'CoinGlass ликвидации BTC CVD long short'), _quickTool('Все рынки', 'цены BTC ETH SOL XRP'),
         ])),
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0), itemBuilder: (context, index) {
           if (_streamText.isNotEmpty && index == _messages.length) return Align(alignment: Alignment.centerLeft, child: Text(_streamText));
