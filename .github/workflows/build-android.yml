@@ -5,6 +5,7 @@ on:
     branches:
       - android-final
       - fix/android-live-core-tools-20261027
+      - fix/android-voice-folders-audit-20261027
   workflow_dispatch:
 
 permissions:
