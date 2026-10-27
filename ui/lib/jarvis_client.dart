@@ -1,103 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
-import 'dart:typed_data';
 
-class _DnsResolver {
-  static const _dohServers = ['1.1.1.1', '8.8.8.8'];
-  static const _dohHosts = ['cloudflare-dns.com', 'dns.google'];
-  static final Map<String, List<InternetAddress>> _cache = {};
-  static final Map<String, DateTime> _cacheTime = {};
-
-  static Future<List<InternetAddress>> lookup(String host) async {
-    final now = DateTime.now();
-    final cached = _cache[host];
-    final cachedAt = _cacheTime[host];
-    if (cached != null && cachedAt != null &&
-        now.difference(cachedAt) < const Duration(minutes: 5)) {
-      return cached;
-    }
-    for (var i = 0; i < _dohServers.length; i++) {
-      try {
-        final result = await _queryDoh(_dohServers[i], _dohHosts[i], host);
-        if (result.isNotEmpty) {
-          _cache[host] = result;
-          _cacheTime[host] = now;
-          return result;
-        }
-      } catch (_) {}
-    }
-    throw SocketException('DNS-over-HTTPS lookup failed for $host');
-  }
-
-  static Future<List<InternetAddress>> _queryDoh(
-    String serverIp, String serverHost, String host) async {
-    Socket? raw;
-    SecureSocket? socket;
-    try {
-      raw = await Socket.connect(
-        InternetAddress(serverIp),
-        443,
-        timeout: const Duration(seconds: 8),
-      );
-      socket = await SecureSocket.secure(
-        raw,
-        host: serverHost,
-        supportedProtocols: const ['http/1.1'],
-      );
-      final path = '/dns-query?name=${Uri.encodeQueryComponent(host)}&type=A';
-      socket.write(
-        'GET $path HTTP/1.1\r\n'
-        'Host: $serverHost\r\n'
-        'Accept: application/dns-json\r\n'
-        'Connection: close\r\n'
-        '\r\n',
-      );
-      await socket.flush();
-      final bytes = <int>[];
-      await for (final chunk in socket) {
-        bytes.addAll(chunk);
-      }
-      final separator = _findHeaderEnd(bytes);
-      if (separator < 0) throw const FormatException('Invalid DoH response');
-      final header = ascii.decode(bytes.sublist(0, separator));
-      final body = utf8.decode(
-        bytes.sublist(separator + 4),
-        allowMalformed: true,
-      );
-      final statusLine = header.split('\r\n').first;
-      if (!statusLine.contains(' 200 ')) {
-        throw SocketException('DoH HTTP error: $statusLine');
-      }
-      final json = jsonDecode(body);
-      if (json is! Map || json['Answer'] is! List) return const [];
-      final answers = <InternetAddress>[];
-      for (final item in json['Answer']) {
-        if (item is Map && item['type'] == 1 && item['data'] is String) {
-          final value = item['data'].toString();
-          if (RegExp(r'^\d{1,3}(?:\.\d{1,3}){3}$').hasMatch(value)) {
-            answers.add(InternetAddress(value));
-          }
-        }
-      }
-      return answers;
-    } finally {
-      socket?.destroy();
-      if (socket == null) raw?.destroy();
-    }
-  }
-
-  static int _findHeaderEnd(List<int> bytes) {
-    for (var i = 0; i + 3 < bytes.length; i++) {
-      if (bytes[i] == 13 && bytes[i + 1] == 10 &&
-          bytes[i + 2] == 13 && bytes[i + 3] == 10) {
-        return i;
-      }
-    }
-    return -1;
-  }
-}
 class JarvisReply {
   JarvisReply(this.text, this.provider, this.toolUsed, this.needsConfirmation);
   factory JarvisReply.fromJson(Map<String, dynamic> j) => JarvisReply(
@@ -143,27 +47,6 @@ class JarvisIpc {
     String executable, [
     List<String> args = const ['--ipc'],
   ]) async => JarvisIpc._(process: await Process.start(executable, args));
-
-  static Future<Socket> _connectWithoutSystemDns(Uri uri) async {
-    final addresses = await _DnsResolver.lookup(uri.host);
-    for (final address in addresses) {
-      Socket? socket;
-      try {
-        socket = await Socket.connect(
-          address,
-          uri.hasPort ? uri.port : 443,
-          timeout: const Duration(seconds: 12),
-        );
-        if (uri.scheme == 'https') {
-          return await SecureSocket.secure(socket, host: uri.host);
-        }
-        return socket;
-      } catch (_) {
-        socket?.destroy();
-      }
-    }
-    throw SocketException('Не удалось подключиться к ${uri.host}');
-  }
 
   static Future<JarvisIpc> connectAi(
     String apiUrl, {
@@ -228,7 +111,7 @@ class JarvisIpc {
         s.contains('No address associated with hostname')) {
       try {
         Uri.parse(base).host;
-        return 'Сеть: системный DNS недоступен. JARVIS использует встроенное DNS-подключение; проверьте наличие интернета.';
+        return 'Сеть: системный DNS недоступен. проверьте интернет, системный DNS/VPN или используйте резервный AI.';
       } catch (_) {
         return 'Сеть: не удалось найти сервер AI через DNS. Проверьте интернет/VPN/DNS или используйте резервный AI.';
       }
@@ -286,19 +169,6 @@ class JarvisIpc {
         await Future.delayed(Duration(seconds: 1 << attempt));
       }
     }
-  }
-
-  Future<void> _check(String base, String key, String label) async {
-    await _retryTransient(() async {
-      final request = await _httpClient!.getUrl(Uri.parse('$base/models'));
-      final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
-      h.forEach(request.headers.set);
-      final response = await request.close().timeout(const Duration(seconds: 25));
-      final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 25));
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw StateError('$label: ${_error(response.statusCode, body)}');
-      }
-    });
   }
 
   Future<String> _autoModel(String base, String key) async {
