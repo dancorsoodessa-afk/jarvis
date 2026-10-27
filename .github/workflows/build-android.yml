@@ -44,6 +44,8 @@ jobs:
               additions.append('    <uses-permission android:name="android.permission.INTERNET" />')
           if "android.permission.RECORD_AUDIO" not in text:
               additions.append('    <uses-permission android:name="android.permission.RECORD_AUDIO" />')
+          if "android.permission.MODIFY_AUDIO_SETTINGS" not in text:
+              additions.append('    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />')
           if additions:
               lines = text.splitlines()
               for index, line in enumerate(lines):
@@ -54,20 +56,26 @@ jobs:
                   raise SystemExit("AndroidManifest.xml has no <manifest> root element")
               text = "\n".join(lines) + "\n"
 
+          intents = []
           if "android.speech.RecognitionService" not in text:
-              intent = (
+              intents.append(
                   '        <intent>\n'
                   '            <action android:name="android.speech.RecognitionService" />\n'
                   '        </intent>\n'
               )
+          if "android.intent.category.LAUNCHER" not in text:
+              intents.append(
+                  '        <intent>\n'
+                  '            <action android:name="android.intent.action.MAIN" />\n'
+                  '            <category android:name="android.intent.category.LAUNCHER" />\n'
+                  '        </intent>\n'
+              )
+          if intents:
+              query_content = "".join(intents)
               if "</queries>" in text:
-                  text = text.replace("</queries>", intent + "    </queries>", 1)
+                  text = text.replace("</queries>", query_content + "    </queries>", 1)
               else:
-                  queries = (
-                      '    <queries>\n'
-                      + intent
-                      + '    </queries>\n'
-                  )
+                  queries = '    <queries>\n' + query_content + '    </queries>\n'
                   if "<application" not in text:
                       raise SystemExit("AndroidManifest.xml has no <application> element")
                   text = text.replace("    <application", queries + "    <application", 1)
@@ -96,6 +104,95 @@ jobs:
           s = re.sub(r'android:label="[^"]+"', 'android:label="JARVIS"', s, count=1)
           p.write_text(s, encoding="utf-8")
           PY
+
+      - name: Configure native Android device tools
+        working-directory: ui
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
+          cat > android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt <<'KOTLIN'
+          package com.dancorsoodessa.jarvis_ui
+
+          import android.app.ActivityManager
+          import android.content.Context
+          import android.content.Intent
+          import android.content.pm.PackageManager
+          import android.media.AudioManager
+          import android.os.Build
+          import android.os.Process
+          import io.flutter.embedding.android.FlutterActivity
+          import io.flutter.embedding.engine.FlutterEngine
+          import io.flutter.plugin.common.MethodChannel
+
+          class MainActivity : FlutterActivity() {
+              override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+                  super.configureFlutterEngine(flutterEngine)
+                  MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.dancorsoodessa.jarvis/device")
+                      .setMethodCallHandler { call, result ->
+                          when (call.method) {
+                              "systemInfo" -> {
+                                  val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                                  val memory = ActivityManager.MemoryInfo()
+                                  manager.getMemoryInfo(memory)
+                                  result.success(mapOf(
+                                      "androidVersion" to Build.VERSION.RELEASE,
+                                      "sdkInt" to Build.VERSION.SDK_INT,
+                                      "processId" to Process.myPid(),
+                                      "availableMemoryBytes" to memory.availMem,
+                                      "totalMemoryBytes" to memory.totalMem,
+                                      "lowMemory" to memory.lowMemory,
+                                      "appMaxHeapBytes" to Runtime.getRuntime().maxMemory()
+                                  ))
+                              }
+                              "listLaunchableApps" -> {
+                                  val intent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+                                  val apps = packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+                                      .mapNotNull { item ->
+                                          val activity = item.activityInfo ?: return@mapNotNull null
+                                          mapOf("label" to item.loadLabel(packageManager).toString(), "packageName" to activity.packageName)
+                                      }
+                                      .distinctBy { it["packageName"] }
+                                      .sortedBy { it["label"]?.lowercase() ?: "" }
+                                  result.success(apps)
+                              }
+                              "launchApp" -> {
+                                  val packageName = call.argument<String>("packageName")
+                                  if (packageName.isNullOrBlank()) {
+                                      result.error("INVALID_PACKAGE", "Не указан пакет приложения", null)
+                                  } else {
+                                      val launch = packageManager.getLaunchIntentForPackage(packageName)
+                                      if (launch == null) result.error("NOT_LAUNCHABLE", "Приложение нельзя запустить: $packageName", null)
+                                      else {
+                                          launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                          startActivity(launch)
+                                          result.success(true)
+                                      }
+                                  }
+                              }
+                              "getVolume" -> {
+                                  val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                                  val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                  val current = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                  result.success(mapOf("current" to current, "max" to max, "percent" to if (max == 0) 0 else current * 100 / max))
+                              }
+                              "setVolume" -> {
+                                  val percent = call.argument<Int>("percent")
+                                  if (percent == null || percent !in 0..100) {
+                                      result.error("INVALID_VOLUME", "Громкость должна быть от 0 до 100", null)
+                                  } else {
+                                      val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                                      val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                      audio.setStreamVolume(AudioManager.STREAM_MUSIC, (max * percent / 100.0).toInt(), 0)
+                                      result.success(true)
+                                  }
+                              }
+                              else -> result.notImplemented()
+                          }
+                      }
+              }
+          }
+          KOTLIN
 
       - name: Get dependencies
         working-directory: ui
