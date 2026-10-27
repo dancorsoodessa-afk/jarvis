@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
@@ -594,7 +595,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<String> _readAttachment(PlatformFile file) async {
     final ext = (file.extension ?? '').toLowerCase();
-    final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : <int>[]);
+    final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : Uint8List(0));
     if (bytes.length > 5 * 1024 * 1024) return '[Файл ${file.name}: размер больше 5 МБ; содержимое не передано AI.]';
     try {
       if (ext == 'pdf') {
