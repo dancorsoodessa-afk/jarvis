@@ -427,6 +427,14 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     );
   }
 
+  Future<void> _openAndroidAppSettings() async {
+    try {
+      await const MethodChannel('com.dancorsoodessa.jarvis/device').invokeMethod<bool>('openAppSettings');
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Не удалось открыть разрешения Android: $e');
+    }
+  }
+
   Future<void> _showVoiceSettings() async {
     if (!_android) return;
     await showDialog<void>(
@@ -440,6 +448,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть')),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _openAndroidAppSettings();
+            },
+            child: const Text('Разрешения Android'),
+          ),
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
