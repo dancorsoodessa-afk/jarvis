@@ -10,6 +10,11 @@ import 'crypto/crypto_tools.dart';
 import 'crypto/crypto_screen.dart';
 import 'osint/osint_screen.dart';
 import 'jarvis_reactor.dart';
+import 'tools/calculator/calculator_screen.dart';
+import 'tools/clipboard/clipboard_screen.dart';
+import 'tools/internet/internet_screen.dart';
+import 'tools/memory/memory_screen.dart';
+import 'tools/system/system_screen.dart';
 
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
@@ -62,6 +67,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   StreamSubscription<String>? _partialSub;
   Timer? _visualTimer;
   Timer? _voiceRestartTimer;
+  Timer? _commandTimer;
+  DateTime? _commandTimerDue;
   bool _busy = false;
   bool _showCryptoDashboard = false;
   bool _voiceReady = false;
@@ -582,17 +589,29 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<bool> _handleTimer(String text) async {
     if (!_android) return false;
-    final d = await _parseTimer(text);
-    if (d == null) return false;
-    try {
-      await _platform.invokeMethod('scheduleTimer', {'delayMs': d.inMilliseconds, 'label': text});
-      final mins = d.inMinutes;
-      final reply = mins > 0 ? 'Таймер установлен на $mins минут.' : 'Таймер установлен на ${d.inSeconds} секунд.';
-      if (mounted) setState(() => _messages.add(_Msg(reply, isUser: false)));
-      await _speak(reply);
-    } catch (e) {
-      if (mounted) setState(() => _status = 'Ошибка таймера: $e');
+    final duration = await _parseTimer(text);
+    if (duration == null) return false;
+    _commandTimer?.cancel();
+    _commandTimerDue = DateTime.now().add(duration);
+    final mins = duration.inMinutes;
+    final reply = mins > 0 ? 'Таймер установлен на $mins минут.' : 'Таймер установлен на ${duration.inSeconds} секунд.';
+    if (mounted) {
+      setState(() { _messages.add(_Msg(reply, isUser: false)); _status = reply; });
     }
+    await _speak(reply);
+    _commandTimer = Timer(duration, () async {
+      _commandTimerDue = null;
+      if (!mounted) return;
+      setState(() => _status = 'Таймер завершён');
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('JARVIS — таймер'),
+          content: const Text('Время вышло.'),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть'))],
+        ),
+      );
+    });
     return true;
   }
 
@@ -611,6 +630,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _partialSub?.cancel();
     _visualTimer?.cancel();
     _voiceRestartTimer?.cancel();
+    _commandTimer?.cancel();
     unawaited(_stopNativeVoiceSafely());
     _jarvis?.dispose();
     _input.dispose();
@@ -713,7 +733,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 leading: const Icon(Icons.memory, color: kCyan),
                 title: const Text('Система и диагностика'),
                 children: [
-                  _menuItem(Icons.monitor_heart, 'Статус JARVIS', () => _sendFromMenu('/status')),
+                  _menuItem(Icons.monitor_heart, 'Статус JARVIS', () => _openMenuScreen(const JarvisSystemScreen())),
                   _menuItem(Icons.speed, 'Проверить подключение AI', () => _connectAndroid()),
                   _menuItem(Icons.settings, 'Настройки AI и API', () => _settings()),
                 ],
@@ -740,20 +760,26 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 leading: const Icon(Icons.public, color: kCyan),
                 title: const Text('Интернет и информация'),
                 children: [
-                  _menuItem(Icons.travel_explore, 'Поиск в интернете', () => _sendFromMenu('Найди в интернете')),
-                  _menuItem(Icons.cloud, 'Погода', () => _sendFromMenu('Покажи погоду')),
-                  _menuItem(Icons.calculate, 'Калькулятор', () => _sendFromMenu('Открой калькулятор')),
-                  _menuItem(Icons.access_time, 'Дата и время', () => _sendFromMenu('Который час')),
+                  _menuItem(Icons.travel_explore, 'Поиск в интернете', () => _openMenuScreen(const JarvisInternetScreen())),
+                  _menuItem(Icons.cloud, 'Погода на 3 дня', () => _openMenuScreen(const JarvisInternetScreen())),
+                  _menuItem(Icons.calculate, 'Калькулятор', () => _openMenuScreen(const JarvisCalculatorScreen())),
+                  _menuItem(Icons.access_time, 'Дата и время', () => _openMenuScreen(const JarvisSystemScreen())),
+                ],
+              ),
+              ExpansionTile(
+                leading: const Icon(Icons.content_paste, color: kCyan),
+                title: const Text('Буфер обмена'),
+                children: [
+                  _menuItem(Icons.content_paste, 'Читать и записывать текст', () => _openMenuScreen(const JarvisClipboardScreen())),
                 ],
               ),
               ExpansionTile(
                 leading: const Icon(Icons.psychology, color: kCyan),
                 title: const Text('Память и задачи'),
                 children: [
-                  _menuItem(Icons.bookmark_add, 'Запомнить факт', () => _sendFromMenu('Запомни')),
-                  _menuItem(Icons.manage_search, 'Найти в памяти', () => _sendFromMenu('Вспомни')),
-                  _menuItem(Icons.alarm, 'Напоминания и таймеры', () => _sendFromMenu('Поставь напоминание')),
-                  _menuItem(Icons.hub, 'Граф знаний', () => _sendFromMenu('Покажи граф знаний')),
+                  _menuItem(Icons.bookmark_add, 'Заметки и память', () => _openMenuScreen(const JarvisMemoryScreen())),
+                  _menuItem(Icons.alarm, 'Напоминания и таймеры', () => _openMenuScreen(const JarvisMemoryScreen())),
+                  _menuItem(Icons.hub, 'Граф знаний — AI-запрос', () => _sendFromMenu('Покажи граф знаний')),
                 ],
               ),
             ],
