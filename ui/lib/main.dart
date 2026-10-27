@@ -629,7 +629,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _send(String text, {bool speakReply = false}) async {
     text = text.trim();
     if (_busy || (text.isEmpty && _attachments.isEmpty)) return;
-    if (_attachments.isNotEmpty) {
+    final hadAttachments = _attachments.isNotEmpty;
+    if (hadAttachments) {
       final files = List<PlatformFile>.from(_attachments);
       setState(() => _status = 'Читаю вложения: ${files.length}…');
       final sections = <String>[];
@@ -637,14 +638,14 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         sections.add('--- ДОКУМЕНТ: ${file.name} ---\n${await _readAttachment(file)}');
       }
       text = '${text.isEmpty ? 'Проанализируй прикреплённые документы и кратко изложи их содержание.' : text}\n\nСОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n${sections.join('\n\n')}';
-      if (mounted) setState(() => _attachments.clear());
     }
-    if (await _handleTimer(text)) { _input.clear(); return; }
-    if (await _handleCryptoTool(text)) { _input.clear(); return; }
+    if (!hadAttachments && await _handleTimer(text)) { _input.clear(); return; }
+    if (!hadAttachments && await _handleCryptoTool(text)) { _input.clear(); return; }
     if (_jarvis == null) {
       if (mounted) setState(() => _status = 'AI не подключён · откройте настройки');
       return;
     }
+    if (hadAttachments && mounted) setState(() => _attachments.clear());
     _input.clear();
     setState(() {
       _messages.add(_Msg(text, isUser: true));
