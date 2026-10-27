@@ -25,9 +25,9 @@ jobs:
         working-directory: ui
         run: flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
 
-      - name: Remove generated stale test
+      - name: Remove generated sample test
         working-directory: ui
-        run: rm -rf test
+        run: rm -f test/widget_test.dart
 
       - name: Configure required Android permissions
         working-directory: ui
@@ -103,6 +103,10 @@ jobs:
       - name: Analyze Dart
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run unit tests
+        working-directory: ui
+        run: flutter test
 
       - name: Build release APK
         working-directory: ui
