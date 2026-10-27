@@ -469,7 +469,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Настройки микрофона'),
+        title: const Text('Настроить распознавание речи'),
         content: Text(
           'Состояние: ${_voiceReady ? "готов" : "не инициализирован"}\n'
           'Прослушивание: ${_voiceRunning ? "включено" : "выключено"}\n'
@@ -804,10 +804,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     ]),
   );
 
-  Widget _menuItem(IconData icon, String label, VoidCallback action) => ListTile(
+  Widget _menuItem(IconData icon, String label, VoidCallback action, {String? hint}) => ListTile(
     dense: true,
     leading: Icon(icon, size: 19, color: kCyan),
     title: Text(label, style: const TextStyle(fontSize: 13)),
+    subtitle: hint == null ? null : Text(hint, style: const TextStyle(fontSize: 11, color: Colors.white54)),
     onTap: () {
       Navigator.of(context).pop();
       // Let the drawer route finish closing before pushing a dialog or screen.
@@ -843,95 +844,102 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
               const Divider(color: kCyan),
               ListTile(
                 leading: const Icon(Icons.dashboard, color: kCyan),
-                title: const Text('Главный экран'),
+                title: const Text('Чат с JARVIS'),
                 onTap: () => Navigator.pop(context),
               ),
               ExpansionTile(
                 leading: const Icon(Icons.currency_bitcoin, color: kCyan),
-                title: const Text('Криптовалюта'),
-                subtitle: const Text('Все криптоинструменты в одной папке'),
+                title: const Text('Криптовалюта и рынок'),
+                subtitle: const Text('Цены, графики и анализ монет'),
                 children: [
-                  _menuItem(Icons.trending_up, 'Цены и рынки', () => _openMenuScreen(const JarvisCryptoScreen())),
-                  _menuItem(Icons.candlestick_chart, 'Графики и свечи', () => _openMenuScreen(const JarvisCryptoScreen())),
-                  _menuItem(Icons.analytics, 'RSI / SMA · теханализ', () => _openMenuScreen(const JarvisCryptoScreen())),
-                  _menuItem(Icons.show_chart, 'Funding / Open Interest', () => _openMenuScreen(const JarvisCryptoScreen())),
-                  _menuItem(Icons.query_stats, 'Ликвидации · CVD · Long/Short · CoinGlass', () => _openMenuScreen(const JarvisCryptoScreen())),
+                  _menuItem(Icons.trending_up, 'Цены криптовалют', () => _openMenuScreen(const JarvisCryptoScreen())),
+                  _menuItem(Icons.candlestick_chart, 'График цены', () => _openMenuScreen(const JarvisCryptoScreen())),
+                  _menuItem(Icons.analytics, 'Индикаторы и анализ цены', () => _openMenuScreen(const JarvisCryptoScreen())),
+                  _menuItem(Icons.show_chart, 'Данные фьючерсного рынка', () => _openMenuScreen(const JarvisCryptoScreen())),
+                  _menuItem(Icons.query_stats, 'Ликвидации и соотношение покупок/продаж', () => _openMenuScreen(const JarvisCryptoScreen())),
                 ],
               ),
               ExpansionTile(
                 leading: const Icon(Icons.travel_explore, color: kCyan),
-                title: const Text('OSINT-разведка'),
-                subtitle: const Text('Все проверки открытых источников'),
+                title: const Text('Поиск открытой информации'),
+                subtitle: const Text('Проверка сайтов, IP-адресов, email и профилей'),
                 children: [
-                  _menuItem(Icons.language, 'Домен · DNS · RDAP', () => _openMenuScreen(const JarvisOsintScreen())),
-                  _menuItem(Icons.router, 'IP · ASN · география', () => _openMenuScreen(const JarvisOsintScreen())),
-                  _menuItem(Icons.link, 'URL · HTTP · TLS', () => _openMenuScreen(const JarvisOsintScreen())),
-                  _menuItem(Icons.alternate_email, 'Email · username', () => _openMenuScreen(const JarvisOsintScreen())),
-                  _menuItem(Icons.image_search, 'Метаданные изображения', () => _openMenuScreen(const JarvisOsintScreen())),
+                  _menuItem(Icons.language, 'Проверить домен сайта', () => _openMenuScreen(const JarvisOsintScreen())),
+                  _menuItem(Icons.router, 'Узнать сведения об IP-адресе', () => _openMenuScreen(const JarvisOsintScreen())),
+                  _menuItem(Icons.link, 'Проверить ссылку и защищённость сайта', () => _openMenuScreen(const JarvisOsintScreen())),
+                  _menuItem(Icons.alternate_email, 'Проверить email или имя пользователя', () => _openMenuScreen(const JarvisOsintScreen())),
+                  _menuItem(Icons.image_search, 'Проверить данные изображения', () => _openMenuScreen(const JarvisOsintScreen())),
                 ],
               ),
               ExpansionTile(
                 leading: const Icon(Icons.memory, color: kCyan),
-                title: const Text('Система и диагностика'),
+                title: const Text('Состояние и настройки'),
+                subtitle: const Text('Подключение, память телефона и параметры AI'),
                 children: [
-                  _menuItem(Icons.monitor_heart, 'Статус, ОЗУ и диагностика', () => _openMenuScreen(const JarvisSystemScreen())),
-                  _menuItem(Icons.screenshot_monitor, 'Снимок экрана JARVIS', () => _openMenuScreen(const JarvisScreenshotScreen())),
-                  _menuItem(Icons.volume_up, 'Громкость Android', () => _openMenuScreen(const JarvisAudioScreen())),
-                  _menuItem(Icons.speed, 'Проверить подключение AI', () => _connectAndroid()),
-                  _menuItem(Icons.settings, 'Настройки AI и API', () => _settings()),
+                  _menuItem(Icons.monitor_heart, 'Состояние JARVIS и память телефона', () => _openMenuScreen(const JarvisSystemScreen())),
+                  _menuItem(Icons.screenshot_monitor, 'Сделать снимок экрана', () => _openMenuScreen(const JarvisScreenshotScreen())),
+                  _menuItem(Icons.volume_up, 'Настроить громкость телефона', () => _openMenuScreen(const JarvisAudioScreen())),
+                  _menuItem(Icons.speed, 'Проверить связь с AI', () => _connectAndroid()),
+                  _menuItem(Icons.settings, 'Настройки AI и ключа доступа', () => _settings()),
                 ],
               ),
               ExpansionTile(
                 leading: const Icon(Icons.folder, color: kCyan),
                 title: const Text('Файлы и приложения'),
+                subtitle: const Text('Выбрать файл или открыть приложение'),
                 children: [
-                  _menuItem(Icons.search, 'Выбрать и просмотреть файлы', () => _openMenuScreen(const JarvisFilesScreen())),
-                  _menuItem(Icons.folder_open, 'Открыть системный выбор файлов', () => _openMenuScreen(const JarvisFilesScreen())),
-                  _menuItem(Icons.apps, 'Список и запуск приложений', () => _openMenuScreen(const JarvisAppsScreen())),
+                  _menuItem(Icons.search, 'Выбрать файл и посмотреть содержимое', () => _openMenuScreen(const JarvisFilesScreen())),
+                  _menuItem(Icons.folder_open, 'Выбрать файлы на телефоне', () => _openMenuScreen(const JarvisFilesScreen())),
+                  _menuItem(Icons.apps, 'Посмотреть и открыть приложения', () => _openMenuScreen(const JarvisAppsScreen())),
                 ],
               ),
               ExpansionTile(
                 leading: const Icon(Icons.mic, color: kCyan),
-                title: const Text('Голос'),
+                title: const Text('Голос и микрофон'),
+                subtitle: const Text('Голосовые команды и озвучивание ответов'),
                 children: [
-                  _menuItem(Icons.mic, 'Включить / выключить микрофон', _toggleVoice),
+                  _menuItem(Icons.mic, 'Включить или выключить микрофон', _toggleVoice),
                   _menuItem(Icons.tune, 'Настройки микрофона', _showVoiceSettings),
-                  _menuItem(Icons.volume_up, 'Озвучивание текста', () => _openMenuScreen(const JarvisVoiceToolsScreen())),
+                  _menuItem(Icons.volume_up, 'Прочитать текст вслух', () => _openMenuScreen(const JarvisVoiceToolsScreen())),
                 ],
               ),
               ExpansionTile(
                 leading: const Icon(Icons.public, color: kCyan),
-                title: const Text('Интернет и информация'),
+                title: const Text('Интернет, погода и расчёты'),
+                subtitle: const Text('Искать ответы, смотреть погоду и считать'),
                 children: [
-                  _menuItem(Icons.travel_explore, 'Поиск в интернете', () => _openMenuScreen(const JarvisInternetScreen())),
-                  _menuItem(Icons.cloud, 'Погода на 3 дня', () => _openMenuScreen(const JarvisInternetScreen())),
+                  _menuItem(Icons.travel_explore, 'Найти информацию в интернете', () => _openMenuScreen(const JarvisInternetScreen())),
+                  _menuItem(Icons.cloud, 'Узнать погоду на 3 дня', () => _openMenuScreen(const JarvisInternetScreen())),
                   _menuItem(Icons.calculate, 'Калькулятор', () => _openMenuScreen(const JarvisCalculatorScreen())),
-                  _menuItem(Icons.access_time, 'Дата и время', () => _openMenuScreen(const JarvisSystemScreen())),
+                  _menuItem(Icons.access_time, 'Дата, время и сведения о системе', () => _openMenuScreen(const JarvisSystemScreen())),
                 ],
               ),
               ExpansionTile(
                 leading: const Icon(Icons.content_paste, color: kCyan),
-                title: const Text('Буфер обмена'),
+                title: const Text('Скопированный текст'),
+                subtitle: const Text('Прочитать или скопировать текст'),
                 children: [
-                  _menuItem(Icons.content_paste, 'Читать и записывать текст', () => _openMenuScreen(const JarvisClipboardScreen())),
+                  _menuItem(Icons.content_paste, 'Прочитать или скопировать текст', () => _openMenuScreen(const JarvisClipboardScreen())),
                 ],
               ),
               ExpansionTile(
                 leading: const Icon(Icons.article_outlined, color: kCyan),
-                title: const Text('Промпты и документы'),
+                title: const Text('Шаблоны запросов и документы'),
+                subtitle: const Text('Готовые инструкции для AI и ваши файлы'),
                 children: [
-                  _menuItem(Icons.library_books, 'Библиотека всех промптов', _openPromptLibrary),
-                  _menuItem(Icons.attach_file, 'Прикрепить документ к чату', _pickChatAttachments),
-                  _menuItem(Icons.folder_open, 'Просмотр файлов устройства', () => _openMenuScreen(const JarvisFilesScreen())),
+                  _menuItem(Icons.library_books, 'Готовые шаблоны запросов для AI', _openPromptLibrary),
+                  _menuItem(Icons.attach_file, 'Добавить документ в чат', _pickChatAttachments),
+                  _menuItem(Icons.folder_open, 'Выбрать файл с телефона', () => _openMenuScreen(const JarvisFilesScreen())),
                 ],
               ),
               ExpansionTile(
                 leading: const Icon(Icons.psychology, color: kCyan),
-                title: const Text('Память и задачи'),
+                title: const Text('Заметки, напоминания и таймер'),
+                subtitle: const Text('Сохранять записи и задавать время напоминания'),
                 children: [
-                  _menuItem(Icons.bookmark_add, 'Заметки и память', () => _openMenuScreen(const JarvisMemoryScreen())),
-                  _menuItem(Icons.alarm, 'Напоминания и таймеры', () => _openMenuScreen(const JarvisMemoryScreen())),
-                  _menuItem(Icons.hub, 'Граф знаний — AI-запрос', () => _sendFromMenu('Покажи граф знаний')),
+                  _menuItem(Icons.bookmark_add, 'Сохранённые заметки', () => _openMenuScreen(const JarvisMemoryScreen())),
+                  _menuItem(Icons.alarm, 'Установить таймер или напоминание', () => _openMenuScreen(const JarvisMemoryScreen())),
+                  _menuItem(Icons.hub, 'Попросить AI показать связи между данными', () => _sendFromMenu('Покажи граф знаний')),
                 ],
               ),
             ],
