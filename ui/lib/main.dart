@@ -596,15 +596,22 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     return true;
   }
 
+  Future<void> _stopNativeVoiceSafely() async {
+    if (!_voiceReady) return;
+    try { await _speech.stop(); } catch (e) {
+      debugPrint('JARVIS speech dispose failed: $e');
+    }
+    try { await _tts.stop(); } catch (e) {
+      debugPrint('JARVIS TTS dispose failed: $e');
+    }
+  }
+
   @override
   void dispose() {
     _partialSub?.cancel();
     _visualTimer?.cancel();
     _voiceRestartTimer?.cancel();
-    if (_voiceReady) {
-      try { _speech.stop(); } catch (_) {}
-      try { _tts.stop(); } catch (_) {}
-    }
+    unawaited(_stopNativeVoiceSafely());
     _jarvis?.dispose();
     _input.dispose();
     _endpoint.dispose();
