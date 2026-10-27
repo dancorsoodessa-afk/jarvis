@@ -17,8 +17,11 @@ class _JarvisFilesScreenState extends State<JarvisFilesScreen> {
     try {
       final result = await FilePicker.pickFiles(allowMultiple: true);
       if (!mounted) return;
-      if (result.isEmpty) { setState(() => _status = 'Выбор отменён.'); return; }
-      setState(() { _files = result; _status = 'Выбрано файлов: ${result.length}'; });
+      if (result == null || result.files.isEmpty) {
+        setState(() => _status = 'Выбор отменён.');
+        return;
+      }
+      setState(() { _files = result.files; _status = 'Выбрано файлов: ${result.files.length}'; });
     } catch (e) {
       if (mounted) setState(() => _status = 'Не удалось открыть файлы: $e');
     } finally { if (mounted) setState(() => _busy = false); }
