@@ -585,7 +585,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         for (final file in result.files) {
           if (!_attachments.any((f) => f.name == file.name && f.size == file.size)) _attachments.add(file);
         }
-        _status = 'Прикреплено документов: \${_attachments.length}';
+        _status = 'Прикреплено документов: ${_attachments.length}';
       });
     } catch (e) {
       if (mounted) setState(() => _status = 'Не удалось прикрепить документы: $e');
@@ -595,7 +595,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<String> _readAttachment(PlatformFile file) async {
     final ext = (file.extension ?? '').toLowerCase();
     final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : <int>[]);
-    if (bytes.length > 5 * 1024 * 1024) return '[Файл \${file.name}: размер больше 5 МБ; содержимое не передано AI.]';
+    if (bytes.length > 5 * 1024 * 1024) return '[Файл ${file.name}: размер больше 5 МБ; содержимое не передано AI.]';
     try {
       if (ext == 'pdf') {
         final document = PdfDocument(inputBytes: bytes);
@@ -609,8 +609,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         return xml.findAllElements('w:p').map((p) => p.findAllElements('w:t').map((t) => t.innerText).join()).where((s) => s.trim().isNotEmpty).join('\n');
       }
       if (const {'txt','md','csv','json','xml','yaml','yml','log','html'}.contains(ext)) return utf8.decode(bytes, allowMalformed: true);
-      return '[Файл \${file.name}: формат пока не поддерживает извлечение текста.]';
-    } catch (e) { return '[Не удалось прочитать \${file.name}: $e]'; }
+      return '[Файл ${file.name}: формат пока не поддерживает извлечение текста.]';
+    } catch (e) { return '[Не удалось прочитать ${file.name}: $e]'; }
   }
 
   Future<void> _openPromptLibrary() async {
@@ -630,12 +630,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     if (_busy || (text.isEmpty && _attachments.isEmpty)) return;
     if (_attachments.isNotEmpty) {
       final files = List<PlatformFile>.from(_attachments);
-      setState(() => _status = 'Читаю вложения: \${files.length}…');
+      setState(() => _status = 'Читаю вложения: ${files.length}…');
       final sections = <String>[];
       for (final file in files) {
-        sections.add('--- ДОКУМЕНТ: \${file.name} ---\n\${await _readAttachment(file)}');
+        sections.add('--- ДОКУМЕНТ: ${file.name} ---\n${await _readAttachment(file)}');
       }
-      text = '\${text.isEmpty ? 'Проанализируй прикреплённые документы и кратко изложи их содержание.' : text}\n\nСОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n\${sections.join('\n\n')}';
+      text = '${text.isEmpty ? 'Проанализируй прикреплённые документы и кратко изложи их содержание.' : text}\n\nСОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n${sections.join('\n\n')}';
       if (mounted) setState(() => _attachments.clear());
     }
     if (await _handleTimer(text)) { _input.clear(); return; }
