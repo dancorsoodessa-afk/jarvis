@@ -654,6 +654,24 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     ]),
   );
 
+  Widget _menuItem(IconData icon, String label, VoidCallback action) => ListTile(
+    dense: true,
+    leading: Icon(icon, size: 19, color: kCyan),
+    title: Text(label, style: const TextStyle(fontSize: 13)),
+    onTap: () {
+      Navigator.pop(context);
+      action();
+    },
+  );
+
+  void _openMenuScreen(Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+  }
+
+  void _sendFromMenu(String command) {
+    _send(command);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
