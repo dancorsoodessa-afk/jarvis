@@ -2,8 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart' as crypto;
 
-/// Public market-data toolkit. No API key is required for public endpoints.
-/// Private account data and order execution are intentionally not exposed here.
+/// Crypto toolkit: public market data plus signed OKX account balance and spot order endpoints.
 class JarvisCrypto {
   static const _okx = 'https://www.okx.com';
   static Future<dynamic> _get(String url) async {
