@@ -9,7 +9,8 @@ const _chartPanel = Color(0xFF0B1420);
 /// Always-visible market chart for the JARVIS home screen.
 /// Signals/levels are analytical estimates, never exchange order confirmations.
 class JarvisTradingChartPanel extends StatefulWidget {
-  const JarvisTradingChartPanel({super.key});
+  const JarvisTradingChartPanel({super.key, this.onForecast});
+  final Future<void> Function(String prompt)? onForecast;
   @override
   State<JarvisTradingChartPanel> createState() => _JarvisTradingChartPanelState();
 }
@@ -93,6 +94,14 @@ class _JarvisTradingChartPanelState extends State<JarvisTradingChartPanel> {
           const SizedBox(width: 6),
           const Expanded(child: Text('LIVE MARKET · ТОРГОВЫЙ ГРАФИК', maxLines: 1, overflow: TextOverflow.ellipsis,
             style: TextStyle(color: _chartCyan, fontSize: 10, letterSpacing: 1, fontWeight: FontWeight.bold))),
+          IconButton(
+            visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+            tooltip: 'Озвучить AI-прогноз', onPressed: widget.onForecast == null || _loading || _candles.isEmpty ? null : () {
+              final snapshot = 'Проанализируй рыночные данные для $_symbol на таймфрейме $_timeframe. Последняя цена: ${fmt(last)} USDT. SMA20: ${sma20 == null ? "нет данных" : fmt(sma20)}. SMA50: ${sma50 == null ? "нет данных" : fmt(sma50)}. RSI14: ${rsi == null ? "нет данных" : rsi.toStringAsFixed(1)}. Расчётный сигнал индикаторов: $signal. Ориентировочный вход: ${fmt(last)}, Stop-Loss: ${fmt(stop)}, Take-Profit: ${fmt(target)}. Дай короткий прогноз голосом на русском: тренд, сценарий вверх/вниз, условия подтверждения и отмены, риски. Не выдавай эвристику за гарантированный прогноз; если данных недостаточно, прямо скажи.';
+              widget.onForecast!(snapshot);
+            },
+            icon: const Icon(Icons.record_voice_over, size: 18, color: _chartCyan),
+          ),
           IconButton(
             visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
             tooltip: 'Обновить свечи', onPressed: _loading ? null : _refresh,
