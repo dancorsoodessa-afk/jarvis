@@ -79,6 +79,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   bool _voiceRunning = false;
   bool _ttsSpeaking = false;
   bool _voiceStarting = false;
+  bool _voiceToggleInProgress = false;
   bool _wakeArmed = false;
   String _status = 'Запуск JARVIS…';
   String _streamText = '';
@@ -158,23 +159,26 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Future<void> _toggleVoice() async {
-    if (!_android || _voiceStarting) return;
-    if (_voiceRunning) {
-      _voiceRunning = false;
-      _wakeArmed = false;
-      _voiceRestartTimer?.cancel();
-      if (_voiceReady) {
-        try { await _speech.stop(); } catch (e) {
-          debugPrint('JARVIS speech stop failed: $e');
-        }
-      }
-      if (mounted) {
-        setState(() => _status = 'Голос остановлен');
-        _setVisual(JarvisVisualState.idle);
-      }
-      return;
-    }
+    // Serialize the entire toggle, including native plugin initialization.
+    // Rapid taps must never initialize Android speech twice in parallel.
+    if (!_android || _voiceStarting || _voiceToggleInProgress) return;
+    _voiceToggleInProgress = true;
     try {
+      if (_voiceRunning) {
+        _voiceRunning = false;
+        _wakeArmed = false;
+        _voiceRestartTimer?.cancel();
+        if (_voiceReady) {
+          try { await _speech.stop(); } catch (e) {
+            debugPrint('JARVIS speech stop failed: $e');
+          }
+        }
+        if (mounted) {
+          setState(() => _status = 'Голос остановлен');
+          _setVisual(JarvisVisualState.idle);
+        }
+        return;
+      }
       await _initVoice();
       if (!mounted || !_voiceReady) return;
       _voiceRunning = true;
@@ -188,6 +192,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         setState(() => _status = 'Микрофон недоступен: $e');
         _setVisual(JarvisVisualState.error);
       }
+    } finally {
+      _voiceToggleInProgress = false;
     }
   }
 
