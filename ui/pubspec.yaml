@@ -14,6 +14,9 @@ dependencies:
   flutter_tts: ^4.2.3
   crypto: ^3.0.6
   file_picker: ^12.3.0
+  archive: ^3.6.1
+  xml: ^6.5.0
+  syncfusion_flutter_pdf: ^28.2.12
 
 dev_dependencies:
   flutter_test:
