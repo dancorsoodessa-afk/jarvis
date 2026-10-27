@@ -314,11 +314,22 @@ class JarvisIpc {
 
   Future<void> checkConnection() async {
     if (!_standalone) return;
+    // Do not probe GET /models: Google's OpenAI-compatible endpoint may reject
+    // model-list requests even when chat completions are supported. Verify by
+    // making a tiny real completion against the selected model instead.
+    final primaryModel = (_model ?? '').trim().isEmpty
+        ? 'gemini-3.8-flash'
+        : _model!.trim();
     try {
-      await _check(_apiUrl!, _apiKey!, 'Основной AI');
+      await _call(_apiUrl!, _apiKey!, primaryModel,
+          'Ответь одним словом: готов.');
     } catch (e) {
       if ((_fallbackUrl ?? '').isNotEmpty && (_fallbackKey ?? '').isNotEmpty) {
-        await _check(_fallbackUrl!, _fallbackKey!, 'Резервный AI');
+        final fallbackModel = (_fallbackModel ?? '').trim().isEmpty
+            ? ''
+            : _fallbackModel!.trim();
+        await _call(_fallbackUrl!, _fallbackKey!, fallbackModel,
+            'Ответь одним словом: готов.');
       } else {
         rethrow;
       }
@@ -360,7 +371,9 @@ class JarvisIpc {
     String text,
   ) async {
     final selected = model.trim().isEmpty
-        ? await _autoModel(base, key)
+        ? (base.contains('generativelanguage.googleapis.com/v1beta/openai')
+            ? 'gemini-3.8-flash'
+            : await _autoModel(base, key))
         : model.trim();
     final messages = <Map<String, String>>[
       {
