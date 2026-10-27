@@ -31,7 +31,7 @@ class JarvisCrypto {
     if (apiKey.trim().isEmpty) throw ArgumentError('Введите CoinGlass API key');
     final client = HttpClient();
     try {
-      final uri = Uri.https('open-api-v4.coinglass.com', path);
+      final uri = Uri.parse('https://open-api-v4.coinglass.com$path');
       final request = await client.getUrl(uri).timeout(const Duration(seconds: 12));
       request.headers.set('Accept', 'application/json');
       request.headers.set('CG-API-KEY', apiKey.trim());
@@ -57,7 +57,7 @@ class JarvisCrypto {
     final results = await Future.wait([
       _coinglass('/api/futures/liquidation/aggregated-history?symbol=$encodedSymbol&interval=$encodedInterval', apiKey),
       _coinglass('/api/futures/global-long-short-account-ratio/history?symbol=$encodedSymbol&interval=$encodedInterval', apiKey),
-      _coinglass('/api/futures/aggregated-cvd/history?symbol=$encodedSymbol&interval=$encodedInterval', apiKey),
+      _coinglass('/api/futures/aggregated-cvd/history?exchange_list=Binance,OKX,Bybit&symbol=$encodedSymbol&interval=$encodedInterval', apiKey),
       _coinglass('/api/futures/open-interest/aggregated-history?symbol=$encodedSymbol&interval=$encodedInterval', apiKey),
     ]);
     return {'liquidations': results[0], 'long_short': results[1], 'cvd': results[2], 'open_interest': results[3]};
@@ -175,6 +175,9 @@ class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
 
   @override
   void initState() { super.initState(); _refresh(); }
+
+  @override
+  void dispose() { _coinglassKey.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
