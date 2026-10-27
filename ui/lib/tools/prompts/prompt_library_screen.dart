@@ -39,7 +39,10 @@ class _JarvisPromptLibraryScreenState extends State<JarvisPromptLibraryScreen> {
     setState(() { _items = items; _ready = true; });
     await _save();
   }
-  Future<void> _save() async => (await SharedPreferences.getInstance()).setString(_key, jsonEncode(_items));
+  Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, jsonEncode(_items));
+  }
   List<Map<String, String>> get _visible {
     final q = _search.text.trim().toLowerCase();
     return q.isEmpty ? _items : _items.where((p) => '${p['title']} ${p['category']} ${p['prompt']}'.toLowerCase().contains(q)).toList();
