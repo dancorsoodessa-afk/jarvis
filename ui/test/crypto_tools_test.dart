@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jarvis_ui/crypto_tools.dart';
+import '../crypto/crypto_tools.dart';
 
 void main() {
   group('JarvisCrypto.indicators', () {
