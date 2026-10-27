@@ -11,7 +11,7 @@ class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
  String _status='Нажмите «Обновить» для загрузки публичных данных OKX.';
  List<Map<String,dynamic>> _tickers=const [];
  Map<String,dynamic> _derivatives=const {};
- Map<String,double> _indicators=const {};
+ Map<String,double?> _indicators=const {};
  Future<void> _refresh() async {
   setState(()=>_loading=true); setState(()=>_status='Загрузка рыночных данных…');
   try {
