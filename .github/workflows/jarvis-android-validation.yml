@@ -1,0 +1,45 @@
+name: JARVIS Android validation
+on:
+  push:
+    branches:
+      - fix/android-voice-folders-audit-20261027
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        working-directory: ui
+        run: flutter pub get
+      - name: Analyze Dart code
+        working-directory: ui
+        run: flutter analyze
+      - name: Run Flutter tests
+        working-directory: ui
+        run: flutter test
+      - name: Build Android debug APK
+        working-directory: ui
+        run: flutter build apk --debug
+      - name: Upload verified build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-android-debug
+          path: ui/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
