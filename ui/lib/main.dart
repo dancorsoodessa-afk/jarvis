@@ -119,7 +119,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _tts.setCompletionHandler(() {
         _ttsSpeaking = false;
         if (mounted) _returnToIdle(const Duration(milliseconds: 250));
-        if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
+        // Recognition restart is user-controlled to avoid native service crashes.
       });
       _tts.setCancelHandler(() {
         _ttsSpeaking = false;
@@ -140,9 +140,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         onStatus: (status) {
           debugPrint('JARVIS speech status: $status');
           if (!mounted) return;
-          if (status == 'notListening' && _voiceRunning && !_ttsSpeaking && !_busy) {
-            _scheduleVoiceRestart();
-          }
+          // Avoid automatically reopening native speech services on Android.
+          // Some providers crash when recognition is restarted repeatedly.
         },
         onError: (error) {
           debugPrint('JARVIS speech error: $error');
@@ -161,12 +160,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 ? 'Микрофон остановлен: $message. Проверь разрешение микрофона и службу распознавания Android.'
                 : 'Микрофон: $message');
           }
-          if (!terminal && _voiceRunning && !_ttsSpeaking) {
-            _scheduleVoiceRestart(const Duration(seconds: 2));
-          }
+          // Wait for the user to retry after a recognition error.
         },
         debugLogging: false,
-        options: [stt.SpeechToText.androidAlwaysUseStop],
       );
       if (!available) throw StateError('Распознавание речи недоступно на устройстве');
       _voiceReady = true;
@@ -221,8 +217,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     if (!_android || !_voiceReady || _voiceStarting || _ttsSpeaking || _busy) return;
     _voiceStarting = true;
     try {
-      await _speech.stop();
-      await Future<void>.delayed(const Duration(milliseconds: 250));
+      // Avoid stop-before-listen on initial activation; some Android providers
+      // terminate the host process on this sequence.
       await _speech.listen(
         onResult: _onSpeechResult,
         onSoundLevelChange: (level) {
@@ -971,10 +967,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             Text(switch (_visualState) { JarvisVisualState.listening => 'СЛУШАЮ', JarvisVisualState.thinking => 'ОБРАБАТЫВАЮ ЗАПРОС', JarvisVisualState.speaking => 'ОТВЕЧАЮ', JarvisVisualState.confirmation => 'ГОТОВО', JarvisVisualState.error => 'ОШИБКА', _ => 'СИСТЕМА ОЖИДАЕТ' }, style: const TextStyle(color: Colors.white70, fontSize: 9, letterSpacing: 2)),
           ])),
         ])),
-        if (_android) JarvisTradingChartPanel(onForecast: (prompt) async {
-          await _initTts();
-          await _send(prompt, speakReply: true);
-        }),
         if (_showCryptoDashboard) ...[
           Padding(padding: const EdgeInsets.fromLTRB(10, 6, 10, 2), child: Row(children: [
             const Expanded(child: Text('КРИПТОЦЕНТР · РАБОЧАЯ ПАНЕЛЬ', style: TextStyle(color: kCyan, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.bold))),
@@ -996,17 +988,18 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
               onDeleted: _busy ? null : () => setState(() => _attachments.remove(file))),
           )).toList())),
         ),
-        Padding(padding: const EdgeInsets.fromLTRB(8, 4, 12, 12), child: Row(children: [
-          IconButton(tooltip: 'Прикрепить документы', onPressed: _busy ? null : _pickChatAttachments, icon: const Icon(Icons.attach_file, color: kCyan)),
-          Expanded(child: TextField(controller: _input, minLines: 2, maxLines: 4, textInputAction: TextInputAction.newline, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Введите вопрос или прикрепите документы…', border: OutlineInputBorder()))),
+        SafeArea(top: false, child: Padding(padding: const EdgeInsets.fromLTRB(4, 2, 6, 4), child: Row(children: [
+          IconButton(visualDensity: VisualDensity.compact, tooltip: 'Прикрепить документы', onPressed: _busy ? null : _pickChatAttachments, icon: const Icon(Icons.attach_file, color: kCyan)),
+          Expanded(child: TextField(controller: _input, minLines: 1, maxLines: 3, textInputAction: TextInputAction.newline, onSubmitted: _send, decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10), hintText: 'Напишите сообщение…', border: OutlineInputBorder()))),
           if (_android) IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: _voiceRunning ? 'Остановить голос' : 'Включить голос',
-            onPressed: _busy ? null : _toggleVoice,
+            onPressed: _busy || _voiceToggleInProgress ? null : _toggleVoice,
             icon: Icon(_voiceRunning ? Icons.mic_off : Icons.mic, color: kCyan),
           ),
-          IconButton(onPressed: _busy ? null : () => _send(_input.text), icon: const Icon(Icons.send)),
-        ])),
-        Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(_status, style: const TextStyle(fontSize: 12))),
+          IconButton(visualDensity: VisualDensity.compact, onPressed: _busy ? null : () => _send(_input.text), icon: const Icon(Icons.send)),
+        ]))),
+        Padding(padding: const EdgeInsets.only(bottom: 4, left: 8, right: 8), child: Text(_status, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10))),
       ]);
 
 }
