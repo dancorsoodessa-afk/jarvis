@@ -609,14 +609,26 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         ListTile(leading: const Icon(Icons.mic, color: kCyan), title: const Text('Голос'), onTap: () { Navigator.pop(context); _toggleVoice(); }),
         ListTile(leading: const Icon(Icons.settings, color: kCyan), title: const Text('Настройки AI'), onTap: () { Navigator.pop(context); _settings(); }),
       ]))) : null,
-      body: Column(children: [
-        SizedBox(height: 38, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), children: [
+      body: LayoutBuilder(builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 760;
+        if (!wide) return _mainContent();
+        return Row(children: [
+          SizedBox(width: 132, child: _sidePanel(right: false)),
+          Expanded(child: _mainContent(compact: true)),
+          SizedBox(width: 142, child: _sidePanel(right: true)),
+        ]);
+      }),
+    );
+  }
+
+  Widget _mainContent({bool compact = false}) => Column(children: [
+        SizedBox(height: compact ? 30 : 38, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), children: [
           _hudPill('CORE', _busy ? 'THINKING' : 'ONLINE', _busy ? Colors.amberAccent : kCyan),
           _hudPill('AI', _jarvis == null ? 'DISCONNECTED' : 'CONNECTED', _jarvis == null ? Colors.redAccent : Colors.lightGreenAccent),
           _hudPill('VOICE', _voiceRunning ? 'LISTENING' : (_voiceReady ? 'READY' : 'STANDBY'), _voiceRunning ? Colors.greenAccent : Colors.white54),
           _hudPill('CRYPTO', 'OKX PUBLIC DATA', kCyan),
         ])),
-        Container(height: 272, margin: const EdgeInsets.fromLTRB(10, 3, 10, 4), decoration: BoxDecoration(color: const Color(0xFF050912), border: Border.all(color: kCyan.withValues(alpha: .25)), borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: kCyan.withValues(alpha: .06), blurRadius: 22)]), child: Stack(children: [
+        Container(height: compact ? 190 : 272, margin: const EdgeInsets.fromLTRB(10, 3, 10, 4), decoration: BoxDecoration(color: const Color(0xFF050912), border: Border.all(color: kCyan.withValues(alpha: .25)), borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: kCyan.withValues(alpha: .06), blurRadius: 22)]), child: Stack(children: [
           Positioned.fill(child: JarvisReactor(color: switch (_visualState) { JarvisVisualState.listening => Colors.greenAccent, JarvisVisualState.thinking => Colors.amberAccent, JarvisVisualState.speaking => Colors.cyanAccent, JarvisVisualState.confirmation => Colors.lightGreenAccent, JarvisVisualState.error => Colors.redAccent, _ => kCyan }, state: _visualState)),
           const Positioned(top: 10, left: 12, child: Text('J.A.R.V.I.S', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 3, fontSize: 12))),
           Positioned(top: 10, right: 12, child: Text('LIVE NEURAL CORE', style: TextStyle(color: kCyan.withValues(alpha: .8), fontSize: 8, letterSpacing: 1.2))),
@@ -626,7 +638,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             Text(switch (_visualState) { JarvisVisualState.listening => 'СЛУШАЮ', JarvisVisualState.thinking => 'ОБРАБАТЫВАЮ ЗАПРОС', JarvisVisualState.speaking => 'ОТВЕЧАЮ', JarvisVisualState.confirmation => 'ГОТОВО', JarvisVisualState.error => 'ОШИБКА', _ => 'СИСТЕМА ОЖИДАЕТ' }, style: const TextStyle(color: Colors.white70, fontSize: 9, letterSpacing: 2)),
           ])),
         ])),
-        SizedBox(height: 34, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
+        SizedBox(height: compact ? 30 : 34, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
           _quickTool('BTC', 'цена BTC'), _quickTool('RSI / SMA', 'технический анализ BTC RSI SMA'), _quickTool('Funding', 'BTC funding open interest'), _quickTool('Ликвидации', 'CoinGlass ликвидации BTC CVD long short'), _quickTool('Все рынки', 'цены BTC ETH SOL XRP'),
         ])),
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0), itemBuilder: (context, index) {
@@ -645,10 +657,70 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           IconButton(onPressed: _busy ? null : () => _send(_input.text), icon: const Icon(Icons.send)),
         ])),
         Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(_status, style: const TextStyle(fontSize: 12))),
-      ]),
+      ]);
+
+  Widget _sidePanel({required bool right}) {
+    final items = right
+      ? <({IconData icon, String label, String command})>[
+          (icon: Icons.currency_bitcoin, label: 'Криптоцентр', command: '__crypto__'),
+          (icon: Icons.trending_up, label: 'Цены рынка', command: 'цены BTC ETH SOL XRP'),
+          (icon: Icons.analytics, label: 'RSI / SMA', command: 'технический анализ BTC RSI SMA'),
+          (icon: Icons.candlestick_chart, label: 'Funding / OI', command: 'BTC funding open interest'),
+          (icon: Icons.query_stats, label: 'CoinGlass', command: 'CoinGlass ликвидации BTC CVD long short'),
+        ]
+      : <({IconData icon, String label, String command})>[
+          (icon: Icons.mic, label: 'Голос', command: '__voice__'),
+          (icon: Icons.settings, label: 'Настройки AI', command: '__settings__'),
+          (icon: Icons.wifi, label: 'Проверить AI', command: '__connect__'),
+        ];
+    return Container(
+      decoration: BoxDecoration(color: const Color(0xFF070D16), border: Border(right: BorderSide(color: kCyan.withValues(alpha: .16)), left: BorderSide(color: kCyan.withValues(alpha: .16)))),
+      child: SafeArea(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10), children: [
+        Text(right ? 'ИНСТРУМЕНТЫ' : 'СИСТЕМА', textAlign: TextAlign.center, style: const TextStyle(color: kCyan, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1)),
+        const SizedBox(height: 8),
+        if (!right) ...[
+          _sideStatus('CORE', _busy ? 'THINKING' : 'READY', _busy ? Colors.amberAccent : Colors.lightGreenAccent),
+          _sideStatus('AI', _jarvis == null ? 'OFFLINE' : 'ONLINE', _jarvis == null ? Colors.redAccent : Colors.lightGreenAccent),
+          _sideStatus('VOICE', _voiceRunning ? 'LIVE' : 'STANDBY', _voiceRunning ? Colors.greenAccent : Colors.white54),
+          const Divider(color: kCyan),
+        ],
+        ...items.map((item) => Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: OutlinedButton(
+            onPressed: () {
+              switch (item.command) {
+                case '__crypto__': Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisCryptoScreen())); break;
+                case '__voice__': _toggleVoice(); break;
+                case '__settings__': _settings(); break;
+                case '__connect__': _connectAndroid(); break;
+                default: _send(item.command);
+              }
+            },
+            style: OutlinedButton.styleFrom(foregroundColor: kCyan, side: BorderSide(color: kCyan.withValues(alpha: .22)), padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 9), alignment: Alignment.centerLeft),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(item.icon, size: 17),
+              const SizedBox(height: 4),
+              Text(item.label, style: const TextStyle(fontSize: 9), maxLines: 2, overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+        )),
+      ])),
     );
   }
+
+  Widget _sideStatus(String title, String value, Color color) => Container(
+    margin: const EdgeInsets.only(bottom: 7),
+    padding: const EdgeInsets.all(7),
+    decoration: BoxDecoration(color: kPanel, border: Border.all(color: color.withValues(alpha: .2)), borderRadius: BorderRadius.circular(5)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(title, style: const TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1)),
+      const SizedBox(height: 3),
+      Text(value, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+    ]),
+  );
 }
+
+class JarvisHomePage
 
 class JarvisHomePage extends StatefulWidget {
   const JarvisHomePage({super.key});
