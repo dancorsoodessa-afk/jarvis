@@ -63,6 +63,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Timer? _visualTimer;
   Timer? _voiceRestartTimer;
   bool _busy = false;
+  bool _showCryptoDashboard = false;
   bool _voiceReady = false;
   bool _voiceRunning = false;
   bool _ttsSpeaking = false;
@@ -399,6 +400,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     setState(() {
       _messages.add(_Msg(text, isUser: true));
       _busy = true;
+      _showCryptoDashboard = true;
       _visualState = JarvisVisualState.thinking;
       _status = 'Криптоинструмент · запрос к OKX…';
     });
@@ -644,6 +646,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         SizedBox(height: compact ? 30 : 34, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
           _quickTool('BTC', 'цена BTC'), _quickTool('RSI / SMA', 'технический анализ BTC RSI SMA'), _quickTool('Funding', 'BTC funding open interest'), _quickTool('Ликвидации', 'CoinGlass ликвидации BTC CVD long short'), _quickTool('Все рынки', 'цены BTC ETH SOL XRP'),
         ])),
+        if (_showCryptoDashboard) ...[
+          Padding(padding: const EdgeInsets.fromLTRB(10, 6, 10, 2), child: Row(children: [
+            const Expanded(child: Text('КРИПТОЦЕНТР · РАБОЧАЯ ПАНЕЛЬ', style: TextStyle(color: kCyan, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.bold))),
+            TextButton(onPressed: () => setState(() => _showCryptoDashboard = false), child: const Text('Скрыть')),
+          ])),
+          SizedBox(height: compact ? 220 : 300, child: const JarvisCryptoScreen()),
+        ],
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0), itemBuilder: (context, index) {
           if (_streamText.isNotEmpty && index == _messages.length) return Align(alignment: Alignment.centerLeft, child: Text(_streamText));
           final m = _messages[index];
