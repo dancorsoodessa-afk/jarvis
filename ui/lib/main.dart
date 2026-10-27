@@ -634,8 +634,18 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       final files = List<PlatformFile>.from(_attachments);
       setState(() => _status = 'Читаю вложения: ${files.length}…');
       final sections = <String>[];
+      var remainingChars = 60000;
       for (final file in files) {
-        sections.add('--- ДОКУМЕНТ: ${file.name} ---\n${await _readAttachment(file)}');
+        if (remainingChars <= 0) {
+          sections.add('[Остальные документы пропущены: достигнут общий лимит извлечённого текста 60 000 символов.]');
+          break;
+        }
+        final extracted = await _readAttachment(file);
+        final limited = extracted.length > remainingChars
+            ? '${extracted.substring(0, remainingChars)}\n[Текст обрезан: достигнут общий лимит 60 000 символов.]'
+            : extracted;
+        sections.add('--- ДОКУМЕНТ: ${file.name} ---\n$limited');
+        remainingChars -= limited.length;
       }
       text = '${text.isEmpty ? 'Проанализируй прикреплённые документы и кратко изложи их содержание.' : text}\n\nСОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n${sections.join('\n\n')}';
     }
