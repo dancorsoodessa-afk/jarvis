@@ -954,7 +954,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           ])),
         ])),
         if (_android) JarvisTradingChartPanel(onForecast: (prompt) async {
-          await _initVoice();
+          await _initTts();
           await _send(prompt, speakReply: true);
         }),
         if (_showCryptoDashboard) ...[
