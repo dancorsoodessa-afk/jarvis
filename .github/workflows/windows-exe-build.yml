@@ -1,0 +1,66 @@
+name: JARVIS Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - foundation
+    paths:
+      - "agent/**"
+      - "ui/**"
+      - "scripts/**"
+      - "tests/**"
+      - "jarvis_desktop.py"
+      - "jarvis_desktop.spec"
+      - "pyproject.toml"
+      - ".github/workflows/windows-exe-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Verify Python and PowerShell
+        shell: pwsh
+        run: |
+          python --version
+          if ($LASTEXITCODE -ne 0) { throw "Python is unavailable." }
+          $PSVersionTable.PSVersion.ToString()
+
+      - name: Run audited EXE build
+        shell: pwsh
+        run: |
+          ./scripts/build_exe.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Build script failed; do not publish an artifact." }
+
+      - name: Verify release artifact
+        shell: pwsh
+        run: |
+          $exe = "release/JARVIS.exe"
+          if (-not (Test-Path $exe)) { throw "Release EXE was not created." }
+          $item = Get-Item $exe
+          if ($item.Length -lt 1MB) { throw "Release EXE is unexpectedly small ($($item.Length) bytes)." }
+          Get-FileHash $exe -Algorithm SHA256
+          Write-Host ("Verified release EXE: {0:N1} MB" -f ($item.Length / 1MB))
+
+      - name: Upload verified Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-Windows-x64
+          path: |
+            release/JARVIS.exe
+            release/README.txt
+          if-no-files-found: error
+          retention-days: 14
