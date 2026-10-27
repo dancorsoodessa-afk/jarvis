@@ -31,7 +31,7 @@ class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
    const SizedBox(height:8),Text(_status,style:const TextStyle(color:Colors.white70)),
    const SizedBox(height:12),FilledButton.icon(onPressed:_loading?null:_refresh,icon:const Icon(Icons.sync),label:Text(_loading?'Загрузка…':'Обновить рынок')),
    _section('РЫНОК · OKX'),..._tickers.map((t)=>_row('${t['instId']??'—'}','Цена: ${t['last']??'—'}')),
-   _section('ТЕХНИЧЕСКИЕ ИНДИКАТОРЫ · BTC-USDT'),..._indicators.entries.map((e)=>_row(e.key,e.value.toStringAsFixed(4))),
+   _section('ТЕХНИЧЕСКИЕ ИНДИКАТОРЫ · BTC-USDT'),..._indicators.entries.map((e)=>_row(e.key,e.value?.toStringAsFixed(4)??'—')),
    _section('ДЕРИВАТИВЫ'),..._derivatives.entries.map((e)=>_row(e.key,'${e.value}')),
    const SizedBox(height:12),const Text('Публичные рыночные данные. Приватные балансы и выставление ордеров не включены.',style:TextStyle(color:Colors.white54,fontSize:12))
   ]));
