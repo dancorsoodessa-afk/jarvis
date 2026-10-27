@@ -226,7 +226,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           (savedEndpoint == kDefaultEndpoint &&
               (savedModel.isEmpty || savedModel == 'gpt-4o-mini' || savedModel == 'llama-3.3-70b-versatile'));
       _endpoint.text = useGeminiDefaults ? kGeminiEndpoint : savedEndpoint;
-      _model.text = useGroqDefaults ? kFreeModel : (savedModel.isEmpty ? kFreeModel : savedModel);
+      _model.text = useGeminiDefaults ? kFreeModel : (savedModel.isEmpty ? kFreeModel : savedModel);
       _apiKey.text = _cleanApiKey(prefs.getString('api_key') ?? '');
       _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? '';
       _fallbackKey.text = _cleanApiKey(prefs.getString('fallback_key') ?? '');
