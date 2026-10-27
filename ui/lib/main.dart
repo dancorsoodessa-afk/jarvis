@@ -331,7 +331,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Align(alignment: Alignment.centerLeft, child: Text('Основной AI', style: TextStyle(fontWeight: FontWeight.bold))),
-          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'AI URL', hintText: 'https://api.groq.com/openai/v1')),
+          TextField(controller: _endpoint, enabled: true, readOnly: false, enableInteractiveSelection: true, autocorrect: false, maxLines: 1, keyboardType: TextInputType.url, decoration: InputDecoration(labelText: 'AI URL', hintText: 'https://api.groq.com/openai/v1', suffixIcon: IconButton(tooltip: 'Очистить адрес', onPressed: () => _endpoint.clear(), icon: const Icon(Icons.clear)))),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
           TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'llama-3.3-70b-versatile')),
           const SizedBox(height: 12),
