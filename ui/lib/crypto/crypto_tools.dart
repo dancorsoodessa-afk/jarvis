@@ -63,9 +63,11 @@ class JarvisCrypto {
 
   /// Current OKX tickers: BTC, ETH and other requested spot instruments.
   static Future<List<Map<String, dynamic>>> tickers({List<String> symbols = const ['BTC-USDT', 'ETH-USDT', 'SOL-USDT', 'XRP-USDT']}) async {
+    final responses = await Future.wait(symbols.map((symbol) =>
+      _get('$_okx/api/v5/market/ticker?instId=${Uri.encodeQueryComponent(symbol)}')
+    ));
     final all = <Map<String, dynamic>>[];
-    for (final symbol in symbols) {
-      final data = await _get('$_okx/api/v5/market/ticker?instId=${Uri.encodeQueryComponent(symbol)}');
+    for (final data in responses) {
       if (data is Map && data['data'] is List) {
         for (final row in data['data']) {
           if (row is Map) all.add(Map<String, dynamic>.from(row));
