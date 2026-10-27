@@ -7,6 +7,7 @@ import 'package:xml/xml.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
@@ -822,6 +823,18 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
 
+  Future<void> _openDeepHat() async {
+    final uri = Uri.parse('https://app.deephat.ai/sign-in');
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        setState(() => _status = 'Не удалось открыть Deep Hat AI. Проверьте подключение к интернету.');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Deep Hat AI не открылся: $e');
+    }
+  }
+
   void _sendFromMenu(String command) {
     _send(command);
   }
@@ -846,6 +859,15 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 leading: const Icon(Icons.dashboard, color: kCyan),
                 title: const Text('Чат с JARVIS'),
                 onTap: () => Navigator.pop(context),
+              ),
+              ExpansionTile(
+                leading: const Icon(Icons.smart_toy, color: kCyan),
+                title: const Text('Отдельные ИИ-помощники'),
+                subtitle: const Text('Открыть Deep Hat AI отдельно от JARVIS'),
+                children: [
+                  _menuItem(Icons.security, 'Deep Hat AI · кибербезопасность и анализ', _openDeepHat,
+                    hint: 'Откроется официальный сервис; может потребоваться вход'),
+                ],
               ),
               ExpansionTile(
                 leading: const Icon(Icons.currency_bitcoin, color: kCyan),
