@@ -93,6 +93,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   String _streamText = '';
   String _heardText = '';
   JarvisVisualState _visualState = JarvisVisualState.idle;
+  double _audioLevel = 0.0;
+  double get _visualLoad => _busy ? 0.96 : (_ttsSpeaking ? 0.78 : (_voiceRunning ? 0.42 + _audioLevel * 0.45 : 0.16));
   bool get _android => Platform.isAndroid;
 
   @override
@@ -224,6 +226,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       await Future<void>.delayed(const Duration(milliseconds: 250));
       await _speech.listen(
         onResult: _onSpeechResult,
+        onSoundLevelChange: (level) {
+          if (!mounted) return;
+          final normalized = (level / 10.0).clamp(0.0, 1.0).toDouble();
+          setState(() => _audioLevel = normalized);
+        },
         listenOptions: stt.SpeechListenOptions(
           listenFor: const Duration(minutes: 1),
           pauseFor: const Duration(seconds: 4),
@@ -949,7 +956,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           _hudPill('CRYPTO', 'OKX PUBLIC DATA', kCyan),
         ])),
         Container(height: compact ? 120 : 175, margin: const EdgeInsets.fromLTRB(10, 3, 10, 4), decoration: BoxDecoration(color: const Color(0xFF050912), border: Border.all(color: kCyan.withValues(alpha: .25)), borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: kCyan.withValues(alpha: .06), blurRadius: 22)]), child: Stack(children: [
-          Positioned.fill(child: JarvisReactor(color: switch (_visualState) { JarvisVisualState.listening => Colors.greenAccent, JarvisVisualState.thinking => Colors.amberAccent, JarvisVisualState.speaking => Colors.cyanAccent, JarvisVisualState.confirmation => Colors.lightGreenAccent, JarvisVisualState.error => Colors.redAccent, _ => kCyan }, state: _visualState)),
+          Positioned.fill(child: JarvisReactor(state: _visualState, audioLevel: _audioLevel, load: _visualLoad)),
           const Positioned(top: 10, left: 12, child: Text('J.A.R.V.I.S', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 3, fontSize: 12))),
           Positioned(top: 10, right: 12, child: Text('LIVE NEURAL CORE', style: TextStyle(color: kCyan.withValues(alpha: .8), fontSize: 8, letterSpacing: 1.2))),
           Positioned(bottom: 10, left: 12, right: 12, child: Column(mainAxisSize: MainAxisSize.min, children: [
