@@ -16,6 +16,8 @@ import 'tools/internet/internet_screen.dart';
 import 'tools/memory/memory_screen.dart';
 import 'tools/system/system_screen.dart';
 import 'tools/files/files_screen.dart';
+import 'tools/apps/apps_screen.dart';
+import 'tools/audio/audio_screen.dart';
 
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
@@ -740,7 +742,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 leading: const Icon(Icons.memory, color: kCyan),
                 title: const Text('Система и диагностика'),
                 children: [
-                  _menuItem(Icons.monitor_heart, 'Статус JARVIS', () => _openMenuScreen(const JarvisSystemScreen())),
+                  _menuItem(Icons.monitor_heart, 'Статус, ОЗУ и диагностика', () => _openMenuScreen(const JarvisSystemScreen())),
+                  _menuItem(Icons.volume_up, 'Громкость Android', () => _openMenuScreen(const JarvisAudioScreen())),
                   _menuItem(Icons.speed, 'Проверить подключение AI', () => _connectAndroid()),
                   _menuItem(Icons.settings, 'Настройки AI и API', () => _settings()),
                 ],
@@ -751,7 +754,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 children: [
                   _menuItem(Icons.search, 'Выбрать и просмотреть файлы', () => _openMenuScreen(const JarvisFilesScreen())),
                   _menuItem(Icons.folder_open, 'Открыть системный выбор файлов', () => _openMenuScreen(const JarvisFilesScreen())),
-                  _menuItem(Icons.apps, 'Команда AI: запуск приложения', () => _sendFromMenu('Можно ли запустить приложение на Android? Если нет доступа к запуску приложений, честно сообщи об ограничении.')),
+                  _menuItem(Icons.apps, 'Список и запуск приложений', () => _openMenuScreen(const JarvisAppsScreen())),
                 ],
               ),
               ExpansionTile(
