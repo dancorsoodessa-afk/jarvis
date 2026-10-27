@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - fix/android-voice-folders-audit-20261027
+      - fix/android-mic-compact-chat-20261028
   workflow_dispatch:
 
 permissions:
@@ -27,6 +28,35 @@ jobs:
       - name: Generate Android project
         working-directory: ui
         run: flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
+
+      - name: Configure Android microphone and speech-recognition permissions
+        working-directory: ui
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("android/app/src/main/AndroidManifest.xml")
+          source = path.read_text(encoding="utf-8")
+          permissions = [
+              '    <uses-permission android:name="android.permission.INTERNET"/>',
+              '    <uses-permission android:name="android.permission.RECORD_AUDIO"/>',
+          ]
+          for permission in permissions:
+              if permission not in source:
+                  source = source.replace('    <application', permission + '\\n    <application', 1)
+          query = '''    <queries>
+              <intent>
+                  <action android:name="android.speech.RecognitionService"/>
+              </intent>
+          </queries>
+          '''
+          if 'android.speech.RecognitionService' not in source:
+              source = source.replace('    <application', query + '    <application', 1)
+          path.write_text(source, encoding="utf-8")
+          if 'android.permission.RECORD_AUDIO' not in source:
+              raise SystemExit("Microphone permission was not added")
+          PY
 
       - name: Set Android compile SDK for current plugins
         working-directory: ui
