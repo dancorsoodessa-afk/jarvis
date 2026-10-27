@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/tools/calculator/calculator_screen.dart';
+import 'package:jarvis_ui/tools/calculator/calculator_screen.dart';
 
 void main() {
   testWidgets('calculator evaluates parentheses and multiplication', (tester) async {

@@ -414,10 +414,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _returnToIdle(const Duration(milliseconds: 1100));
     await _partialSub?.cancel();
     _partialSub = _jarvis!.partials().listen((text) {
-      if (mounted) setState(() {
-        _streamText = text;
-        if (text.isNotEmpty) _visualState = JarvisVisualState.speaking;
-      });
+      if (mounted) {
+        setState(() {
+          _streamText = text;
+          if (text.isNotEmpty) _visualState = JarvisVisualState.speaking;
+        });
+      }
     });
     if (_android && _voiceReady) {
       _voiceRunning = true;
@@ -436,6 +438,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         debugPrint('JARVIS speech stop before settings failed: $e');
       }
     }
+    if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -534,7 +537,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             final value = entry.value;
             final latest = value is List ? (value.isEmpty ? 'нет данных' : value.last.toString()) : value.toString();
             final short = latest.length > 520 ? '${latest.substring(0, 520)}…' : latest;
-            return '${entry.key.toUpperCase()}: ${short}';
+            return '${entry.key.toUpperCase()}: $short';
           }).join('\n\n');
         }
       } else if (RegExp(r'фандинг|funding|открыт.{0,12}интерес|open interest|\boi\b').hasMatch(t)) {

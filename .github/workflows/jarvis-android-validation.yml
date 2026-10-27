@@ -56,6 +56,10 @@ jobs:
               raise SystemExit("Could not set Android compileSdk to 36 in generated Gradle file")
           PY
 
+      - name: Remove generated sample test
+        working-directory: ui
+        run: rm -f test/widget_test.dart
+
       - name: Install dependencies
         working-directory: ui
         run: flutter pub get

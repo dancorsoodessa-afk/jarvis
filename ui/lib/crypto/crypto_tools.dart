@@ -203,7 +203,7 @@ class JarvisCrypto {
       var gains = 0.0, losses = 0.0;
       for (var i = closes.length - 14; i < closes.length; i++) {
         final diff = closes[i] - closes[i-1];
-        if (diff > 0) gains += diff; else losses -= diff;
+        if (diff > 0) { gains += diff; } else { losses -= diff; }
       }
       if (losses == 0) return 100;
       final rs = (gains / 14) / (losses / 14);

@@ -374,8 +374,7 @@ class JarvisIpc {
             fallbackError.toString().contains('Failed host lookup') ||
             fallbackError.toString().contains('TimeoutException')) {
           throw StateError(
-            'Основной и резервный AI недоступны по сети. ' +
-                _networkError(fallbackError, _fallbackUrl!),
+            'Основной и резервный AI недоступны по сети. ${_networkError(fallbackError, _fallbackUrl!)}',
           );
         }
         rethrow;

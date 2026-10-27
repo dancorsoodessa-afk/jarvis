@@ -55,7 +55,7 @@ class _ExpressionParser {
     while (true) {
       if (_take('+')) { value += _term(); }
       else if (_take('-')) { value -= _term(); }
-      else return value;
+      else { return value; }
     }
   }
   double _term() {
@@ -64,7 +64,7 @@ class _ExpressionParser {
       if (_take('*')) { value *= _factor(); }
       else if (_take('/')) { final divisor = _factor(); if (divisor == 0) throw const FormatException('Деление на ноль'); value /= divisor; }
       else if (_take('%')) { final divisor = _factor(); if (divisor == 0) throw const FormatException('Деление на ноль'); value %= divisor; }
-      else return value;
+      else { return value; }
     }
   }
   double _factor() {

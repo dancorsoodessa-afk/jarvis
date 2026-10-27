@@ -187,7 +187,7 @@ class _JarvisTradingChartPanelState extends State<JarvisTradingChartPanel> {
     var gains = 0.0, losses = 0.0;
     for (var i = closes.length - 14; i < closes.length; i++) {
       final diff = closes[i] - closes[i - 1];
-      if (diff > 0) gains += diff; else losses -= diff;
+      if (diff > 0) { gains += diff; } else { losses -= diff; }
     }
     if (losses == 0) return 100;
     final rs = gains / losses;
@@ -262,14 +262,14 @@ class _TradingCandlesPainter extends CustomPainter {
       }
     }
     final smaPaint = Paint()..color = _chartCyan..strokeWidth = 1.3..style = PaintingStyle.stroke;
-    for (var i = 1; i < smaPoints.length; i++) canvas.drawLine(smaPoints[i - 1], smaPoints[i], smaPaint);
+    for (var i = 1; i < smaPoints.length; i++) { canvas.drawLine(smaPoints[i - 1], smaPoints[i], smaPaint); }
 
     void level(double value, Color color, String label, {bool dashed = false}) {
       if (value <= 0 || value < minPrice || value > maxPrice) return;
       final yy = y(value);
       final p = Paint()..color = color.withValues(alpha: .9)..strokeWidth = 1;
       if (dashed) {
-        for (var x = plot.left; x < plot.right; x += 7) canvas.drawLine(Offset(x, yy), Offset(math.min(x + 3, plot.right), yy), p);
+        for (var x = plot.left; x < plot.right; x += 7) { canvas.drawLine(Offset(x, yy), Offset(math.min(x + 3, plot.right), yy), p); }
       } else {
         canvas.drawLine(Offset(plot.left, yy), Offset(plot.right, yy), p);
       }

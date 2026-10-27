@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/osint/osint_tools.dart';
+import 'package:jarvis_ui/osint/osint_tools.dart';
 
 void main() {
   group('JarvisOsint input validation', () {
