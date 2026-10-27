@@ -335,6 +335,18 @@ class JarvisIpc {
       await _call(_apiUrl!, _apiKey!, primaryModel,
           'Ответь одним словом: готов.');
     } catch (e) {
+      // If the primary Gemini model is throttled or unavailable, verify the
+      // same key/endpoint against the lighter stable fallback model.
+      final isGemini = (_apiUrl ?? '').contains('generativelanguage.googleapis.com/v1beta/openai');
+      if (isGemini && primaryModel != 'gemini-3.5-flash-lite') {
+        try {
+          await _call(_apiUrl!, _apiKey!, 'gemini-3.5-flash-lite',
+              'Ответь одним словом: готов.');
+          return;
+        } catch (_) {
+          // Continue to the explicitly configured provider fallback below.
+        }
+      }
       if ((_fallbackUrl ?? '').isNotEmpty && (_fallbackKey ?? '').isNotEmpty) {
         final fallbackModel = (_fallbackModel ?? '').trim().isEmpty
             ? ''
@@ -443,9 +455,29 @@ class JarvisIpc {
       }
       return r;
     } catch (e) {
+      final errorText = e.toString();
+      final isGemini = (_apiUrl ?? '').contains('generativelanguage.googleapis.com/v1beta/openai');
+      final primaryModel = (_model ?? '').trim().isEmpty ? 'gemini-3.8-flash' : _model!.trim();
+      final quotaOrModelError = RegExp(r'HTTP (400|403|404|429)').hasMatch(errorText);
+      if (isGemini && primaryModel != 'gemini-3.5-flash-lite' &&
+          (quotaOrModelError || _retryable(e))) {
+        try {
+          final r = await _call(_apiUrl!, _apiKey!, 'gemini-3.5-flash-lite', text);
+          _history
+            ..add({'role': 'user', 'content': text})
+            ..add({'role': 'assistant', 'content': r.text});
+          if (_history.length > 40) {
+            _history.removeRange(0, _history.length - 40);
+          }
+          return JarvisReply(r.text, 'Gemini Flash-Lite (резерв)', r.toolUsed, r.needsConfirmation);
+        } catch (_) {
+          // If the lighter Gemini model is also unavailable, try configured
+          // secondary provider below, otherwise report the original error.
+        }
+      }
       if ((_fallbackUrl ?? '').isEmpty ||
           (_fallbackKey ?? '').isEmpty ||
-          !_retryable(e)) {
+          (!_retryable(e) && !quotaOrModelError)) {
         if (e is SocketException ||
             e.toString().contains('Failed host lookup') ||
             e.toString().contains('TimeoutException')) {
