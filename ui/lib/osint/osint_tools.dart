@@ -39,7 +39,7 @@ class JarvisOsint {
       'DNS: ${ips.map((e)=>e.address).toSet().join(', ')}',
       'RDAP: ${rdap['handle']??'ответ получен'}',
       'Nameservers: ${nameservers.isEmpty?'—':nameservers}',
-      'Проверка не подтверждает существование почтового ящика.'].join('\\n');
+      'Проверка не подтверждает существование почтового ящика.'].join('\n');
    }
    if(kind=='Username'){
     final username=input.startsWith('@')?input.substring(1):input;
@@ -69,7 +69,7 @@ class JarvisOsint {
         return '${entry.key}: проверить не удалось — ${entry.value}';
       }
     }));
-    return ['USERNAME: @$username','Публичные профили (результат ориентировочный):',...results].join('\\n');
+    return ['USERNAME: @$username','Публичные профили (результат ориентировочный):',...results].join('\n');
    }
    if(kind=='URL / TLS'){
     final u=Uri.tryParse(input.contains('://')?input:'https://$input');
