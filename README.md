@@ -27,8 +27,8 @@ Create a Gemini API key in Google AI Studio and enter it in JARVIS Settings. The
 
 ### Tool modules
 
-- `ui/crypto/` — separate crypto center, OKX public market data, indicators and optional CoinGlass endpoints. See its README for limitations.
-- `ui/osint/` — separate OSINT screen and service layer for domain/RDAP/DNS, IP/ASN and URL/HTTP lookups. See its README for limitations.
+- `ui/lib/crypto/` — separate crypto center, OKX public market data, indicators and optional CoinGlass endpoints. See its README for limitations.
+- `ui/lib/osint/` — separate OSINT screen and service layer for domain/RDAP/DNS, IP/ASN and URL/HTTP lookups. See its README for limitations.
 - `agent/tools/osint.py` — Windows/backend OSINT helpers, including domain, IP, URL, email, username and image metadata lookups.
 
 Crypto and OSINT are separate navigation entries; these modules must not be presented as private exchange trading or as guaranteed security verification.
