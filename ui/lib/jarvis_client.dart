@@ -224,8 +224,6 @@ class JarvisIpc {
     'Authorization': 'Bearer ${key.trim()}',
     HttpHeaders.acceptHeader: 'application/json',
     HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
-    'HTTP-Referer': 'https://github.com/dancorsoodessa-afk/jarvis',
-    'X-Title': 'JARVIS Android',
   };
 
   String _networkError(Object error, String base) {
