@@ -5,33 +5,62 @@ on:
     branches: [android-final]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
       - name: Generate Android project
         working-directory: ui
         run: flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
+
       - name: Remove generated stale test
         working-directory: ui
         run: rm -rf test
+
       - name: Get dependencies
         working-directory: ui
         run: flutter pub get
-      - name: Analyze
+
+      - name: Analyze Dart
         working-directory: ui
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
-      - name: Build APK
+
+      - name: Build release APK
         working-directory: ui
         run: flutter build apk --release
-      - name: Upload APK
+
+      - name: Verify APK integrity, alignment, signature and permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="ui/build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          test -x "$BUILD_TOOLS/zipalign"
+          test -x "$BUILD_TOOLS/apksigner"
+          test -x "$BUILD_TOOLS/aapt"
+          "$BUILD_TOOLS/zipalign" -c -v 4 "$APK"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/aapt" dump permissions "$APK" | tee /tmp/jarvis-permissions.txt
+          grep -q 'android.permission.INTERNET' /tmp/jarvis-permissions.txt
+          grep -q 'android.permission.RECORD_AUDIO' /tmp/jarvis-permissions.txt
+          sha256sum "$APK" | tee ui/build/app/outputs/flutter-apk/SHA256SUMS.txt
+
+      - name: Upload verified APK
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-android-apk
-          path: ui/build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            ui/build/app/outputs/flutter-apk/app-release.apk
+            ui/build/app/outputs/flutter-apk/SHA256SUMS.txt
           if-no-files-found: error
