@@ -380,9 +380,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   String _cryptoSymbol(String text) {
     final t = text.toLowerCase();
-    if (RegExp(r'\\b(eth|ethereum)\\b|эфир|эфириум').hasMatch(t)) return 'ETH-USDT';
-    if (RegExp(r'\\b(sol|solana)\\b|солан').hasMatch(t)) return 'SOL-USDT';
-    if (RegExp(r'\\b(xrp)\\b|рипл').hasMatch(t)) return 'XRP-USDT';
+    if (RegExp(r'\b(eth|ethereum)\\b|эфир|эфириум').hasMatch(t)) return 'ETH-USDT';
+    if (RegExp(r'\b(sol|solana)\\b|солан').hasMatch(t)) return 'SOL-USDT';
+    if (RegExp(r'\b(xrp)\\b|рипл').hasMatch(t)) return 'XRP-USDT';
     return 'BTC-USDT';
   }
 
@@ -405,22 +405,22 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         final d = await JarvisCrypto.derivatives(symbol: inst);
         final funding = d['funding'];
         final oi = d['open_interest'];
-        result = '${symbol.replaceAll('-USDT', '')} · деривативы\\n'
-          'Funding rate: ${funding is Map ? funding['fundingRate'] ?? funding['funding_rate'] ?? 'нет данных' : 'нет данных'}\\n'
+        result = '${symbol.replaceAll('-USDT', '')} · деривативы\n'
+          'Funding rate: ${funding is Map ? funding['fundingRate'] ?? funding['funding_rate'] ?? 'нет данных' : 'нет данных'}\n'
           'Open interest: ${oi is Map ? oi['oi'] ?? oi['openInterest'] ?? oi['open_interest'] ?? 'нет данных' : 'нет данных'}';
       } else if (RegExp(r'rsi|sma|индикатор|техническ.{0,12}анализ|свеч|график').hasMatch(t)) {
         final candles = await JarvisCrypto.candles(symbol: symbol, timeframe: '1H', limit: 100);
         final m = JarvisCrypto.indicators(candles);
         String val(String key, {int digits = 2}) => m[key] == null ? 'недостаточно данных' : (m[key] as double).toStringAsFixed(digits);
-        result = '${symbol.replaceAll('-USDT', '')} · технические показатели (1H)\\n'
-          'Цена закрытия: ${val('last')} USDT\\n'
-          'Изменение: ${val('change_pct')}%\\n'
-          'SMA20: ${val('sma20')}\\nSMA50: ${val('sma50')}\\nRSI14: ${val('rsi14')}';
+        result = '${symbol.replaceAll('-USDT', '')} · технические показатели (1H)\n'
+          'Цена закрытия: ${val('last')} USDT\n'
+          'Изменение: ${val('change_pct')}%\n'
+          'SMA20: ${val('sma20')}\nSMA50: ${val('sma50')}\nRSI14: ${val('rsi14')}';
       } else {
-        final symbols = RegExp(r'\\bbtc\\b|биткоин|bitcoin').hasMatch(t) ? ['BTC-USDT'] :
-          RegExp(r'\\beth\\b|эфир|эфириум').hasMatch(t) ? ['ETH-USDT'] :
-          RegExp(r'\\bsol\\b|солан').hasMatch(t) ? ['SOL-USDT'] :
-          RegExp(r'\\bxrp\\b|рипл').hasMatch(t) ? ['XRP-USDT'] :
+        final symbols = RegExp(r'\bbtc\\b|биткоин|bitcoin').hasMatch(t) ? ['BTC-USDT'] :
+          RegExp(r'\beth\\b|эфир|эфириум').hasMatch(t) ? ['ETH-USDT'] :
+          RegExp(r'\bsol\\b|солан').hasMatch(t) ? ['SOL-USDT'] :
+          RegExp(r'\bxrp\\b|рипл').hasMatch(t) ? ['XRP-USDT'] :
           ['BTC-USDT', 'ETH-USDT', 'SOL-USDT', 'XRP-USDT'];
         final rows = await JarvisCrypto.tickers(symbols: symbols);
         result = rows.map((row) {
@@ -429,7 +429,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           final open = double.tryParse(row['open24h']?.toString() ?? '') ?? 0;
           final change = open == 0 ? 0 : ((last - open) / open) * 100;
           return '$id: $last USDT  |  24ч: ${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%';
-        }).join('\\n');
+        }).join('\n');
         if (result.isEmpty) result = 'OKX не вернул данные по запрошенным активам.';
       }
       if (mounted) {
