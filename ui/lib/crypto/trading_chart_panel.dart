@@ -98,7 +98,7 @@ class _JarvisTradingChartPanelState extends State<JarvisTradingChartPanel> {
             visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
             tooltip: 'Озвучить AI-прогноз', onPressed: widget.onForecast == null || _loading || _candles.isEmpty ? null : () {
               final snapshot = 'Проанализируй рыночные данные для $_symbol на таймфрейме $_timeframe. Последняя цена: ${fmt(last)} USDT. SMA20: ${sma20 == null ? "нет данных" : fmt(sma20)}. SMA50: ${sma50 == null ? "нет данных" : fmt(sma50)}. RSI14: ${rsi == null ? "нет данных" : rsi.toStringAsFixed(1)}. Расчётный сигнал индикаторов: $signal. Ориентировочный вход: ${fmt(last)}, Stop-Loss: ${fmt(stop)}, Take-Profit: ${fmt(target)}. Дай короткий прогноз голосом на русском: тренд, сценарий вверх/вниз, условия подтверждения и отмены, риски. Не выдавай эвристику за гарантированный прогноз; если данных недостаточно, прямо скажи.';
-              widget.onForecast!(snapshot);
+              unawaited(widget.onForecast!(snapshot));
             },
             icon: const Icon(Icons.record_voice_over, size: 18, color: _chartCyan),
           ),
