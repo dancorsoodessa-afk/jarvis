@@ -8,12 +8,13 @@ class JarvisCryptoScreen extends StatefulWidget {
 }
 class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
  bool _loading=false;
+ @override void initState(){super.initState(); WidgetsBinding.instance.addPostFrameCallback((_) { if(mounted) _refresh(); });}
  String _status='Нажмите «Обновить» для загрузки публичных данных OKX.';
  List<Map<String,dynamic>> _tickers=const [];
  Map<String,dynamic> _derivatives=const {};
  Map<String,double?> _indicators=const {};
  Future<void> _refresh() async {
-  setState(()=>_loading=true); setState(()=>_status='Загрузка рыночных данных…');
+  setState(()=>{_loading=true;_status='Загрузка рыночных данных…';});
   try {
    final tickers=await JarvisCrypto.tickers();
    final derivatives=await JarvisCrypto.derivatives();
