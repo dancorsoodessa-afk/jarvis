@@ -44,7 +44,7 @@ jobs:
           ]
           for permission in permissions:
               if permission not in source:
-                  source = source.replace('    <application', permission + '\\n    <application', 1)
+                  source = source.replace('    <application', permission + '\n    <application', 1)
           query = '''    <queries>
               <intent>
                   <action android:name="android.speech.RecognitionService"/>
