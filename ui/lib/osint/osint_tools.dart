@@ -122,7 +122,7 @@ class JarvisOsint {
       height=((data[20]<<24)|(data[21]<<16)|(data[22]<<8)|data[23]).toString();
     }
     final asciiData=ascii.decode(data,allowInvalid:true);
-    final hasExif=asciiData.contains('Exif\\u0000\\u0000');
+    final hasExif=asciiData.contains('Exif');
     return ['URL: $uri','HTTP: ${response.statusCode}',
       'Content-Type: ${response.headers.contentType??'—'}',
       'Размер файла: ${data.length} байт','Формат: ${isJpeg?'JPEG':isPng?'PNG':'не определён'}',
