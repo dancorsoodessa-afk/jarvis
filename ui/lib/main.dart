@@ -123,7 +123,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       });
       _tts.setCancelHandler(() {
         _ttsSpeaking = false;
-        if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
+        // Voice listening restarts only after an explicit microphone tap.
       });
       _ttsReady = true;
     } catch (e) {
@@ -248,14 +248,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     } finally {
       _voiceStarting = false;
     }
-  }
-
-  void _scheduleVoiceRestart([Duration delay = const Duration(milliseconds: 500)]) {
-    if (!_android || !_voiceRunning || _voiceStarting || _ttsSpeaking || _busy) return;
-    _voiceRestartTimer?.cancel();
-    _voiceRestartTimer = Timer(delay, () {
-      if (mounted && _voiceRunning && !_voiceStarting && !_ttsSpeaking && !_busy) _startVoiceLoop();
-    });
   }
 
   String? _extractWakeCommand(String text) {
