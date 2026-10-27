@@ -23,6 +23,10 @@ jobs:
         working-directory: ui
         run: flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
 
+      - name: Remove generated stale test
+        working-directory: ui
+        run: rm -rf test
+
       - name: Configure required Android permissions
         working-directory: ui
         shell: bash
