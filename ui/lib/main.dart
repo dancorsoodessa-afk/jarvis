@@ -610,7 +610,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         ListTile(leading: const Icon(Icons.settings, color: kCyan), title: const Text('Настройки AI'), onTap: () { Navigator.pop(context); _settings(); }),
       ]))) : null,
       body: LayoutBuilder(builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 760;
+        final wide = _android && constraints.maxWidth >= 760;
         if (!wide) return _mainContent();
         return Row(children: [
           SizedBox(width: 132, child: _sidePanel(right: false)),
@@ -719,8 +719,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     ]),
   );
 }
-
-class JarvisHomePage
 
 class JarvisHomePage extends StatefulWidget {
   const JarvisHomePage({super.key});
