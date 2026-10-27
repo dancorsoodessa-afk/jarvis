@@ -59,7 +59,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   final _fallbackKey = TextEditingController();
   final _fallbackModel = TextEditingController();
   final _coinglassKey = TextEditingController();
-  static const _platform = MethodChannel('com.dancorsoodessa.jarvis/timer');
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -68,7 +67,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Timer? _visualTimer;
   Timer? _voiceRestartTimer;
   Timer? _commandTimer;
-  DateTime? _commandTimerDue;
   bool _busy = false;
   bool _showCryptoDashboard = false;
   bool _voiceReady = false;
@@ -592,7 +590,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final duration = await _parseTimer(text);
     if (duration == null) return false;
     _commandTimer?.cancel();
-    _commandTimerDue = DateTime.now().add(duration);
     final mins = duration.inMinutes;
     final reply = mins > 0 ? 'Таймер установлен на $mins минут.' : 'Таймер установлен на ${duration.inSeconds} секунд.';
     if (mounted) {
@@ -600,7 +597,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
     await _speak(reply);
     _commandTimer = Timer(duration, () async {
-      _commandTimerDue = null;
       if (!mounted) return;
       setState(() => _status = 'Таймер завершён');
       await showDialog<void>(
@@ -656,33 +652,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       Text(value, style: TextStyle(color: color, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: .5)),
     ]),
   );
-
-  Widget _quickTool(String label, String command) => Padding(
-    padding: const EdgeInsets.only(right: 6),
-    child: OutlinedButton(
-      onPressed: _busy ? null : () => _send(command),
-      style: OutlinedButton.styleFrom(foregroundColor: kCyan, side: BorderSide(color: kCyan.withValues(alpha: .3)), padding: const EdgeInsets.symmetric(horizontal: 10), visualDensity: VisualDensity.compact),
-      child: Text(label, style: const TextStyle(fontSize: 9)),
-    ),
-  );
-
-  Widget _menuItem(IconData icon, String label, VoidCallback action) => ListTile(
-    dense: true,
-    leading: Icon(icon, size: 19, color: kCyan),
-    title: Text(label, style: const TextStyle(fontSize: 13)),
-    onTap: () {
-      Navigator.pop(context);
-      action();
-    },
-  );
-
-  void _openMenuScreen(Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
-  }
-
-  void _sendFromMenu(String command) {
-    _send(command);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -832,65 +801,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(_status, style: const TextStyle(fontSize: 12))),
       ]);
 
-  Widget _sidePanel({required bool right}) {
-    final items = right
-      ? <({IconData icon, String label, String command})>[
-          (icon: Icons.currency_bitcoin, label: 'Криптоцентр', command: '__crypto__'),
-          (icon: Icons.trending_up, label: 'Цены рынка', command: 'цены BTC ETH SOL XRP'),
-          (icon: Icons.analytics, label: 'RSI / SMA', command: 'технический анализ BTC RSI SMA'),
-          (icon: Icons.candlestick_chart, label: 'Funding / OI', command: 'BTC funding open interest'),
-          (icon: Icons.query_stats, label: 'CoinGlass', command: 'CoinGlass ликвидации BTC CVD long short'),
-        ]
-      : <({IconData icon, String label, String command})>[
-          (icon: Icons.mic, label: 'Голос', command: '__voice__'),
-          (icon: Icons.settings, label: 'Настройки AI', command: '__settings__'),
-          (icon: Icons.wifi, label: 'Проверить AI', command: '__connect__'),
-        ];
-    return Container(
-      decoration: BoxDecoration(color: const Color(0xFF070D16), border: Border(right: BorderSide(color: kCyan.withValues(alpha: .16)), left: BorderSide(color: kCyan.withValues(alpha: .16)))),
-      child: SafeArea(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10), children: [
-        Text(right ? 'ИНСТРУМЕНТЫ' : 'СИСТЕМА', textAlign: TextAlign.center, style: const TextStyle(color: kCyan, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1)),
-        const SizedBox(height: 8),
-        if (!right) ...[
-          _sideStatus('CORE', _busy ? 'THINKING' : 'READY', _busy ? Colors.amberAccent : Colors.lightGreenAccent),
-          _sideStatus('AI', _jarvis == null ? 'OFFLINE' : 'ONLINE', _jarvis == null ? Colors.redAccent : Colors.lightGreenAccent),
-          _sideStatus('VOICE', _voiceRunning ? 'LIVE' : 'STANDBY', _voiceRunning ? Colors.greenAccent : Colors.white54),
-          const Divider(color: kCyan),
-        ],
-        ...items.map((item) => Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: OutlinedButton(
-            onPressed: () {
-              switch (item.command) {
-                case '__crypto__': Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisCryptoScreen())); break;
-                case '__voice__': _toggleVoice(); break;
-                case '__settings__': _settings(); break;
-                case '__connect__': _connectAndroid(); break;
-                default: _send(item.command);
-              }
-            },
-            style: OutlinedButton.styleFrom(foregroundColor: kCyan, side: BorderSide(color: kCyan.withValues(alpha: .22)), padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 9), alignment: Alignment.centerLeft),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(item.icon, size: 17),
-              const SizedBox(height: 4),
-              Text(item.label, style: const TextStyle(fontSize: 9), maxLines: 2, overflow: TextOverflow.ellipsis),
-            ]),
-          ),
-        )),
-      ])),
-    );
-  }
-
-  Widget _sideStatus(String title, String value, Color color) => Container(
-    margin: const EdgeInsets.only(bottom: 7),
-    padding: const EdgeInsets.all(7),
-    decoration: BoxDecoration(color: kPanel, border: Border.all(color: color.withValues(alpha: .2)), borderRadius: BorderRadius.circular(5)),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: const TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1)),
-      const SizedBox(height: 3),
-      Text(value, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
-    ]),
-  );
 }
 
 class JarvisHomePage extends StatefulWidget {
