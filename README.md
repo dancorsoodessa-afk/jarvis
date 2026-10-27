@@ -4,32 +4,28 @@ Personal AI Agent / Desktop Assistant for Windows x64.
 
 ## Android
 
-The Android client is a standalone Flutter application. It connects directly to an OpenAI-compatible AI endpoint and does not depend on the Windows process or Windows IPC.
+The Android client is a standalone Flutter application. It connects directly to an OpenAI-compatible cloud endpoint and does not depend on the Windows process.
 
 Android capabilities:
-- text chat;
-- direct OpenRouter connection;
-- free DeepSeek V4 Flash coding-capable model by default;
-- persistent endpoint, model and API-key settings;
-- Russian microphone voice input;
-- automatic wake phrase `Джарвис` while the app is active;
-- Russian text-to-speech responses;
+- text chat with configurable primary and fallback AI endpoints;
+- Groq as the default provider, using the `openai/gpt-oss-20b` model;
+- editable and persistent endpoint, model and API-key settings;
+- Russian speech recognition and Russian text-to-speech;
+- microphone listening starts when the user taps the mic button, avoiding native speech-service initialization during app startup;
 - animated JARVIS reactor with idle, listening, thinking, speaking, confirmation and error states;
-- release APK built by GitHub Actions.
+- release APK built by GitHub Actions with APK signature, zip alignment, Internet/microphone permission and SHA-256 checks.
 
-### Free DeepSeek model for Android
+### Configure Android AI
 
-The Android build uses this OpenRouter model by default:
+Default endpoint:
 
-`deepseek/deepseek-v4-flash:free`
+`https://api.groq.com/openai/v1`
 
-OpenRouter currently lists this model as free and describes it as suitable for coding assistants, chat systems and agent workflows.
+Default model:
 
-Endpoint:
+`openai/gpt-oss-20b`
 
-`https://openrouter.ai/api/v1`
-
-In JARVIS Android settings, enter the OpenRouter API key and keep the model set to `deepseek/deepseek-v4-flash:free`. The model is accessed through OpenRouter; it is not bundled inside the APK.
+Create a Groq API key and enter it in JARVIS Settings. The model is accessed through the cloud and is not bundled inside the APK. An optional OpenAI-compatible fallback endpoint can be configured separately. Hugging Face and OpenRouter are not used by the Android configuration.
 
 The Android build is intentionally isolated from the Windows executable build.
 
