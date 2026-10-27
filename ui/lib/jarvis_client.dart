@@ -271,7 +271,7 @@ class JarvisIpc {
         final transient = RegExp(r'HTTP (408|429|500|502|503|504)').hasMatch(e.toString()) ||
             e is SocketException || e is TimeoutException ||
             e.toString().contains('Connection closed');
-        if (!transient || attempt >= 3) rethrow;
+        if (!transient || attempt >= 1) rethrow;
         await Future.delayed(Duration(seconds: 1 << attempt));
       }
     }
@@ -282,8 +282,8 @@ class JarvisIpc {
       final request = await _httpClient!.getUrl(Uri.parse('$base/models'));
       final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
       h.forEach(request.headers.set);
-      final response = await request.close();
-      final body = await utf8.decoder.bind(response).join();
+      final response = await request.close().timeout(const Duration(seconds: 25));
+      final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 25));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw StateError('$label: ${_error(response.statusCode, body)}');
       }
@@ -385,8 +385,7 @@ class JarvisIpc {
       {'role': 'user', 'content': text},
     ];
     return _retryTransient(() async {
-      final request =
-          await _httpClient!.postUrl(Uri.parse('$base/chat/completions'));
+      final request = await _httpClient!.postUrl(Uri.parse('$base/chat/completions')).timeout(const Duration(seconds: 20));
       _headers(key).forEach(request.headers.set);
       final bytes = utf8.encode(
         jsonEncode({'model': selected, 'messages': messages, 'stream': false}),
