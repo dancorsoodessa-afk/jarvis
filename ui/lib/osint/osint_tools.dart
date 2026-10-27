@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 class JarvisOsint {
  static Future<String> lookup(String kind,String value) async {
@@ -126,7 +127,7 @@ class JarvisOsint {
       'Content-Type: ${response.headers.contentType??'—'}',
       'Размер файла: ${data.length} байт','Формат: ${isJpeg?'JPEG':isPng?'PNG':'не определён'}',
       'Ширина: $width px','Высота: $height px','EXIF-блок: ${hasExif?'обнаружен':'не обнаружен'}',
-      'SHA-256: ${sha256.convert(data)}'].join('\\n');
+      'SHA-256: ${sha256.convert(data)}'].join('\n');
    }
    if(kind=='URL / TLS'){
     final u=Uri.tryParse(input.contains('://')?input:'https://$input');
