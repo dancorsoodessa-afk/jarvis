@@ -126,6 +126,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           }
         },
         debugLogging: false,
+        options: const [stt.SpeechToText.androidAlwaysUseStop],
       );
       if (!available) throw StateError('Распознавание речи недоступно на устройстве');
       await _tts.setLanguage('ru-RU');
@@ -196,7 +197,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       await Future<void>.delayed(const Duration(milliseconds: 250));
       await _speech.listen(
         onResult: _onSpeechResult,
-        options: stt.SpeechListenOptions(
+        listenOptions: stt.SpeechListenOptions(
           listenFor: const Duration(minutes: 1),
           pauseFor: const Duration(seconds: 4),
           partialResults: true,
