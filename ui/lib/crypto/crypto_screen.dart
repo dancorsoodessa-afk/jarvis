@@ -17,14 +17,16 @@ class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
  final _passphrase=TextEditingController();
  final _instrument=TextEditingController(text:'BTC-USDT');
  final _orderSize=TextEditingController();
+ final _orderPrice=TextEditingController();
  String _orderSide='buy';
+ String _orderType='market';
  List<Map<String,dynamic>> _balance=const [];
  String _accountStatus='Подключите API OKX с разрешениями Read и Trade; вывод средств не нужен.';
  String _orderStatus='Ордер не отправлялся.';
  Map<String,dynamic> _coinglass=const {};
  String _cgStatus='CoinGlass требует отдельный API key; публичные данные OKX доступны без ключа.';
  @override void initState(){super.initState(); WidgetsBinding.instance.addPostFrameCallback((_) { if(mounted) _refresh(); });}
- @override void dispose(){_coinglassKey.dispose();_apiKey.dispose();_secretKey.dispose();_passphrase.dispose();_instrument.dispose();_orderSize.dispose();super.dispose();}
+ @override void dispose(){_coinglassKey.dispose();_apiKey.dispose();_secretKey.dispose();_passphrase.dispose();_instrument.dispose();_orderSize.dispose();_orderPrice.dispose();super.dispose();}
  Future<void> _loadCoinGlass() async {
   if(_coinglassKey.text.trim().isEmpty){setState(()=>_cgStatus='Введите CoinGlass API key.');return;}
   setState(() { _cgLoading=true; _cgStatus='Загрузка CoinGlass…'; });
@@ -64,9 +66,9 @@ class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
   if(accepted!=true||!mounted)return;
   setState(() {_orderLoading=true;_orderStatus='Отправляю ордер на OKX…';});
   try {
-   final result=await JarvisCrypto.placeSpotMarketOrder(
+   final result=await JarvisCrypto.placeSpotOrder(
     apiKey:_apiKey.text.trim(),secret:_secretKey.text,passphrase:_passphrase.text,
-    instrument:instrument,side:_orderSide,size:size,
+    instrument:instrument,side:_orderSide,size:size,orderType:_orderType,price:price,
    );
    if(mounted)setState(()=>_orderStatus='Ответ OKX: ordId=${result['ordId']??'не указан'}, clOrdId=${result['clOrdId']??'—'}, sCode=${result['sCode']??'—'}');
   } catch(e) {if(mounted)setState(()=>_orderStatus='Ошибка ордера: $e');}
@@ -114,10 +116,13 @@ class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
      return _row(currency.toString(),'Доступно: $available · Всего: $total');
     }).toList();
    }),
-   _section('ВЫСТАВЛЕНИЕ ОРДЕРА · SPOT MARKET'),
+   _section('ВЫСТАВЛЕНИЕ ОРДЕРА · SPOT'),
    TextField(controller:_instrument,autocorrect:false,decoration:const InputDecoration(labelText:'Инструмент (например BTC-USDT)',border:OutlineInputBorder())),
    const SizedBox(height:8),
    DropdownButtonFormField<String>(value:_orderSide,decoration:const InputDecoration(labelText:'Сторона ордера',border:OutlineInputBorder()),items:const [DropdownMenuItem(value:'buy',child:Text('Покупка (BUY)')),DropdownMenuItem(value:'sell',child:Text('Продажа (SELL)'))],onChanged:(value){if(value!=null)setState(()=>_orderSide=value);}),
+   const SizedBox(height:8),
+   DropdownButtonFormField<String>(value:_orderType,decoration:const InputDecoration(labelText:'Тип ордера',border:OutlineInputBorder()),items:const [DropdownMenuItem(value:'market',child:Text('Рыночный (MARKET)')),DropdownMenuItem(value:'limit',child:Text('Лимитный (LIMIT)'))],onChanged:(value){if(value!=null)setState(()=>_orderType=value);}),
+   if(_orderType=='limit') ...[const SizedBox(height:8),TextField(controller:_orderPrice,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Лимитная цена',border:OutlineInputBorder()))],
    const SizedBox(height:8),
    TextField(controller:_orderSize,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Размер в базовой валюте (BTC, ETH и т. п.)',border:OutlineInputBorder())),
    const SizedBox(height:8),
