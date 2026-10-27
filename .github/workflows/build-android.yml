@@ -115,11 +115,19 @@ jobs:
           package com.dancorsoodessa.jarvis_ui
 
           import android.app.ActivityManager
+          import android.content.ContentValues
           import android.content.Context
           import android.content.Intent
           import android.content.pm.PackageManager
+          import android.graphics.Bitmap
+          import android.net.Uri
           import android.media.AudioManager
           import android.os.Build
+          import android.os.Environment
+          import android.os.Handler
+          import android.os.Looper
+          import android.view.PixelCopy
+          import android.provider.MediaStore
           import android.os.Process
           import io.flutter.embedding.android.FlutterActivity
           import io.flutter.embedding.engine.FlutterEngine
@@ -168,6 +176,59 @@ jobs:
                                           startActivity(launch)
                                           result.success(true)
                                       }
+                                  }
+                              }
+                              "openUrl" -> {
+                                  val rawUrl = call.argument<String>("url")
+                                  val uri = try { Uri.parse(rawUrl) } catch (_: Exception) { null }
+                                  if (uri == null || uri.host.isNullOrBlank() || (uri.scheme != "https" && uri.scheme != "http")) {
+                                      result.error("INVALID_URL", "Нужен корректный HTTP/HTTPS URL", null)
+                                  } else {
+                                      try {
+                                          startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                          result.success(true)
+                                      } catch (error: Exception) {
+                                          result.error("OPEN_URL_FAILED", error.message, null)
+                                      }
+                                  }
+                              }
+                              "captureScreenshot" -> {
+                                  if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                                      result.error("SCREENSHOT_UNSUPPORTED", "Снимок экрана требует Android 8 или новее", null)
+                                  } else {
+                                      val view = window.decorView
+                                      val bitmap = Bitmap.createBitmap(view.width.coerceAtLeast(1), view.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+                                      PixelCopy.request(window, bitmap, { copyResult ->
+                                          if (copyResult != PixelCopy.SUCCESS) {
+                                              bitmap.recycle()
+                                              result.error("SCREENSHOT_FAILED", "PixelCopy завершился с кодом $copyResult", null)
+                                          } else {
+                                              try {
+                                                  val values = ContentValues().apply {
+                                                      put(MediaStore.Images.Media.DISPLAY_NAME, "JARVIS_${System.currentTimeMillis()}.png")
+                                                      put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                                                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                                          put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/JARVIS")
+                                                      }
+                                                  }
+                                                  val imageUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                                                  if (imageUri == null) {
+                                                      result.error("SCREENSHOT_SAVE_FAILED", "Не удалось создать запись изображения", null)
+                                                  } else {
+                                                      val output = contentResolver.openOutputStream(imageUri)
+                                                      if (output == null) result.error("SCREENSHOT_SAVE_FAILED", "Не удалось открыть файл изображения", null)
+                                                      else {
+                                                          output.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                                                          result.success(imageUri.toString())
+                                                      }
+                                                  }
+                                              } catch (error: Exception) {
+                                                  result.error("SCREENSHOT_SAVE_FAILED", error.message, null)
+                                              } finally {
+                                                  bitmap.recycle()
+                                              }
+                                          }
+                                      }, Handler(Looper.getMainLooper()))
                                   }
                               }
                               "getVolume" -> {
