@@ -602,28 +602,22 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('JARVIS'), actions: [if (_android) IconButton(tooltip: 'Криптоинструменты', onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisCryptoScreen())), icon: const Icon(Icons.currency_bitcoin, color: kCyan)), if (_android) IconButton(onPressed: _settings, icon: const Icon(Icons.settings))]),
+      appBar: AppBar(title: const Text('JARVIS'), actions: [if (_android) IconButton(onPressed: _settings, tooltip: 'Настройки AI', icon: const Icon(Icons.settings))]),
       drawer: _android ? Drawer(backgroundColor: kBg, child: SafeArea(child: ListView(padding: const EdgeInsets.all(14), children: [
         const Text('J.A.R.V.I.S  /  COMMAND CENTER', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
         const Divider(color: kCyan),
         ListTile(leading: const Icon(Icons.dashboard, color: kCyan), title: const Text('Главный экран'), onTap: () => Navigator.pop(context)),
         ListTile(leading: const Icon(Icons.currency_bitcoin, color: kCyan), title: const Text('Криптоинструменты'), onTap: () { Navigator.pop(context); Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisCryptoScreen())); }),
         ListTile(leading: const Icon(Icons.travel_explore, color: kCyan), title: const Text('OSINT-разведка'), subtitle: const Text('Домены · IP/ASN · URL'), onTap: () { Navigator.pop(context); Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisOsintScreen())); }),
-        ListTile(leading: const Icon(Icons.trending_up, color: kCyan), title: const Text('Цена BTC / ETH / SOL / XRP'), onTap: () { Navigator.pop(context); _send('цены BTC ETH SOL XRP'); }),
-        ListTile(leading: const Icon(Icons.analytics, color: kCyan), title: const Text('Технический анализ BTC'), onTap: () { Navigator.pop(context); _send('технический анализ BTC RSI SMA'); }),
-        ListTile(leading: const Icon(Icons.candlestick_chart, color: kCyan), title: const Text('Funding и Open Interest'), onTap: () { Navigator.pop(context); _send('BTC funding open interest'); }),
+        const Padding(padding: EdgeInsets.fromLTRB(12, 12, 12, 4), child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: kCyan, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2))),
+        ListTile(leading: const Icon(Icons.trending_up, color: kCyan), title: const Text('Цены рынка'), subtitle: const Text('BTC · ETH · SOL · XRP'), onTap: () { Navigator.pop(context); _send('цены BTC ETH SOL XRP'); }),
+        ListTile(leading: const Icon(Icons.analytics, color: kCyan), title: const Text('Технический анализ'), subtitle: const Text('RSI · SMA · BTC'), onTap: () { Navigator.pop(context); _send('технический анализ BTC RSI SMA'); }),
+        ListTile(leading: const Icon(Icons.candlestick_chart, color: kCyan), title: const Text('Funding / Open Interest'), onTap: () { Navigator.pop(context); _send('BTC funding open interest'); }),
+        ListTile(leading: const Icon(Icons.query_stats, color: kCyan), title: const Text('CoinGlass'), subtitle: const Text('Ликвидации · CVD · Long/Short'), onTap: () { Navigator.pop(context); _send('CoinGlass ликвидации BTC CVD long short'); }),
         ListTile(leading: const Icon(Icons.mic, color: kCyan), title: const Text('Голос'), onTap: () { Navigator.pop(context); _toggleVoice(); }),
         ListTile(leading: const Icon(Icons.settings, color: kCyan), title: const Text('Настройки AI'), onTap: () { Navigator.pop(context); _settings(); }),
       ]))) : null,
-      body: LayoutBuilder(builder: (context, constraints) {
-        final wide = _android && constraints.maxWidth >= 760;
-        if (!wide) return _mainContent();
-        return Row(children: [
-          SizedBox(width: 132, child: _sidePanel(right: false)),
-          Expanded(child: _mainContent(compact: true)),
-          SizedBox(width: 142, child: _sidePanel(right: true)),
-        ]);
-      }),
+      body: _mainContent(),
     );
   }
 
@@ -643,9 +637,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             const SizedBox(height: 3),
             Text(switch (_visualState) { JarvisVisualState.listening => 'СЛУШАЮ', JarvisVisualState.thinking => 'ОБРАБАТЫВАЮ ЗАПРОС', JarvisVisualState.speaking => 'ОТВЕЧАЮ', JarvisVisualState.confirmation => 'ГОТОВО', JarvisVisualState.error => 'ОШИБКА', _ => 'СИСТЕМА ОЖИДАЕТ' }, style: const TextStyle(color: Colors.white70, fontSize: 9, letterSpacing: 2)),
           ])),
-        ])),
-        SizedBox(height: compact ? 30 : 34, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
-          _quickTool('BTC', 'цена BTC'), _quickTool('RSI / SMA', 'технический анализ BTC RSI SMA'), _quickTool('Funding', 'BTC funding open interest'), _quickTool('Ликвидации', 'CoinGlass ликвидации BTC CVD long short'), _quickTool('Все рынки', 'цены BTC ETH SOL XRP'),
         ])),
         if (_showCryptoDashboard) ...[
           Padding(padding: const EdgeInsets.fromLTRB(10, 6, 10, 2), child: Row(children: [
