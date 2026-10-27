@@ -243,6 +243,21 @@ class JarvisIpc {
   }
 
   String _error(int code, String body) {
+    if (code == 429) {
+      String detail = '';
+      try {
+        final j = jsonDecode(body);
+        if (j is Map) {
+          final e = j['error'];
+          if (e is Map) detail = e['message']?.toString() ?? '';
+          if (detail.isEmpty) detail = j['message']?.toString() ?? '';
+        }
+      } catch (_) {}
+      final quota = RegExp(r'quota|rate.?limit|resource.?exhausted|billing|limit', caseSensitive: false).hasMatch('$detail $body');
+      return quota
+          ? 'HTTP 429: Google Gemini ограничил запросы или исчерпана квота. Проверь лимиты/биллинг в Google AI Studio и подожди сброса квоты. JARVIS не будет повторять этот запрос автоматически.'
+          : 'HTTP 429: слишком много запросов к AI. Подожди немного и повтори один раз вручную.';
+    }
     try {
       final j = jsonDecode(body);
       if (j is Map) {
@@ -264,7 +279,7 @@ class JarvisIpc {
       try {
         return await action();
       } catch (e) {
-        final transient = RegExp(r'HTTP (408|429|500|502|503|504)').hasMatch(e.toString()) ||
+        final transient = RegExp(r'HTTP (408|500|502|503|504)').hasMatch(e.toString()) ||
             e is SocketException || e is TimeoutException ||
             e.toString().contains('Connection closed');
         if (!transient || attempt >= 1) rethrow;
@@ -410,7 +425,7 @@ class JarvisIpc {
   bool _retryable(Object e) {
     final s = e.toString();
     return RegExp(
-          r'HTTP (400|401|402|403|404|408|409|425|429|500|502|503|504)',
+          r'HTTP (400|401|402|403|404|408|409|425|500|502|503|504)',
         ).hasMatch(s) ||
         s.contains('SocketException') ||
         s.contains('TimeoutException') ||
