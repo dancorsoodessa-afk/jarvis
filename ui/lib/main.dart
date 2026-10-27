@@ -929,7 +929,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             Text(switch (_visualState) { JarvisVisualState.listening => 'СЛУШАЮ', JarvisVisualState.thinking => 'ОБРАБАТЫВАЮ ЗАПРОС', JarvisVisualState.speaking => 'ОТВЕЧАЮ', JarvisVisualState.confirmation => 'ГОТОВО', JarvisVisualState.error => 'ОШИБКА', _ => 'СИСТЕМА ОЖИДАЕТ' }, style: const TextStyle(color: Colors.white70, fontSize: 9, letterSpacing: 2)),
           ])),
         ])),
-        if (_android) const JarvisTradingChartPanel(onForecast: (prompt) async {
+        if (_android) JarvisTradingChartPanel(onForecast: (prompt) async {
           await _initVoice();
           await _send(prompt, speakReply: true);
         }),
