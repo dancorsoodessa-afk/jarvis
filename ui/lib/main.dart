@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'jarvis_client.dart';
+import 'crypto_tools.dart';
 import 'jarvis_reactor.dart';
 
 const kCyan = Color(0xFF37D5EE);
@@ -455,7 +456,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('JARVIS'), actions: [if (_android) IconButton(onPressed: _settings, icon: const Icon(Icons.settings))]),
+      appBar: AppBar(title: const Text('JARVIS'), actions: [if (_android) IconButton(tooltip: 'Криптоинструменты', onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisCryptoScreen())), icon: const Icon(Icons.currency_bitcoin, color: kCyan)), if (_android) IconButton(onPressed: _settings, icon: const Icon(Icons.settings))]),
       body: Column(children: [
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0), itemBuilder: (context, index) {
           if (_streamText.isNotEmpty && index == _messages.length) return Align(alignment: Alignment.centerLeft, child: Text(_streamText));
