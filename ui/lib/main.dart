@@ -12,9 +12,9 @@ import 'jarvis_reactor.dart';
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
-const kFreeModel = 'llama-3.3-70b-versatile';
-const kGroqEndpoint = 'https://api.groq.com/openai/v1';
-const kDefaultEndpoint = 'https://api.groq.com/openai/v1';
+const kFreeModel = 'gemini-2.5-flash';
+const kGeminiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/openai';
+const kDefaultEndpoint = kGeminiEndpoint;
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -222,10 +222,10 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       final prefs = await SharedPreferences.getInstance();
       final savedEndpoint = prefs.getString('endpoint')?.trim() ?? '';
       final savedModel = prefs.getString('model')?.trim() ?? '';
-      final useGroqDefaults = savedEndpoint.isEmpty ||
+      final useGeminiDefaults = savedEndpoint.isEmpty ||
           (savedEndpoint == kDefaultEndpoint &&
-              (savedModel.isEmpty || savedModel == 'gpt-4o-mini'));
-      _endpoint.text = useGroqDefaults ? kGroqEndpoint : savedEndpoint;
+              (savedModel.isEmpty || savedModel == 'gpt-4o-mini' || savedModel == 'llama-3.3-70b-versatile'));
+      _endpoint.text = useGeminiDefaults ? kGeminiEndpoint : savedEndpoint;
       _model.text = useGroqDefaults ? kFreeModel : (savedModel.isEmpty ? kFreeModel : savedModel);
       _apiKey.text = _cleanApiKey(prefs.getString('api_key') ?? '');
       _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? '';
@@ -236,7 +236,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       // error handling runs. Initialize voice only after the user taps the mic.
       if (!mounted) return;
       if (_apiKey.text.isEmpty) {
-        setState(() => _status = 'Введите API key Groq в настройках');
+        setState(() => _status = 'Введите API key Gemini в настройках');
       } else {
         await _connectAndroid();
       }
@@ -269,7 +269,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final model = _model.text.trim();
     final key = _apiKey.text.trim();
     if (endpoint.isEmpty || key.isEmpty) {
-      if (mounted) setState(() => _status = 'Введите API key Groq в настройках');
+      if (mounted) setState(() => _status = 'Введите API key Gemini в настройках');
       _setVisual(JarvisVisualState.error);
       return;
     }
@@ -332,9 +332,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Align(alignment: Alignment.centerLeft, child: Text('Основной AI', style: TextStyle(fontWeight: FontWeight.bold))),
-          TextField(controller: _endpoint, enabled: true, readOnly: false, enableInteractiveSelection: true, autocorrect: false, maxLines: 1, keyboardType: TextInputType.url, decoration: InputDecoration(labelText: 'AI URL', hintText: 'https://api.groq.com/openai/v1', suffixIcon: IconButton(tooltip: 'Очистить адрес', onPressed: () => _endpoint.clear(), icon: const Icon(Icons.clear)))),
+          TextField(controller: _endpoint, enabled: true, readOnly: false, enableInteractiveSelection: true, autocorrect: false, maxLines: 1, keyboardType: TextInputType.url, decoration: InputDecoration(labelText: 'AI URL', hintText: 'https://generativelanguage.googleapis.com/v1beta/openai', suffixIcon: IconButton(tooltip: 'Очистить адрес', onPressed: () => _endpoint.clear(), icon: const Icon(Icons.clear)))),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'llama-3.3-70b-versatile')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'gemini-2.5-flash')),
           const SizedBox(height: 12),
           const Align(alignment: Alignment.centerLeft, child: Text('Резервный AI · при 429/5xx/сбое', style: TextStyle(fontWeight: FontWeight.bold))),
           TextField(controller: _fallbackEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Резервный AI URL')),
@@ -458,6 +458,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     return Scaffold(
       appBar: AppBar(title: const Text('JARVIS'), actions: [if (_android) IconButton(tooltip: 'Криптоинструменты', onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisCryptoScreen())), icon: const Icon(Icons.currency_bitcoin, color: kCyan)), if (_android) IconButton(onPressed: _settings, icon: const Icon(Icons.settings))]),
       body: Column(children: [
+        SizedBox(height: 220, width: double.infinity, child: JarvisReactor(color: switch (_visualState) { JarvisVisualState.listening => Colors.greenAccent, JarvisVisualState.thinking => Colors.amberAccent, JarvisVisualState.speaking => Colors.cyanAccent, JarvisVisualState.confirmation => Colors.lightGreenAccent, JarvisVisualState.error => Colors.redAccent, _ => kCyan }, state: _visualState)),
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0), itemBuilder: (context, index) {
           if (_streamText.isNotEmpty && index == _messages.length) return Align(alignment: Alignment.centerLeft, child: Text(_streamText));
           final m = _messages[index];
