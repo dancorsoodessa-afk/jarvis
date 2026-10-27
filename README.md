@@ -8,7 +8,7 @@ The Android client is a standalone Flutter application. It connects directly to 
 
 Android capabilities:
 - text chat with configurable primary and fallback AI endpoints;
-- Groq as the default provider, using the `openai/gpt-oss-20b` model;
+- Gemini OpenAI-compatible endpoint configured by default; API key must be supplied by the user;
 - editable and persistent endpoint, model and API-key settings;
 - Russian speech recognition and Russian text-to-speech;
 - microphone listening starts when the user taps the mic button, avoiding native speech-service initialization during app startup;
@@ -19,13 +19,19 @@ Android capabilities:
 
 Default endpoint:
 
-`https://api.groq.com/openai/v1`
+`https://generativelanguage.googleapis.com/v1beta/openai/`
 
-Default model:
+Default model configured in the app: `gemini-3.8-flash`. Confirm model availability for your Google account in AI Studio before use.
 
-`openai/gpt-oss-20b`
+Create a Gemini API key in Google AI Studio and enter it in JARVIS Settings. The model is accessed through the cloud and is not bundled inside the APK. An optional OpenAI-compatible fallback endpoint can be configured separately. Hugging Face and OpenRouter are not used by the Android configuration.
 
-Create a Groq API key and enter it in JARVIS Settings. The model is accessed through the cloud and is not bundled inside the APK. An optional OpenAI-compatible fallback endpoint can be configured separately. Hugging Face and OpenRouter are not used by the Android configuration.
+### Tool modules
+
+- `ui/crypto/` — separate crypto center, OKX public market data, indicators and optional CoinGlass endpoints. See its README for limitations.
+- `ui/osint/` — separate OSINT screen and service layer for domain/RDAP/DNS, IP/ASN and URL/HTTP lookups. See its README for limitations.
+- `agent/tools/osint.py` — Windows/backend OSINT helpers, including domain, IP, URL, email, username and image metadata lookups.
+
+Crypto and OSINT are separate navigation entries; these modules must not be presented as private exchange trading or as guaranteed security verification.
 
 The Android build is intentionally isolated from the Windows executable build.
 
