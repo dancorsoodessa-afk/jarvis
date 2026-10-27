@@ -179,14 +179,10 @@ class JarvisIpc {
 
     final client = HttpClient();
     client.connectionTimeout = const Duration(seconds: 15);
-    client.idleTimeout = const Duration(seconds: 90);
-    client.findProxy = (_) => 'DIRECT';
-    client.connectionFactory = (uri, proxyHost, proxyPort) {
-      final future = _connectWithoutSystemDns(uri);
-      return Future<ConnectionTask<Socket>>.value(
-        ConnectionTask.fromSocket(future, () {}),
-      );
-    };
+    client.idleTimeout = const Duration(seconds: 30);
+    // Use Android's normal resolver and TLS/socket handling. The previous
+    // custom DNS-over-HTTPS socket factory bypassed platform networking and
+    // could abort otherwise valid HTTPS requests on mobile networks.
 
     return JarvisIpc._(
       client: client,
@@ -392,8 +388,8 @@ class JarvisIpc {
       );
       request.contentLength = bytes.length;
       request.add(bytes);
-      final response = await request.close();
-      final body = await utf8.decoder.bind(response).join();
+      final response = await request.close().timeout(const Duration(seconds: 25));
+      final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 25));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw StateError(_error(response.statusCode, body));
       }
