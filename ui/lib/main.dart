@@ -12,8 +12,8 @@ import 'jarvis_reactor.dart';
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
-const kFreeModel = 'gemini-2.5-flash';
-const kGeminiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/openai';
+const kFreeModel = 'gemini-3.8-flash';
+const kGeminiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 const kDefaultEndpoint = kGeminiEndpoint;
 
 void main() {
@@ -247,7 +247,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       final savedModel = prefs.getString('model')?.trim() ?? '';
       final useGeminiDefaults = savedEndpoint.isEmpty ||
           (savedEndpoint == kDefaultEndpoint &&
-              (savedModel.isEmpty || savedModel == 'gpt-4o-mini' || savedModel == 'llama-3.3-70b-versatile'));
+              (savedModel.isEmpty || savedModel == 'gpt-4o-mini' || savedModel == 'llama-3.3-70b-versatile' || savedModel == 'gemini-2.5-flash'));
       _endpoint.text = useGeminiDefaults ? kGeminiEndpoint : savedEndpoint;
       _model.text = useGeminiDefaults ? kFreeModel : (savedModel.isEmpty ? kFreeModel : savedModel);
       _apiKey.text = _cleanApiKey(prefs.getString('api_key') ?? '');
