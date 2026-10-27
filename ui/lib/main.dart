@@ -156,6 +156,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _voiceStarting = true;
     try {
       await _speech.stop();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
       await _speech.listen(
         onResult: _onSpeechResult,
         listenFor: const Duration(minutes: 1),
@@ -633,7 +634,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           _hudPill('VOICE', _voiceRunning ? 'LISTENING' : (_voiceReady ? 'READY' : 'STANDBY'), _voiceRunning ? Colors.greenAccent : Colors.white54),
           _hudPill('CRYPTO', 'OKX PUBLIC DATA', kCyan),
         ])),
-        Container(height: compact ? 190 : 272, margin: const EdgeInsets.fromLTRB(10, 3, 10, 4), decoration: BoxDecoration(color: const Color(0xFF050912), border: Border.all(color: kCyan.withValues(alpha: .25)), borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: kCyan.withValues(alpha: .06), blurRadius: 22)]), child: Stack(children: [
+        Container(height: compact ? 120 : 175, margin: const EdgeInsets.fromLTRB(10, 3, 10, 4), decoration: BoxDecoration(color: const Color(0xFF050912), border: Border.all(color: kCyan.withValues(alpha: .25)), borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: kCyan.withValues(alpha: .06), blurRadius: 22)]), child: Stack(children: [
           Positioned.fill(child: JarvisReactor(color: switch (_visualState) { JarvisVisualState.listening => Colors.greenAccent, JarvisVisualState.thinking => Colors.amberAccent, JarvisVisualState.speaking => Colors.cyanAccent, JarvisVisualState.confirmation => Colors.lightGreenAccent, JarvisVisualState.error => Colors.redAccent, _ => kCyan }, state: _visualState)),
           const Positioned(top: 10, left: 12, child: Text('J.A.R.V.I.S', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 3, fontSize: 12))),
           Positioned(top: 10, right: 12, child: Text('LIVE NEURAL CORE', style: TextStyle(color: kCyan.withValues(alpha: .8), fontSize: 8, letterSpacing: 1.2))),
@@ -651,16 +652,16 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             const Expanded(child: Text('КРИПТОЦЕНТР · РАБОЧАЯ ПАНЕЛЬ', style: TextStyle(color: kCyan, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.bold))),
             TextButton(onPressed: () => setState(() => _showCryptoDashboard = false), child: const Text('Скрыть')),
           ])),
-          SizedBox(height: compact ? 220 : 300, child: const JarvisCryptoScreen()),
+          SizedBox(height: compact ? 160 : 220, child: const JarvisCryptoScreen()),
         ],
-        Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0), itemBuilder: (context, index) {
-          if (_streamText.isNotEmpty && index == _messages.length) return Align(alignment: Alignment.centerLeft, child: Text(_streamText));
+        Expanded(flex: 3, child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0), itemBuilder: (context, index) {
+          if (_streamText.isNotEmpty && index == _messages.length) return Align(alignment: Alignment.centerLeft, child: Text(_streamText, style: TextStyle(fontSize: compact ? 15 : 17, height: 1.35)));
           final m = _messages[index];
-          return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: m.isUser ? kPanel : kBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kCyan.withValues(alpha: 0.25))), child: Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Flexible(child: SelectableText(m.text)), if (!m.isUser) IconButton(onPressed: () { Clipboard.setData(ClipboardData(text: m.text)); setState(() => _status = 'Текст скопирован'); }, icon: const Icon(Icons.copy, size: 18))])));
+          return Align(alignment: m.isUser ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: m.isUser ? kPanel : kBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kCyan.withValues(alpha: 0.25))), child: Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Flexible(child: SelectableText(m.text, style: TextStyle(fontSize: compact ? 15 : 17, height: 1.35))), if (!m.isUser) IconButton(onPressed: () { Clipboard.setData(ClipboardData(text: m.text)); setState(() => _status = 'Текст скопирован'); }, icon: const Icon(Icons.copy, size: 18))])));
         })),
         if (_android && _heardText.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('🎙 $_heardText', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))),
         Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
-          Expanded(child: TextField(controller: _input, minLines: 2, maxLines: 5, textInputAction: TextInputAction.newline, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Введите команду или вопрос…', border: OutlineInputBorder()))),
+          Expanded(child: TextField(controller: _input, minLines: 2, maxLines: 4, textInputAction: TextInputAction.newline, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Введите команду или вопрос…', border: OutlineInputBorder()))),
           if (_android) IconButton(
             tooltip: _voiceRunning ? 'Остановить голос' : 'Включить голос',
             onPressed: _busy ? null : _toggleVoice,
