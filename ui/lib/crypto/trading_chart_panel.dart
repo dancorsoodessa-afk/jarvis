@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'crypto_tools.dart';
@@ -20,11 +21,22 @@ class _JarvisTradingChartPanelState extends State<JarvisTradingChartPanel> {
   String? _error;
   List<List<dynamic>> _candles = const [];
   DateTime? _updated;
+  Timer? _liveRefresh;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    // Keep the home-screen chart fresh without requiring manual taps.
+    _liveRefresh = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && !_loading) _refresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _liveRefresh?.cancel();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -110,7 +122,7 @@ class _JarvisTradingChartPanelState extends State<JarvisTradingChartPanel> {
         ]),
         if (_error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text('График: $_error', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.redAccent, fontSize: 10))),
         SizedBox(
-          height: 142,
+          height: 176,
           width: double.infinity,
           child: _candles.isEmpty
               ? Center(child: Text(_loading ? 'Загрузка свечей OKX…' : 'Нет рыночных данных', style: const TextStyle(color: Colors.white54, fontSize: 11)))
@@ -124,11 +136,23 @@ class _JarvisTradingChartPanelState extends State<JarvisTradingChartPanel> {
           _legend(_chartCyan, 'SMA20'),
         ]),
         Align(alignment: Alignment.centerLeft, child: Text(
-          'Вход ${fmt(last)} · SL ${fmt(stop)} · TP ${fmt(target)} · ${_updated == null ? 'нет обновления' : 'обновлено ${_updated!.hour.toString().padLeft(2, '0')}:${_updated!.minute.toString().padLeft(2, '0')}'}',
-          maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 9),
+          'План: вход ${fmt(last)} · стоп ${fmt(stop)} · цель ${fmt(target)}',
+          maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600),
+        )),
+        Align(alignment: Alignment.centerLeft, child: Text(
+          _updated == null ? 'Источник: OKX · ожидание данных' : 'OKX обновлено ${_updated!.hour.toString().padLeft(2, '0')}:${_updated!.minute.toString().padLeft(2, '0')} · автообновление 30 сек',
+          maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _chartCyan, fontSize: 9),
+        )),
+        Align(alignment: Alignment.centerLeft, child: Text(
+          signal == 'LONG'
+              ? 'Сигнал LONG: SMA20 выше SMA50; RSI подтверждает импульс.'
+              : signal == 'SHORT'
+                  ? 'Сигнал SHORT: SMA20 ниже SMA50; RSI подтверждает импульс.'
+                  : 'Нет согласованного сигнала: лучше ждать подтверждения.',
+          maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white60, fontSize: 9),
         )),
         const Align(alignment: Alignment.centerLeft, child: Text(
-          'Сигнал расчётный по SMA20/50 и RSI. SL/TP — ориентировочные уровни, не выставленные ордера и не гарантия результата.',
+          'Сигнал расчётный, не гарантия прогноза. Уровни SL/TP ориентировочные; ордера автоматически не выставляются.',
           maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white38, fontSize: 8),
         )),
       ]),
