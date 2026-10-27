@@ -16,8 +16,8 @@ class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
  @override void dispose(){_coinglassKey.dispose();super.dispose();}
  Future<void> _loadCoinGlass() async {
   if(_coinglassKey.text.trim().isEmpty){setState(()=>_cgStatus='Введите CoinGlass API key.');return;}
-  setState(()=>{_cgLoading=true,_cgStatus='Загрузка CoinGlass…'});
-  try {final data=await JarvisCrypto.coinglassSnapshot(apiKey:_coinglassKey.text.trim());if(mounted)setState(()=>{_coinglass=data,_cgStatus='CoinGlass: ответ получен'});}
+  setState(() { _cgLoading=true; _cgStatus='Загрузка CoinGlass…'; });
+  try {final data=await JarvisCrypto.coinglassSnapshot(apiKey:_coinglassKey.text.trim());if(mounted)setState(() { _coinglass=data; _cgStatus='CoinGlass: ответ получен'; });}
   catch(e){if(mounted)setState(()=>_cgStatus='Ошибка CoinGlass: $e');}
   finally{if(mounted)setState(()=>_cgLoading=false);}
  }
