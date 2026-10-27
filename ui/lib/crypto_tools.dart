@@ -197,7 +197,7 @@ class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
           return Card(child: ListTile(
             title: Text(t['instId']?.toString() ?? '—'),
             subtitle: Text('24 ч: ${_num(change)}'),
-            trailing: Text('\\$ ${_num(price, digits: price < 1 ? 5 : 2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            trailing: Text('\$ ${_num(price, digits: price < 1 ? 5 : 2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
           ));
         }),
         const SizedBox(height: 16),
