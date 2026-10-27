@@ -755,7 +755,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Future<void> _stopNativeVoiceSafely() async {
-    if (!_voiceReady) return;
+    if (!_voiceReady && !_ttsReady) return;
     try { await _speech.stop(); } catch (e) {
       debugPrint('JARVIS speech dispose failed: $e');
     }
