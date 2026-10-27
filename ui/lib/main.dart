@@ -6,9 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'jarvis_client.dart';
-import '../crypto/crypto_tools.dart';
-import '../crypto/crypto_screen.dart';
-import '../osint/osint_screen.dart';
+import 'crypto/crypto_tools.dart';
+import 'crypto/crypto_screen.dart';
+import 'osint/osint_screen.dart';
 import 'jarvis_reactor.dart';
 
 const kCyan = Color(0xFF37D5EE);
