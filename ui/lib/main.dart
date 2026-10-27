@@ -230,7 +230,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? '';
       _fallbackKey.text = _cleanApiKey(prefs.getString('fallback_key') ?? '');
       _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? '';
-      await _initVoice();
+      // Do not initialize native speech/TTS services during app startup.
+      // Some Android speech services can crash the native process before Dart
+      // error handling runs. Initialize voice only after the user taps the mic.
       if (!mounted) return;
       if (_apiKey.text.isEmpty) {
         setState(() => _status = 'Введите AI URL, API key и Model в Настройках');
