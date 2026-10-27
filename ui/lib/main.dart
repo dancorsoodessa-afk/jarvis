@@ -404,8 +404,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       builder: (ctx) => AlertDialog(
         title: const Text('Настройки микрофона'),
         content: Text(
-          'Состояние: ${_voiceReady ? "готов" : "не инициализирован"}\\n'
-          'Прослушивание: ${_voiceRunning ? "включено" : "выключено"}\\n'
+          'Состояние: ${_voiceReady ? "готов" : "не инициализирован"}\n'
+          'Прослушивание: ${_voiceRunning ? "включено" : "выключено"}\n'
           'Распознавание запускается только после нажатия кнопки микрофона.',
         ),
         actions: [
