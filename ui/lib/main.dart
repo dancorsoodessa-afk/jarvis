@@ -247,7 +247,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       final prefs = await SharedPreferences.getInstance();
       final savedEndpoint = prefs.getString('endpoint')?.trim() ?? '';
       final savedModel = prefs.getString('model')?.trim() ?? '';
-      final normalizedSavedEndpoint = savedEndpoint.replaceFirst(RegExp(r'/+
+      final useGeminiDefaults = savedEndpoint.isEmpty ||
+          (savedEndpoint == kDefaultEndpoint &&
+              (savedModel.isEmpty || savedModel == 'gpt-4o-mini' || savedModel == 'llama-3.3-70b-versatile' || savedModel == 'gemini-2.5-flash'));
       _endpoint.text = useGeminiDefaults ? kGeminiEndpoint : savedEndpoint;
       _model.text = useGeminiDefaults ? kFreeModel : (savedModel.isEmpty ? kFreeModel : savedModel);
       _apiKey.text = _cleanApiKey(prefs.getString('api_key') ?? '');
