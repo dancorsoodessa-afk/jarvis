@@ -44,9 +44,9 @@ jobs:
                   continue
               source = path.read_text(encoding="utf-8")
               updated = source
-              updated = re.sub(r'compileSdk\\s*=\\s*flutter\\.compileSdkVersion', 'compileSdk = 36', updated)
-              updated = re.sub(r'compileSdkVersion\\s+flutter\\.compileSdkVersion', 'compileSdkVersion 36', updated)
-              updated = re.sub(r'compileSdk\\s+flutter\\.compileSdkVersion', 'compileSdk 36', updated)
+              updated = re.sub(r'compileSdk\s*=\s*flutter\.compileSdkVersion', 'compileSdk = 36', updated)
+              updated = re.sub(r'compileSdkVersion\s+flutter\.compileSdkVersion', 'compileSdkVersion 36', updated)
+              updated = re.sub(r'compileSdk\s+flutter\.compileSdkVersion', 'compileSdk 36', updated)
               if updated != source:
                   path.write_text(updated, encoding="utf-8")
                   changed = True
