@@ -378,10 +378,91 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
   }
 
+  String _cryptoSymbol(String text) {
+    final t = text.toLowerCase();
+    if (RegExp(r'\\b(eth|ethereum)\\b|эфир|эфириум').hasMatch(t)) return 'ETH-USDT';
+    if (RegExp(r'\\b(sol|solana)\\b|солан').hasMatch(t)) return 'SOL-USDT';
+    if (RegExp(r'\\b(xrp)\\b|рипл').hasMatch(t)) return 'XRP-USDT';
+    return 'BTC-USDT';
+  }
+
+  Future<bool> _handleCryptoTool(String text) async {
+    if (!_android) return false;
+    final t = text.toLowerCase();
+    final isCrypto = RegExp(r'крипт|биткоин|bitcoin|\\bbtc\\b|эфир|эфириум|\\beth\\b|солан|\\bsol\\b|рипл|\\bxrp\\b|rsi|sma|фандинг|funding|открыт.{0,12}интерес|open interest|техническ.{0,12}анализ|индикатор').hasMatch(t);
+    if (!isCrypto) return false;
+    final symbol = _cryptoSymbol(text);
+    setState(() {
+      _messages.add(_Msg(text, isUser: true));
+      _busy = true;
+      _visualState = JarvisVisualState.thinking;
+      _status = 'Криптоинструмент · запрос к OKX…';
+    });
+    try {
+      String result;
+      if (RegExp(r'фандинг|funding|открыт.{0,12}интерес|open interest|\\boi\\b').hasMatch(t)) {
+        final inst = '${symbol.replaceAll('-USDT', '')}-USDT-SWAP';
+        final d = await JarvisCrypto.derivatives(symbol: inst);
+        final funding = d['funding'];
+        final oi = d['open_interest'];
+        result = '${symbol.replaceAll('-USDT', '')} · деривативы\\n'
+          'Funding rate: ${funding is Map ? funding['fundingRate'] ?? funding['funding_rate'] ?? 'нет данных' : 'нет данных'}\\n'
+          'Open interest: ${oi is Map ? oi['oi'] ?? oi['openInterest'] ?? oi['open_interest'] ?? 'нет данных' : 'нет данных'}';
+      } else if (RegExp(r'rsi|sma|индикатор|техническ.{0,12}анализ|свеч|график').hasMatch(t)) {
+        final candles = await JarvisCrypto.candles(symbol: symbol, timeframe: '1H', limit: 100);
+        final m = JarvisCrypto.indicators(candles);
+        String val(String key, {int digits = 2}) => m[key] == null ? 'недостаточно данных' : (m[key] as double).toStringAsFixed(digits);
+        result = '${symbol.replaceAll('-USDT', '')} · технические показатели (1H)\\n'
+          'Цена закрытия: ${val('last')} USDT\\n'
+          'Изменение: ${val('change_pct')}%\\n'
+          'SMA20: ${val('sma20')}\\nSMA50: ${val('sma50')}\\nRSI14: ${val('rsi14')}';
+      } else {
+        final symbols = RegExp(r'\\bbtc\\b|биткоин|bitcoin').hasMatch(t) ? ['BTC-USDT'] :
+          RegExp(r'\\beth\\b|эфир|эфириум').hasMatch(t) ? ['ETH-USDT'] :
+          RegExp(r'\\bsol\\b|солан').hasMatch(t) ? ['SOL-USDT'] :
+          RegExp(r'\\bxrp\\b|рипл').hasMatch(t) ? ['XRP-USDT'] :
+          ['BTC-USDT', 'ETH-USDT', 'SOL-USDT', 'XRP-USDT'];
+        final rows = await JarvisCrypto.tickers(symbols: symbols);
+        result = rows.map((row) {
+          final id = row['instId']?.toString() ?? 'актив';
+          final last = double.tryParse(row['last']?.toString() ?? '') ?? 0;
+          final open = double.tryParse(row['open24h']?.toString() ?? '') ?? 0;
+          final change = open == 0 ? 0 : ((last - open) / open) * 100;
+          return '$id: $last USDT  |  24ч: ${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%';
+        }).join('\\n');
+        if (result.isEmpty) result = 'OKX не вернул данные по запрошенным активам.';
+      }
+      if (mounted) {
+        setState(() {
+          _messages.add(_Msg(result, isUser: false));
+          _status = 'Криптоинструмент выполнен · источник OKX';
+          _visualState = JarvisVisualState.confirmation;
+        });
+      }
+      _returnToIdle(const Duration(milliseconds: 1200));
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _messages.add(_Msg('Криптоинструмент: ошибка запроса OKX — $e', isUser: false));
+          _status = 'Криптоинструмент недоступен';
+          _visualState = JarvisVisualState.error;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    return true;
+  }
+
   Future<void> _send(String text, {bool speakReply = false}) async {
     text = text.trim();
-    if (text.isEmpty || _jarvis == null || _busy) return;
+    if (text.isEmpty || _busy) return;
     if (await _handleTimer(text)) { _input.clear(); return; }
+    if (await _handleCryptoTool(text)) { _input.clear(); return; }
+    if (_jarvis == null) {
+      if (mounted) setState(() => _status = 'AI не подключён · откройте настройки');
+      return;
+    }
     _input.clear();
     setState(() {
       _messages.add(_Msg(text, isUser: true));
@@ -475,12 +556,62 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     super.dispose();
   }
 
+  Widget _hudPill(String label, String value, Color color) => Container(
+    margin: const EdgeInsets.only(right: 7),
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+    decoration: BoxDecoration(color: kPanel, border: Border.all(color: color.withValues(alpha: .25)), borderRadius: BorderRadius.circular(5)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 5, height: 5, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+      const SizedBox(width: 5),
+      Text('$label  ', style: const TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1)),
+      Text(value, style: TextStyle(color: color, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: .5)),
+    ]),
+  );
+
+  Widget _quickTool(String label, String command) => Padding(
+    padding: const EdgeInsets.only(right: 6),
+    child: OutlinedButton(
+      onPressed: _busy ? null : () => _send(command),
+      style: OutlinedButton.styleFrom(foregroundColor: kCyan, side: BorderSide(color: kCyan.withValues(alpha: .3)), padding: const EdgeInsets.symmetric(horizontal: 10), visualDensity: VisualDensity.compact),
+      child: Text(label, style: const TextStyle(fontSize: 9)),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('JARVIS'), actions: [if (_android) IconButton(tooltip: 'Криптоинструменты', onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisCryptoScreen())), icon: const Icon(Icons.currency_bitcoin, color: kCyan)), if (_android) IconButton(onPressed: _settings, icon: const Icon(Icons.settings))]),
+      drawer: _android ? Drawer(backgroundColor: kBg, child: SafeArea(child: ListView(padding: const EdgeInsets.all(14), children: [
+        const Text('J.A.R.V.I.S  /  COMMAND CENTER', style: TextStyle(color: kCyan, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+        const Divider(color: kCyan),
+        ListTile(leading: const Icon(Icons.dashboard, color: kCyan), title: const Text('Главный экран'), onTap: () => Navigator.pop(context)),
+        ListTile(leading: const Icon(Icons.currency_bitcoin, color: kCyan), title: const Text('Криптоинструменты'), onTap: () { Navigator.pop(context); Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisCryptoScreen())); }),
+        ListTile(leading: const Icon(Icons.trending_up, color: kCyan), title: const Text('Цена BTC / ETH / SOL / XRP'), onTap: () { Navigator.pop(context); _send('цены BTC ETH SOL XRP'); }),
+        ListTile(leading: const Icon(Icons.analytics, color: kCyan), title: const Text('Технический анализ BTC'), onTap: () { Navigator.pop(context); _send('технический анализ BTC RSI SMA'); }),
+        ListTile(leading: const Icon(Icons.candlestick_chart, color: kCyan), title: const Text('Funding и Open Interest'), onTap: () { Navigator.pop(context); _send('BTC funding open interest'); }),
+        ListTile(leading: const Icon(Icons.mic, color: kCyan), title: const Text('Голос'), onTap: () { Navigator.pop(context); _toggleVoice(); }),
+        ListTile(leading: const Icon(Icons.settings, color: kCyan), title: const Text('Настройки AI'), onTap: () { Navigator.pop(context); _settings(); }),
+      ]))) : null,
       body: Column(children: [
-        SizedBox(height: 220, width: double.infinity, child: JarvisReactor(color: switch (_visualState) { JarvisVisualState.listening => Colors.greenAccent, JarvisVisualState.thinking => Colors.amberAccent, JarvisVisualState.speaking => Colors.cyanAccent, JarvisVisualState.confirmation => Colors.lightGreenAccent, JarvisVisualState.error => Colors.redAccent, _ => kCyan }, state: _visualState)),
+        SizedBox(height: 38, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), children: [
+          _hudPill('CORE', _busy ? 'THINKING' : 'ONLINE', _busy ? Colors.amberAccent : kCyan),
+          _hudPill('AI', _jarvis == null ? 'DISCONNECTED' : 'CONNECTED', _jarvis == null ? Colors.redAccent : Colors.lightGreenAccent),
+          _hudPill('VOICE', _voiceRunning ? 'LISTENING' : (_voiceReady ? 'READY' : 'STANDBY'), _voiceRunning ? Colors.greenAccent : Colors.white54),
+          _hudPill('CRYPTO', 'OKX PUBLIC DATA', kCyan),
+        ])),
+        Container(height: 272, margin: const EdgeInsets.fromLTRB(10, 3, 10, 4), decoration: BoxDecoration(color: const Color(0xFF050912), border: Border.all(color: kCyan.withValues(alpha: .25)), borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: kCyan.withValues(alpha: .06), blurRadius: 22)]), child: Stack(children: [
+          Positioned.fill(child: JarvisReactor(color: switch (_visualState) { JarvisVisualState.listening => Colors.greenAccent, JarvisVisualState.thinking => Colors.amberAccent, JarvisVisualState.speaking => Colors.cyanAccent, JarvisVisualState.confirmation => Colors.lightGreenAccent, JarvisVisualState.error => Colors.redAccent, _ => kCyan }, state: _visualState)),
+          const Positioned(top: 10, left: 12, child: Text('J.A.R.V.I.S', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 3, fontSize: 12))),
+          Positioned(top: 10, right: 12, child: Text('LIVE NEURAL CORE', style: TextStyle(color: kCyan.withValues(alpha: .8), fontSize: 8, letterSpacing: 1.2))),
+          Positioned(bottom: 10, left: 12, right: 12, child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('NEURAL NETWORK', style: TextStyle(color: kCyan.withValues(alpha: .85), fontSize: 10, letterSpacing: 3)),
+            const SizedBox(height: 3),
+            Text(switch (_visualState) { JarvisVisualState.listening => 'СЛУШАЮ', JarvisVisualState.thinking => 'ОБРАБАТЫВАЮ ЗАПРОС', JarvisVisualState.speaking => 'ОТВЕЧАЮ', JarvisVisualState.confirmation => 'ГОТОВО', JarvisVisualState.error => 'ОШИБКА', _ => 'СИСТЕМА ОЖИДАЕТ' }, style: const TextStyle(color: Colors.white70, fontSize: 9, letterSpacing: 2)),
+          ])),
+        ])),
+        SizedBox(height: 34, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
+          _quickTool('BTC', 'цена BTC'), _quickTool('RSI / SMA', 'технический анализ BTC RSI SMA'), _quickTool('Funding', 'BTC funding open interest'), _quickTool('Все рынки', 'цены BTC ETH SOL XRP'),
+        ])),
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(16), itemCount: _messages.length + (_streamText.isNotEmpty ? 1 : 0), itemBuilder: (context, index) {
           if (_streamText.isNotEmpty && index == _messages.length) return Align(alignment: Alignment.centerLeft, child: Text(_streamText));
           final m = _messages[index];
