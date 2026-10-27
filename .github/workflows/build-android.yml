@@ -26,6 +26,34 @@ jobs:
         working-directory: ui
         run: flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
 
+      - name: Set Android compile SDK for current plugins
+        working-directory: ui
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          candidates = [
+              Path("android/app/build.gradle.kts"),
+              Path("android/app/build.gradle"),
+          ]
+          changed = False
+          for path in candidates:
+              if not path.exists():
+                  continue
+              source = path.read_text(encoding="utf-8")
+              updated = source
+              updated = re.sub(r'compileSdk\\s*=\\s*flutter\\.compileSdkVersion', 'compileSdk = 36', updated)
+              updated = re.sub(r'compileSdkVersion\\s+flutter\\.compileSdkVersion', 'compileSdkVersion 36', updated)
+              updated = re.sub(r'compileSdk\\s+flutter\\.compileSdkVersion', 'compileSdk 36', updated)
+              if updated != source:
+                  path.write_text(updated, encoding="utf-8")
+                  changed = True
+          if not changed:
+              raise SystemExit("Could not set Android compileSdk to 36 in generated Gradle file")
+          PY
+
       - name: Remove generated sample test
         working-directory: ui
         run: rm -f test/widget_test.dart
