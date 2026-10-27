@@ -263,7 +263,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             color: m.isUser ? kCyan.withValues(alpha: 0.15) : kPanel,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-                color: m.isUser ? kCyan.withOpacity(0.4) : Colors.white10),
+                color: m.isUser ? kCyan.withValues(alpha: 0.4) : Colors.white10),
           ),
           child: SelectableText(m.text),
         ),
