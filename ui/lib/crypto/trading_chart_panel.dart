@@ -170,7 +170,7 @@ class _JarvisTradingChartPanelState extends State<JarvisTradingChartPanel> {
 
   Widget _selector<T>({required T value, required List<T> values, required String Function(T) label, required ValueChanged<T?> changed}) =>
     DropdownButtonFormField<T>(
-      value: value, isExpanded: true, isDense: true,
+      initialValue: value, isExpanded: true, isDense: true,
       decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6), border: OutlineInputBorder()),
       style: const TextStyle(fontSize: 11, color: Colors.white),
       items: values.map((v) => DropdownMenuItem<T>(value: v, child: Text(label(v), overflow: TextOverflow.ellipsis))).toList(),
