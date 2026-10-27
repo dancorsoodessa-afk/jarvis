@@ -13,7 +13,6 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'jarvis_client.dart';
 import 'crypto/crypto_tools.dart';
 import 'crypto/crypto_screen.dart';
-import 'crypto/trading_chart_panel.dart';
 import 'osint/osint_screen.dart';
 import 'jarvis_reactor.dart';
 import 'tools/calculator/calculator_screen.dart';
@@ -288,11 +287,14 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     if (wakeCommand != null) {
       if (wakeCommand.isEmpty) {
         _wakeArmed = true;
+        _voiceRunning = false;
         await _speech.stop();
-        await _speak('Да, слушаю.');
+        if (mounted) setState(() => _status = 'Скажите команду и снова нажмите микрофон');
+        await _speak('Да, слушаю. Нажмите микрофон и скажите команду.');
         return;
       }
       _wakeArmed = false;
+      _voiceRunning = false;
       await _speech.stop();
       await _send(wakeCommand, speakReply: true);
       return;
@@ -300,6 +302,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
     if (_wakeArmed) {
       _wakeArmed = false;
+      _voiceRunning = false;
       await _speech.stop();
       await _send(text, speakReply: true);
     }
@@ -714,7 +717,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       if (speakReply) await _speak('Произошла ошибка. Проверьте AI URL, API key и Model.');
     } finally {
       if (mounted) setState(() { _busy = false; _streamText = ''; });
-      if (_voiceRunning && !_ttsSpeaking) _scheduleVoiceRestart(const Duration(milliseconds: 500));
+      // Voice restart is user-controlled to avoid repeated native speech-service crashes.
     }
   }
 
@@ -958,7 +961,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           _hudPill('VOICE', _voiceRunning ? 'LISTENING' : (_voiceReady ? 'READY' : 'STANDBY'), _voiceRunning ? Colors.greenAccent : Colors.white54),
           _hudPill('CRYPTO', 'OKX PUBLIC DATA', kCyan),
         ])),
-        Container(height: compact ? 120 : 175, margin: const EdgeInsets.fromLTRB(10, 3, 10, 4), decoration: BoxDecoration(color: const Color(0xFF050912), border: Border.all(color: kCyan.withValues(alpha: .25)), borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: kCyan.withValues(alpha: .06), blurRadius: 22)]), child: Stack(children: [
+        Container(height: compact ? 76 : 96, margin: const EdgeInsets.fromLTRB(10, 2, 10, 3), decoration: BoxDecoration(color: const Color(0xFF050912), border: Border.all(color: kCyan.withValues(alpha: .25)), borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: kCyan.withValues(alpha: .06), blurRadius: 22)]), child: Stack(children: [
           Positioned.fill(child: JarvisReactor(state: _visualState, audioLevel: _audioLevel, load: _visualLoad)),
           const Positioned(top: 10, left: 12, child: Text('J.A.R.V.I.S', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 3, fontSize: 12))),
           Positioned(top: 10, right: 12, child: Text('LIVE NEURAL CORE', style: TextStyle(color: kCyan.withValues(alpha: .8), fontSize: 8, letterSpacing: 1.2))),
