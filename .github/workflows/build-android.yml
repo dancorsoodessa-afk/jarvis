@@ -2,7 +2,9 @@ name: Build JARVIS Android APK
 
 on:
   push:
-    branches: [android-final]
+    branches:
+      - android-final
+      - fix/android-live-core-tools-20261027
   workflow_dispatch:
 
 permissions:
@@ -87,7 +89,7 @@ jobs:
           import re
           s, count = re.subn(r'android:icon="[^"]+"', 'android:icon="@mipmap/ic_jarvis"', s, count=1)
           if count == 0:
-              s, count = re.subn(r'<application\\b', '<application android:icon="@mipmap/ic_jarvis"', s, count=1)
+              s, count = re.subn(r'<application\b', '<application android:icon="@mipmap/ic_jarvis"', s, count=1)
           if count == 0:
               raise SystemExit("Could not configure Android application icon")
           s = re.sub(r'android:label="[^"]+"', 'android:label="JARVIS"', s, count=1)
