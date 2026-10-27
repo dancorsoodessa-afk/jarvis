@@ -223,10 +223,10 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   void _scheduleVoiceRestart([Duration delay = const Duration(milliseconds: 500)]) {
-    if (!_android || !_voiceRunning || _ttsSpeaking || _busy) return;
+    if (!_android || !_voiceRunning || _voiceStarting || _ttsSpeaking || _busy) return;
     _voiceRestartTimer?.cancel();
     _voiceRestartTimer = Timer(delay, () {
-      if (mounted && _voiceRunning && !_ttsSpeaking && !_busy) _startVoiceLoop();
+      if (mounted && _voiceRunning && !_voiceStarting && !_ttsSpeaking && !_busy) _startVoiceLoop();
     });
   }
 
@@ -663,6 +663,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   @override
   void dispose() {
+    _voiceRunning = false;
+    _wakeArmed = false;
     _partialSub?.cancel();
     _visualTimer?.cancel();
     _voiceRestartTimer?.cancel();
@@ -698,8 +700,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     leading: Icon(icon, size: 19, color: kCyan),
     title: Text(label, style: const TextStyle(fontSize: 13)),
     onTap: () {
-      Navigator.pop(context);
-      action();
+      Navigator.of(context).pop();
+      // Let the drawer route finish closing before pushing a dialog or screen.
+      Future<void>.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) action();
+      });
     },
   );
 
