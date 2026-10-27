@@ -263,15 +263,31 @@ class JarvisIpc {
     return 'HTTP $code: ${body.trim().isEmpty ? 'пустой ответ сервера' : body.trim()}';
   }
 
-  Future<void> _check(String base, String key, String label) async {
-    final request = await _httpClient!.getUrl(Uri.parse('$base/models'));
-    final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
-    h.forEach(request.headers.set);
-    final response = await request.close();
-    final body = await utf8.decoder.bind(response).join();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError('$label: ${_error(response.statusCode, body)}');
+  Future<T> _retryTransient<T>(Future<T> Function() action) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await action();
+      } catch (e) {
+        final transient = RegExp(r'HTTP (408|429|500|502|503|504)').hasMatch(e.toString()) ||
+            e is SocketException || e is TimeoutException ||
+            e.toString().contains('Connection closed');
+        if (!transient || attempt >= 3) rethrow;
+        await Future.delayed(Duration(seconds: 1 << attempt));
+      }
     }
+  }
+
+  Future<void> _check(String base, String key, String label) async {
+    await _retryTransient(() async {
+      final request = await _httpClient!.getUrl(Uri.parse('$base/models'));
+      final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
+      h.forEach(request.headers.set);
+      final response = await request.close();
+      final body = await utf8.decoder.bind(response).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError('$label: ${_error(response.statusCode, body)}');
+      }
+    });
   }
 
   Future<String> _autoModel(String base, String key) async {
