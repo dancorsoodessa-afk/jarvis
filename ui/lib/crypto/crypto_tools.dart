@@ -78,9 +78,10 @@ class JarvisCrypto {
     return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
-  static Future<Map<String, dynamic>> placeSpotMarketOrder({
+  static Future<Map<String, dynamic>> placeSpotOrder({
     required String apiKey, required String secret, required String passphrase,
     required String instrument, required String side, required String size,
+    String orderType = 'market', String? price,
   }) async {
     final safeInstrument = instrument.trim().toUpperCase();
     final safeSide = side.trim().toLowerCase();
@@ -89,11 +90,18 @@ class JarvisCrypto {
       throw ArgumentError('Неверный инструмент, например BTC-USDT');
     }
     if (safeSide != 'buy' && safeSide != 'sell') throw ArgumentError('Сторона ордера должна быть buy или sell');
+    if (orderType != 'market' && orderType != 'limit') throw ArgumentError('Поддерживаются ордера market и limit');
     if (safeSize == null || !safeSize.isFinite || safeSize <= 0) throw ArgumentError('Размер ордера должен быть больше нуля');
-    final body = jsonEncode({
+    final safePrice = double.tryParse((price ?? '').trim());
+    if (orderType == 'limit' && (safePrice == null || !safePrice.isFinite || safePrice <= 0)) {
+      throw ArgumentError('Для лимитного ордера укажите цену больше нуля');
+    }
+    final payload = <String, dynamic>{
       'instId': safeInstrument, 'tdMode': 'cash', 'side': safeSide,
-      'ordType': 'market', 'sz': size.trim(),
-    });
+      'ordType': orderType, 'sz': size.trim(),
+    };
+    if (orderType == 'limit') payload['px'] = price!.trim();
+    final body = jsonEncode(payload);
     final data = await _privateRequest(
       apiKey: apiKey, secret: secret, passphrase: passphrase,
       method: 'POST', path: '/api/v5/trade/order', body: body,
