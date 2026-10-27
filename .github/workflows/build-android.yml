@@ -36,31 +36,40 @@ jobs:
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           text = manifest.read_text(encoding="utf-8")
-          permissions = [
-              '    <uses-permission android:name="android.permission.INTERNET" />',
-              '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
-              '    <queries>',
-              '        <intent>',
-              '            <action android:name="android.speech.RecognitionService" />',
-              '        </intent>',
-              '    </queries>',
-          ]
-          missing = []
+          additions = []
           if "android.permission.INTERNET" not in text:
-              missing.append(permissions[0])
+              additions.append('    <uses-permission android:name="android.permission.INTERNET" />')
           if "android.permission.RECORD_AUDIO" not in text:
-              missing.append(permissions[1])
-          if "android.speech.RecognitionService" not in text:
-              missing.extend(permissions[2:])
-          if missing:
+              additions.append('    <uses-permission android:name="android.permission.RECORD_AUDIO" />')
+          if additions:
               lines = text.splitlines()
               for index, line in enumerate(lines):
                   if line.lstrip().startswith("<manifest "):
-                      lines[index + 1:index + 1] = missing
+                      lines[index + 1:index + 1] = additions
                       break
               else:
                   raise SystemExit("AndroidManifest.xml has no <manifest> root element")
-              manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+              text = "\n".join(lines) + "\n"
+
+          if "android.speech.RecognitionService" not in text:
+              intent = (
+                  '        <intent>\n'
+                  '            <action android:name="android.speech.RecognitionService" />\n'
+                  '        </intent>\n'
+              )
+              if "</queries>" in text:
+                  text = text.replace("</queries>", intent + "    </queries>", 1)
+              else:
+                  queries = (
+                      '    <queries>\n'
+                      + intent
+                      + '    </queries>\n'
+                  )
+                  if "<application" not in text:
+                      raise SystemExit("AndroidManifest.xml has no <application> element")
+                  text = text.replace("    <application", queries + "    <application", 1)
+
+          manifest.write_text(text, encoding="utf-8")
           PY
 
       - name: Get dependencies
