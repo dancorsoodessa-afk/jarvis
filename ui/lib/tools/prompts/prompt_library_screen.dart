@@ -56,7 +56,7 @@ class _JarvisPromptLibraryScreenState extends State<JarvisPromptLibraryScreen> {
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: title, decoration: const InputDecoration(labelText: 'Название')),
         TextField(controller: category, decoration: const InputDecoration(labelText: 'Категория')),
-        TextField(controller: prompt, minLines: 4, maxLines: 10, decoration: const InputDecoration(labelText: 'Текст промпта')),
+        TextField(controller: prompt, minLines: 4, maxLines: 10, decoration: const InputDecoration(labelText: 'Инструкция для AI')),
       ])),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')), FilledButton(onPressed: () {
         if (title.text.trim().isNotEmpty && prompt.text.trim().isNotEmpty) Navigator.pop(ctx, {'title':title.text.trim(),'category':category.text.trim().isEmpty ? 'Мои промпты' : category.text.trim(),'prompt':prompt.text.trim()});
@@ -81,9 +81,9 @@ class _JarvisPromptLibraryScreenState extends State<JarvisPromptLibraryScreen> {
   Widget build(BuildContext context) {
     final visible = _visible;
     return Scaffold(
-      appBar: AppBar(title: const Text('Библиотека промптов'), actions: [IconButton(tooltip: 'Добавить промпт', onPressed: () => _edit(), icon: const Icon(Icons.add))]),
+      appBar: AppBar(title: const Text('Шаблоны запросов для AI'), actions: [IconButton(tooltip: 'Добавить промпт', onPressed: () => _edit(), icon: const Icon(Icons.add))]),
       body: !_ready ? const Center(child: CircularProgressIndicator()) : Column(children: [
-        Padding(padding: const EdgeInsets.all(12), child: TextField(controller: _search, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Поиск по всем промптам', border: OutlineInputBorder()))),
+        Padding(padding: const EdgeInsets.all(12), child: TextField(controller: _search, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Найти шаблон по названию или теме', border: OutlineInputBorder()))),
         Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Align(alignment: Alignment.centerLeft, child: Text('Всего промптов: ${_items.length}'))),
         Expanded(child: visible.isEmpty ? const Center(child: Text('Ничего не найдено')) : ListView.builder(itemCount: visible.length, itemBuilder: (ctx, i) {
           final item = visible[i];
@@ -95,7 +95,7 @@ class _JarvisPromptLibraryScreenState extends State<JarvisPromptLibraryScreen> {
             trailing: PopupMenuButton<String>(onSelected: (v) { if (v == 'edit') _edit(item); if (v == 'delete') _delete(item); }, itemBuilder: (_) => const [PopupMenuItem(value:'edit', child:Text('Изменить')), PopupMenuItem(value:'delete', child:Text('Удалить'))]),
           ));
         })),
-        const Padding(padding: EdgeInsets.all(12), child: Text('Нажмите на промпт, чтобы вставить его в чат. Свои промпты сохраняются на устройстве.', style: TextStyle(fontSize: 12, color: Colors.white60))),
+        const Padding(padding: EdgeInsets.all(12), child: Text('Выберите шаблон, чтобы вставить готовую инструкцию в чат. Можно добавлять свои шаблоны; они хранятся на устройстве.', style: TextStyle(fontSize: 12, color: Colors.white60))),
       ]),
     );
   }
