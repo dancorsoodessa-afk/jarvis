@@ -11,9 +11,9 @@ import 'jarvis_reactor.dart';
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
-const kFreeModel = 'openai/gpt-oss-20b';
+const kFreeModel = 'llama-3.3-70b-versatile';
 const kGroqEndpoint = 'https://api.groq.com/openai/v1';
-const kDefaultEndpoint = 'https://api.openai.com/v1';
+const kDefaultEndpoint = 'https://api.groq.com/openai/v1';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -235,7 +235,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       // error handling runs. Initialize voice only after the user taps the mic.
       if (!mounted) return;
       if (_apiKey.text.isEmpty) {
-        setState(() => _status = 'Введите AI URL, API key и Model в Настройках');
+        setState(() => _status = 'Введите API key Groq в настройках');
       } else {
         await _connectAndroid();
       }
@@ -268,7 +268,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final model = _model.text.trim();
     final key = _apiKey.text.trim();
     if (endpoint.isEmpty || key.isEmpty) {
-      if (mounted) setState(() => _status = 'Введите API key Groq в Настройках');
+      if (mounted) setState(() => _status = 'Введите API key Groq в настройках');
       _setVisual(JarvisVisualState.error);
       return;
     }
