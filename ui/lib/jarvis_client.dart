@@ -371,30 +371,32 @@ class JarvisIpc {
       ..._history,
       {'role': 'user', 'content': text},
     ];
-    final request =
-        await _httpClient!.postUrl(Uri.parse('$base/chat/completions'));
-    _headers(key).forEach(request.headers.set);
-    final bytes = utf8.encode(
-      jsonEncode({'model': selected, 'messages': messages, 'stream': false}),
-    );
-    request.contentLength = bytes.length;
-    request.add(bytes);
-    final response = await request.close();
-    final body = await utf8.decoder.bind(response).join();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(_error(response.statusCode, body));
-    }
-    final j = jsonDecode(body) as Map<String, dynamic>;
-    final choices = j['choices'];
-    if (choices is! List || choices.isEmpty) {
-      throw StateError('AI не вернул ответ');
-    }
-    final message = choices.first['message'];
-    final content = message is Map ? message['content']?.toString() : null;
-    if (content == null || content.trim().isEmpty) {
-      throw StateError('AI вернул пустой ответ');
-    }
-    return JarvisReply(content.trim(), base, null, false);
+    return _retryTransient(() async {
+      final request =
+          await _httpClient!.postUrl(Uri.parse('$base/chat/completions'));
+      _headers(key).forEach(request.headers.set);
+      final bytes = utf8.encode(
+        jsonEncode({'model': selected, 'messages': messages, 'stream': false}),
+      );
+      request.contentLength = bytes.length;
+      request.add(bytes);
+      final response = await request.close();
+      final body = await utf8.decoder.bind(response).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError(_error(response.statusCode, body));
+      }
+      final j = jsonDecode(body) as Map<String, dynamic>;
+      final choices = j['choices'];
+      if (choices is! List || choices.isEmpty) {
+        throw StateError('AI не вернул ответ');
+      }
+      final message = choices.first['message'];
+      final content = message is Map ? message['content']?.toString() : null;
+      if (content == null || content.trim().isEmpty) {
+        throw StateError('AI вернул пустой ответ');
+      }
+      return JarvisReply(content.trim(), base, null, false);
+    });
   }
 
   bool _retryable(Object e) {
