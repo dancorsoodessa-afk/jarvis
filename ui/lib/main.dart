@@ -125,6 +125,28 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
   }
 
+  Future<void> _toggleVoice() async {
+    if (!_android) return;
+    if (_voiceRunning || _voiceStarting) {
+      _voiceRunning = false;
+      _wakeArmed = false;
+      _voiceRestartTimer?.cancel();
+      try {
+        await _speech.stop();
+      } catch (_) {}
+      if (mounted) {
+        setState(() => _status = 'Голос остановлен');
+        _setVisual(JarvisVisualState.idle);
+      }
+      return;
+    }
+    await _initVoice();
+    if (!mounted || !_voiceReady) return;
+    _voiceRunning = true;
+    _wakeArmed = false;
+    await _startVoiceLoop();
+  }
+
   Future<void> _startVoiceLoop() async {
     if (!_android || !_voiceReady || _voiceStarting || _ttsSpeaking || _busy) return;
     _voiceStarting = true;
@@ -467,6 +489,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         if (_android && _heardText.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('🎙 $_heardText', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))),
         Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
           Expanded(child: TextField(controller: _input, minLines: 2, maxLines: 5, textInputAction: TextInputAction.newline, onSubmitted: _send, decoration: const InputDecoration(hintText: 'Введите команду или вопрос…', border: OutlineInputBorder()))),
+          if (_android) IconButton(
+            tooltip: _voiceRunning ? 'Остановить голос' : 'Включить голос',
+            onPressed: _busy ? null : _toggleVoice,
+            icon: Icon(_voiceRunning ? Icons.mic_off : Icons.mic, color: kCyan),
+          ),
           IconButton(onPressed: _busy ? null : () => _send(_input.text), icon: const Icon(Icons.send)),
         ])),
         Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(_status, style: const TextStyle(fontSize: 12))),
