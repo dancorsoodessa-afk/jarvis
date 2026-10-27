@@ -24,13 +24,13 @@ class _JarvisClipboardScreenState extends State<JarvisClipboardScreen> {
   void dispose() { _text.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Буфер обмена')),
+    appBar: AppBar(title: const Text('Скопированный текст')),
     body: ListView(padding: const EdgeInsets.all(16), children: [
       TextField(controller: _text, minLines: 4, maxLines: 10, decoration: const InputDecoration(labelText: 'Текст', border: OutlineInputBorder())),
       const SizedBox(height: 12),
       Wrap(spacing: 8, children: [
-        FilledButton.icon(onPressed: _read, icon: const Icon(Icons.content_paste), label: const Text('Прочитать')),
-        OutlinedButton.icon(onPressed: _write, icon: const Icon(Icons.copy), label: const Text('Записать')),
+        FilledButton.icon(onPressed: _read, icon: const Icon(Icons.content_paste), label: const Text('Вставить скопированный текст')),
+        OutlinedButton.icon(onPressed: _write, icon: const Icon(Icons.copy), label: const Text('Скопировать текст')),
       ]),
       const SizedBox(height: 12), Text(_status),
     ]),
