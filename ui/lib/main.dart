@@ -18,6 +18,7 @@ import 'tools/system/system_screen.dart';
 import 'tools/files/files_screen.dart';
 import 'tools/apps/apps_screen.dart';
 import 'tools/audio/audio_screen.dart';
+import 'tools/voice/voice_tools_screen.dart';
 
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
@@ -763,7 +764,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 children: [
                   _menuItem(Icons.mic, 'Включить / выключить микрофон', _toggleVoice),
                   _menuItem(Icons.tune, 'Настройки микрофона', _showVoiceSettings),
-                  _menuItem(Icons.volume_up, 'Озвучивание ответа', () => _sendFromMenu('Проверь озвучивание ответа')),
+                  _menuItem(Icons.volume_up, 'Озвучивание текста', () => _openMenuScreen(const JarvisVoiceToolsScreen())),
                 ],
               ),
               ExpansionTile(
