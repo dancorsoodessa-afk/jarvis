@@ -40,7 +40,7 @@ class _Msg {
   final bool isUser;
 }
 
-// Android stability: normalized API keys and timer parsing. CI verified.
+// Android client state and provider configuration.
 class _JarvisHomePageState extends State<JarvisHomePage> {
   JarvisIpc? _jarvis;
   final _input = TextEditingController();
@@ -333,7 +333,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           const Align(alignment: Alignment.centerLeft, child: Text('Основной AI', style: TextStyle(fontWeight: FontWeight.bold))),
           TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'AI URL', hintText: 'https://api.groq.com/openai/v1')),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'openai/gpt-oss-20b')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model', hintText: 'llama-3.3-70b-versatile')),
           const SizedBox(height: 12),
           const Align(alignment: Alignment.centerLeft, child: Text('Резервный AI · при 429/5xx/сбое', style: TextStyle(fontWeight: FontWeight.bold))),
           TextField(controller: _fallbackEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Резервный AI URL')),
