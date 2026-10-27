@@ -15,6 +15,7 @@ import 'tools/clipboard/clipboard_screen.dart';
 import 'tools/internet/internet_screen.dart';
 import 'tools/memory/memory_screen.dart';
 import 'tools/system/system_screen.dart';
+import 'tools/files/files_screen.dart';
 
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
@@ -711,9 +712,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 leading: const Icon(Icons.folder, color: kCyan),
                 title: const Text('Файлы и приложения'),
                 children: [
-                  _menuItem(Icons.search, 'Поиск файлов', () => _sendFromMenu('Найди файл')),
-                  _menuItem(Icons.folder_open, 'Открыть файл или папку', () => _sendFromMenu('Открыть файл или папку')),
-                  _menuItem(Icons.apps, 'Запуск приложений', () => _sendFromMenu('Запусти приложение')),
+                  _menuItem(Icons.search, 'Выбрать и просмотреть файлы', () => _openMenuScreen(const JarvisFilesScreen())),
+                  _menuItem(Icons.folder_open, 'Открыть системный выбор файлов', () => _openMenuScreen(const JarvisFilesScreen())),
+                  _menuItem(Icons.apps, 'Команда AI: запуск приложения', () => _sendFromMenu('Можно ли запустить приложение на Android? Если нет доступа к запуску приложений, честно сообщи об ограничении.')),
                 ],
               ),
               ExpansionTile(
