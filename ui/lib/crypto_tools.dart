@@ -27,6 +27,42 @@ class JarvisCrypto {
     }
   }
 
+  static Future<dynamic> _coinglass(String path, String apiKey) async {
+    if (apiKey.trim().isEmpty) throw ArgumentError('Введите CoinGlass API key');
+    final client = HttpClient();
+    try {
+      final uri = Uri.https('open-api-v4.coinglass.com', path);
+      final request = await client.getUrl(uri).timeout(const Duration(seconds: 12));
+      request.headers.set('Accept', 'application/json');
+      request.headers.set('CG-API-KEY', apiKey.trim());
+      final response = await request.close().timeout(const Duration(seconds: 15));
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError('CoinGlass HTTP ${response.statusCode}: ${body.length > 180 ? body.substring(0, 180) : body}');
+      }
+      final parsed = jsonDecode(body);
+      if (parsed is Map && parsed['code'] != null && parsed['code'].toString() != '0') {
+        throw StateError('CoinGlass: ${parsed['msg'] ?? parsed['code']}');
+      }
+      return parsed is Map ? parsed['data'] : parsed;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// CoinGlass endpoints: futures liquidations, global long/short, aggregated CVD.
+  static Future<Map<String, dynamic>> coinglassSnapshot({required String apiKey, String symbol = 'BTC', String interval = '1h'}) async {
+    final encodedSymbol = Uri.encodeQueryComponent(symbol.toUpperCase());
+    final encodedInterval = Uri.encodeQueryComponent(interval);
+    final results = await Future.wait([
+      _coinglass('/api/futures/liquidation/aggregated-history?symbol=$encodedSymbol&interval=$encodedInterval', apiKey),
+      _coinglass('/api/futures/global-long-short-account-ratio/history?symbol=$encodedSymbol&interval=$encodedInterval', apiKey),
+      _coinglass('/api/futures/aggregated-cvd/history?symbol=$encodedSymbol&interval=$encodedInterval', apiKey),
+      _coinglass('/api/futures/open-interest/aggregated-history?symbol=$encodedSymbol&interval=$encodedInterval', apiKey),
+    ]);
+    return {'liquidations': results[0], 'long_short': results[1], 'cvd': results[2], 'open_interest': results[3]};
+  }
+
   /// Current OKX tickers: BTC, ETH and other requested spot instruments.
   static Future<List<Map<String, dynamic>>> tickers({List<String> symbols = const ['BTC-USDT', 'ETH-USDT', 'SOL-USDT', 'XRP-USDT']}) async {
     final all = <Map<String, dynamic>>[];
@@ -105,6 +141,8 @@ class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
   List<Map<String, dynamic>> _tickers = [];
   Map<String, dynamic> _derivatives = {};
   Map<String, double?> _indicators = {};
+  final TextEditingController _coinglassKey = TextEditingController();
+  Map<String, dynamic> _coinglassData = {};
   String _symbol = 'BTC-USDT';
   String _timeframe = '1H';
 
@@ -181,6 +219,22 @@ class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
         Text('ДЕРИВАТИВЫ', style: theme.textTheme.labelLarge?.copyWith(color: const Color(0xFF37D5EE), letterSpacing: 1.5)),
         ListTile(title: const Text('Funding rate'), trailing: Text(_num(funding?['fundingRate'], digits: 6))),
         ListTile(title: const Text('Open interest'), trailing: Text(_num(oi?['oi'] ?? oi?['oiCcy']))),
+        const SizedBox(height: 18),
+        Text('COINGLASS · РАСШИРЕННЫЕ ДАННЫЕ', style: theme.textTheme.labelLarge?.copyWith(color: const Color(0xFF37D5EE), letterSpacing: 1.2)),
+        TextField(controller: _coinglassKey, autocorrect: false, enableSuggestions: false, decoration: const InputDecoration(labelText: 'CoinGlass API key', helperText: 'Ключ отображается открытым текстом и не сохраняется приложением.')),
+        FilledButton.icon(onPressed: _loading ? null : () async {
+          setState(() { _loading = true; _error = null; });
+          try {
+            final data = await JarvisCrypto.coinglassSnapshot(apiKey: _coinglassKey.text, symbol: _symbol.split('-').first, interval: _timeframe.toLowerCase());
+            if (mounted) setState(() => _coinglassData = data);
+          } catch (e) {
+            if (mounted) setState(() => _error = e.toString());
+          } finally {
+            if (mounted) setState(() => _loading = false);
+          }
+        }, icon: const Icon(Icons.query_stats), label: const Text('Загрузить CoinGlass')),
+        ..._coinglassData.entries.map((e) => ExpansionTile(title: Text(e.key.replaceAll('_', ' ').toUpperCase()), children: [Padding(padding: const EdgeInsets.all(12), child: SelectableText(e.value.toString(), style: const TextStyle(fontSize: 12)))])),
+
         const Text('Публичные данные. Сигналы не являются гарантией результата. Торговля и вывод средств из этого экрана не выполняются.', style: TextStyle(color: Colors.white60)),
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text('Ошибка: $_error', style: const TextStyle(color: Colors.redAccent))),
       ]),
