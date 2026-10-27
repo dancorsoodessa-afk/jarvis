@@ -50,14 +50,20 @@ class _JarvisCryptoScreenState extends State<JarvisCryptoScreen> {
  Future<void> _placeOrder() async {
   final instrument=_instrument.text.trim().toUpperCase();
   final size=_orderSize.text.trim();
+  final price=_orderPrice.text.trim();
   final parsed=double.tryParse(size);
-  if(instrument.isEmpty||parsed==null||parsed<=0) {
+  if(instrument.isEmpty||parsed==null||!parsed.isFinite||parsed<=0) {
    setState(()=>_orderStatus='Укажите инструмент и размер больше нуля.');
    return;
   }
+  if(_orderType=='limit') {
+   final parsedPrice=double.tryParse(price);
+   if(parsedPrice==null||!parsedPrice.isFinite||parsedPrice<=0) {setState(()=>_orderStatus='Для лимитного ордера укажите цену больше нуля.');return;}
+  }
+  final priceLine=_orderType=='limit'?'\nЛимитная цена: $price':'';
   final accepted=await showDialog<bool>(context:context,builder:(ctx)=>AlertDialog(
    title:const Text('Подтвердить реальный ордер?'),
-   content:Text('OKX SPOT MARKET\nИнструмент: $instrument\nСторона: ${_orderSide.toUpperCase()}\nРазмер: $size\n\nОрдер будет отправлен на реальный рынок и может привести к финансовым потерям.'),
+   content:Text('OKX SPOT ${_orderType.toUpperCase()}\nИнструмент: $instrument\nСторона: ${_orderSide.toUpperCase()}\nРазмер: $size$priceLine\n\nОрдер будет отправлен на реальный рынок и может привести к финансовым потерям.'),
    actions:[
     TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Отмена')),
     FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Отправить ордер')),
