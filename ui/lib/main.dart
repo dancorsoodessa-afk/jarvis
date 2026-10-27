@@ -19,6 +19,7 @@ import 'tools/files/files_screen.dart';
 import 'tools/apps/apps_screen.dart';
 import 'tools/audio/audio_screen.dart';
 import 'tools/voice/voice_tools_screen.dart';
+import 'tools/screenshot/screenshot_screen.dart';
 
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
@@ -745,6 +746,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 title: const Text('Система и диагностика'),
                 children: [
                   _menuItem(Icons.monitor_heart, 'Статус, ОЗУ и диагностика', () => _openMenuScreen(const JarvisSystemScreen())),
+                  _menuItem(Icons.screenshot_monitor, 'Снимок экрана JARVIS', () => _openMenuScreen(const JarvisScreenshotScreen())),
                   _menuItem(Icons.volume_up, 'Громкость Android', () => _openMenuScreen(const JarvisAudioScreen())),
                   _menuItem(Icons.speed, 'Проверить подключение AI', () => _connectAndroid()),
                   _menuItem(Icons.settings, 'Настройки AI и API', () => _settings()),
