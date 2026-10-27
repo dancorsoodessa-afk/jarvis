@@ -177,7 +177,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text('🔧 $_toolStatus',
-                    style: TextStyle(color: kCyan.withOpacity(0.7),
+                    style: TextStyle(color: kCyan.withValues(alpha: 0.7),
                         fontSize: 11)),
               ),
             const SizedBox(height: 8),
@@ -204,7 +204,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                         color: kPanel,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: kCyan.withOpacity(0.4)),
+                            color: kCyan.withValues(alpha: 0.4)),
                       ),
                       child: SelectableText('$_streamText▌'),
                     ),
@@ -260,7 +260,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           constraints: const BoxConstraints(maxWidth: 520),
           decoration: BoxDecoration(
-            color: m.isUser ? kCyan.withOpacity(0.15) : kPanel,
+            color: m.isUser ? kCyan.withValues(alpha: 0.15) : kPanel,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
                 color: m.isUser ? kCyan.withOpacity(0.4) : Colors.white10),
