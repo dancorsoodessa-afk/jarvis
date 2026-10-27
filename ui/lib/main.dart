@@ -603,6 +603,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         const Divider(color: kCyan),
         ListTile(leading: const Icon(Icons.dashboard, color: kCyan), title: const Text('Главный экран'), onTap: () => Navigator.pop(context)),
         ListTile(leading: const Icon(Icons.currency_bitcoin, color: kCyan), title: const Text('Криптоинструменты'), onTap: () { Navigator.pop(context); Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisCryptoScreen())); }),
+        ListTile(leading: const Icon(Icons.travel_explore, color: kCyan), title: const Text('OSINT-разведка'), subtitle: const Text('Домены · IP/ASN · URL'), onTap: () { Navigator.pop(context); Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const JarvisOsintScreen())); }),
         ListTile(leading: const Icon(Icons.trending_up, color: kCyan), title: const Text('Цена BTC / ETH / SOL / XRP'), onTap: () { Navigator.pop(context); _send('цены BTC ETH SOL XRP'); }),
         ListTile(leading: const Icon(Icons.analytics, color: kCyan), title: const Text('Технический анализ BTC'), onTap: () { Navigator.pop(context); _send('технический анализ BTC RSI SMA'); }),
         ListTile(leading: const Icon(Icons.candlestick_chart, color: kCyan), title: const Text('Funding и Open Interest'), onTap: () { Navigator.pop(context); _send('BTC funding open interest'); }),
