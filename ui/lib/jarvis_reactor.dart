@@ -1,150 +1,270 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+/// Visual states are driven by the real voice and request lifecycle in main.dart.
 enum JarvisVisualState { idle, listening, thinking, speaking, confirmation, error, exiting }
 
 class JarvisReactor extends StatefulWidget {
-  const JarvisReactor({super.key, this.color = const Color(0xFF37D5EE), this.state = JarvisVisualState.idle});
-  final Color color;
+  const JarvisReactor({
+    super.key,
+    this.state = JarvisVisualState.idle,
+    this.audioLevel = 0.0,
+    this.load = 0.15,
+  });
+
   final JarvisVisualState state;
+  /// Normalized microphone level, 0..1.
+  final double audioLevel;
+  /// Normalized AI activity, 0..1. Derived from the live app lifecycle.
+  final double load;
+
   @override
   State<JarvisReactor> createState() => _JarvisReactorState();
 }
 
-class _JarvisReactorState extends State<JarvisReactor> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(vsync: this, duration: const Duration(seconds: 16))..repeat();
+class _JarvisReactorState extends State<JarvisReactor>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 18),
+  )..repeat();
+
   @override
-  void dispose() { _controller.dispose(); super.dispose(); }
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => RepaintBoundary(
-    child: CustomPaint(painter: _NeuralSpherePainter(_controller, widget.color, widget.state), child: const SizedBox.expand()),
-  );
+        child: CustomPaint(
+          painter: _NeuralSpherePainter(
+            _controller,
+            widget.state,
+            widget.audioLevel.clamp(0.0, 1.0).toDouble(),
+            widget.load.clamp(0.0, 1.0).toDouble(),
+          ),
+          child: const SizedBox.expand(),
+        ),
+      );
 }
 
-class _Node3 {
-  const _Node3(this.x, this.y, this.z);
+class _Point3 {
+  const _Point3(this.x, this.y, this.z);
   final double x, y, z;
 }
 
+class _Node {
+  const _Node(this.point, this.screen, this.depth, this.size);
+  final _Point3 point;
+  final Offset screen;
+  final double depth, size;
+}
+
 class _NeuralSpherePainter extends CustomPainter {
-  _NeuralSpherePainter(this.time, this.color, this.state) : super(repaint: time);
+  _NeuralSpherePainter(this.time, this.state, this.audioLevel, this.load)
+      : super(repaint: time);
+
   final Animation<double> time;
-  final Color color;
   final JarvisVisualState state;
+  final double audioLevel, load;
+
+  Color get accent {
+    final base = switch (state) {
+      JarvisVisualState.idle => const Color(0xFF36CFFF),
+      JarvisVisualState.listening => const Color(0xFF35FFD2),
+      JarvisVisualState.thinking => const Color(0xFF9B75FF),
+      JarvisVisualState.speaking => const Color(0xFF4CA8FF),
+      JarvisVisualState.confirmation => const Color(0xFF61FFB2),
+      JarvisVisualState.error => const Color(0xFFFF496C),
+      JarvisVisualState.exiting => const Color(0xFF607B91),
+    };
+    // High AI activity pushes the state color toward bright plasma-cyan.
+    return Color.lerp(base, const Color(0xFFB8F5FF), load * 0.48)!;
+  }
+
+  double get stateEnergy => switch (state) {
+        JarvisVisualState.idle => 0.24,
+        JarvisVisualState.listening => 0.48 + audioLevel * 0.52,
+        JarvisVisualState.thinking => 0.72,
+        JarvisVisualState.speaking => 0.72 + audioLevel * 0.28,
+        JarvisVisualState.confirmation => 0.9,
+        JarvisVisualState.error => 0.8,
+        JarvisVisualState.exiting => 0.12,
+      };
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.isEmpty) return;
-    final c = size.center(Offset.zero);
-    final r = math.min(size.width * .39, size.height * .39);
+    if (size.width <= 0 || size.height <= 0) return;
+    final center = size.center(Offset.zero);
+    final radius = size.shortestSide * 0.43;
     final t = time.value * math.pi * 2;
-    final active = switch (state) {
-      JarvisVisualState.listening => 1.28,
-      JarvisVisualState.thinking => 1.55,
-      JarvisVisualState.speaking => 1.4,
-      JarvisVisualState.confirmation => 1.7,
-      JarvisVisualState.error => .65,
-      JarvisVisualState.exiting => .35,
-      _ => .88,
-    };
-    final speed = switch (state) {
-      JarvisVisualState.listening => 1.25,
-      JarvisVisualState.thinking => 1.9,
-      JarvisVisualState.speaking => 1.55,
-      JarvisVisualState.confirmation => 2.1,
-      JarvisVisualState.error => .45,
-      JarvisVisualState.exiting => .25,
-      _ => .62,
-    };
+    final energy = (stateEnergy + load * 0.34).clamp(0.0, 1.4).toDouble();
+    final rotY = t * (0.12 + energy * 0.30);
+    final rotX = math.sin(t * 0.31) * 0.32 + math.sin(t * 0.13) * 0.12;
+    final cosY = math.cos(rotY), sinY = math.sin(rotY);
+    final cosX = math.cos(rotX), sinX = math.sin(rotX);
+    final count = size.shortestSide < 190 ? 66 : 104;
+    const goldenAngle = math.pi * (3.0 - 2.23606797749979);
+    final nodes = <_Node>[];
 
-    canvas.drawCircle(c, r * 1.48, Paint()..shader = RadialGradient(colors: [
-      color.withValues(alpha: .22 * active), color.withValues(alpha: .07 * active), Colors.transparent,
-    ]).createShader(Rect.fromCircle(center: c, radius: r * 1.48)));
+    final backgroundGlow = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          accent.withValues(alpha: 0.15 + energy * 0.08),
+          accent.withValues(alpha: 0.035),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.58, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: radius * 1.42));
+    canvas.drawCircle(center, radius * 1.42, backgroundGlow);
 
-    final nodes = <_Node3>[];
-    const count = 96;
-    const golden = 2.399963229728653;
+    // A lightweight projected 3D sphere: no network dependency or external assets.
     for (var i = 0; i < count; i++) {
-      final y = 1 - (i / (count - 1)) * 2;
-      final ring = math.sqrt(math.max(0, 1 - y * y));
-      final a = i * golden + t * .24 * speed;
-      final x = math.cos(a) * ring;
-      final z = math.sin(a) * ring;
-      final tilt = t * .11 * speed;
-      nodes.add(_Node3(x * math.cos(tilt) - y * math.sin(tilt) * .24, y * math.cos(tilt) + x * math.sin(tilt) * .24, z));
+      final y0 = 1.0 - 2.0 * (i / (count - 1));
+      final ring = math.sqrt(math.max(0.0, 1.0 - y0 * y0));
+      final theta = goldenAngle * i;
+      final x0 = math.cos(theta) * ring;
+      final z0 = math.sin(theta) * ring;
+      final ripple = math.sin(t * (1.4 + load) + i * 0.61) *
+          (0.012 + audioLevel * 0.085 + load * 0.045);
+      final pulse = 1.0 + ripple;
+      final x = x0 * pulse, y = y0 * pulse, z = z0 * pulse;
+      final xr = x * cosY + z * sinY;
+      final zr = -x * sinY + z * cosY;
+      final yr = y * cosX - zr * sinX;
+      final zf = y * sinX + zr * cosX;
+      final perspective = 1.0 / (1.0 + zf * 0.22);
+      final screen = Offset(
+        center.dx + xr * radius * 0.84 * perspective,
+        center.dy + yr * radius * 0.84 * perspective,
+      );
+      final depth = ((-zf + 1.0) * 0.5).clamp(0.0, 1.0).toDouble();
+      final dotSize = (0.85 + depth * 1.65 + energy * 0.45) *
+          (1.0 + audioLevel * 0.45);
+      nodes.add(_Node(_Point3(xr, yr, zf), screen, depth, dotSize));
     }
 
-    final projected = <Offset>[];
-    final depths = <double>[];
-    for (final n in nodes) {
-      final perspective = 2.8 / (2.8 - n.z * .72);
-      projected.add(Offset(c.dx + n.x * r * perspective, c.dy + n.y * r * perspective));
-      depths.add((n.z + 1) / 2);
-    }
-
-    final link = Paint()..style = PaintingStyle.stroke..strokeWidth = .65;
-    for (var i = 0; i < projected.length; i++) {
-      final nearest = <int>[];
-      for (var j = 0; j < projected.length; j++) {
-        if (i == j) continue;
-        final dx = nodes[i].x - nodes[j].x;
-        final dy = nodes[i].y - nodes[j].y;
-        final dz = nodes[i].z - nodes[j].z;
-        if (dx * dx + dy * dy + dz * dz < .19) nearest.add(j);
+    // Synaptic links appear/disappear as the sphere rotates and deforms.
+    final linkPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.55 + load * 0.45;
+    for (var i = 0; i < nodes.length; i++) {
+      final a = nodes[i];
+      for (var j = i + 1; j < nodes.length; j++) {
+        final b = nodes[j];
+        final dx = a.point.x - b.point.x;
+        final dy = a.point.y - b.point.y;
+        final dz = a.point.z - b.point.z;
+        final distance2 = dx * dx + dy * dy + dz * dz;
+        if (distance2 > 0.19) continue;
+        final front = ((a.depth + b.depth) * 0.5);
+        final alpha = (0.045 + front * 0.22 + energy * 0.08)
+            .clamp(0.0, 0.42).toDouble();
+        linkPaint.color = accent.withValues(alpha: alpha);
+        canvas.drawLine(a.screen, b.screen, linkPaint);
       }
-      for (final j in nearest) {
-        if (j <= i) continue;
-        final depth = (depths[i] + depths[j]) / 2;
-        link.color = color.withValues(alpha: (.035 + depth * .16) * active);
-        canvas.drawLine(projected[i], projected[j], link);
+    }
+
+    // Moving packets travel across a few links, making the network feel active.
+    final packetPaint = Paint()..style = PaintingStyle.fill;
+    for (var i = 0; i < nodes.length; i += 7) {
+      final a = nodes[i];
+      final j = (i + 9 + (t * 1.7).floor()) % nodes.length;
+      final b = nodes[j];
+      final progress = (0.5 + 0.5 * math.sin(t * (1.2 + load) + i)).toDouble();
+      final packet = Offset.lerp(a.screen, b.screen, progress)!;
+      packetPaint.color = Colors.white.withValues(
+        alpha: (0.22 + energy * 0.58).clamp(0.0, 0.9).toDouble(),
+      );
+      canvas.drawCircle(packet, 0.9 + energy * 1.2, packetPaint);
+    }
+
+    // Depth-shaded neurons.
+    final nodePaint = Paint()..style = PaintingStyle.fill;
+    for (final node in nodes) {
+      final alpha = (0.22 + node.depth * 0.68 + energy * 0.10)
+          .clamp(0.0, 1.0).toDouble();
+      nodePaint.color = accent.withValues(alpha: alpha);
+      canvas.drawCircle(node.screen, node.size * 1.9, Paint()
+        ..color = accent.withValues(alpha: alpha * 0.10));
+      canvas.drawCircle(node.screen, node.size, nodePaint);
+      if (node.depth > 0.76) {
+        canvas.drawCircle(node.screen, node.size * 0.34,
+            Paint()..color = Colors.white.withValues(alpha: alpha * 0.92));
       }
     }
 
-    final sphereClip = Path()..addOval(Rect.fromCircle(center: c, radius: r * 1.01));
-    canvas.save();
-    canvas.clipPath(sphereClip);
-    final meridian = Paint()..style = PaintingStyle.stroke..strokeWidth = .75..color = color.withValues(alpha: .25 * active);
-    for (var i = 0; i < 5; i++) {
+    // Inner energy core and three rotating orbital ellipses.
+    final coreRadius = radius * (0.13 + energy * 0.045) *
+        (1.0 + math.sin(t * (1.8 + audioLevel * 4.0)) * (0.035 + audioLevel * 0.07));
+    final coreGlow = Paint()
+      ..shader = RadialGradient(colors: [
+        Colors.white.withValues(alpha: 0.75),
+        accent.withValues(alpha: 0.48 + energy * 0.12),
+        accent.withValues(alpha: 0.02),
+        Colors.transparent,
+      ], stops: const [0.0, 0.22, 0.68, 1.0])
+          .createShader(Rect.fromCircle(center: center, radius: coreRadius * 3.4));
+    canvas.drawCircle(center, coreRadius * 3.4, coreGlow);
+    final orbitPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    for (var k = 0; k < 3; k++) {
       canvas.save();
-      canvas.translate(c.dx, c.dy);
-      canvas.rotate(t * .09 * speed + i * math.pi / 5);
-      canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: r * (1.95 - i * .17), height: r * .54), meridian);
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(t * (0.12 + k * 0.08) * (k.isEven ? 1 : -1));
+      orbitPaint
+        ..strokeWidth = 0.8 + k * 0.35
+        ..color = accent.withValues(alpha: 0.20 + energy * 0.20);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset.zero,
+          width: radius * (0.64 + k * 0.14),
+          height: radius * (0.20 + k * 0.04),
+        ),
+        orbitPaint,
+      );
       canvas.restore();
     }
-    canvas.restore();
+    canvas.drawCircle(center, coreRadius, Paint()..color = Colors.white.withValues(alpha: 0.85));
+    canvas.drawCircle(center, coreRadius * 1.8,
+        Paint()..style = PaintingStyle.stroke..strokeWidth = 1.2..color = accent.withValues(alpha: 0.85));
 
-    final nodePaint = Paint();
-    for (var i = 0; i < projected.length; i++) {
-      final front = depths[i];
-      final pulse = .65 + .35 * math.sin(t * 2.8 * speed + i * .77);
-      final radius = .8 + front * 1.65 + (state == JarvisVisualState.speaking ? pulse : 0);
-      nodePaint.color = color.withValues(alpha: (.18 + front * .72) * active);
-      canvas.drawCircle(projected[i], radius, nodePaint);
-      if (front > .78 && i % 7 == 0) {
-        canvas.drawCircle(projected[i], radius * 2.8, Paint()..color = color.withValues(alpha: .12 * active));
+    // Audio-response ripples expand around the sphere only while listening/speaking.
+    if (state == JarvisVisualState.listening || state == JarvisVisualState.speaking) {
+      final ripplePaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8 + audioLevel * 1.6
+        ..color = accent.withValues(alpha: 0.10 + audioLevel * 0.25);
+      for (var k = 0; k < 3; k++) {
+        final phase = (t * 0.18 + k / 3.0) % 1.0;
+        final rippleRadius = radius * (0.78 + phase * (0.35 + audioLevel * 0.35));
+        canvas.drawCircle(center, rippleRadius, ripplePaint);
       }
     }
 
-    final coreR = r * (.19 + .015 * math.sin(t * 2 * speed));
-    canvas.drawCircle(c, coreR * 2.3, Paint()..shader = RadialGradient(colors: [
-      Colors.white.withValues(alpha: .7), color.withValues(alpha: .45), Colors.transparent,
-    ]).createShader(Rect.fromCircle(center: c, radius: coreR * 2.3)));
-    canvas.drawCircle(c, coreR, Paint()..shader = RadialGradient(colors: [
-      Colors.white, color.withValues(alpha: .95), const Color(0xFF03101B),
-    ]).createShader(Rect.fromCircle(center: c, radius: coreR)));
-    canvas.drawCircle(c, r, Paint()..style = PaintingStyle.stroke..strokeWidth = 1.15..color = color.withValues(alpha: .7 * active));
+    final outer = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8
+      ..color = accent.withValues(alpha: 0.16 + energy * 0.12);
+    canvas.drawCircle(center, radius * (1.04 + math.sin(t * 0.7) * 0.012), outer);
 
-    final orbit = Paint()..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
-    for (final item in [(1.12, .32, .0), (1.25, .18, 1.1), (1.04, .13, -.8)]) {
-      canvas.save();
-      canvas.translate(c.dx, c.dy);
-      canvas.rotate(item.$3 + t * .13 * speed);
-      orbit..strokeWidth = 1.1..color = color.withValues(alpha: item.$2 * active);
-      canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: r * item.$1 * 2, height: r * .48), orbit);
-      canvas.restore();
+    if (state == JarvisVisualState.error) {
+      final warning = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..color = accent.withValues(alpha: 0.9);
+      canvas.drawLine(center.translate(-radius * 0.09, radius * 1.16),
+          center.translate(radius * 0.09, radius * 1.34), warning);
+      canvas.drawLine(center.translate(radius * 0.09, radius * 1.16),
+          center.translate(-radius * 0.09, radius * 1.34), warning);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _NeuralSpherePainter old) => old.color != color || old.state != state;
+  bool shouldRepaint(_NeuralSpherePainter oldDelegate) =>
+      oldDelegate.state != state ||
+      oldDelegate.audioLevel != audioLevel ||
+      oldDelegate.load != load;
 }
