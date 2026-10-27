@@ -103,8 +103,24 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         },
         onError: (error) {
           debugPrint('JARVIS speech error: $error');
-          if (mounted && !_ttsSpeaking) setState(() => _status = 'Микрофон: ${error.errorMsg}');
-          if (_voiceRunning && !_ttsSpeaking) _scheduleVoiceRestart();
+          final message = error.errorMsg.toLowerCase();
+          final terminal = message.contains('permission') ||
+              message.contains('not_available') ||
+              message.contains('recognizer_busy') ||
+              message.contains('client');
+          if (terminal) {
+            _voiceRunning = false;
+            _wakeArmed = false;
+            _voiceRestartTimer?.cancel();
+          }
+          if (mounted && !_ttsSpeaking) {
+            setState(() => _status = terminal
+                ? 'Микрофон остановлен: $message. Проверь разрешение микрофона и службу распознавания Android.'
+                : 'Микрофон: $message');
+          }
+          if (!terminal && _voiceRunning && !_ttsSpeaking) {
+            _scheduleVoiceRestart(const Duration(seconds: 2));
+          }
         },
         debugLogging: false,
       );
@@ -177,12 +193,14 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       await Future<void>.delayed(const Duration(milliseconds: 250));
       await _speech.listen(
         onResult: _onSpeechResult,
-        listenFor: const Duration(minutes: 1),
-        pauseFor: const Duration(seconds: 4),
-        partialResults: true,
-        cancelOnError: false,
-        listenMode: stt.ListenMode.dictation,
-        localeId: 'ru_RU',
+        options: stt.SpeechListenOptions(
+          listenFor: const Duration(minutes: 1),
+          pauseFor: const Duration(seconds: 4),
+          partialResults: true,
+          cancelOnError: false,
+          listenMode: stt.ListenMode.dictation,
+          localeId: 'ru_RU',
+        ),
       );
       _voiceRunning = true;
       if (mounted) {
@@ -191,8 +209,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       }
     } catch (e) {
       _voiceRunning = false;
-      if (mounted) setState(() => _status = 'Ошибка микрофона: $e');
-      _scheduleVoiceRestart(const Duration(seconds: 2));
+      _wakeArmed = false;
+      _voiceRestartTimer?.cancel();
+      if (mounted) setState(() => _status = 'Ошибка микрофона: $e. Нажмите микрофон для повторной попытки.');
     } finally {
       _voiceStarting = false;
     }
