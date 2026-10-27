@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart' as crypto;
 
 /// Public market-data toolkit. No API key is required for public endpoints.
 /// Private account data and order execution are intentionally not exposed here.
@@ -23,6 +24,89 @@ class JarvisCrypto {
     } finally {
       client.close(force: true);
     }
+  }
+
+  static String _signature(String secret, String message) {
+    final digest = crypto.Hmac(crypto.sha256, utf8.encode(secret)).convert(utf8.encode(message));
+    return base64.encode(digest.bytes);
+  }
+
+  static Future<dynamic> _privateRequest({
+    required String apiKey, required String secret, required String passphrase,
+    required String method, required String path, String body = '',
+  }) async {
+    if (apiKey.trim().isEmpty || secret.isEmpty || passphrase.isEmpty) {
+      throw ArgumentError('Заполните API key, Secret key и Passphrase OKX');
+    }
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+    final signature = _signature(secret, '$timestamp$method$path$body');
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
+    try {
+      final uri = Uri.parse('$_okx$path');
+      final request = method == 'GET'
+          ? await client.getUrl(uri).timeout(const Duration(seconds: 12))
+          : await client.postUrl(uri).timeout(const Duration(seconds: 12));
+      request.headers.set('Accept', 'application/json');
+      request.headers.set('Content-Type', 'application/json');
+      request.headers.set('OK-ACCESS-KEY', apiKey.trim());
+      request.headers.set('OK-ACCESS-SIGN', signature);
+      request.headers.set('OK-ACCESS-TIMESTAMP', timestamp);
+      request.headers.set('OK-ACCESS-PASSPHRASE', passphrase);
+      if (body.isNotEmpty) request.write(body);
+      final response = await request.close().timeout(const Duration(seconds: 15));
+      final raw = await response.transform(utf8.decoder).join();
+      final parsed = jsonDecode(raw);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError('OKX HTTP ${response.statusCode}: ${raw.length > 220 ? raw.substring(0, 220) : raw}');
+      }
+      if (parsed is Map && parsed['code']?.toString() != '0') {
+        throw StateError('OKX: ${parsed['msg'] ?? 'ошибка API'} (${parsed['code'] ?? 'без кода'})');
+      }
+      return parsed is Map ? parsed['data'] : parsed;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> accountBalance({
+    required String apiKey, required String secret, required String passphrase,
+  }) async {
+    final data = await _privateRequest(
+      apiKey: apiKey, secret: secret, passphrase: passphrase,
+      method: 'GET', path: '/api/v5/account/balance',
+    );
+    if (data is! List) return const [];
+    return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  static Future<Map<String, dynamic>> placeSpotMarketOrder({
+    required String apiKey, required String secret, required String passphrase,
+    required String instrument, required String side, required String size,
+  }) async {
+    final safeInstrument = instrument.trim().toUpperCase();
+    final safeSide = side.trim().toLowerCase();
+    final safeSize = double.tryParse(size.trim());
+    if (!RegExp(r'^[A-Z0-9-]{3,30}$').hasMatch(safeInstrument)) {
+      throw ArgumentError('Неверный инструмент, например BTC-USDT');
+    }
+    if (safeSide != 'buy' && safeSide != 'sell') throw ArgumentError('Сторона ордера должна быть buy или sell');
+    if (safeSize == null || !safeSize.isFinite || safeSize <= 0) throw ArgumentError('Размер ордера должен быть больше нуля');
+    final body = jsonEncode({
+      'instId': safeInstrument, 'tdMode': 'cash', 'side': safeSide,
+      'ordType': 'market', 'sz': size.trim(),
+    });
+    final data = await _privateRequest(
+      apiKey: apiKey, secret: secret, passphrase: passphrase,
+      method: 'POST', path: '/api/v5/trade/order', body: body,
+    );
+    if (data is! List || data.isEmpty || data.first is! Map) {
+      throw StateError('OKX не вернул подтверждение ордера');
+    }
+    final result = Map<String, dynamic>.from(data.first as Map);
+    if (result['sCode'] != null && result['sCode'].toString() != '0') {
+      throw StateError('Ордер отклонён: ${result['sMsg'] ?? result['sCode']}');
+    }
+    return result;
   }
 
   static Future<dynamic> _coinglass(String path, String apiKey) async {
