@@ -8,6 +8,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'jarvis_client.dart';
 import 'crypto/crypto_tools.dart';
 import 'crypto/crypto_screen.dart';
+import 'crypto/trading_chart_panel.dart';
 import 'osint/osint_screen.dart';
 import 'jarvis_reactor.dart';
 import 'tools/calculator/calculator_screen.dart';
@@ -841,6 +842,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             Text(switch (_visualState) { JarvisVisualState.listening => 'СЛУШАЮ', JarvisVisualState.thinking => 'ОБРАБАТЫВАЮ ЗАПРОС', JarvisVisualState.speaking => 'ОТВЕЧАЮ', JarvisVisualState.confirmation => 'ГОТОВО', JarvisVisualState.error => 'ОШИБКА', _ => 'СИСТЕМА ОЖИДАЕТ' }, style: const TextStyle(color: Colors.white70, fontSize: 9, letterSpacing: 2)),
           ])),
         ])),
+        if (_android) const JarvisTradingChartPanel(),
         if (_showCryptoDashboard) ...[
           Padding(padding: const EdgeInsets.fromLTRB(10, 6, 10, 2), child: Row(children: [
             const Expanded(child: Text('КРИПТОЦЕНТР · РАБОЧАЯ ПАНЕЛЬ', style: TextStyle(color: kCyan, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.bold))),
