@@ -594,7 +594,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<String> _readAttachment(PlatformFile file) async {
     final ext = (file.extension ?? '').toLowerCase();
-    final bytes = file.bytes ?? await file.xFile.readAsBytes();
+    final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : <int>[]);
     if (bytes.length > 5 * 1024 * 1024) return '[Файл \${file.name}: размер больше 5 МБ; содержимое не передано AI.]';
     try {
       if (ext == 'pdf') {
