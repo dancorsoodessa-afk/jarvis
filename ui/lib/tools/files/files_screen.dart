@@ -15,24 +15,30 @@ class _JarvisFilesScreenState extends State<JarvisFilesScreen> {
   Future<void> _pick() async {
     setState(() { _busy = true; _status = 'Открываю системный выбор файлов…'; _preview = ''; });
     try {
-      final result = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true);
+      final result = await FilePicker.pickFiles(allowMultiple: true);
       if (!mounted) return;
-      if (result == null) { setState(() => _status = 'Выбор отменён.'); return; }
-      setState(() { _files = result.files; _status = 'Выбрано файлов: ${result.files.length}'; });
+      if (result.isEmpty) { setState(() => _status = 'Выбор отменён.'); return; }
+      setState(() { _files = result; _status = 'Выбрано файлов: ${result.length}'; });
     } catch (e) {
       if (mounted) setState(() => _status = 'Не удалось открыть файлы: $e');
     } finally { if (mounted) setState(() => _busy = false); }
   }
-  void _showText(PlatformFile file) {
-    final bytes = file.bytes;
-    if (bytes == null) { setState(() => _preview = 'Содержимое недоступно в памяти.'); return; }
-    if (bytes.length > 1024 * 1024) { setState(() => _preview = 'Файл больше 1 МБ; текстовый предпросмотр ограничен.'); return; }
-    final ext = (file.extension ?? '').toLowerCase();
-    if (!const {'txt','md','json','csv','log','xml','yaml','yml'}.contains(ext)) {
-      setState(() => _preview = 'Предпросмотр текста доступен для TXT, MD, JSON, CSV, LOG, XML и YAML.');
-      return;
+  Future<void> _showText(PlatformFile file) async {
+    try {
+      final ext = (file.extension ?? '').toLowerCase();
+      if (!const {'txt','md','json','csv','log','xml','yaml','yml'}.contains(ext)) {
+        setState(() => _preview = 'Предпросмотр текста доступен для TXT, MD, JSON, CSV, LOG и YAML.');
+        return;
+      }
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 1024 * 1024) {
+        setState(() => _preview = 'Файл больше 1 МБ; текстовый предпросмотр ограничен.');
+        return;
+      }
+      if (mounted) setState(() => _preview = utf8.decode(bytes, allowMalformed: true));
+    } catch (e) {
+      if (mounted) setState(() => _preview = 'Не удалось прочитать файл: $e');
     }
-    setState(() => _preview = utf8.decode(bytes, allowMalformed: true));
   }
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -45,7 +51,7 @@ class _JarvisFilesScreenState extends State<JarvisFilesScreen> {
       ..._files.map((file) => Card(child: ListTile(
         leading: const Icon(Icons.insert_drive_file),
         title: Text(file.name, maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${file.extension ?? 'без расширения'} · ${file.size} байт'),
+        subtitle: Text(file.extension ?? 'без расширения'),
         trailing: IconButton(icon: const Icon(Icons.visibility), onPressed: () => _showText(file)),
       ))),
       if (_preview.isNotEmpty) ...[
