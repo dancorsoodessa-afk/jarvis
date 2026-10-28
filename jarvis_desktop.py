@@ -254,7 +254,7 @@ class JarvisDesktop(tk.Tk):
         self.settings.setdefault("tts_voice", "Charon")
         if self.settings.get("tts_voice") in {"Windows system voice", "Dmitri", "Microsoft David", "Microsoft Zira", ""}:
             self.settings["tts_voice"] = "Charon"
-        self.settings.setdefault("tts_model", "gemini-2.5-flash-tts")
+        self.settings.setdefault("tts_model", "gemini-2.5-flash-preview-tts")
         self.settings.setdefault("tts_timeout", "45")
         self.settings.setdefault("stt_timeout", "45")
         self.settings.setdefault("stt_model", "gemini-2.5-flash")
@@ -266,7 +266,7 @@ class JarvisDesktop(tk.Tk):
         self.settings["tts_engine"] = tts_engine
         os.environ["JARVIS_TTS"] = tts_engine
         os.environ["JARVIS_TTS_VOICE"] = str(self.settings.get("tts_voice") or "Charon")
-        os.environ["JARVIS_TTS_MODEL"] = str(self.settings.get("tts_model") or "gemini-2.5-flash-tts")
+        os.environ["JARVIS_TTS_MODEL"] = str(self.settings.get("tts_model") or "gemini-2.5-flash-preview-tts")
         os.environ["JARVIS_TTS_TIMEOUT"] = str(self.settings.get("tts_timeout") or "45")
 
     def _save_settings(self):
@@ -475,7 +475,7 @@ class JarvisDesktop(tk.Tk):
         }
         self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
         if hasattr(self, "scene_label"):
-            self.scene_label.config(text=labels.get(state, state) + "\nTHREE.JS WEBGL")
+            self.scene_label.config(text=labels.get(state, state) + "\nЖИВОЕ ЯДРО")
 
     def _open_3d_scene(self):
         # Compatibility hook: the reactor is rendered in the main window.
@@ -1483,7 +1483,7 @@ class JarvisDesktop(tk.Tk):
         for label, key, default, secret in (
             ("Облачный TTS", "tts_engine", self.settings.get("tts_engine", "gemini"), False),
             ("Голос Gemini", "tts_voice", self.settings.get("tts_voice", "Charon"), False),
-            ("Модель TTS", "tts_model", self.settings.get("tts_model", "gemini-2.5-flash-tts"), False),
+            ("Модель TTS", "tts_model", self.settings.get("tts_model", "gemini-2.5-flash-preview-tts"), False),
             ("Тайм-аут TTS, сек.", "tts_timeout", self.settings.get("tts_timeout", "45"), False),
             ("Модель STT", "stt_model", self.settings.get("stt_model", "gemini-2.5-flash"), False),
             ("Тайм-аут STT, сек.", "stt_timeout", self.settings.get("stt_timeout", "45"), False),
