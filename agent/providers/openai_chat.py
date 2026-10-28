@@ -276,15 +276,43 @@ class OpenAIChatProvider:
 
     def generate(self, prompt, tools: Optional[list] = None, max_steps: int = 4) -> str:
         self._ensure_endpoint()
-        model = self.discover_model()
+        primary_model = self.discover_model()
+        model_candidates = list(dict.fromkeys(
+            [primary_model] + [item for item in self.fallback_models if item and item != primary_model]
+        ))
+        model = primary_model
         messages = self._messages(prompt)
         payload = {"model": model, "messages": messages, "temperature": 0.25}
         if tools:
             payload["tools"] = tools
 
         result_content = ""
-        for _ in range(max_steps):
-            body = self._request_stream(payload) if self.on_delta is not None and "tools" in payload else self._request(payload)
+        for step_index in range(max_steps):
+            try:
+                body = self._request_stream(payload) if self.on_delta is not None and "tools" in payload else self._request(payload)
+            except RuntimeError as exc:
+                message = str(exc).lower()
+                capacity_error = any(f"http {code}" in message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in message
+                if not capacity_error or step_index != 0:
+                    raise
+                last_error = exc
+                body = None
+                for fallback_model in model_candidates[1:]:
+                    payload["model"] = fallback_model
+                    try:
+                        body = self._request_stream(payload) if self.on_delta is not None and "tools" in payload else self._request(payload)
+                        model = fallback_model
+                        break
+                    except RuntimeError as fallback_exc:
+                        last_error = fallback_exc
+                        fallback_message = str(fallback_exc).lower()
+                        if not (any(f"http {code}" in fallback_message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in fallback_message):
+                            raise
+                if body is None:
+                    raise RuntimeError(
+                        f"Основная модель {primary_model} и резервные модели недоступны. Последняя ошибка: {last_error}"
+                    ) from last_error
+            payload["model"] = model
             reply = self._extract(body)
             result_content = reply["content"]
             tool_calls = reply["tool_calls"]
