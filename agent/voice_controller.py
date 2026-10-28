@@ -260,7 +260,7 @@ class TTSEngine:
 class VoiceController:
     """Only owner of voice state. start/stop are race-safe; GUI is event-queue-only."""
 
-    STATES = {"IDLE", "LISTENING", "UNDERSTANDING", "THINKING", "SPEAKING", "ERROR"}
+    STATES = {"IDLE", "LISTENING", "UNDERSTANDING", "THINKING", "SPEAKING", "DEGRADED", "ERROR"}
 
     def __init__(self, ui: UIBridge, on_text: Callable[[str], None]):
         self.ui = ui
@@ -271,6 +271,8 @@ class VoiceController:
         self._state = "IDLE"
         self._last_error = ""
         self._mic_ok = False
+        self._quota_exceeded = False
+        self._tts_off = False
         self._is_speaking = threading.Event()
         self._mic_lock = MicLock()
         self._capture_thread: threading.Thread | None = None
@@ -309,7 +311,7 @@ class VoiceController:
             mic_ok = self._mic_ok
             running = self._running
         try:
-            cloud_voice_available = stt.current_engine() == "gemini" and tts.current_engine() == "gemini"
+            cloud_voice_available = stt.current_engine() == "gemini" and tts.current_engine() == "gemini" and not stt.quota_exceeded()
         except Exception as exc:
             self._log.warning("event=voice_availability_check_failed error=%s", exc)
             cloud_voice_available = False
@@ -317,7 +319,13 @@ class VoiceController:
             "state": state,
             "last_error": last_error,
             "mic": "ok" if mic_ok else "fail",
+            "mic_status": "mic ok" if mic_ok else "mic fail",
+            "cloud_stt_status": "cloud stt off" if stt.quota_exceeded() or stt.current_engine() == "off" else "cloud stt on",
+            "tts_status": "tts off" if tts.current_engine() == "off" else "tts on",
             "cloud_voice_available": cloud_voice_available,
+            "quota_exceeded": stt.quota_exceeded(),
+            "cloud_stt": "off" if stt.quota_exceeded() or stt.current_engine() == "off" else "on",
+            "tts": "off" if tts.current_engine() == "off" else "on",
             "running": running,
             "is_speaking": self._is_speaking.is_set(),
         }
@@ -530,7 +538,10 @@ class VoiceController:
             if not running or self._is_speaking.is_set():
                 continue
             last_error = None
-            for attempt, delay in enumerate(RECOVERY_DELAYS[:3]):
+            if stt.quota_exceeded():
+                self._quota_exceeded = True
+                last_error = RuntimeError(stt.QUOTA_MESSAGE)
+            for attempt, delay in enumerate(() if stt.quota_exceeded() else RECOVERY_DELAYS[:3]):
                 with self._lock:
                     if self._shutdown or not self._running:
                         break
@@ -545,16 +556,19 @@ class VoiceController:
                     self._log.exception("event=stt_attempt_failed attempt=%s", attempt + 1)
                     # Quota/rate-limit HTTP 429 cannot be fixed by repeating the same request.
                     error_text = str(exc).lower()
-                    if "http 429" in error_text and any(
-                        marker in error_text for marker in ("quota", "rate limit", "limit exceeded", "resource_exhausted")
-                    ):
-                        last_error = RuntimeError(
-                            "Квота Gemini STT исчерпана (HTTP 429). Повторы остановлены; "
-                            "проверьте лимит API или настройте резервный STT-провайдер."
-                        )
+                    if stt.quota_exceeded() or ("http 429" in error_text and any(
+                        marker in error_text for marker in ("quota", "rate limit", "limit exceeded", "resource_exhausted", "free tier")
+                    )):
+                        self._quota_exceeded = True
+                        last_error = RuntimeError(stt.QUOTA_MESSAGE)
                         break
             if last_error is not None:
-                self._recover(f"Ошибка распознавания после повторов: {last_error}")
+                if self._quota_exceeded or stt.quota_exceeded():
+                    message = stt.QUOTA_MESSAGE
+                    self._set_state("DEGRADED", message)
+                    self.ui.post("voice_status", message)
+                else:
+                    self._recover(f"Ошибка распознавания: {last_error}")
             with self._lock:
                 running = self._running
                 state = self._state
@@ -592,9 +606,16 @@ class VoiceController:
 
     def _tts_error(self, exc: Exception) -> None:
         self._log.error("event=tts_error error=%s", exc)
-        self._set_state("ERROR", f"Не удалось озвучить ответ: {exc}")
+        error = str(exc)
+        if "http 400" in error.lower() and ("voice" in error.lower() or "speaker" in error.lower()):
+            message = "Неверный голос озвучки Gemini; используется резервный профиль Charon. Текстовый ответ доступен."
+        else:
+            message = f"Озвучка недоступна, вот текстовый ответ: {error}"
+        self._tts_off = True
+        self._set_state("DEGRADED" if stt.quota_exceeded() else "ERROR", message)
         self.tts_engine.stop()
         self.ui.post("tts_error", str(exc))
+        self.ui.post("voice_status", message)
         with self._lock:
             running = self._running
         if running:
