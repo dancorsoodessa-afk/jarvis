@@ -258,6 +258,12 @@ class OpenAIChatProvider:
                             dst = tool_calls[idx]
                             if tc.get("id"):
                                 dst["id"] = tc["id"]
+                            # Gemini 3 requires the thought signature to be echoed
+                            # unchanged with the assistant tool-call message. The
+                            # OpenAI-compatible endpoint carries it in extra_content.
+                            extra = tc.get("extra_content")
+                            if isinstance(extra, dict):
+                                dst["extra_content"] = extra
                             fn = tc.get("function") or {}
                             if fn.get("name"):
                                 dst["function"]["name"] += fn["name"]
@@ -301,7 +307,18 @@ class OpenAIChatProvider:
             msg = body["choices"][0]["message"]
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(f"ИИ вернул неожиданный ответ: {body!r}") from exc
-        return {"content": msg.get("content") or "", "tool_calls": msg.get("tool_calls") or []}
+        # Keep provider-specific metadata on tool calls; stripping extra_content
+        # loses Gemini's required thought_signature and causes HTTP 400 next turn.
+        tool_calls = []
+        for call in msg.get("tool_calls") or []:
+            if not isinstance(call, dict):
+                continue
+            normalized = {
+                key: value for key, value in call.items()
+                if key in {"id", "type", "function", "extra_content"}
+            }
+            tool_calls.append(normalized)
+        return {"content": msg.get("content") or "", "tool_calls": tool_calls}
 
     def generate(self, prompt, tools: Optional[list] = None, max_steps: int = 4) -> str:
         self._ensure_endpoint()
