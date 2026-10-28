@@ -44,8 +44,13 @@ def _device():
 
 
 def _rms(block) -> float:
+    """Return RMS amplitude normalized to the float audio range 0.0–1.0.
+
+    InputStream is configured with dtype=int16. Normalize the raw RMS once;
+    a second normalization makes speech ~32768 times quieter and prevents VAD.
+    """
     import numpy as np
-    a = np.asarray(block, dtype="float32")
+    a = np.asarray(block, dtype=np.float32)
     if a.size == 0:
         return 0.0
     return float(np.sqrt(np.mean(a * a))) / 32768.0
