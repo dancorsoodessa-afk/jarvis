@@ -432,6 +432,82 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     });
   }
 
+  Future<void> _toolSettings() async {
+    Map<String, dynamic> current;
+    try {
+      final loaded = await _nativeTools.invokeMethod<Map<dynamic, dynamic>>('load_settings');
+      current = Map<String, dynamic>.from(loaded ?? const {});
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Не удалось загрузить настройки инструментов: $e');
+      return;
+    }
+    final cg = TextEditingController(text: current['coinglassApiKey']?.toString() ?? '');
+    final okxEndpoint = TextEditingController(text: current['okxEndpoint']?.toString() ?? 'https://www.okx.com');
+    final okxKey = TextEditingController(text: current['okxApiKey']?.toString() ?? '');
+    final okxSecret = TextEditingController(text: current['okxSecretKey']?.toString() ?? '');
+    final okxPass = TextEditingController(text: current['okxPassphrase']?.toString() ?? '');
+    final dsaEndpoint = TextEditingController(text: current['dsaEndpoint']?.toString() ?? '');
+    final dsaKey = TextEditingController(text: current['dsaApiKey']?.toString() ?? '');
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Настройки инструментов'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Align(alignment: Alignment.centerLeft, child: Text('CoinGlass', style: TextStyle(fontWeight: FontWeight.bold))),
+                TextField(controller: cg, obscureText: true, decoration: const InputDecoration(labelText: 'CoinGlass API Key')),
+                const SizedBox(height: 12),
+                const Align(alignment: Alignment.centerLeft, child: Text('OKX', style: TextStyle(fontWeight: FontWeight.bold))),
+                TextField(controller: okxEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'OKX Base URL')),
+                TextField(controller: okxKey, obscureText: true, decoration: const InputDecoration(labelText: 'OKX API Key')),
+                TextField(controller: okxSecret, obscureText: true, decoration: const InputDecoration(labelText: 'OKX Secret Key')),
+                TextField(controller: okxPass, obscureText: true, decoration: const InputDecoration(labelText: 'OKX Passphrase')),
+                const SizedBox(height: 12),
+                const Align(alignment: Alignment.centerLeft, child: Text('Daily Stock Analysis', style: TextStyle(fontWeight: FontWeight.bold))),
+                TextField(controller: dsaEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Service Base URL')),
+                TextField(controller: dsaKey, obscureText: true, decoration: const InputDecoration(labelText: 'Service API Key')),
+                const SizedBox(height: 8),
+                const Text('OKX по умолчанию использует демо-режим. Не отключайте защиту от реальных сделок без необходимости.', style: TextStyle(fontSize: 12)),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Сохранить')),
+        ],
+      ),
+    );
+    if (save == true && mounted) {
+      try {
+        current.addAll({
+          'coinglassApiKey': cg.text.trim(),
+          'okxEndpoint': okxEndpoint.text.trim().isEmpty ? 'https://www.okx.com' : okxEndpoint.text.trim(),
+          'okxApiKey': okxKey.text.trim(),
+          'okxSecretKey': okxSecret.text.trim(),
+          'okxPassphrase': okxPass.text.trim(),
+          'dsaEndpoint': dsaEndpoint.text.trim(),
+          'dsaApiKey': dsaKey.text.trim(),
+        });
+        await _nativeTools.invokeMethod<bool>('save_settings', current);
+        if (mounted) setState(() => _status = 'Настройки инструментов сохранены');
+      } catch (e) {
+        if (mounted) setState(() => _status = 'Ошибка сохранения настроек инструментов: $e');
+      }
+    }
+    cg.dispose();
+    okxEndpoint.dispose();
+    okxKey.dispose();
+    okxSecret.dispose();
+    okxPass.dispose();
+    dsaEndpoint.dispose();
+    dsaKey.dispose();
+  }
+
   Future<void> _showTools() async {
     if (!_android) return;
     const groups = <String, List<Map<String, String>>>{
@@ -467,6 +543,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
               const Text('ИНСТРУМЕНТЫ JARVIS', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
               const SizedBox(height: 8),
               const Text('Доступны инструменты, реализованные в Android-версии. Для сервисов с ключами сначала заполните их настройки.', style: TextStyle(fontSize: 12, color: Colors.white70)),
+              const SizedBox(height: 8),
+              FilledButton.tonalIcon(
+                onPressed: () { Navigator.pop(ctx); _toolSettings(); },
+                icon: const Icon(Icons.settings_outlined),
+                label: const Text('Настройки ключей и сервисов'),
+              ),
               for (final group in groups.entries) ...[
                 const SizedBox(height: 16),
                 Text(group.key.toUpperCase(), style: TextStyle(color: _visualColor, fontWeight: FontWeight.w800, letterSpacing: 1)),
