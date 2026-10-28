@@ -1016,7 +1016,6 @@ class JarvisDesktop(tk.Tk):
     def _run_ui_prompt(self, prompt: str):
         """Send a prepared, human-readable task from a button to the assistant."""
         self._command_from_hud(prompt)
-        self.send()
 
     def _open_module_details(self, name, title, desc, enabled):
         """Open practical, button-driven controls; never expose shell commands to the user."""
