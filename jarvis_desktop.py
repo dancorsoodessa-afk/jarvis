@@ -7,7 +7,6 @@ import os
 import queue
 import threading
 import time
-import webbrowser
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -16,6 +15,7 @@ import mimetypes
 from agent.runtime import build_agent
 from agent import tts, voice, stt
 from agent.visual_server import start_visual_server
+from agent.embedded_webview import EmbeddedEdgeView
 from agent.secrets import protect_secret, unprotect_secret
 from agent.tools_catalog import TOOLS
 
@@ -167,6 +167,7 @@ class JarvisDesktop(tk.Tk):
         self._voice_armed_until = 0.0
         self._visual_state = "IDLE"
         self._visual_level = 0.0
+        self._embedded_webview = None
         self.settings = _load_saved_settings()
         self._apply_saved_settings()
         if getattr(self, "_legacy_tts_settings_removed", False) or getattr(self, "_tool_settings_migrated", False):
@@ -425,6 +426,7 @@ class JarvisDesktop(tk.Tk):
                                     bg="#030811", fg=CYAN, width=34, height=11,
                                     font=("Consolas", 11, "bold"), justify="center")
         self.scene_label.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(4, 8), pady=4)
+        self.scene_label.bind("<Configure>", self._resize_embedded_3d)
         self.hud_text = tk.Label(hero, text="Инициализация ядра…", bg="#07101a", fg=CYAN,
                                  font=("Segoe UI", 14, "bold"), justify="left")
         self.hud_text.grid(row=0, column=1, sticky="sw", padx=8, pady=(42, 4))
@@ -512,12 +514,33 @@ class JarvisDesktop(tk.Tk):
         if hasattr(self, "scene_label"):
             self.scene_label.config(text=labels.get(state, state) + "\nTHREE.JS WEBGL")
 
-    def _open_3d_scene(self):
+    def _resize_embedded_3d(self, _event=None):
+        view = self._embedded_webview
+        if view is None:
+            return
         try:
-            webbrowser.open(self._visual_url, new=1)
-            self.scene_label.config(text="THREE.JS WEBGL\n3D REACTOR ОТКРЫТ\n\nГолос и состояние ИИ\nпередаются в сцену")
+            view.resize(self.scene_label.winfo_width(), self.scene_label.winfo_height())
         except Exception as exc:
-            self.scene_label.config(text="НЕ УДАЛОСЬ ОТКРЫТЬ 3D\n" + str(exc)[:100])
+            self.events.put(("visual_error", str(exc)))
+
+    def _open_3d_scene(self):
+        if os.name != "nt":
+            self.scene_label.config(text="ВСТРОЕННЫЙ WEBGL ДОСТУПЕН\nТОЛЬКО В WINDOWS")
+            return
+        self.scene_label.config(text="ЗАПУСК ВСТРОЕННОГО\nTHREE.JS WEBGL…")
+        parent_hwnd = int(self.scene_label.winfo_id())
+        def worker():
+            view = EmbeddedEdgeView(parent_hwnd, self._visual_url)
+            self._embedded_webview = view
+            try:
+                view.start(timeout=15.0)
+                self.events.put(("visual_embedded",))
+            except Exception as exc:
+                view.close()
+                if self._embedded_webview is view:
+                    self._embedded_webview = None
+                self.events.put(("visual_error", str(exc)))
+        threading.Thread(target=worker, name="jarvis-embedded-reactor", daemon=True).start()
 
     def _start_agent(self):
         # Ignore stale results when settings are saved/reloaded more than once.
@@ -678,7 +701,13 @@ class JarvisDesktop(tk.Tk):
                 event = self.events.get_nowait()
                 kind = event[0]
                 try:
-                    if kind == "ready":
+                    if kind == "visual_embedded":
+                        self._resize_embedded_3d()
+                        self.scene_label.config(text="ВСТРОЕННЫЙ THREE.JS WEBGL")
+                    elif kind == "visual_error":
+                        self.scene_label.config(text="ОШИБКА ВСТРОЕННОГО 3D\n" + str(event[1])[:120])
+                        self._append("SYSTEM", "Не удалось встроить 3D-реактор в окно JARVIS: " + str(event[1]))
+                    elif kind == "ready":
                         if len(event) > 2 and event[2] != self._agent_generation:
                             continue
                         self._agent_start_pending = False
@@ -1403,6 +1432,13 @@ class JarvisDesktop(tk.Tk):
     def _close(self):
         self._voice_loop_running = False
         tts.stop()
+        view = self._embedded_webview
+        self._embedded_webview = None
+        if view is not None:
+            try:
+                view.close()
+            except Exception:
+                pass
         try:
             self._visual_server.shutdown()
             self._visual_server.server_close()
