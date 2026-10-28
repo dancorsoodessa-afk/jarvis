@@ -84,6 +84,11 @@ def _generate_audio(text: str) -> bytes:
         raise RuntimeError("Облачная озвучка требует GEMINI_API_KEY. Укажите ключ Gemini в Центре управления.")
     model = (os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
     voice = (os.environ.get("JARVIS_TTS_VOICE") or DEFAULT_TTS_VOICE).strip()
+    # Normalize legacy Windows voice names to Gemini speaker profiles.
+    voice = {"dmitri medium": "Charon", "dmitri": "Charon", "male": "Charon", "мужской": "Charon", "female": "Aoede", "женский": "Aoede"}.get(voice.casefold(), voice)
+    valid_voices = {"Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede", "Callirrhoe", "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba", "Despina", "Erinome", "Algenib", "Rasalgethi", "Laomedeia", "Achernar", "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi", "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat"}
+    if voice not in valid_voices:
+        voice = DEFAULT_TTS_VOICE
     payload = {
         "model": model,
         "input": [{
