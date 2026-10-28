@@ -35,16 +35,37 @@ jobs:
           if [ ! -f android/app/src/main/AndroidManifest.xml ]; then
             flutter create --platforms=android --project-name jarvis_ui .
           fi
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          permissions = [
+              '    <uses-permission android:name="android.permission.INTERNET"/>',
+              '    <uses-permission android:name="android.permission.RECORD_AUDIO"/>',
+          ]
+          missing = [line for line in permissions if line not in s]
+          if missing:
+              marker = '<manifest'
+              i = s.find('>', s.find(marker))
+              if i < 0:
+                  raise SystemExit("Malformed AndroidManifest.xml")
+              s = s[:i+1] + "\\n" + "\\n".join(missing) + s[i+1:]
+              p.write_text(s)
+          PY
 
       - name: Resolve dependencies
         working-directory: ui
         run: flutter pub get
 
       - name: Static analysis
+        id: analyze
+        continue-on-error: true
         working-directory: ui
         run: flutter analyze --no-pub
 
       - name: Unit tests
+        id: tests
+        continue-on-error: true
         working-directory: ui
         run: flutter test --no-pub
 
@@ -58,9 +79,21 @@ jobs:
           sha256sum ui/build/app/outputs/flutter-apk/app-release.apk
 
       - name: Upload APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-android-release
           path: ui/build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
+
+      - name: Enforce quality gate
+        if: always()
+        env:
+          ANALYSIS_OUTCOME: ${{ steps.analyze.outcome }}
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          if [ "$ANALYSIS_OUTCOME" != "success" ] || [ "$TEST_OUTCOME" != "success" ]; then
+            echo "Static analysis or unit tests failed; inspect the logs before treating this build as verified."
+            exit 1
+          fi
