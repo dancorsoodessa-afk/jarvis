@@ -15,6 +15,20 @@ on:
       - 'pyproject.toml'
       - 'poetry.lock'
       - '.github/workflows/build-windows-exe.yml'
+  pull_request:
+    branches: [foundation]
+    paths:
+      - 'agent/**'
+      - 'docs/**'
+      - 'ui/**'
+      - 'tests/**'
+      - 'scripts/build_exe.ps1'
+      - 'scripts/prepare_3d_assets.ps1'
+      - 'jarvis_desktop.py'
+      - 'jarvis_desktop.spec'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - '.github/workflows/build-windows-exe.yml'
   workflow_dispatch:
 
 permissions:
@@ -55,6 +69,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Publish versioned release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: windows-${{ github.run_number }}
