@@ -1,4 +1,4 @@
-"""Thread-safe JARVIS voice pipeline: one microphone owner, queued STT/TTS and recovery."""
+"""JARVIS voice pipeline: single microphone owner, queued STT/TTS and explicit state machine."""
 from __future__ import annotations
 
 import io
@@ -19,26 +19,26 @@ BLOCK_SECONDS = 0.04
 SILENCE_SECONDS = 0.65
 MIN_SPEECH_SECONDS = 0.24
 MAX_PHRASE_SECONDS = 12.0
-_RECOVERY_DELAYS = (0.5, 1.0, 2.0, 4.0, 5.0)
+RECOVERY_DELAYS = (0.5, 1.0, 2.0, 4.0, 5.0)
 
 
 def _logger() -> logging.Logger:
-    log = logging.getLogger("jarvis.voice")
-    if not log.handlers:
+    logger = logging.getLogger("jarvis.voice")
+    if not logger.handlers:
         try:
-            path = Path(os.environ.get("APPDATA", Path.home())) / "JARVIS" / "logs"
-            path.mkdir(parents=True, exist_ok=True)
-            handler = logging.FileHandler(path / "voice.log", encoding="utf-8")
+            folder = Path(os.environ.get("APPDATA", str(Path.home()))) / "JARVIS" / "logs"
+            folder.mkdir(parents=True, exist_ok=True)
+            handler = logging.FileHandler(folder / "voice.log", encoding="utf-8")
             handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-            log.addHandler(handler)
-            log.setLevel(logging.INFO)
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
         except OSError:
             logging.basicConfig(level=logging.INFO)
-    return log
+    return logger
 
 
 class UIBridge:
-    """Thread-safe event bridge. Workers enqueue data; the GUI thread polls it."""
+    """Workers publish immutable events; only the GUI main thread consumes them."""
 
     def __init__(self, event_queue: queue.Queue):
         self._queue = event_queue
@@ -48,120 +48,120 @@ class UIBridge:
 
 
 class MicLock:
-    """Reject a second concurrent owner of the microphone."""
+    """Process-local guard against accidentally opening two input streams."""
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._owner: str | None = None
+        self._owner = ""
 
     def acquire(self, owner: str) -> None:
         if not self._lock.acquire(blocking=False):
-            raise RuntimeError(f"Микрофон уже занят потоком {self._owner or 'unknown'}.")
+            raise RuntimeError(f"Микрофон уже открыт: {self._owner or 'другой поток'}.")
         self._owner = owner
 
     def release(self) -> None:
         if self._lock.locked():
-            self._owner = None
+            self._owner = ""
             self._lock.release()
 
 
 class AudioCapture:
-    """One InputStream owner; segment audio by silence and discard samples during TTS."""
+    """Own exactly one sounddevice InputStream and split speech on trailing silence."""
 
     def __init__(
         self,
         mic_lock: MicLock,
+        stop_event: threading.Event,
         capture_blocked: Callable[[], bool],
         on_phrase: Callable[[bytes], None],
         on_level: Callable[[float], None],
         on_mic_status: Callable[[bool], None],
     ):
         self._mic_lock = mic_lock
+        self._stop = stop_event
         self._capture_blocked = capture_blocked
         self._on_phrase = on_phrase
         self._on_level = on_level
         self._on_mic_status = on_mic_status
-        self._stop = threading.Event()
-        self.mic_ok = False
-
-    def stop(self) -> None:
-        self._stop.set()
 
     @staticmethod
     def _wav(frames: list[bytes]) -> bytes:
-        output = io.BytesIO()
-        with wave.open(output, "wb") as wav_file:
-            wav_file.setnchannels(1)
-            wav_file.setsampwidth(2)
-            wav_file.setframerate(SAMPLE_RATE)
-            wav_file.writeframes(b"".join(frames))
-        return output.getvalue()
+        stream = io.BytesIO()
+        with wave.open(stream, "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(SAMPLE_RATE)
+            output.writeframes(b"".join(frames))
+        return stream.getvalue()
 
     def run(self) -> None:
         import numpy as np
         import sounddevice as sd
 
-        block_size = int(SAMPLE_RATE * BLOCK_SECONDS)
         device_value = os.environ.get("JARVIS_AUDIO_DEVICE", "").strip()
         device = int(device_value) if device_value.isdigit() else (device_value or None)
-        self._mic_lock.acquire("audio-capture")
+        block_size = int(SAMPLE_RATE * BLOCK_SECONDS)
+        acquired = False
         try:
+            self._mic_lock.acquire("jarvis-audio-capture")
+            acquired = True
             with sd.InputStream(
                 samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                 blocksize=block_size, device=device, latency="low",
             ) as stream:
-                self.mic_ok = True
                 self._on_mic_status(True)
-                _logger().info("event=mic_open device=%s sample_rate=%s", device, SAMPLE_RATE)
-                noise_levels: list[float] = []
+                _logger().info("event=mic_open device=%s rate=%s", device, SAMPLE_RATE)
+                noise: list[float] = []
                 frames: list[bytes] = []
-                started_at = 0.0
-                last_voice_at = 0.0
+                started = last_voice = 0.0
                 while not self._stop.is_set():
-                    data, overflow = stream.read(block_size)
-                    if overflow:
+                    data, overflowed = stream.read(block_size)
+                    if overflowed:
                         _logger().warning("event=mic_overflow")
-                    block = np.asarray(data[:, 0], dtype=np.int16).copy()
-                    level = float(np.sqrt(np.mean(block.astype("float32") ** 2))) / 32768.0
-                    if not self._capture_blocked():
+                    samples = np.asarray(data[:, 0], dtype=np.int16).copy()
+                    level = float(np.sqrt(np.mean(samples.astype("float32") ** 2))) / 32768.0
+                    blocked = self._capture_blocked()
+                    if not blocked:
                         self._on_level(min(1.0, level * 12.0))
-                    if self._capture_blocked():
+                    if blocked:
                         frames.clear()
-                        started_at = last_voice_at = 0.0
+                        started = last_voice = 0.0
                         continue
+
                     now = time.monotonic()
-                    if not frames and len(noise_levels) < 25:
-                        noise_levels.append(level)
-                    baseline = sorted(noise_levels)[len(noise_levels) // 2] if noise_levels else 0.0
-                    threshold = max(0.006, baseline * 2.2)
+                    if not frames and len(noise) < 25:
+                        noise.append(level)
+                    baseline = sorted(noise)[len(noise) // 2] if noise else 0.0
+                    threshold = max(0.0045, baseline * 2.0)
                     if level >= threshold:
                         if not frames:
-                            started_at = now
-                        frames.append(block.tobytes())
-                        last_voice_at = now
+                            started = now
+                        frames.append(samples.tobytes())
+                        last_voice = now
                     elif frames:
-                        frames.append(block.tobytes())
-                        if now - last_voice_at >= SILENCE_SECONDS:
-                            duration = now - started_at
+                        frames.append(samples.tobytes())
+                        if now - last_voice >= SILENCE_SECONDS:
+                            duration = now - started
                             phrase = self._wav(frames)
                             frames = []
-                            started_at = last_voice_at = 0.0
-                            if duration >= MIN_SPEECH_SECONDS:
+                            started = last_voice = 0.0
+                            if duration >= MIN_SPEECH_SECONDS and not self._stop.is_set():
                                 self._on_phrase(phrase)
-                    if frames and now - started_at >= MAX_PHRASE_SECONDS:
+                    if frames and now - started >= MAX_PHRASE_SECONDS:
                         phrase = self._wav(frames)
                         frames = []
-                        started_at = last_voice_at = 0.0
-                        self._on_phrase(phrase)
+                        started = last_voice = 0.0
+                        if not self._stop.is_set():
+                            self._on_phrase(phrase)
         finally:
-            self.mic_ok = False
             self._on_mic_status(False)
-            self._mic_lock.release()
+            if acquired:
+                self._mic_lock.release()
             _logger().info("event=mic_closed")
 
 
 class STTEngine:
-    """STT adapter with final/error/end callbacks; cloud engine returns final-only text."""
+    """One final transcript per audio segment; failures are surfaced, never swallowed."""
 
     def __init__(self, on_partial=None, on_final=None, on_error=None, on_end=None):
         self.on_partial = on_partial or (lambda _text: None)
@@ -169,44 +169,40 @@ class STTEngine:
         self.on_error = on_error or (lambda _error: None)
         self.on_end = on_end or (lambda: None)
 
-    def transcribe(self, audio_path: str) -> str:
+    def transcribe_bytes(self, audio: bytes) -> str:
+        path = None
         try:
-            text = stt.transcribe(audio_path).strip()
-            self.on_final(text)
-            return text
+            with tempfile.NamedTemporaryFile(prefix="jarvis_stt_", suffix=".wav", delete=False) as file:
+                path = Path(file.name)
+                file.write(audio)
+            transcript = str(stt.transcribe(str(path)) or "").strip()
+            self.on_final(transcript)
+            return transcript
         except Exception as exc:
             self.on_error(exc)
             raise
         finally:
+            if path is not None:
+                path.unlink(missing_ok=True)
             self.on_end()
 
 
 class TTSEngine:
-    """Persistent serialized TTS queue; network synthesis/playback never blocks GUI."""
+    """Single persistent worker serializes synthesis and playback outside the GUI thread."""
 
     def __init__(self, on_start, on_end, on_error):
         self._queue: queue.Queue[str | None] = queue.Queue()
         self._shutdown = threading.Event()
+        self._active = threading.Event()
         self._on_start = on_start
         self._on_end = on_end
         self._on_error = on_error
         self._thread = threading.Thread(target=self._run, name="jarvis-tts-worker", daemon=True)
         self._thread.start()
 
-    def mark_thinking(self) -> None:
-        """Move the state machine into LLM/tool processing."""
-        self._set_state("THINKING")
-
-    def complete_without_speech(self) -> None:
-        """Finish a request when TTS is disabled."""
-        self._set_state("LISTENING" if self._running and not self._stop.is_set() else "IDLE")
-
-    def report_error(self, message: str) -> None:
-        """Publish an error without blocking the caller or terminating the GUI."""
-        threading.Thread(target=self._recover, args=(message,), name="jarvis-voice-recovery", daemon=True).start()
-
     def speak(self, text: str) -> None:
-        self._queue.put(text)
+        if not self._shutdown.is_set():
+            self._queue.put(text)
 
     def stop(self) -> None:
         while True:
@@ -230,33 +226,36 @@ class TTSEngine:
             if text is None:
                 continue
             try:
+                self._active.set()
                 self._on_start()
                 tts.speak_and_play(text, blocking=True)
             except Exception as exc:
                 self._on_error(exc)
             finally:
+                self._active.clear()
                 self._on_end()
 
 
 class VoiceController:
-    """Voice facade and state-machine owner. GUI only renders posted state events."""
+    """Only owner of voice state. start/stop are race-safe; GUI is event-queue-only."""
 
     STATES = {"IDLE", "LISTENING", "UNDERSTANDING", "THINKING", "SPEAKING", "ERROR"}
 
     def __init__(self, ui: UIBridge, on_text: Callable[[str], None]):
         self.ui = ui
-        self._on_text_callback = on_text
+        self._route_text = on_text
         self._lock = threading.RLock()
         self._running = False
-        self._is_speaking = threading.Event()
-        self._stop = threading.Event()
-        self._stt_queue: queue.Queue[bytes | None] = queue.Queue(maxsize=3)
-        self._mic_lock = MicLock()
-        self._capture: AudioCapture | None = None
-        self._threads: list[threading.Thread] = []
+        self._shutdown = False
         self._state = "IDLE"
         self._last_error = ""
         self._mic_ok = False
+        self._is_speaking = threading.Event()
+        self._mic_lock = MicLock()
+        self._capture_thread: threading.Thread | None = None
+        self._capture_stop: threading.Event | None = None
+        self._restart_after_capture = False
+        self._stt_queue: queue.Queue[bytes | None] = queue.Queue(maxsize=2)
         self._log = _logger()
         self.stt_engine = STTEngine(
             on_partial=lambda text: self.ui.post("voice_partial", text),
@@ -265,6 +264,8 @@ class VoiceController:
             on_end=lambda: self._log.info("event=stt_end"),
         )
         self.tts_engine = TTSEngine(self._tts_started, self._tts_ended, self._tts_error)
+        self._stt_thread = threading.Thread(target=self._stt_worker, name="jarvis-stt-worker", daemon=True)
+        self._stt_thread.start()
 
     def _set_state(self, state: str, message: str = "") -> None:
         if state not in self.STATES:
@@ -292,163 +293,226 @@ class VoiceController:
 
     def start(self) -> None:
         with self._lock:
+            if self._shutdown:
+                raise RuntimeError("Голосовой контроллер уже завершён.")
             if self._running:
                 return
-            alive = [thread.name for thread in self._threads if thread.is_alive()]
-            if alive:
-                raise RuntimeError("Предыдущий голосовой цикл ещё останавливается: " + ", ".join(alive))
-            self._threads = []
             self._running = True
-            self._stop.clear()
-            self._stt_queue = queue.Queue(maxsize=3)
-            self._threads = [
-                threading.Thread(target=self._capture_worker, name="jarvis-audio-capture", daemon=True),
-                threading.Thread(target=self._stt_worker, name="jarvis-stt-worker", daemon=True),
-            ]
-            for thread in self._threads:
-                thread.start()
+            if self._capture_thread is not None and self._capture_thread.is_alive():
+                # Do not clear the old session's stop event; let it release the device first.
+                self._restart_after_capture = True
+                self._set_state("LISTENING", "Перезапуск микрофона…")
+                return
+            self._launch_capture_locked()
         self._set_state("LISTENING")
         self._log.info("event=start")
 
+    def _launch_capture_locked(self) -> None:
+        stop_event = threading.Event()
+        self._capture_stop = stop_event
+        self._restart_after_capture = False
+        worker = threading.Thread(
+            target=self._capture_worker, args=(stop_event,),
+            name="jarvis-audio-capture", daemon=True,
+        )
+        self._capture_thread = worker
+        worker.start()
+
     def stop(self) -> None:
         with self._lock:
-            was_running = self._running
             self._running = False
-            self._stop.set()
-            capture = self._capture
-        if capture:
-            capture.stop()
-        if was_running:
-            try:
-                self._stt_queue.put_nowait(None)
-            except queue.Full:
-                pass
+            self._restart_after_capture = False
+            stop_event = self._capture_stop
+            if stop_event is not None:
+                stop_event.set()
+        self._clear_stt_queue()
         self.tts_engine.stop()
         self._is_speaking.clear()
         self._set_state("IDLE")
-        self._log.info("event=stop running=%s", was_running)
+        self._log.info("event=stop")
 
     def shutdown(self) -> None:
         self.stop()
+        with self._lock:
+            if self._shutdown:
+                return
+            self._shutdown = True
+        self._stt_queue.put(None)
         self.tts_engine.shutdown()
         self._log.info("event=shutdown")
+
+    def _clear_stt_queue(self) -> None:
+        while True:
+            try:
+                self._stt_queue.get_nowait()
+            except queue.Empty:
+                return
+
+    def mark_thinking(self) -> None:
+        self._set_state("THINKING")
+
+    def complete_without_speech(self) -> None:
+        with self._lock:
+            running = self._running
+        self._set_state("LISTENING" if running else "IDLE")
+
+    def report_error(self, message: str) -> None:
+        threading.Thread(
+            target=self._recover, args=(str(message),),
+            name="jarvis-voice-recovery", daemon=True,
+        ).start()
 
     def on_text(self, final: str) -> None:
         text = " ".join(str(final or "").split())
         if not text:
             self._log.warning("event=empty_final")
             self.ui.post("voice_status", "Речь не распознана. Продолжаю слушать.")
-            if self._running and not self._is_speaking.is_set():
+            with self._lock:
+                running = self._running
+            if running:
                 self._set_state("LISTENING")
             return
+
         normalized = text.lower().replace("ё", "е").strip(" .,!?")
         if normalized in {"стоп голос", "останови голос", "выключи голос"}:
             self.stop()
             self.ui.post("voice_status", "Голосовой режим остановлен.")
             return
         if normalized in {"статус голоса", "проверь голос", "состояние голоса"}:
-            status = self.status()
+            state = self.status()
             self.speak(
-                f"Состояние голоса: {status['state']}. Микрофон: {status['mic']}. " +
-                (f"Последняя ошибка: {status['last_error']}" if status["last_error"] else "Ошибок нет.")
+                f"Состояние голоса: {state['state']}. Микрофон: {state['mic']}. " +
+                (f"Последняя ошибка: {state['last_error']}" if state["last_error"] else "Ошибок нет.")
             )
             return
+
         self._set_state("UNDERSTANDING")
         try:
-            self._on_text_callback(text)
-            if self._running:
+            # The router callback must be quick and thread-safe; desktop callback enqueues an event.
+            self._route_text(text)
+            with self._lock:
+                running = self._running
+            if running:
                 self._set_state("THINKING")
         except Exception as exc:
-            self._log.exception("event=command_callback_error")
-            self._recover(f"Не удалось передать команду: {exc}")
+            self._log.exception("event=router_error")
+            self._recover(f"Не удалось передать команду маршрутизатору: {exc}")
 
     def speak(self, text: str) -> None:
         value = " ".join(str(text or "").split())
         if not value:
             self._log.warning("event=empty_tts")
+            self.ui.post("voice_status", "Пустой ответ: озвучивать нечего.")
             return
-        self._set_state("THINKING")
         self.tts_engine.speak(value)
 
     def _recover(self, message: str) -> None:
         self._set_state("ERROR", message)
-        if self._running and not self._stop.wait(0.5):
-            self._set_state("LISTENING")
+        self.ui.post("voice_status", message)
+        with self._lock:
+            running = self._running
+        if running:
+            # Keep the input stream alive where possible; the capture supervisor handles device faults.
+            time.sleep(RECOVERY_DELAYS[0])
+            with self._lock:
+                still_running = self._running
+            if still_running and self.status()["state"] == "ERROR":
+                self._set_state("LISTENING", "Голосовой контур восстановлен.")
 
-    def _capture_worker(self) -> None:
+    def _capture_worker(self, stop_event: threading.Event) -> None:
         delay_index = 0
-        while not self._stop.is_set():
+        while not stop_event.is_set():
             try:
-                self._capture = AudioCapture(
-                    self._mic_lock,
-                    self._capture_blocked,
+                capture = AudioCapture(
+                    self._mic_lock, stop_event, self._capture_blocked,
                     self._enqueue_phrase,
                     lambda level: self.ui.post("audio_level", level),
-                    lambda ok: setattr(self, "_mic_ok", ok),
+                    self._on_mic_status,
                 )
-                self._capture.run()
-                if self._stop.is_set():
+                capture.run()
+                if stop_event.is_set():
                     break
-                raise RuntimeError("Поток микрофона неожиданно завершился.")
+                raise RuntimeError("Поток микрофона завершился неожиданно.")
             except Exception as exc:
-                self._mic_ok = False
-                message = f"Микрофон недоступен: {exc}"
                 self._log.exception("event=capture_error")
-                self._set_state("ERROR", message)
-                delay = _RECOVERY_DELAYS[min(delay_index, len(_RECOVERY_DELAYS) - 1)]
-                delay_index = min(delay_index + 1, len(_RECOVERY_DELAYS) - 1)
-                if self._stop.wait(delay):
+                self._on_mic_status(False)
+                self._set_state("ERROR", f"Микрофон недоступен: {exc}")
+                delay = RECOVERY_DELAYS[min(delay_index, len(RECOVERY_DELAYS) - 1)]
+                delay_index = min(delay_index + 1, len(RECOVERY_DELAYS) - 1)
+                if stop_event.wait(delay):
                     break
+                with self._lock:
+                    if not self._running or self._shutdown:
+                        break
                 self._set_state("LISTENING", "Повторное подключение к микрофону.")
-            finally:
-                self._capture = None
-        self._mic_ok = False
+        with self._lock:
+            if self._capture_thread is threading.current_thread():
+                self._capture_thread = None
+                self._capture_stop = None
+                restart = self._running and self._restart_after_capture and not self._shutdown
+                if restart:
+                    self._launch_capture_locked()
+                elif not self._running:
+                    self._set_state("IDLE")
+        self._log.info("event=capture_worker_exit")
+
+    def _on_mic_status(self, ok: bool) -> None:
+        with self._lock:
+            self._mic_ok = bool(ok)
+        self.ui.post("mic_status", bool(ok))
 
     def _enqueue_phrase(self, audio: bytes) -> None:
+        if not audio:
+            self._log.warning("event=empty_audio")
+            self.ui.post("voice_status", "Микрофон вернул пустой аудиофрагмент.")
+            return
         try:
             self._stt_queue.put_nowait(audio)
             self._set_state("UNDERSTANDING")
         except queue.Full:
-            self._log.warning("event=stt_queue_full dropped_audio=true")
-            self.ui.post("voice_status", "Очередь распознавания занята; короткая фраза пропущена.")
+            self._log.warning("event=stt_queue_full")
+            self.ui.post("voice_status", "Очередь распознавания занята; фраза пропущена.")
 
     def _stt_worker(self) -> None:
-        while not self._stop.is_set():
+        while True:
             try:
                 audio = self._stt_queue.get(timeout=0.25)
             except queue.Empty:
+                with self._lock:
+                    if self._shutdown:
+                        return
                 continue
             if audio is None:
-                break
-            if self._is_speaking.is_set():
+                return
+            with self._lock:
+                running = self._running
+            if not running or self._is_speaking.is_set():
                 continue
-            path = None
-            try:
-                with tempfile.NamedTemporaryFile(prefix="jarvis_stt_", suffix=".wav", delete=False) as handle:
-                    path = Path(handle.name)
-                    handle.write(audio)
-                last_exc = None
-                for attempt, delay in enumerate((0.0, 0.5, 1.0)):
-                    if self._stop.is_set():
+            last_error = None
+            for attempt, delay in enumerate(RECOVERY_DELAYS[:3]):
+                with self._lock:
+                    if self._shutdown or not self._running:
                         break
-                    if delay and self._stop.wait(delay):
-                        break
-                    try:
-                        self.stt_engine.transcribe(str(path))
-                        last_exc = None
-                        break
-                    except Exception as exc:
-                        last_exc = exc
-                        self._log.error("event=stt_attempt_failed attempt=%s error=%s", attempt + 1, exc)
-                if last_exc is not None:
-                    self._recover(f"Ошибка распознавания после повторов: {last_exc}")
-            except Exception as exc:
-                self._log.exception("event=stt_worker_error")
-                self._recover(f"Ошибка голосового контура: {exc}")
-            finally:
-                if path:
-                    path.unlink(missing_ok=True)
-                if self._running and not self._is_speaking.is_set() and self._state not in {"THINKING", "SPEAKING", "ERROR"}:
+                if delay and self._stt_queue.empty():
+                    time.sleep(delay if attempt else 0)
+                try:
+                    transcript = self.stt_engine.transcribe_bytes(audio)
+                    if not transcript:
+                        self._log.warning("event=empty_final")
+                        self.ui.post("voice_status", "Речь не распознана. Продолжаю слушать.")
+                    last_error = None
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    self._log.exception("event=stt_attempt_failed attempt=%s", attempt + 1)
+            if last_error is not None:
+                self._recover(f"Ошибка распознавания после повторов: {last_error}")
+            with self._lock:
+                running = self._running
+                state = self._state
+            if running and state in {"UNDERSTANDING", "ERROR"} and not self._is_speaking.is_set():
+                # Don't overwrite THINKING while router/LLM is working.
+                if state == "UNDERSTANDING":
                     self._set_state("LISTENING")
 
     def _tts_started(self) -> None:
@@ -457,12 +521,19 @@ class VoiceController:
 
     def _tts_ended(self) -> None:
         self._is_speaking.clear()
-        if self._running and not self._stop.is_set():
-            self._set_state("LISTENING")
-        else:
-            self._set_state("IDLE")
+        with self._lock:
+            running = self._running
+        self._set_state("LISTENING" if running else "IDLE")
 
     def _tts_error(self, exc: Exception) -> None:
-        self._log.error("event=tts_error error=%s", exc)
+        self._log.exception("event=tts_error", exc_info=exc)
+        self._set_state("ERROR", f"Не удалось озвучить ответ: {exc}")
         self.ui.post("tts_error", str(exc))
-        self._set_state("ERROR", str(exc))
+        with self._lock:
+            running = self._running
+        if running:
+            time.sleep(RECOVERY_DELAYS[0])
+            with self._lock:
+                running = self._running
+            if running:
+                self._set_state("LISTENING")
