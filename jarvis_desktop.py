@@ -50,13 +50,12 @@ def _migrate_tool_preferences(settings: dict) -> bool:
         return True
 
     known = {entry[0] for entry in TOOLS}
-    current = settings.get("disabled_tools", [])
-    if not isinstance(current, list):
-        current = []
+    stored = settings.get("disabled_tools", [])
+    current = stored if isinstance(stored, list) else []
     normalized = list(dict.fromkeys(
         name for name in current if isinstance(name, str) and name in known
     ))
-    if normalized != current:
+    if not isinstance(stored, list) or normalized != stored:
         settings["disabled_tools"] = normalized
         return True
     return False
