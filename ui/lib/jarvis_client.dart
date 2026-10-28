@@ -93,8 +93,20 @@ class JarvisIpc {
         message.toLowerCase().contains('service unavailable');
   }
 
+  bool _isModelUnavailableError(Object error) {
+    final message = error.toString().toLowerCase();
+    final modelStatus = RegExp('http (400|404)\\\\b').hasMatch(message);
+    final modelHint = ['model', 'not found', 'unknown', 'does not exist', 'not available']
+        .any(message.contains);
+    return modelStatus && modelHint;
+  }
+
+  bool _isQuotaExhausted(int statusCode, String body) =>
+      statusCode == 429 &&
+      RegExp('quota|resource_exhausted|free_tier|daily limit', caseSensitive: false).hasMatch(body);
+
   List<String> _googleFallbackModels(String primary) => [
-    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
     'gemini-3.1-flash-lite',
     'gemini-3.6-flash',
   ].where((model) => model != primary.trim()).toList(growable: false);
@@ -164,7 +176,8 @@ class JarvisIpc {
       final retryable = response.statusCode == 429 ||
           response.statusCode == 500 || response.statusCode == 502 ||
           response.statusCode == 503 || response.statusCode == 504;
-      if (!retryable || attempt >= 2) break;
+      // Daily/free-tier quota errors will not clear by repeating the same request.
+      if (!retryable || _isQuotaExhausted(response.statusCode, body) || attempt >= 2) break;
       await Future<void>.delayed(Duration(milliseconds: 700 * (1 << attempt)));
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -197,7 +210,8 @@ class JarvisIpc {
           throw StateError('Основной AI недоступен: $primary. Резервный AI недоступен: $fallback');
         }
       }
-      if (_isGoogleEndpoint(_apiUrl!) && _isCapacityError(primary)) {
+      if (_isGoogleEndpoint(_apiUrl!) &&
+          (_isCapacityError(primary) || _isModelUnavailableError(primary))) {
         final failures = <String>[];
         for (final model in _googleFallbackModels(_model ?? '')) {
           try {
