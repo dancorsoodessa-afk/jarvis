@@ -1,19 +1,9 @@
 name: JARVIS Windows EXE
 
 on:
+  # Manual release/verification workflow. The automatic push build is handled
+  # by build-windows-exe.yml; keeping this manual avoids duplicate EXE builds.
   workflow_dispatch:
-  push:
-    branches:
-      - foundation
-    paths:
-      - "agent/**"
-      - "ui/**"
-      - "scripts/**"
-      - "tests/**"
-      - "jarvis_desktop.py"
-      - "jarvis_desktop.spec"
-      - "pyproject.toml"
-      - ".github/workflows/windows-exe-build.yml"
 
 permissions:
   contents: read
