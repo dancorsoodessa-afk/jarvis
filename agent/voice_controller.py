@@ -84,164 +84,19 @@ class AudioCapture:
         self.mic_ok = False
 
     def stop(self) -> None:
-        self._stop.set()
-
-    @staticmethod
-    def _wav(frames: list[bytes]) -> bytes:
-        output = io.BytesIO()
-        with wave.open(output, "wb") as wav_file:
-            wav_file.setnchannels(1)
-            wav_file.setsampwidth(2)
-            wav_file.setframerate(SAMPLE_RATE)
-            wav_file.writeframes(b"".join(frames))
-        return output.getvalue()
-
-    def run(self) -> None:
-        import numpy as np
-        import sounddevice as sd
-
-        block_size = int(SAMPLE_RATE * BLOCK_SECONDS)
-        while not self._stop.is_set():
-            self._mic_lock.acquire("audio-capture")
-            try:
-                device_value = os.environ.get("JARVIS_AUDIO_DEVICE", "").strip()
-                device = int(device_value) if device_value.isdigit() else (device_value or None)
-                with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
-                                    blocksize=block_size, device=device, latency="low") as stream:
-                    self.mic_ok = True
-                    self._on_mic_status(True)
-                    _logger().info("event=mic_open device=%s sample_rate=%s", device, SAMPLE_RATE)
-                    noise_levels: list[float] = []
-                    frames: list[bytes] = []
-                    started_at = 0.0
-                    last_voice_at = 0.0
-                    while not self._stop.is_set():
-                        data, overflow = stream.read(block_size)
-                        if overflow:
-                            _logger().warning("event=mic_overflow")
-                        block = np.asarray(data[:, 0], dtype=np.int16).copy()
-                        level = float(np.sqrt(np.mean(block.astype("float32") ** 2))) / 32768.0
-                        if not self._is_speaking():
-                            self._on_level(min(1.0, level * 12.0))
-                        if self._is_speaking():
-                            # Discard all microphone samples during assistant playback.
-                            frames.clear()
-                            started_at = last_voice_at = 0.0
-                            continue
-                        now = time.monotonic()
-                        if not frames and len(noise_levels) < 25:
-                            noise_levels.append(level)
-                        threshold = max(0.006, (sorted(noise_levels)[len(noise_levels)//2] * 2.2) if noise_levels else 0.006)
-                        if level >= threshold:
-                            if not frames:
-                                started_at = now
-                                # Keep a short pre-roll so initial consonants aren't clipped.
-                                frames = [block.tobytes()]
-                            else:
-                                frames.append(block.tobytes())
-                            last_voice_at = now
-                        elif frames:
-                            frames.append(block.tobytes())
-                            if now - last_voice_at >= SILENCE_SECONDS:
-                                duration = now - started_at
-                                phrase = self._wav(frames)
-                                frames = []
-                                started_at = last_voice_at = 0.0
-                                if duration >= MIN_SPEECH_SECONDS:
-                                    self._on_phrase(phrase)
-                        if frames and now - started_at >= MAX_PHRASE_SECONDS:
-                            phrase = self._wav(frames)
-                            frames = []
-                            started_at = last_voice_at = 0.0
-                            self._on_phrase(phrase)
-            finally:
-                self.mic_ok = False
-                self._on_mic_status(False)
-                self._mic_lock.release()
-        _logger().info("event=mic_closed")
-
-
-class VoiceController:
-    """Facade for microphone, STT, command routing and queued speech output."""
-
-    STATES = {"IDLE", "LISTENING", "UNDERSTANDING", "THINKING", "SPEAKING", "ERROR"}
-
-    def __init__(self, ui: UIBridge, on_text: Callable[[str], None]):
-        self.ui = ui
-        self._on_text_callback = on_text
-        self._lock = threading.RLock()
-        self._running = False
-        self._is_speaking = threading.Event()
-        self._stop = threading.Event()
-        self._shutdown = threading.Event()
-        self._stt_queue: queue.Queue[bytes | None] = queue.Queue(maxsize=3)
-        self._tts_queue: queue.Queue[str | None] = queue.Queue()
-        self._mic_lock = MicLock()
-        self._capture: AudioCapture | None = None
-        self._threads: list[threading.Thread] = []
-        self._state = "IDLE"
-        self._last_error = ""
-        self._mic_ok = False
-        self._log = _logger()
-        self._tts_thread = threading.Thread(target=self._tts_worker, name="jarvis-tts-worker", daemon=True)
-        self._tts_thread.start()
-
-    def _set_state(self, state: str, message: str = "") -> None:
-        if state not in self.STATES:
-            raise ValueError(f"Недопустимое состояние голоса: {state}")
         with self._lock:
-            self._state = state
-            if message:
-                self._last_error = message
-        self._log.info("event=state state=%s message=%s", state, message[:300])
-        self.ui.post("voice_state", state, message)
-
-    def _capture_blocked(self) -> bool:
-        with self._lock:
-            return self._is_speaking.is_set() or self._state in {"UNDERSTANDING", "THINKING", "SPEAKING"}
-
-    def status(self) -> dict:
-        with self._lock:
-            return {"state": self._state, "last_error": self._last_error,
-                    "mic": "ok" if self._mic_ok else "fail", "running": self._running,
-                    "is_speaking": self._is_speaking.is_set()}
-
-    def start(self) -> None:
-        with self._lock:
-            if self._running:
-                return
-            alive = [thread.name for thread in self._threads if thread.is_alive()]
-            if alive:
-                raise RuntimeError("Предыдущий голосовой цикл ещё останавливается: " + ", ".join(alive))
-            self._threads = []
-            self._running = True
-            self._stop.clear()
-            self._stt_queue = queue.Queue(maxsize=3)
-            self._tts_queue = queue.Queue()
-            self._threads = [
-                threading.Thread(target=self._capture_worker, name="jarvis-audio-capture", daemon=True),
-                threading.Thread(target=self._stt_worker, name="jarvis-stt-worker", daemon=True),
-            ]
-            for thread in self._threads:
-                thread.start()
-        self._set_state("LISTENING")
-        self._log.info("event=start")
-
-    def stop(self) -> None:
-        with self._lock:
-            if not self._running:
-                self._set_state("IDLE")
-                return
+            was_running = self._running
             self._running = False
             self._stop.set()
             capture = self._capture
             threads = list(self._threads)
         if capture:
             capture.stop()
-        try:
-            self._stt_queue.put_nowait(None)
-        except queue.Full:
-            pass
+        if was_running:
+            try:
+                self._stt_queue.put_nowait(None)
+            except queue.Full:
+                pass
         while True:
             try:
                 self._tts_queue.get_nowait()
@@ -250,8 +105,8 @@ class VoiceController:
         tts.stop()
         self._is_speaking.clear()
         self._set_state("IDLE")
-        self._log.info("event=stop")
-        # Do not join the GUI thread; workers are daemon threads and exit on their stop event.
+        self._log.info("event=stop running=%s", was_running)
+        # Never join workers on the GUI thread; they are daemon threads and use stop events.
 
     def on_text(self, final: str) -> None:
         text = " ".join(str(final or "").split())
