@@ -272,12 +272,16 @@ class JarvisIpc {
       _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': r.text});
       if (_history.length > 40) _history.removeRange(0, _history.length - 40);
       return r;
-    } catch (e) {
-      if ((_fallbackUrl ?? '').isEmpty || (_fallbackKey ?? '').isEmpty || !_retryable(e)) rethrow;
-      final r = await _call(_fallbackUrl!, _fallbackKey!, _fallbackModel ?? '', text);
-      _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': r.text});
-      if (_history.length > 40) _history.removeRange(0, _history.length - 40);
-      return r;
+    } catch (primary) {
+      if ((_fallbackUrl ?? '').isEmpty || (_fallbackKey ?? '').isEmpty) rethrow;
+      try {
+        final r = await _call(_fallbackUrl!, _fallbackKey!, _fallbackModel ?? '', text);
+        _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': r.text});
+        if (_history.length > 40) _history.removeRange(0, _history.length - 40);
+        return r;
+      } catch (fallback) {
+        throw StateError('Основной AI недоступен: $primary. Резервный AI недоступен: $fallback');
+      }
     }
   }
 
