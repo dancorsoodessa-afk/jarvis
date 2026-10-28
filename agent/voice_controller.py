@@ -543,6 +543,16 @@ class VoiceController:
                 except Exception as exc:
                     last_error = exc
                     self._log.exception("event=stt_attempt_failed attempt=%s", attempt + 1)
+                    # Quota/rate-limit HTTP 429 cannot be fixed by repeating the same request.
+                    error_text = str(exc).lower()
+                    if "http 429" in error_text and any(
+                        marker in error_text for marker in ("quota", "rate limit", "limit exceeded", "resource_exhausted")
+                    ):
+                        last_error = RuntimeError(
+                            "Квота Gemini STT исчерпана (HTTP 429). Повторы остановлены; "
+                            "проверьте лимит API или настройте резервный STT-провайдер."
+                        )
+                        break
             if last_error is not None:
                 self._recover(f"Ошибка распознавания после повторов: {last_error}")
             with self._lock:
