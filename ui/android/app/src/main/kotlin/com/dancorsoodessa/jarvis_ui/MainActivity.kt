@@ -66,13 +66,18 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                     result.success(null)
                 }
                 "load_settings" -> result.success(loadSettings())
-                "save_settings" -> { saveSettings(call); result.success(null) }
-                "android_tool" -> try {
+                "save_settings" -> { saveSettings(call); result.success(true) }
+                "android_tool" -> {
                     val name = call.argument<String>("name").orEmpty()
                     val rawArgs = call.argument<String>("args") ?: "{}"
-                    result.success(tools.execute(name, JSONObject(rawArgs)))
-                } catch (error: Exception) {
-                    result.error("TOOL_ERROR", error.message ?: "Ошибка инструмента", null)
+                    Thread {
+                        try {
+                            val output = tools.execute(name, JSONObject(rawArgs))
+                            runOnUiThread { result.success(output) }
+                        } catch (error: Exception) {
+                            runOnUiThread { result.error("TOOL_ERROR", error.message ?: "Ошибка инструмента", null) }
+                        }
+                    }.start()
                 }
                 "stop" -> {
                     stopListening()
@@ -244,31 +249,56 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
     private fun loadSettings(): Map<String, Any?> {
-        val p = getSharedPreferences("jarvis_settings", MODE_PRIVATE)
+        val p = getSharedPreferences("busya_voice", MODE_PRIVATE)
         return mapOf(
-            "endpoint" to p.getString("endpoint", ""),
-            "model" to p.getString("model", ""),
-            "apiKey" to p.getString("apiKey", ""),
-            "apiHostKey" to p.getString("apiHostKey", ""),
-            "model1" to p.getString("model1", ""),
-            "model2" to p.getString("model2", ""),
-            "model3" to p.getString("model3", ""),
-            "key1" to p.getString("key1", ""),
-            "key2" to p.getString("key2", ""),
-            "key3" to p.getString("key3", ""),
-            "activeModel" to p.getInt("activeModel", 0),
-            "voiceEnabled" to p.getBoolean("voiceEnabled", true),
+            "endpoint" to p.getString("ai_endpoint", ""),
+            "model" to p.getString("ai_model", ""),
+            "apiKey" to p.getString("ai_api_key", ""),
+            "apiHostKey" to p.getString("apihost_key", ""),
+            "model1" to p.getString("ai_model_1", ""),
+            "model2" to p.getString("ai_model_2", ""),
+            "model3" to p.getString("ai_model_3", ""),
+            "key1" to p.getString("ai_key_1", ""),
+            "key2" to p.getString("ai_key_2", ""),
+            "key3" to p.getString("ai_key_3", ""),
+            "activeModel" to p.getInt("ai_active_model", 1),
+            "voiceEnabled" to p.getBoolean("voice_enabled", true),
+            "coinglassApiKey" to p.getString("coinglass_api_key", ""),
+            "okxApiKey" to p.getString("okx_api_key", ""),
+            "okxSecretKey" to p.getString("okx_secret_key", ""),
+            "okxPassphrase" to p.getString("okx_passphrase", ""),
+            "okxEndpoint" to p.getString("okx_endpoint", "https://www.okx.com"),
+            "okxDemo" to p.getBoolean("okx_demo", true),
+            "dsaEndpoint" to p.getString("dsa_endpoint", ""),
+            "dsaApiKey" to p.getString("dsa_api_key", "")
         )
     }
 
     private fun saveSettings(call: MethodCall) {
-        val p = getSharedPreferences("jarvis_settings", MODE_PRIVATE).edit()
-        fun s(name: String) { call.argument<String>(name)?.let { p.putString(name, it) } }
-        s("endpoint"); s("model"); s("apiKey"); s("apiHostKey")
-        s("model1"); s("model2"); s("model3")
-        s("key1"); s("key2"); s("key3")
-        call.argument<Int>("activeModel")?.let { p.putInt("activeModel", it) }
-        call.argument<Boolean>("voiceEnabled")?.let { p.putBoolean("voiceEnabled", it) }
+        val p = getSharedPreferences("busya_voice", MODE_PRIVATE).edit()
+        fun s(argument: String, key: String = argument) {
+            call.argument<String>(argument)?.let { p.putString(key, it) }
+        }
+        s("endpoint", "ai_endpoint")
+        s("model", "ai_model")
+        s("apiKey", "ai_api_key")
+        s("apiHostKey", "apihost_key")
+        s("model1", "ai_model_1")
+        s("model2", "ai_model_2")
+        s("model3", "ai_model_3")
+        s("key1", "ai_key_1")
+        s("key2", "ai_key_2")
+        s("key3", "ai_key_3")
+        call.argument<Int>("activeModel")?.let { p.putInt("ai_active_model", it) }
+        call.argument<Boolean>("voiceEnabled")?.let { p.putBoolean("voice_enabled", it) }
+        s("coinglassApiKey", "coinglass_api_key")
+        s("okxApiKey", "okx_api_key")
+        s("okxSecretKey", "okx_secret_key")
+        s("okxPassphrase", "okx_passphrase")
+        s("okxEndpoint", "okx_endpoint")
+        call.argument<Boolean>("okxDemo")?.let { p.putBoolean("okx_demo", it) }
+        s("dsaEndpoint", "dsa_endpoint")
+        s("dsaApiKey", "dsa_api_key")
         p.apply()
     }
 
