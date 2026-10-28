@@ -119,6 +119,7 @@ def _safe_model_id(value: str | None, fallback: str) -> str:
 _SECRET_SETTING_KEYS = {
     "api_key",
     "gemini_api_key",
+    "groq_stt_api_key",
     "smtp_password",
     "cloudflare_token",
     "manageengine_key",
@@ -240,11 +241,18 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
         os.environ["GEMINI_API_KEY"] = profile["api_key"]
         # An explicitly empty saved key means disconnected; do not resurrect a stale environment key.
-        # Remove legacy Groq fallback settings so it cannot silently reappear.
-        for key in ("groq_api_key", "groq_model", "groq_timeout"):
-            self.settings.pop(key, None)
-        for key in ("GROQ_API_KEY", "JARVIS_GROQ_MODEL", "JARVIS_GROQ_TIMEOUT"):
-            os.environ.pop(key, None)
+        # Groq is permitted only as an explicitly configured speech-to-text reserve;
+        # it is never selected as the chat model and never enabled by stale shell values.
+        legacy_groq_key = str(self.settings.get("groq_api_key") or "").strip()
+        if "groq_stt_api_key" not in self.settings and legacy_groq_key:
+            self.settings["groq_stt_api_key"] = legacy_groq_key
+        self.settings.pop("groq_api_key", None)
+        self.settings.pop("groq_model", None)
+        self.settings.pop("groq_timeout", None)
+        os.environ["GROQ_API_KEY"] = str(self.settings.get("groq_stt_api_key") or "").strip()
+        os.environ["JARVIS_STT_FALLBACK_MODEL"] = str(
+            self.settings.get("stt_fallback_model") or "whisper-large-v3-turbo"
+        ).strip()
         os.environ["JARVIS_GEMINI_TIMEOUT"] = str(self.settings.get("gemini_timeout") or "30")
         # Optional integrations are configured from the control center. Explicitly
         # cleared settings override stale process environment values.
@@ -304,6 +312,7 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_STT"] = "gemini"
         os.environ["JARVIS_STT_TIMEOUT"] = str(self.settings.get("stt_timeout") or "45")
         os.environ["JARVIS_STT_MODEL"] = str(self.settings.get("stt_model") or "gemini-3.8-flash")
+        os.environ["GEMINI_STT_MODEL"] = os.environ["JARVIS_STT_MODEL"]
         tts_engine = str(self.settings.get("tts_engine", "gemini")).strip().lower() or "gemini"
         if tts_engine not in {"gemini", "off"}:
             tts_engine = "gemini"
@@ -1218,7 +1227,7 @@ class JarvisDesktop(tk.Tk):
         shared_key.bind("<Control-v>", lambda _e: self.after(20, lambda: shared_key.icursor("end")))
         shared_key.bind("<Control-V>", lambda _e: self.after(20, lambda: shared_key.icursor("end")))
 
-        # Groq/Grok fallback UI intentionally removed; only Gemini is configurable here.
+        # Groq is exposed only as a separate cloud STT reserve, not as a chat provider.
 
         additional_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
         additional_row.pack(fill="x", pady=(2, 10))
@@ -1296,7 +1305,9 @@ class JarvisDesktop(tk.Tk):
             ("Голос Gemini", "tts_voice", self.settings.get("tts_voice", "Charon"), False),
             ("Модель TTS", "tts_model", self.settings.get("tts_model", "gemini-3.8-flash-tts"), False),
             ("Тайм-аут TTS, сек.", "tts_timeout", self.settings.get("tts_timeout", "45"), False),
-            ("Модель STT", "stt_model", self.settings.get("stt_model", "gemini-3.8-flash"), False),
+            ("Модель STT Gemini", "stt_model", self.settings.get("stt_model", "gemini-3.8-flash"), False),
+            ("Ключ Groq STT (резерв)", "groq_stt_api_key", self.settings.get("groq_stt_api_key", ""), True),
+            ("Модель резервного STT", "stt_fallback_model", self.settings.get("stt_fallback_model", "whisper-large-v3-turbo"), False),
             ("Тайм-аут STT, сек.", "stt_timeout", self.settings.get("stt_timeout", "45"), False),
         ):
             row = tk.Frame(voice_frame, bg="#091b29")
