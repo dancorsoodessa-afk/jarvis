@@ -688,6 +688,20 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                             letterSpacing: 1.8,
                           ),
                         ),
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          width: MediaQuery.sizeOf(context).width * 0.82,
+                          child: Text(
+                            _status,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.58),
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -846,99 +860,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     );
   }
 
-  Widget _hudMiniPanel(String title, IconData icon, List<List<String>> rows) {
-    final first = rows.take(2).toList();
-    final second = rows.skip(2).take(2).toList();
-
-    Widget item(List<String> row) => Expanded(
-      child: Padding(
-        padding: const EdgeInsets.only(right: 4, top: 2),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(row[0], maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 9, color: Colors.white.withValues(alpha: 0.72))),
-            const SizedBox(height: 2),
-            Text(row[1], maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _visualColor)),
-          ],
-        ),
-      ),
-    );
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-      decoration: BoxDecoration(
-        color: const Color(0xE6081421),
-        border: Border.all(color: _visualColor.withValues(alpha: 0.30)),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(icon, size: 15, color: _visualColor),
-            const SizedBox(width: 6),
-            Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10, letterSpacing: 0.35, fontWeight: FontWeight.w800))),
-          ]),
-          const SizedBox(height: 4),
-          Expanded(child: Column(children: [
-            Expanded(child: Row(children: first.map(item).toList())),
-            Expanded(child: Row(children: second.map(item).toList())),
-          ])),
-        ],
-      ),
-    );
-  }
-
-  Widget _hudSidePanel(String title, IconData icon, List<List<String>> rows) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xCC06111D),
-        border: Border.all(color: _visualColor.withValues(alpha: 0.28)),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(color: _visualColor.withValues(alpha: 0.05), blurRadius: 18),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(icon, size: 15, color: _visualColor),
-            const SizedBox(width: 7),
-            Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10, letterSpacing: 1.4, fontWeight: FontWeight.w700))),
-          ]),
-          const SizedBox(height: 14),
-          Container(height: 1, color: _visualColor.withValues(alpha: 0.22)),
-          const SizedBox(height: 12),
-          for (final row in rows) ...[
-            Text(row[0], style: TextStyle(fontSize: 8, letterSpacing: 1.2,
-              color: Colors.white.withValues(alpha: 0.45))),
-            const SizedBox(height: 4),
-            Text(row[1], maxLines: 2, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11, color: _visualColor, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 13),
-          ],
-          const Spacer(),
-          Row(children: [
-            Container(width: 6, height: 6, decoration: BoxDecoration(
-              shape: BoxShape.circle, color: _visualColor,
-              boxShadow: [BoxShadow(color: _visualColor.withValues(alpha: 0.7), blurRadius: 7)],
-            )),
-            const SizedBox(width: 7),
-            Expanded(child: Text('JARVIS XXX', style: TextStyle(fontSize: 8,
-              letterSpacing: 1.2, color: Colors.white.withValues(alpha: 0.5)))),
-          ]),
-        ],
-      ),
-    );
-  }
-
   Widget _deckAction({
     required IconData icon,
     required String label,
@@ -983,42 +904,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       ),
     );
   }
-
-  Widget _statusPill(String label, Color color, IconData icon) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.23)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 12, color: color),
-            const SizedBox(width: 5),
-            Text(label, style: TextStyle(color: color, fontSize: 8, letterSpacing: 1.0, fontWeight: FontWeight.w700)),
-          ],
-        ),
-      );
-
-  Widget _telemetryCard(String title, String value, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0A111B),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.18)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.43), fontSize: 7, letterSpacing: 1.0)),
-            const SizedBox(height: 5),
-            Text(value, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: color, fontSize: 10, letterSpacing: 0.5, fontWeight: FontWeight.w700)),
-          ],
-        ),
-      );
 
   Widget _messageBubble(String text, bool isUser) => Container(
     margin: const EdgeInsets.only(bottom: 10),
