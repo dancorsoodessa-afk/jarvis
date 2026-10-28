@@ -636,24 +636,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-              child: Row(
-                children: [
-                  Expanded(child: _statusPill(connected ? 'ОБЛАКО · ОНЛАЙН' : 'ОБЛАКО · ОФЛАЙН',
-                    connected ? const Color(0xFF52E5B8) : const Color(0xFFFF647C),
-                    connected ? Icons.cloud_done_outlined : Icons.cloud_off_outlined)),
-                  const SizedBox(width: 8),
-                  Expanded(child: _statusPill(_voiceRunning ? 'ГОЛОС · АКТИВЕН' : 'ГОЛОС · ОЖИДАНИЕ',
-                    _voiceRunning ? const Color(0xFF52E5B8) : const Color(0xFF8B9AA9),
-                    _voiceRunning ? Icons.graphic_eq_rounded : Icons.mic_none_rounded)),
-                ],
-              ),
-            ),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final core =             SizedBox(
-              height: constraints.maxWidth < 760 ? sceneHeight - 92 : sceneHeight,
+            SizedBox(
+              height: sceneHeight,
               width: double.infinity,
               child: Stack(
                 alignment: Alignment.center,
@@ -674,106 +658,41 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                       ),
                     ),
                   ),
-                  Positioned.fill(child: JarvisReactor(color: _visualColor, state: _visualState, activity: _voiceLevel)),
-                  Positioned(
-                    top: 9,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('NEURAL CORE', style: TextStyle(color: _visualColor.withValues(alpha: 0.82),
-                          fontSize: 10, letterSpacing: 3.4, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 4),
-                        Text(connected ? 'SYSTEM LINK ESTABLISHED' : 'AWAITING CONNECTION',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.43), fontSize: 8, letterSpacing: 1.7)),
-                      ],
+                  Positioned.fill(
+                    child: JarvisReactor(
+                      color: _visualColor,
+                      state: _visualState,
+                      activity: _voiceLevel,
                     ),
                   ),
                   Positioned(
-                    bottom: 8,
+                    bottom: 12,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(_visualLabel, style: TextStyle(color: _visualColor, fontSize: 11,
-                          letterSpacing: 2.2, fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 5),
-                        SizedBox(
-                          width: MediaQuery.sizeOf(context).width * 0.82,
-                          child: Text(_status, maxLines: 2, overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.white.withValues(alpha: 0.68), fontSize: 11)),
+                        Text(
+                          'СИСТЕМА',
+                          style: TextStyle(
+                            color: _visualColor,
+                            fontSize: 12,
+                            letterSpacing: 3,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _visualLabel,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.72),
+                            fontSize: 10,
+                            letterSpacing: 1.8,
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-            );
-                if (constraints.maxWidth < 760) {
-                  // Keep both HUD panels visible on phones without shrinking
-                  // the reactor into an unusable sliver.
-                  return SizedBox(
-                    height: sceneHeight,
-                    child: Column(
-                      children: [
-                        SizedBox(
-                          height: 88,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: _hudMiniPanel('СИСТЕМА', Icons.memory_rounded, [
-                                  ['ЯДРО', _busy ? 'РАБОТАЕТ' : 'ГОТОВО'],
-                                  ['ГОЛОС', _voiceRunning ? 'АКТИВЕН' : 'ОЖИДАНИЕ'],
-                                  ['АКТИВНОСТЬ', '${(_voiceLevel * 100).round()}%'],
-                                  ['РЕЖИМ', _busy ? 'ВЫЧИСЛЕНИЕ' : 'ГОТОВНОСТЬ'],
-                                ]),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _hudMiniPanel('СВЯЗЬ И ИИ', Icons.hub_outlined, [
-                                  ['ОБЛАКО', connected ? 'ОНЛАЙН' : 'ОФЛАЙН'],
-                                  ['СЕРВИС', connected ? 'ПОДКЛЮЧЁН' : 'ОЖИДАНИЕ'],
-                                  ['МИКРОФОН', _voiceReady ? 'ГОТОВ' : 'ОЖИДАНИЕ'],
-                                  ['ПОТОК', _streamText.isNotEmpty ? 'ПЕРЕДАЧА' : 'В ОЖИДАНИИ'],
-                                ]),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(child: core),
-                      ],
-                    ),
-                  );
-                }
-                return SizedBox(
-                  height: sceneHeight,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: _hudSidePanel('СИСТЕМА', Icons.memory_rounded, [
-                          ['ЯДРО', _busy ? 'РАБОТАЕТ' : 'ГОТОВО'],
-                          ['ГОЛОС', _voiceRunning ? 'АКТИВЕН' : 'ОЖИДАНИЕ'],
-                          ['АКТИВНОСТЬ', '${(_voiceLevel * 100).round()}%'],
-                          ['РЕЖИМ', _busy ? 'ВЫЧИСЛЕНИЕ' : 'ГОТОВНОСТЬ'],
-                        ]),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(flex: 5, child: core),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 2,
-                        child: _hudSidePanel('СВЯЗЬ И ИИ', Icons.hub_outlined, [
-                          ['ОБЛАКО', connected ? 'ОНЛАЙН' : 'ОФЛАЙН'],
-                          ['СЕРВИС', connected ? 'ПОДКЛЮЧЁН' : 'ОЖИДАНИЕ'],
-                          ['МИКРОФОН', _voiceReady ? 'ГОТОВ' : 'ОЖИДАНИЕ'],
-                          ['ПОТОК', _streamText.isNotEmpty ? 'ПЕРЕДАЧА' : 'В ОЖИДАНИИ'],
-                        ]),
-                      ),
-                    ],
-                  ),
-                );
-              },
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -842,34 +761,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                   ),
                   const SizedBox(width: 7),
                   Expanded(
-                    child: _deckAction(
-                      icon: _voiceRunning ? Icons.mic : Icons.mic_none,
-                      label: _voiceRunning ? 'ГОЛОС ВКЛ.' : 'ГОЛОС',
-                      active: _voiceRunning,
-                      onTap: () async {
-                        if (!_android) return;
-                        if (_voiceRunning) {
-                          _speechSession++;
-                          _voiceRunning = false;
-                          _voiceLevel = 0;
-                          _voiceRestartTimer?.cancel();
-                          await _speech.stop();
-                          if (mounted) {
-                            setState(() {
-                              _status = 'Голосовое управление выключено';
-                              _visualState = JarvisVisualState.idle;
-                            });
-                          }
-                        } else {
-                          if (!_voiceReady) await _initVoice();
-                          if (_voiceReady && mounted) {
-                            _voiceRunning = true;
-                            await _startVoiceLoop();
-                          }
-                        }
-                      },
-                    ),
-                  ),
                   const SizedBox(width: 7),
                   Expanded(
                     child: _deckAction(
@@ -961,23 +852,34 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                     IconButton(
                       tooltip: _voiceRunning ? 'Выключить голосовое управление' : 'Включить голосовое управление',
                       onPressed: _busy ? null : () async {
-                        if (_voiceRunning) {
-                          _speechSession++;
+                        try {
+                          if (_voiceRunning) {
+                            _speechSession++;
+                            _voiceRunning = false;
+                            _voiceLevel = 0;
+                            _voiceRestartTimer?.cancel();
+                            await _speech.stop();
+                            if (mounted) {
+                              setState(() {
+                                _status = 'Голосовое управление выключено';
+                                _visualState = JarvisVisualState.idle;
+                              });
+                            }
+                          } else {
+                            if (!_voiceReady) await _initVoice();
+                            if (_voiceReady && mounted) {
+                              _voiceRunning = true;
+                              await _startVoiceLoop();
+                            }
+                          }
+                        } catch (e, stack) {
+                          debugPrint('JARVIS microphone button failed: $e\\n$stack');
                           _voiceRunning = false;
-                          _voiceLevel = 0;
-                          _voiceRestartTimer?.cancel();
-                          await _speech.stop();
                           if (mounted) {
                             setState(() {
-                              _status = 'Голосовое управление выключено';
-                              _visualState = JarvisVisualState.idle;
+                              _status = 'Микрофон недоступен: $e';
+                              _visualState = JarvisVisualState.error;
                             });
-                          }
-                        } else {
-                          if (!_voiceReady) await _initVoice();
-                          if (_voiceReady && mounted) {
-                            _voiceRunning = true;
-                            await _startVoiceLoop();
                           }
                         }
                       },
