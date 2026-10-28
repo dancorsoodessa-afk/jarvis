@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 Write-Host "== JARVIS: install dependencies ==" -ForegroundColor Cyan
 python -m pip install --upgrade pip
 python -m pip install -e ".[all]"
-python -m pip install --upgrade "pyinstaller>=6.22,<7" pytest
+python -m pip install --upgrade "pyinstaller>=6.22,<7" pytest pillow
 
 Write-Host "== JARVIS: prepare local Three.js engine ==" -ForegroundColor Cyan
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prepare_3d_assets.ps1
@@ -19,6 +19,10 @@ if ($LASTEXITCODE -ne 0) { throw "Tests failed; release build aborted." }
 Write-Host "== JARVIS: desktop import check ==" -ForegroundColor Cyan
 python -c "import jarvis_desktop; print('JARVIS desktop import OK')"
 if ($LASTEXITCODE -ne 0) { throw "Desktop import check failed." }
+
+Write-Host "== JARVIS: prepare Windows application icon ==" -ForegroundColor Cyan
+python -c "from PIL import Image; Image.open('assets/jarvis-reactor-logo.png').convert('RGBA').save('assets/jarvis-reactor-logo.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])"
+if ($LASTEXITCODE -ne 0 -or !(Test-Path "assets/jarvis-reactor-logo.ico")) { throw "JARVIS application icon generation failed." }
 
 Write-Host "== JARVIS: build EXE ==" -ForegroundColor Cyan
 python -m PyInstaller jarvis_desktop.spec --clean --noconfirm
