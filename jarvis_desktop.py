@@ -296,11 +296,13 @@ class JarvisDesktop(tk.Tk):
         self.settings.setdefault("tts_model", "gemini-3.8-flash-tts")
         self.settings.setdefault("tts_timeout", "45")
         self.settings.setdefault("stt_timeout", "45")
-        self.settings.setdefault("stt_model", "gemini-3.5-flash-lite")
+        self.settings.setdefault("stt_model", "gemini-3.8-flash")
+        if str(self.settings.get("stt_model", "")).strip().lower() == "gemini-3.5-flash-lite":
+            self.settings["stt_model"] = "gemini-3.8-flash"
         # Cloud-first voice: explicitly override stale shell variables so a previous local mode cannot disable Gemini STT.
         os.environ["JARVIS_STT"] = "gemini"
         os.environ["JARVIS_STT_TIMEOUT"] = str(self.settings.get("stt_timeout") or "45")
-        os.environ["JARVIS_STT_MODEL"] = str(self.settings.get("stt_model") or "gemini-3.5-flash-lite")
+        os.environ["JARVIS_STT_MODEL"] = str(self.settings.get("stt_model") or "gemini-3.8-flash")
         tts_engine = str(self.settings.get("tts_engine", "gemini")).strip().lower() or "gemini"
         if tts_engine not in {"gemini", "off"}:
             tts_engine = "gemini"
@@ -1294,7 +1296,7 @@ class JarvisDesktop(tk.Tk):
             ("Голос Gemini", "tts_voice", self.settings.get("tts_voice", "Charon"), False),
             ("Модель TTS", "tts_model", self.settings.get("tts_model", "gemini-3.8-flash-tts"), False),
             ("Тайм-аут TTS, сек.", "tts_timeout", self.settings.get("tts_timeout", "45"), False),
-            ("Модель STT", "stt_model", self.settings.get("stt_model", "gemini-3.5-flash-lite"), False),
+            ("Модель STT", "stt_model", self.settings.get("stt_model", "gemini-3.8-flash"), False),
             ("Тайм-аут STT, сек.", "stt_timeout", self.settings.get("stt_timeout", "45"), False),
         ):
             row = tk.Frame(voice_frame, bg="#091b29")
