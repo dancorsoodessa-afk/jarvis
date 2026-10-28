@@ -101,6 +101,9 @@ class JarvisIpc {
         if (j['message']?.toString().trim().isNotEmpty ?? false) return 'HTTP $code: ${j['message'].toString().trim()}';
       }
     } catch (_) {}
+    if (code == 503) return 'HTTP 503: AI-сервис временно перегружен или недоступен. Повторите позже либо настройте резервного AI-провайдера.';
+    if (code == 429) return 'HTTP 429: превышен лимит запросов. Подождите и проверьте квоту API.';
+    if (code == 401 || code == 403) return 'HTTP $code: API-ключ неверный или у него нет доступа к этой модели.';
     final detail = body.trim().isEmpty ? 'пустой ответ сервера' : body.trim();
     return 'HTTP $code: ${detail.length > 500 ? '${detail.substring(0, 500)}…' : detail}';
   }
@@ -123,8 +126,6 @@ class JarvisIpc {
 
   Future<void> _probeChat(String base, String key, String model, String label) async {
     final selected = await _resolveModel(base, key, model);
-    final request = await _httpClient!.postUrl(Uri.parse('$base/chat/completions'));
-    _headers(key).forEach(request.headers.set);
     final bytes = utf8.encode(jsonEncode({
       'model': selected,
       'messages': [
@@ -133,10 +134,21 @@ class JarvisIpc {
       'stream': false,
       'max_tokens': 8,
     }));
-    request.contentLength = bytes.length;
-    request.add(bytes);
-    final response = await request.close().timeout(const Duration(seconds: 45));
-    final body = await _readBody(response).timeout(_requestTimeout);
+    late HttpClientResponse response;
+    late String body;
+    for (var attempt = 0; ; attempt++) {
+      final request = await _httpClient!.postUrl(Uri.parse('$base/chat/completions'));
+      _headers(key).forEach(request.headers.set);
+      request.contentLength = bytes.length;
+      request.add(bytes);
+      response = await request.close().timeout(const Duration(seconds: 45));
+      body = await _readBody(response).timeout(_requestTimeout);
+      final retryable = response.statusCode == 429 ||
+          response.statusCode == 500 || response.statusCode == 502 ||
+          response.statusCode == 503 || response.statusCode == 504;
+      if (!retryable || attempt >= 2) break;
+      await Future<void>.delayed(Duration(milliseconds: 700 * (1 << attempt)));
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError('$label: ${_error(response.statusCode, body)}');
     }
