@@ -37,6 +37,13 @@ class TestSTT:
         os.environ["GROQ_API_KEY"] = "legacy-key"
         assert stt.current_engine() == "off"
 
+    def test_quota_exhaustion_does_not_fallback_to_local_automatically(self):
+        os.environ["JARVIS_STT"] = "auto"
+        os.environ["GEMINI_API_KEY"] = "test-token"
+        stt._set_quota_exceeded(True)
+        with mock.patch.object(stt, "_local_available", return_value=True):
+            assert stt.current_engine() == "off"
+
     def test_explicit_local_mode_requires_local_whisper(self):
         os.environ["JARVIS_STT"] = "local"
         with mock.patch.object(stt, "_local_available", return_value=False):
