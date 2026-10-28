@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "jarvis-agent"
 version = "1.0.0"
-description = "Cloud-first personal AI desktop assistant with Gemini, Groq fallback, cloud speech, and Three.js reactor"
+description = "Cloud-first personal AI desktop assistant with Gemini cloud speech and Three.js reactor"
 authors = ["Jarvis Developer"]
 license = "MIT"
 readme = "README.md"
