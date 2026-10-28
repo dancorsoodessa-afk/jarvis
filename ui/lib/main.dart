@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'jarvis_client.dart';
 import 'jarvis_reactor.dart';
@@ -59,11 +58,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
   final stt.SpeechToText _speech = stt.SpeechToText();
-  final FlutterTts _tts = FlutterTts();
   StreamSubscription<String>? _partialSub;
   Timer? _visualTimer;
   Timer? _voiceRestartTimer;
   int _speechSession = 0;
+  int _ttsSession = 0;
   bool _busy = false;
   bool _voiceReady = false;
   bool _voiceRunning = false;
@@ -81,22 +80,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   @override
   void initState() {
     super.initState();
-    // Install TTS callbacks before any timer or voice action can call _speak.
-    // Otherwise a timer response before microphone initialization can leave
-    // _ttsSpeaking stuck true because no completion handler resets it.
-    _tts.setStartHandler(() {
-      _ttsSpeaking = true;
-      if (mounted) _setVisual(JarvisVisualState.speaking);
-    });
-    _tts.setCompletionHandler(() {
-      _ttsSpeaking = false;
-      if (mounted) _returnToIdle(const Duration(milliseconds: 250));
-      if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
-    });
-    _tts.setCancelHandler(() {
-      _ttsSpeaking = false;
-      if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _android ? _initAndroid() : _connectDesktop();
@@ -135,14 +118,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         debugLogging: false,
       );
       if (!available) throw StateError('Распознавание речи недоступно на устройстве');
-      try {
-        await _tts.setLanguage('ru-RU');
-        await _tts.setSpeechRate(0.48);
-        await _tts.setVolume(1.0);
-        await _tts.setPitch(1.0);
-      } catch (e) {
-        debugPrint('JARVIS TTS init warning: $e');
-      }
       _voiceReady = true;
       if (mounted) setState(() => _status = 'Голос готов · скажите «Джарвис»');
     } catch (e) {
@@ -263,24 +238,80 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   }
 
   Future<void> _speak(String text) async {
-    if (!_android || text.trim().isEmpty) return;
+    final spokenText = text.trim();
+    if (!_android || spokenText.isEmpty) return;
+    final session = ++_ttsSession;
+    Directory? tempDir;
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
-      await _tts.stop();
-      // stop() may invoke the cancel handler; set speaking only after it ends
-      // so a queued microphone restart cannot race the new utterance.
+      await _nativeTools.invokeMethod<void>('stopAudio');
+      await _speech.stop();
       _ttsSpeaking = true;
-      if (!_voiceReady) {
-        await _tts.setLanguage('ru-RU');
-        await _tts.setSpeechRate(0.48);
-        await _tts.setVolume(1.0);
-        await _tts.setPitch(1.0);
+      if (mounted) _setVisual(JarvisVisualState.speaking);
+      final key = _apiKey.text.trim();
+      if (key.isEmpty) throw StateError('Для облачной озвучки укажите Gemini API key в настройках.');
+      final request = await client.postUrl(Uri.parse('https://generativelanguage.googleapis.com/v1beta/interactions'))
+          .timeout(const Duration(seconds: 15));
+      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+      request.headers.set('x-goog-api-key', key);
+      request.add(utf8.encode(jsonEncode({
+        'model': 'gemini-3.8-flash-tts',
+        'input': [{
+          'type': 'user_input',
+          'content': [{
+            'type': 'text',
+            'text': spokenText,
+            'annotations': [{
+              'type': 'speech_metadata',
+              'style': 'Speak in Russian naturally and clearly, with a calm, confident, low-pitched male assistant delivery.',
+            }],
+          }],
+        }],
+        'response_format': {'type': 'audio', 'mime_type': 'audio/wav'},
+        'generation_config': {'speech_config': [{'voice': 'Charon'}]},
+      })));
+      final response = await request.close().timeout(const Duration(seconds: 45));
+      final body = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 20));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final safeBody = body.length > 350 ? body.substring(0, 350) : body;
+        throw StateError('Gemini TTS HTTP ${response.statusCode}: $safeBody');
       }
-      _setVisual(JarvisVisualState.speaking);
-      await _tts.speak(text.trim());
+      final decoded = jsonDecode(body);
+      String audioData = '';
+      if (decoded is Map<String, dynamic>) {
+        final outputAudio = decoded['output_audio'];
+        if (outputAudio is Map<String, dynamic>) audioData = outputAudio['data']?.toString() ?? '';
+        if (audioData.isEmpty && decoded['steps'] is List) {
+          for (final step in decoded['steps'] as List) {
+            if (step is! Map || step['type'] != 'model_output' || step['content'] is! List) continue;
+            for (final block in step['content'] as List) {
+              if (block is Map && block['type'] == 'audio' && block['data'] != null) {
+                audioData = block['data'].toString();
+              }
+            }
+          }
+        }
+      }
+      if (audioData.isEmpty) throw StateError('Gemini TTS не вернул аудиоданные.');
+      tempDir = await Directory.systemTemp.createTemp('jarvis_tts_');
+      final audioFile = File('${tempDir.path}/reply.wav');
+      await audioFile.writeAsBytes(base64Decode(audioData), flush: true);
+      await _nativeTools.invokeMethod<void>('playAudioFile', {'path': audioFile.path});
     } catch (e) {
-      _ttsSpeaking = false;
-      if (mounted) setState(() => _status = 'TTS ошибка: $e');
+      if (mounted) setState(() => _status = 'Облачная озвучка недоступна; текстовый ответ сохранён. $e');
       _setVisual(JarvisVisualState.error);
+    } finally {
+      client.close(force: true);
+      if (tempDir != null) {
+        try { await tempDir.delete(recursive: true); } catch (_) {}
+      }
+      if (session == _ttsSession) {
+        _ttsSpeaking = false;
+        if (mounted && _visualState == JarvisVisualState.speaking) {
+          _returnToIdle(const Duration(milliseconds: 250));
+        }
+        if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
+      }
     }
   }
 
@@ -851,7 +882,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     _visualTimer?.cancel();
     _voiceRestartTimer?.cancel();
     _speech.stop();
-    _tts.stop();
+    _ttsSession++;
+    _nativeTools.invokeMethod<void>('stopAudio');
     _jarvis?.dispose();
     _input.dispose();
     _endpoint.dispose();
