@@ -339,9 +339,20 @@ class JarvisDesktop(tk.Tk):
         top.grid_columnconfigure(1, weight=1)
         brand = tk.Frame(top, bg="#070d17")
         brand.grid(row=0, column=0, sticky="w", padx=16)
-        tk.Label(brand, text="J·A·R·V·I·S", bg="#070d17", fg=CYAN,
+        try:
+            logo_path = Path(__file__).resolve().parent / "assets" / "jarvis-reactor-logo.png"
+            self._brand_image = tk.PhotoImage(file=str(logo_path))
+            self._brand_image_small = self._brand_image.subsample(4, 4)
+            self.iconphoto(True, self._brand_image)
+            tk.Label(brand, image=self._brand_image_small, bg="#070d17", bd=0).pack(side="left", padx=(0, 10))
+        except (tk.TclError, OSError):
+            self._brand_image = None
+            self._brand_image_small = None
+        brand_text = tk.Frame(brand, bg="#070d17")
+        brand_text.pack(side="left", anchor="w")
+        tk.Label(brand_text, text="J·A·R·V·I·S", bg="#070d17", fg=CYAN,
                  font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        tk.Label(brand, text="ПЕРСОНАЛЬНАЯ AI-ОПЕРАЦИОННАЯ СИСТЕМА", bg="#070d17", fg=MUTED,
+        tk.Label(brand_text, text="ПЕРСОНАЛЬНАЯ AI-ОПЕРАЦИОННАЯ СИСТЕМА", bg="#070d17", fg=MUTED,
                  font=("Consolas", 7, "bold")).pack(anchor="w")
         core = tk.Frame(top, bg="#070d17")
         core.grid(row=0, column=1, sticky="w", padx=22)
