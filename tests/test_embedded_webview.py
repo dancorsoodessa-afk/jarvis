@@ -48,3 +48,35 @@ def test_embedded_view_requires_a_parent_window():
                 assert "контейнер" in str(exc)
             else:
                 raise AssertionError("A missing parent HWND must be rejected.")
+
+
+def test_edge_window_is_reparented_into_tk_host_on_windows():
+    if os.name != "nt":
+        return
+    import ctypes
+    import tkinter as tk
+    from ctypes import wintypes
+    from agent.visual_server import start_visual_server
+
+    root = tk.Tk()
+    root.geometry("640x420")
+    host = tk.Frame(root, width=620, height=380, background="#050912")
+    host.pack(fill="both", expand=True)
+    root.update_idletasks()
+    server, url = start_visual_server(lambda: {"state": "IDLE", "level": 0.0, "cpu": 0.0})
+    view = EmbeddedEdgeView(int(host.winfo_id()), url)
+    try:
+        view.start(timeout=20.0)
+        root.update_idletasks()
+        view.resize(host.winfo_width(), host.winfo_height())
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        user32.GetParent.argtypes = [wintypes.HWND]
+        user32.GetParent.restype = wintypes.HWND
+        actual_parent = user32.GetParent(wintypes.HWND(view.hwnd))
+        assert int(actual_parent or 0) == int(host.winfo_id()), "Edge WebGL window must be a child of the JARVIS scene host"
+        assert view.process is not None and view.process.poll() is None
+    finally:
+        view.close()
+        server.shutdown()
+        server.server_close()
+        root.destroy()
