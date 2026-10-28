@@ -109,9 +109,17 @@ class AudioCapture:
                 samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                 blocksize=block_size, device=device, latency="low",
             ) as stream:
-                self._on_mic_status(True)
                 _logger().info("event=mic_open device=%s rate=%s", device, SAMPLE_RATE)
+                # Calibrate before declaring LISTENING so the first phrase is not used as noise.
                 noise: list[float] = []
+                for _ in range(12):
+                    if self._stop.is_set():
+                        return
+                    calibration, overflowed = stream.read(block_size)
+                    if not overflowed:
+                        calibration_samples = np.asarray(calibration[:, 0], dtype=np.int16)
+                        noise.append(float(np.sqrt(np.mean(calibration_samples.astype("float32") ** 2))) / 32768.0)
+                self._on_mic_status(True)
                 frames: list[bytes] = []
                 started = last_voice = 0.0
                 while not self._stop.is_set():
@@ -313,11 +321,10 @@ class VoiceController:
             if self._running:
                 return
             self._running = True
-            self._set_state("LISTENING")
             if self._capture_thread is not None and self._capture_thread.is_alive():
                 # Do not clear the old session's stop event; let it release the device first.
                 self._restart_after_capture = True
-                self._set_state("LISTENING", "Перезапуск микрофона…")
+                self.ui.post("voice_status", "Перезапускаю микрофон после освобождения предыдущего потока.")
                 return
             self._launch_capture_locked()
         self._log.info("event=start")
@@ -475,7 +482,10 @@ class VoiceController:
     def _on_mic_status(self, ok: bool) -> None:
         with self._lock:
             self._mic_ok = bool(ok)
+            running = self._running
         self.ui.post("mic_status", bool(ok))
+        if ok and running:
+            self._set_state("LISTENING")
 
     def _enqueue_phrase(self, audio: bytes) -> None:
         if not audio:
