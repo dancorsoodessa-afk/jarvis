@@ -56,7 +56,7 @@ class MicLock:
 
     def acquire(self, owner: str) -> None:
         if not self._lock.acquire(blocking=False):
-            raise RuntimeError(f"Микрофон уже открыт: {self._owner or 'другой поток'}.")
+            raise RuntimeError(f"Микрофон занят и уже открыт: {self._owner or 'другой поток'}.")
         self._owner = owner
 
     def release(self) -> None:
