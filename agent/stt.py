@@ -13,6 +13,8 @@ import threading
 
 DEFAULT_LOCAL_MODEL = "small"
 DEFAULT_STT_MODEL = "gemini-3.8-flash"
+DEFAULT_GROQ_STT_MODEL = "whisper-large-v3-turbo"
+GROQ_STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 _QUOTA_EXCEEDED = False
 _QUOTA_LOCK = threading.Lock()
 QUOTA_MESSAGE = "Ошибка распознавания Gemini: HTTP 429. Квота на сегодня исчерпана (free tier); голосовое распознавание недоступно до сброса квоты или смены ключа/тарифа."
@@ -39,6 +41,10 @@ def _token() -> str:
     return (os.environ.get("GEMINI_API_KEY") or os.environ.get("JARVIS_CHAT_KEY") or "").strip()
 
 
+def _groq_token() -> str:
+    return os.environ.get("GROQ_API_KEY", "").strip()
+
+
 def _local_available() -> bool:
     try:
         import faster_whisper  # noqa: F401
@@ -51,6 +57,8 @@ def available_engines() -> list[str]:
     engines = []
     if _token():
         engines.append("gemini")
+    if _groq_token():
+        engines.append("groq")
     if _local_available():
         engines.append("local")
     return engines
@@ -63,10 +71,10 @@ def current_engine() -> str:
     if mode in ("local", "whisper"):
         return "local" if _local_available() else "off"
     if mode in ("gemini", "cloud", "auto"):
-        # Cloud-first: quota exhaustion must not silently switch to local STT.
-        # Local Whisper is available only when explicitly selected via JARVIS_STT=local.
+        # Use the independent cloud reserve only after Gemini explicitly reports quota exhaustion.
+        # Never silently load a local model or switch providers without a configured Groq key.
         if quota_exceeded():
-            return "off"
+            return "groq" if _groq_token() else "off"
         return "gemini" if _token() else "off"
     return "off"
 
@@ -89,6 +97,8 @@ def health_check(timeout: float = 10.0) -> str:
     engine = current_engine()
     if engine == "local":
         return "LOCAL_READY"
+    if engine == "groq":
+        return "GROQ_READY"
     if engine == "off":
         raise RuntimeError("Распознавание речи недоступно: проверьте GEMINI_API_KEY или явно включите локальный Whisper.")
     return "CLOUD_SELECTED"
@@ -143,6 +153,50 @@ def _transcribe_gemini(path: Path) -> str:
     return text
 
 
+def _transcribe_groq(path: Path) -> str:
+    """Transcribe with Groq Whisper; used only as an explicitly configured cloud reserve."""
+    token = _groq_token()
+    if not token:
+        raise RuntimeError("Для резервного распознавания Groq нужен GROQ_API_KEY.")
+    audio = path.read_bytes()
+    if not audio:
+        raise ValueError("Аудиофайл пустой.")
+    if len(audio) > 25 * 1024 * 1024:
+        raise ValueError("Аудиофайл превышает лимит Groq STT в 25 МБ.")
+    boundary = "----JarvisSTTBoundary7MA4YWxkTrZu0gW"
+    filename = path.name or "speech.wav"
+    parts = [
+        (f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n"
+         + (os.environ.get("JARVIS_STT_FALLBACK_MODEL") or DEFAULT_GROQ_STT_MODEL).strip()
+         + "\r\n").encode("utf-8"),
+        (f"--{boundary}\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\nru\r\n").encode("utf-8"),
+        (f"--{boundary}\r\nContent-Disposition: form-data; name=\"response_format\"\r\n\r\njson\r\n").encode("utf-8"),
+        (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
+         "Content-Type: audio/wav\r\n\r\n").encode("utf-8"),
+        audio,
+        f"\r\n--{boundary}--\r\n".encode("utf-8"),
+    ]
+    request = urllib.request.Request(
+        GROQ_STT_URL, data=b"".join(parts),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": f"multipart/form-data; boundary={boundary}",
+                 "Accept": "application/json"}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=_request_timeout()) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:400]
+        raise RuntimeError(f"Резервное распознавание Groq: HTTP {exc.code}. {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Не удалось подключиться к резервному распознаванию Groq: {exc.reason}") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RuntimeError("Groq STT вернул некорректный JSON.") from exc
+    text = str(result.get("text") or "").strip() if isinstance(result, dict) else ""
+    if not text:
+        raise RuntimeError("Groq Whisper не вернул распознанный текст.")
+    return text
+
+
 def transcribe(audio_path: str) -> str:
     engine = current_engine()
     if engine == "off":
@@ -162,5 +216,12 @@ def transcribe(audio_path: str) -> str:
             raise RuntimeError("Whisper не распознал речь. Проверьте микрофон и повторите.")
         return text
     if engine == "gemini":
-        return _transcribe_gemini(path)
+        try:
+            return _transcribe_gemini(path)
+        except RuntimeError:
+            if quota_exceeded() and _groq_token():
+                return _transcribe_groq(path)
+            raise
+    if engine == "groq":
+        return _transcribe_groq(path)
     raise RuntimeError("Неизвестный режим распознавания речи.")
