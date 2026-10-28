@@ -98,13 +98,13 @@ class RoleRouterProvider:
         raise RuntimeError("Все AI-модели недоступны. " + " | ".join(errors))
     def health_checks(self) -> dict[str, str]:
         """Check each distinct configured provider endpoint once."""
-        results = {"Gemini API": "NOT CONFIGURED", "Groq API": "NOT CONFIGURED"}
+        results = {"Gemini API": "NOT CONFIGURED"}
         checked = set()
         for provider in self.providers.values():
             url = str(getattr(provider, "url", "") or "").strip()
             key = str(getattr(provider, "api_key", "") or "").strip()
             host = url.split("/")[2] if "://" in url else ""
-            label = "Groq API" if host == "api.groq.com" else "Gemini API" if host == "generativelanguage.googleapis.com" else host or "AI API"
+            label = "Gemini API" if host == "generativelanguage.googleapis.com" else host or "AI API"
             if (url, key) in checked:
                 continue
             checked.add((url, key))
