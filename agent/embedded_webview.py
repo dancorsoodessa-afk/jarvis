@@ -40,8 +40,8 @@ class EmbeddedEdgeView:
             os.environ.get("PROGRAMFILES(X86)", ""),
             os.environ.get("PROGRAMFILES", ""),
             os.environ.get("LOCALAPPDATA", ""),
-            r"C:\\Program Files (x86)",
-            r"C:\\Program Files",
+            r"C:\Program Files (x86)",
+            r"C:\Program Files",
         )
         candidates = [
             Path(root) / "Microsoft" / "Edge" / "Application" / "msedge.exe"
@@ -52,9 +52,9 @@ class EmbeddedEdgeView:
         try:
             import winreg
             registry_locations = (
-                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe"),
-                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe"),
-                (winreg.HKEY_CURRENT_USER, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"),
+                (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"),
             )
             for hive, key_name in registry_locations:
                 try:
