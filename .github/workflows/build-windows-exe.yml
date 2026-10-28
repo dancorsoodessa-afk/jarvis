@@ -9,6 +9,8 @@ on:
       - 'ui/**'
       - 'tests/**'
       - 'scripts/build_exe.ps1'
+      - 'scripts/create_icon.py'
+      - 'assets/**'
       - 'scripts/prepare_3d_assets.ps1'
       - 'jarvis_desktop.py'
       - 'jarvis_desktop.spec'
