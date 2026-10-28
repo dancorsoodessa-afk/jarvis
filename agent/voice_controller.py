@@ -348,7 +348,7 @@ class VoiceController:
             mic_ok = self._mic_ok
             running = self._running
         try:
-            cloud_voice_available = stt.current_engine() in {"gemini", "groq"} and tts.current_engine() == "gemini"
+            cloud_voice_available = stt.current_engine() in {"gemini", "groq"} and tts.current_engine() == "gemini" and not self._tts_off
         except Exception as exc:
             self._log.warning("event=voice_availability_check_failed error=%s", exc)
             cloud_voice_available = False
@@ -358,11 +358,11 @@ class VoiceController:
             "mic": "ok" if mic_ok else "fail",
             "mic_status": "mic ok" if mic_ok else "mic fail",
             "cloud_stt_status": ("cloud stt reserve: Groq" if stt.current_engine() == "groq" else "cloud stt off" if stt.current_engine() == "off" else "cloud stt on"),
-            "tts_status": "tts off" if tts.current_engine() == "off" else "tts on",
+            "tts_status": "tts off" if tts.current_engine() == "off" or self._tts_off else "tts on",
             "cloud_voice_available": cloud_voice_available,
             "quota_exceeded": stt.quota_exceeded(),
             "cloud_stt": "groq" if stt.current_engine() == "groq" else "off" if stt.current_engine() == "off" else "on",
-            "tts": "off" if tts.current_engine() == "off" else "on",
+            "tts": "off" if tts.current_engine() == "off" or self._tts_off else "on",
             "running": running,
             "is_speaking": self._is_speaking.is_set(),
         }
@@ -620,6 +620,7 @@ class VoiceController:
                     self._set_state("LISTENING")
 
     def _tts_started(self) -> None:
+        self._tts_off = False
         self._is_speaking.set()
         self._set_state("SPEAKING")
 
@@ -650,7 +651,7 @@ class VoiceController:
         self._log.error("event=tts_error error=%s", exc)
         error = str(exc)
         if "http 400" in error.lower() and ("voice" in error.lower() or "speaker" in error.lower()):
-            message = "Неверный голос озвучки Gemini; используется резервный профиль Charon. Текстовый ответ доступен."
+            message = "Gemini отклонил параметры озвучки (HTTP 400). Текстовый ответ доступен; голосовой контур продолжает работу."
         else:
             message = f"Озвучка недоступна, вот текстовый ответ: {error}"
         self._tts_off = True
