@@ -1395,5 +1395,40 @@ class JarvisDesktop(tk.Tk):
         self.destroy()
 
 
+def _run_desktop():
+    """Persist a useful traceback if the desktop UI fails during startup."""
+    import traceback
+
+    try:
+        app = JarvisDesktop()
+        app.mainloop()
+    except Exception:
+        details = traceback.format_exc()
+        log_dir = Path(os.environ.get("APPDATA", str(Path.home()))) / "JARVIS"
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / "startup-error.log").write_text(details, encoding="utf-8")
+        except OSError:
+            pass
+        try:
+            root = getattr(tk, "_default_root", None)
+            created_root = root is None
+            if created_root:
+                root = tk.Tk()
+                root.withdraw()
+            messagebox.showerror(
+                "JARVIS — ошибка запуска",
+                "Приложение не смогло запуститься. Подробный traceback сохранён в:\n"
+                + str(log_dir / "startup-error.log")
+                + "\n\n"
+                + details[-1800:],
+                parent=root,
+            )
+            if created_root:
+                root.destroy()
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
-    JarvisDesktop().mainloop()
+    _run_desktop()
