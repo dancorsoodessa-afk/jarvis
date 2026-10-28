@@ -95,7 +95,7 @@ class JarvisIpc {
 
   bool _isModelUnavailableError(Object error) {
     final message = error.toString().toLowerCase();
-    final modelStatus = RegExp('http (400|404)\\\\b').hasMatch(message);
+    final modelStatus = message.contains('http 400') || message.contains('http 404');
     final modelHint = ['model', 'not found', 'unknown', 'does not exist', 'not available']
         .any(message.contains);
     return modelStatus && modelHint;
