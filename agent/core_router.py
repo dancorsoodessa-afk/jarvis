@@ -110,6 +110,18 @@ class RoleRouterProvider:
                 continue
             try:
                 results[label] = provider.health_check()
+                # Role profiles can share one endpoint/key but be separate provider objects.
+                # Propagate a model auto-selected from the live model catalogue to every role.
+                selected_model = getattr(provider, "model", "")
+                if selected_model:
+                    for sibling in self.providers.values():
+                        sibling_backend = (
+                            str(getattr(sibling, "url", "") or "").strip().rstrip("/"),
+                            str(getattr(sibling, "api_key", "") or "").strip(),
+                        )
+                        if sibling_backend == (url.rstrip("/"), key):
+                            sibling.model = selected_model
+                            sibling.last_used_model = selected_model
             except Exception as exc:
                 results[label] = "ERROR: " + str(exc)[:180]
         return results

@@ -9,13 +9,13 @@ import threading
 import time
 import webbrowser
 import tkinter as tk
+from tkinter import messagebox
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 import mimetypes
 
 from agent.runtime import build_agent
 from agent import tts, voice, stt
-from agent.visual_server import start_visual_server
 from agent.secrets import protect_secret, unprotect_secret
 from agent.tools_catalog import TOOLS
 
@@ -147,15 +147,8 @@ class JarvisDesktop(tk.Tk):
             self._save_settings()
         self._build_style()
         self._build_ui()
-        # The Three.js scene is served locally; no camera access is requested.
-        self._visual_server, self._visual_url = start_visual_server(
-            lambda: {
-                "state": self._visual_state,
-                "level": self._visual_level,
-                "cpu": _cpu_activity_level(),
-            }
-        )
-        self.after(900, self._open_3d_scene)
+        # Keep the reactor in the main window; never open an external browser.
+        self.after(80, self._animate_reactor)
         self._start_agent()
         self.after(80, self._drain_events)
         self.protocol("WM_DELETE_WINDOW", self._close)
@@ -170,13 +163,13 @@ class JarvisDesktop(tk.Tk):
             "name": "JARVIS",
             "provider": "gemini",
             "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
-            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "gemini-3.8-flash",
+            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "gemini-2.5-flash",
             "api_key": (str(self.settings.get("gemini_api_key") or "") if "gemini_api_key" in self.settings else os.environ.get("GEMINI_API_KEY", "")),
         }
         defaults = {
             "0": legacy,
-            "1": {"name": "Gemini Reasoning", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-3.8-flash", "api_key": legacy["api_key"]},
-            "2": {"name": "Gemini Coding", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-3.8-flash", "api_key": legacy["api_key"]},
+            "1": {"name": "Gemini Reasoning", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-2.5-flash", "api_key": legacy["api_key"]},
+            "2": {"name": "Gemini Coding", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-2.5-flash", "api_key": legacy["api_key"]},
         }
         merged = {}
         for key, default in defaults.items():
@@ -261,19 +254,19 @@ class JarvisDesktop(tk.Tk):
         self.settings.setdefault("tts_voice", "Charon")
         if self.settings.get("tts_voice") in {"Windows system voice", "Dmitri", "Microsoft David", "Microsoft Zira", ""}:
             self.settings["tts_voice"] = "Charon"
-        self.settings.setdefault("tts_model", "gemini-3.8-flash-tts")
+        self.settings.setdefault("tts_model", "gemini-2.5-flash-preview-tts")
         self.settings.setdefault("tts_timeout", "45")
         self.settings.setdefault("stt_timeout", "45")
-        self.settings.setdefault("stt_model", "gemini-3.8-flash")
+        self.settings.setdefault("stt_model", "gemini-2.5-flash")
         os.environ["JARVIS_STT_TIMEOUT"] = str(self.settings.get("stt_timeout") or "45")
-        os.environ["JARVIS_STT_MODEL"] = str(self.settings.get("stt_model") or "gemini-3.8-flash")
+        os.environ["JARVIS_STT_MODEL"] = str(self.settings.get("stt_model") or "gemini-2.5-flash")
         tts_engine = str(self.settings.get("tts_engine", "gemini")).strip().lower() or "gemini"
         if tts_engine not in {"gemini", "off"}:
             tts_engine = "gemini"
         self.settings["tts_engine"] = tts_engine
         os.environ["JARVIS_TTS"] = tts_engine
         os.environ["JARVIS_TTS_VOICE"] = str(self.settings.get("tts_voice") or "Charon")
-        os.environ["JARVIS_TTS_MODEL"] = str(self.settings.get("tts_model") or "gemini-3.8-flash-tts")
+        os.environ["JARVIS_TTS_MODEL"] = str(self.settings.get("tts_model") or "gemini-2.5-flash-preview-tts")
         os.environ["JARVIS_TTS_TIMEOUT"] = str(self.settings.get("tts_timeout") or "45")
 
     def _save_settings(self):
@@ -393,13 +386,13 @@ class JarvisDesktop(tk.Tk):
         hero = tk.Frame(center, bg="#07101a", highlightbackground="#163246", highlightthickness=1)
         hero.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         hero.grid_columnconfigure(1, weight=1)
-        self.scene_label = tk.Label(hero, text="REAL 3D REACTOR\nОТКРЫВАЕТСЯ В БРАУЗЕРЕ",
-                                    bg="#030811", fg=CYAN, width=34, height=11,
-                                    font=("Consolas", 11, "bold"), justify="center")
-        self.scene_label.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(4, 8), pady=4)
+        self.scene_canvas = tk.Canvas(hero, bg="#030811", width=280, height=208,
+                                      highlightthickness=0, bd=0)
+        self.scene_canvas.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(4, 8), pady=4)
         self.hud_text = tk.Label(hero, text="Инициализация ядра…", bg="#07101a", fg=CYAN,
                                  font=("Segoe UI", 14, "bold"), justify="left")
         self.hud_text.grid(row=0, column=1, sticky="sw", padx=8, pady=(42, 4))
+        self.scene_label = self.hud_text
         tk.Label(hero, text="ЖИВОЙ ВИЗУАЛЬНЫЙ КОНТУР  •  VOICE / AI / TOOLS / MEMORY",
                  bg="#07101a", fg=MUTED, font=("Consolas", 7, "bold")).grid(row=1,column=1,sticky="nw",padx=8,pady=(0,16))
 
@@ -482,14 +475,70 @@ class JarvisDesktop(tk.Tk):
         }
         self.hud_text.config(text=labels.get(state, state) + "\nJARVIS CORE")
         if hasattr(self, "scene_label"):
-            self.scene_label.config(text=labels.get(state, state) + "\nTHREE.JS WEBGL")
+            self.scene_label.config(text=labels.get(state, state) + "\nЖИВОЕ ЯДРО")
 
     def _open_3d_scene(self):
+        # Compatibility hook: the reactor is rendered in the main window.
+        self._animate_reactor()
+
+    def _animate_reactor(self):
+        """Draw an animated perspective-projected neural reactor inside the main window."""
+        canvas = getattr(self, "scene_canvas", None)
+        if canvas is None or not canvas.winfo_exists():
+            return
         try:
-            webbrowser.open(self._visual_url, new=1)
-            self.scene_label.config(text="THREE.JS WEBGL\n3D REACTOR ОТКРЫТ\n\nГолос и состояние ИИ\nпередаются в сцену")
-        except Exception as exc:
-            self.scene_label.config(text="НЕ УДАЛОСЬ ОТКРЫТЬ 3D\n" + str(exc)[:100])
+            canvas.delete("all")
+            width, height = max(200, canvas.winfo_width()), max(160, canvas.winfo_height())
+            cx, cy = width / 2, height / 2
+            phase = time.monotonic()
+            state = self._visual_state
+            color = {"IDLE": CYAN, "LISTENING": "#62ffb4", "THINKING": "#ffcf6b",
+                     "SPEAKING": "#7aa7ff", "ERROR": RED}.get(state, CYAN)
+            radius = min(width, height) * (0.31 + 0.035 * self._visual_level)
+            # Rotating latitude rings projected from 3D coordinates.
+            for lat_i in range(1, 9):
+                lat = -math.pi / 2 + lat_i * math.pi / 9
+                ring = []
+                for lon_i in range(49):
+                    lon = lon_i * math.tau / 48 + phase * (0.18 + self._visual_level * 0.5)
+                    x = radius * math.cos(lat) * math.cos(lon)
+                    y = radius * math.sin(lat)
+                    z = radius * math.cos(lat) * math.sin(lon)
+                    tilt = 0.55
+                    yy = y * math.cos(tilt) - z * math.sin(tilt)
+                    zz = y * math.sin(tilt) + z * math.cos(tilt)
+                    scale = 1.0 / (1.0 + zz / max(width, height) * 0.75)
+                    ring.append((cx + x * scale, cy + yy * scale))
+                for a, b in zip(ring, ring[1:]):
+                    canvas.create_line(*a, *b, fill=color, width=1)
+            # Animated orbital paths.
+            for orbit in range(3):
+                coords = []
+                angle = phase * (0.22 + orbit * 0.08) + orbit * 1.05
+                for n in range(101):
+                    t = n * math.tau / 100
+                    x = radius * 1.12 * math.cos(t)
+                    y = radius * (0.42 + orbit * 0.08) * math.sin(t)
+                    coords.extend((cx + x * math.cos(angle) - y * math.sin(angle),
+                                   cy + x * math.sin(angle) + y * math.cos(angle)))
+                canvas.create_line(*coords, fill="#6b87c7" if orbit == 1 else color,
+                                   width=2 if orbit == 1 else 1, smooth=True)
+            glow = 4 + self._visual_level * 8 + _cpu_activity_level() * 4
+            canvas.create_oval(cx-glow, cy-glow, cx+glow, cy+glow,
+                               fill=color, outline="#e8ffff", width=1)
+            for n in range(22):
+                angle = n * math.tau / 22 + phase * 0.15
+                rr = radius * (1.35 + 0.06 * math.sin(phase + n))
+                x, y = cx + math.cos(angle) * rr, cy + math.sin(angle) * rr
+                canvas.create_oval(x-1.5, y-1.5, x+1.5, y+1.5, fill=color, outline="")
+            canvas.create_text(cx, height-14, text="JARVIS • NEURAL REACTOR",
+                               fill=color, font=("Consolas", 8, "bold"))
+            labels = {"IDLE": "СИСТЕМА ГОТОВА", "LISTENING": "СЛУШАЮ ВАС",
+                      "THINKING": "ОБРАБОТКА", "SPEAKING": "ОТВЕЧАЮ", "ERROR": "ОШИБКА"}
+            self.scene_label.config(text=labels.get(state, state) + "\nЖИВОЕ ЯДРО • В ОДНОМ ОКНЕ")
+            self.after(50, self._animate_reactor)
+        except tk.TclError:
+            return
 
     def _start_agent(self):
         # Ignore stale results when settings are saved/reloaded more than once.
@@ -1010,36 +1059,182 @@ class JarvisDesktop(tk.Tk):
             canvas.create_oval(x-2, y-2, x+2, y+2, fill=c1, outline="")
         canvas.create_oval(cx-9, cy-9, cx+9, cy+9, fill=c1, outline="")
         canvas.create_oval(cx-5, cy-6, cx+1, cy, fill="#eaffff", outline="")
-        canvas.create_text(cx, 62, text=str(seed), fill=c1, font=("Segoe UI", 6, "bold"))
 
     def _open_module_details(self, name, title, desc, enabled):
-        items = []
-        if name == "osint":
-            items = [(n, d) for n, t, d, k in TOOLS if k == "intel"]
-        elif name == "ps":
-            try:
-                import csv, subprocess
-                out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8).stdout
-                items = [(r[0], "PID " + r[1]) for r in csv.reader(out.splitlines()) if len(r) >= 2]
-            except Exception:
-                items = []
-        elif name == "launch":
+        """Понятные кнопки вместо списка технических команд и идентификаторов."""
+        win = tk.Toplevel(self)
+        win.title("JARVIS — " + title)
+        win.configure(bg=BG)
+        win.geometry("860x680")
+        win.minsize(620, 480)
+        win.transient(self)
+        tk.Label(win, text=title, bg=BG, fg=CYAN, font=("Segoe UI", 18, "bold")).pack(anchor="w", padx=20, pady=(18, 4))
+        tk.Label(win, text=("Готов к работе" if enabled else "Инструмент выключен"), bg=BG,
+                 fg=GREEN if enabled else RED, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20)
+        content = tk.Frame(win, bg=BG)
+        content.pack(fill="both", expand=True, padx=20, pady=12)
+
+        if name == "launch":
+            tk.Label(content, text="Найдите программу и нажмите «Запустить».", bg=BG, fg=MUTED).pack(anchor="w", pady=(0, 8))
+            query = tk.StringVar()
+            entry = tk.Entry(content, textvariable=query, bg=PANEL, fg=TEXT, insertbackground=CYAN, relief="flat", font=("Segoe UI", 12))
+            entry.pack(fill="x", ipady=10, pady=(0, 10))
+            wrap = tk.Frame(content, bg=PANEL)
+            wrap.pack(fill="both", expand=True)
+            canvas = tk.Canvas(wrap, bg=PANEL, highlightthickness=0)
+            scroll = ttk.Scrollbar(wrap, orient="vertical", command=canvas.yview)
+            canvas.pack(side="left", fill="both", expand=True)
+            scroll.pack(side="right", fill="y")
+            canvas.configure(yscrollcommand=scroll.set)
+            inner = tk.Frame(canvas, bg=PANEL)
+            wid = canvas.create_window((0, 0), window=inner, anchor="nw")
+            inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+            canvas.bind("<Configure>", lambda e: canvas.itemconfigure(wid, width=e.width))
+            status = tk.Label(content, text="Загрузка списка приложений…", bg=BG, fg=MUTED)
+            status.pack(anchor="w", pady=(7, 0))
+            apps = []
             try:
                 import subprocess
-                out = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-StartApps | Sort-Object Name | ForEach-Object { \"$($_.Name)|$($_.AppID)\" }"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8).stdout
-                items = [(a.strip(), b.strip()) for line in out.splitlines() if "|" in line for a, b in [line.split("|", 1)] if a.strip()]
+                out = subprocess.run(
+                    ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                     "Get-StartApps | Sort-Object Name | ForEach-Object { \"$($_.Name)|$($_.AppID)\" }"],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=12
+                )
+                apps = [(p[0].strip(), p[1].strip()) for line in out.stdout.splitlines()
+                        if "|" in line for p in [line.split("|", 1)] if p[0].strip()]
             except Exception:
-                items = []
-        if not items: items = [(name, desc)]
-        win = tk.Toplevel(self); win.title("JARVIS — " + title); win.configure(bg=BG); win.geometry("820x650")
-        tk.Label(win, text=title, bg=BG, fg=CYAN, font=("Segoe UI", 18, "bold")).pack(anchor="w", padx=20, pady=(18, 4))
-        tk.Label(win, text=("● АКТИВЕН" if enabled else "● ВЫКЛЮЧЕН"), bg=BG, fg=GREEN if enabled else RED, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20)
-        tk.Label(win, text="Полный перечень: " + str(len(items)), bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=8)
-        text = tk.Text(win, bg=PANEL, fg=TEXT, relief="flat", wrap="word", font=("Segoe UI", 10))
-        text.pack(fill="both", expand=True, padx=20, pady=10)
-        for item, detail in items: text.insert("end", item + "  —  " + detail + "\n")
-        text.configure(state="disabled")
-        ttk.Button(win, text="ЗАКРЫТЬ", command=win.destroy).pack(anchor="e", padx=20, pady=(0, 14))
+                apps = []
+
+            def launch_app(app_name, app_id):
+                if not app_id:
+                    messagebox.showwarning("JARVIS", "Windows не предоставил способ запуска этой программы.")
+                    return
+                try:
+                    import subprocess
+                    subprocess.Popen(["explorer.exe", "shell:AppsFolder\\" + app_id],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    status.config(text="Запуск программы: " + app_name, fg=GREEN)
+                except Exception as exc:
+                    status.config(text="Не удалось запустить программу: " + str(exc), fg=RED)
+
+            def render_apps(*_args):
+                for child in inner.winfo_children():
+                    child.destroy()
+                term = query.get().strip().casefold()
+                shown = [(n, a) for n, a in apps if term in n.casefold()]
+                for app_name, app_id in shown:
+                    row = tk.Frame(inner, bg=PANEL2, highlightbackground=LINE, highlightthickness=1)
+                    row.pack(fill="x", padx=8, pady=4)
+                    tk.Label(row, text=app_name, bg=PANEL2, fg=TEXT, font=("Segoe UI", 10),
+                             anchor="w").pack(side="left", fill="x", expand=True, padx=12, pady=10)
+                    ttk.Button(row, text="Запустить", command=lambda n=app_name, a=app_id: launch_app(n, a)).pack(side="right", padx=10, pady=6)
+                status.config(text=("Найдено программ: " + str(len(shown))) if apps else
+                              "Список приложений Windows недоступен.", fg=MUTED if apps else RED)
+            query.trace_add("write", render_apps)
+            render_apps()
+
+        elif name == "ps":
+            tk.Label(content, text="Поиск по названию. Системные процессы защищены.", bg=BG, fg=MUTED).pack(anchor="w", pady=(0, 8))
+            query = tk.StringVar()
+            tk.Entry(content, textvariable=query, bg=PANEL, fg=TEXT, insertbackground=CYAN,
+                     relief="flat", font=("Segoe UI", 12)).pack(fill="x", ipady=10, pady=(0, 10))
+            wrap = tk.Frame(content, bg=PANEL)
+            wrap.pack(fill="both", expand=True)
+            canvas = tk.Canvas(wrap, bg=PANEL, highlightthickness=0)
+            scroll = ttk.Scrollbar(wrap, orient="vertical", command=canvas.yview)
+            canvas.pack(side="left", fill="both", expand=True)
+            scroll.pack(side="right", fill="y")
+            canvas.configure(yscrollcommand=scroll.set)
+            inner = tk.Frame(canvas, bg=PANEL)
+            wid = canvas.create_window((0, 0), window=inner, anchor="nw")
+            inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+            canvas.bind("<Configure>", lambda e: canvas.itemconfigure(wid, width=e.width))
+            status = tk.Label(content, text="", bg=BG, fg=MUTED)
+            status.pack(anchor="w", pady=(7, 0))
+            protected = {"system", "registry", "smss.exe", "csrss.exe", "wininit.exe", "services.exe",
+                         "lsass.exe", "winlogon.exe", "svchost.exe", "dwm.exe", "explorer.exe",
+                         "spoolsv.exe", "fontdrvhost.exe", "taskhostw.exe"}
+            processes = []
+
+            def refresh_processes():
+                nonlocal processes
+                try:
+                    import csv, subprocess
+                    out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True,
+                                         encoding="utf-8", errors="replace", timeout=10)
+                    processes = [(r[0], r[1]) for r in csv.reader(out.stdout.splitlines()) if len(r) >= 2]
+                except Exception:
+                    processes = []
+                render_processes()
+
+            def stop_process(proc_name, pid):
+                if proc_name.casefold() in protected:
+                    messagebox.showwarning("JARVIS", "Этот системный процесс защищён.")
+                    return
+                if not messagebox.askyesno("Подтверждение", "Завершить «" + proc_name + "»? Несохранённые данные могут быть потеряны."):
+                    return
+                try:
+                    import subprocess
+                    subprocess.run(["taskkill", "/PID", str(pid), "/T"], capture_output=True, text=True, timeout=8)
+                    status.config(text="Запрос на завершение отправлен: " + proc_name, fg=GREEN)
+                    win.after(700, refresh_processes)
+                except Exception as exc:
+                    status.config(text="Ошибка: " + str(exc), fg=RED)
+
+            def render_processes(*_args):
+                for child in inner.winfo_children():
+                    child.destroy()
+                term = query.get().strip().casefold()
+                shown = [(n, p) for n, p in processes if term in n.casefold()]
+                for proc_name, pid in shown:
+                    row = tk.Frame(inner, bg=PANEL2, highlightbackground=LINE, highlightthickness=1)
+                    row.pack(fill="x", padx=8, pady=4)
+                    tk.Label(row, text=proc_name, bg=PANEL2, fg=TEXT, font=("Segoe UI", 10),
+                             anchor="w").pack(side="left", fill="x", expand=True, padx=12, pady=10)
+                    if proc_name.casefold() in protected:
+                        tk.Label(row, text="Системный процесс", bg=PANEL2, fg=MUTED).pack(side="right", padx=10)
+                    else:
+                        ttk.Button(row, text="Завершить", command=lambda n=proc_name, p=pid: stop_process(n, p)).pack(side="right", padx=10, pady=6)
+                status.config(text="Программ в списке: " + str(len(shown)), fg=MUTED)
+            query.trace_add("write", render_processes)
+            buttons = tk.Frame(content, bg=BG)
+            buttons.pack(fill="x", pady=(0, 8))
+            ttk.Button(buttons, text="Обновить список", command=refresh_processes).pack(side="right")
+            refresh_processes()
+
+        elif name == "osint":
+            tk.Label(content, text="Введите данные и выберите понятное действие.", bg=BG, fg=MUTED).pack(anchor="w", pady=(0, 8))
+            query = tk.StringVar()
+            tk.Entry(content, textvariable=query, bg=PANEL, fg=TEXT, insertbackground=CYAN,
+                     relief="flat", font=("Segoe UI", 12)).pack(fill="x", ipady=10, pady=(0, 14))
+            status = tk.Label(content, text="Результаты появятся в основном окне JARVIS.", bg=BG, fg=MUTED,
+                              wraplength=760, justify="left")
+            status.pack(anchor="w", pady=(12, 0))
+            checks = [
+                ("Проверить домен", "Проверь домен, DNS, IP, RDAP, NS и TLS: "),
+                ("Проверить IP-адрес", "Проверь IP-адрес, географию, ASN и провайдера: "),
+                ("Проверить сайт", "Проверь URL сайта, HTTP-заголовки, ссылки и SHA-256: "),
+                ("Проверить email", "Проверь email и домен: "),
+                ("Проверить имя пользователя", "Проверь публичные профили для username: "),
+            ]
+            def submit_check(prompt, label):
+                value = query.get().strip()
+                if not value:
+                    messagebox.showinfo("JARVIS", "Сначала введите данные для проверки.")
+                    return
+                status.config(text="Проверка отправлена: " + label, fg=CYAN)
+                self.send(prompt + value)
+            for label, prompt in checks:
+                ttk.Button(content, text=label, command=lambda p=prompt, l=label: submit_check(p, l)).pack(fill="x", pady=4)
+
+        else:
+            tk.Label(content, text=desc, bg=BG, fg=MUTED, font=("Segoe UI", 11),
+                     wraplength=760, justify="left").pack(anchor="w", pady=(0, 12))
+            tk.Label(content, text="Управляйте этим инструментом через основные кнопки JARVIS.",
+                     bg=BG, fg=TEXT, font=("Segoe UI", 10)).pack(anchor="w", pady=4)
+
+        ttk.Button(win, text="Закрыть", command=win.destroy).pack(anchor="e", padx=20, pady=(0, 14))
+
     def show_tools(self):
         win = tk.Toplevel(self)
         win.title("JARVIS — Управление модулями")
@@ -1151,9 +1346,9 @@ class JarvisDesktop(tk.Tk):
         active = int(self.settings.get("active_agent", 0) or 0)
         names = ("FAST / Обычные", "REASONING / Рассуждения", "CODING / Код")
         defaults = (
-            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
-            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
-            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
         )
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
@@ -1218,7 +1413,7 @@ class JarvisDesktop(tk.Tk):
         additional_row.pack(fill="x", pady=(2, 10))
         tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
         additional_model = tk.Entry(additional_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
-        additional_model.insert(0, str(self.settings.get("additional_model", "gemini-3.8-flash")))
+        additional_model.insert(0, str(self.settings.get("additional_model", "gemini-2.5-flash")))
         additional_model.pack(fill="x", padx=14, pady=(0, 4), ipady=6)
         tk.Button(additional_row, text="ОЧИСТИТЬ", command=lambda: clear_entry(additional_model), bg="#572637", fg=TEXT, relief="flat", padx=8, pady=4).pack(anchor="e", padx=14, pady=(0, 8))
 
@@ -1288,9 +1483,9 @@ class JarvisDesktop(tk.Tk):
         for label, key, default, secret in (
             ("Облачный TTS", "tts_engine", self.settings.get("tts_engine", "gemini"), False),
             ("Голос Gemini", "tts_voice", self.settings.get("tts_voice", "Charon"), False),
-            ("Модель TTS", "tts_model", self.settings.get("tts_model", "gemini-3.8-flash-tts"), False),
+            ("Модель TTS", "tts_model", self.settings.get("tts_model", "gemini-2.5-flash-preview-tts"), False),
             ("Тайм-аут TTS, сек.", "tts_timeout", self.settings.get("tts_timeout", "45"), False),
-            ("Модель STT", "stt_model", self.settings.get("stt_model", "gemini-3.8-flash"), False),
+            ("Модель STT", "stt_model", self.settings.get("stt_model", "gemini-2.5-flash"), False),
             ("Тайм-аут STT, сек.", "stt_timeout", self.settings.get("stt_timeout", "45"), False),
         ):
             row = tk.Frame(voice_frame, bg="#091b29")
@@ -1310,7 +1505,7 @@ class JarvisDesktop(tk.Tk):
         def save():
             new_profiles = {}
             for i, fields in enumerate(entries):
-                new_profiles[str(i)] = {"provider": "gemini", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "gemini-3.8-flash", "api_key": shared_key.get().strip(), "name": names[i]}
+                new_profiles[str(i)] = {"provider": "gemini", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "gemini-2.5-flash", "api_key": shared_key.get().strip(), "name": names[i]}
             self.settings["agents"] = new_profiles
             self.settings["gemini_api_key"] = shared_key.get().strip()
             self.settings["groq_api_key"] = groq_key.get().strip()
@@ -1319,7 +1514,7 @@ class JarvisDesktop(tk.Tk):
             for key, entry in groq_fields.items():
                 self.settings[key] = entry.get().strip()
             self.settings.pop("hf_token", None)
-            self.settings["additional_model"] = additional_model.get().strip() or "gemini-3.8-flash"
+            self.settings["additional_model"] = additional_model.get().strip() or "gemini-2.5-flash"
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
