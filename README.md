@@ -1,30 +1,27 @@
-# JARVIS — Windows desktop assistant
+# JARVIS — Windows desktop assistant and Android client
 
-JARVIS is a Windows desktop assistant with a graphical interface, memory, OS tools, and a cloud AI backend.
+JARVIS combines a Python agent core for Windows, a Flutter client for Android, local operating-system tools, memory, and cloud AI services.
 
 ## Architecture
 
-- **Primary cloud AI:** Google Gemini API using the official OpenAI-compatible endpoint.
-- **Independent chat fallback:** Groq Cloud, configured with its own optional API key, model, timeout, and live endpoint check. If Groq is not configured, it is explicitly reported as unavailable.
-- **Voice recognition:** microphone capture on the PC plus cloud Gemini transcription; requires internet and the Gemini API key.
-- **Voice output:** cloud Gemini TTS with a configurable voice, model, and timeout.
-- **3D interface:** real Three.js/WebGL neural reactor served locally and opened in the browser. The scene reacts to live microphone level and the assistant's listening, thinking, speaking, and error states.
+- **Primary chat AI:** Google Gemini through its OpenAI-compatible endpoint.
+- **Optional chat fallback:** Groq Cloud, with a separate key, model, and timeout.
+- **Primary speech recognition:** Gemini cloud transcription.
+- **Optional speech fallback:** Groq Whisper transcription when `GROQ_API_KEY` is configured. A Gemini quota/timeout error must not disable text chat or cause a repeated request to a quota-exhausted model.
+- **Speech output:** Gemini cloud TTS. No ElevenLabs or bundled offline voice engine is required.
+- **3D interface:** the Windows desktop currently serves the real Three.js/WebGL reactor locally and opens it in a browser; the Flutter Android client has its own animated reactor painter. Full Windows one-window embedding of the WebGL reactor remains tracked in issue #43.
 - **Camera:** not implemented; JARVIS does not request camera access.
 
-## Get the free Gemini API key
+## Configure cloud AI
 
-1. Open [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. Create an API key for a project with Gemini API free-tier access.
-3. Open JARVIS → **Центр управления** and paste the key into **GEMINI API KEY**.
-4. Save and restart the core.
+1. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey).
+2. Open JARVIS → **Центр управления** and save the key under **GEMINI API KEY**.
+3. Optional: configure an independent Groq API key in the control center to enable chat and speech-recognition fallback.
+4. Keep keys in the app's protected settings or environment variables. Never commit keys to Git.
 
-Alternatively, for the current PowerShell session:
+Default chat/STT model: `gemini-3.5-flash-lite`. Default Groq STT fallback model: `whisper-large-v3-turbo`. Actual access and quotas depend on the provider and project; JARVIS checks API errors and reports them instead of pretending a failed request succeeded.
 
-```powershell
-$env:GEMINI_API_KEY = "your_gemini_api_key"
-```
-
-Default model: `gemini-3.8-flash`. The free tier has model-specific rate limits and may change. Do not enable billing if you require strictly free usage. Free-tier requests may be subject to Google's data-use terms; review the current policy before sending sensitive data.
+Environment variables used by the service include `GEMINI_API_KEY`, `GROQ_API_KEY`, `JARVIS_CHAT_MODEL`, `JARVIS_STT_MODEL`, `JARVIS_STT_FALLBACK_MODEL`, `JARVIS_GEMINI_TIMEOUT`, and `JARVIS_STT_TIMEOUT`.
 
 ## Build on Windows
 
@@ -36,19 +33,11 @@ python -m pip install "pyinstaller>=6.22,<7" pytest
 powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 ```
 
-The build script runs tests before packaging. The executable is written to `release\JARVIS.exe`.
-
-## Voice
-
-- Input: microphone audio is recorded locally and sent to Gemini for Russian transcription.
-- Output: Gemini cloud TTS generates a WAV voice response using the same Gemini API key.
-- Internet access is required for both cloud recognition and speech generation. If a service is unavailable, JARVIS reports the error rather than silently switching to a different voice engine.
-- Configure the TTS model, voice, and request timeout in the control center.
-- Check Windows microphone permissions and the selected input device if recording fails.
+The build script runs tests before packaging. The executable is written to `release\JARVIS.exe`. Do not distribute a release until CI tests, packaging, and a launch smoke test pass.
 
 ## Run from source
 
-Prepare the pinned local Three.js engine once, then launch the app:
+Prepare the pinned local Three.js engine once, then launch the Windows app:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\prepare_3d_assets.ps1
@@ -56,4 +45,4 @@ python -m agent
 python jarvis_desktop.py
 ```
 
-Do not commit API keys to Git or paste them into source files. Android source is preserved for later work.
+Android source and the release APK workflow are maintained under `ui/`. CI runs Dart analysis and Flutter tests before building the APK; verify the uploaded artifact and checksum before calling it ready.
