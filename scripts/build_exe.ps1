@@ -21,7 +21,7 @@ python -c "import jarvis_desktop; print('JARVIS desktop import OK')"
 if ($LASTEXITCODE -ne 0) { throw "Desktop import check failed." }
 
 Write-Host "== JARVIS: prepare Windows application icon ==" -ForegroundColor Cyan
-python -c "from PIL import Image; Image.open('assets/jarvis-reactor-logo.png').convert('RGBA').save('assets/jarvis-reactor-logo.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])"
+python -c "from PIL import Image, ImageDraw; p='assets/jarvis-reactor-logo.png'; out='assets/jarvis-reactor-logo.ico'; sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)]; exec('try:\\n im=Image.open(p).convert(\\'RGBA\\'); im.load()\\nexcept Exception:\\n im=Image.new(\\'RGBA\\',(256,256),(5,12,25,255)); d=ImageDraw.Draw(im); d.ellipse((24,24,232,232),outline=(0,220,255,255),width=8); d.ellipse((64,64,192,192),outline=(0,220,255,255),width=5); d.ellipse((112,112,144,144),fill=(0,220,255,255)); d.line((128,24,128,64),fill=(0,220,255,255),width=5); d.line((128,192,128,232),fill=(0,220,255,255),width=5); d.line((24,128,64,128),fill=(0,220,255,255),width=5); d.line((192,128,232,128),fill=(0,220,255,255),width=5)'); im.save(out, format='ICO', sizes=sizes)"
 if ($LASTEXITCODE -ne 0 -or !(Test-Path "assets/jarvis-reactor-logo.ico")) { throw "JARVIS application icon generation failed." }
 
 Write-Host "== JARVIS: build EXE ==" -ForegroundColor Cyan
