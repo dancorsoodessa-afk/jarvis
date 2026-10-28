@@ -89,6 +89,14 @@ def test_desktop_treats_agent_provider_error_result_as_api_failure():
     assert 'self.events.put(("request_error", str(result.text).partition(":")[2].strip()))' in source
 
 
+def test_desktop_startup_crash_writes_traceback():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert 'def _run_desktop()' in source
+    assert 'startup-error.log' in source
+    assert 'traceback.format_exc()' in source
+    assert 'messagebox.showerror(' in source
+
+
 def test_desktop_agent_reload_ignores_stale_results_and_has_timeout():
     source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
     assert "self._agent_generation += 1" in source
