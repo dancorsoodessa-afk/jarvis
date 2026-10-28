@@ -18,6 +18,7 @@ _PLAYBACK_PATH: Path | None = None
 
 DEFAULT_TTS_MODEL = "gemini-3.8-flash-tts"
 DEFAULT_TTS_VOICE = "Charon"
+DEFAULT_TTS_LANGUAGE = "ru-RU"
 TTS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
 
 
@@ -44,7 +45,7 @@ def health_check(timeout: float | None = None) -> str:
         return "OFF"
     if current_engine() == "off":
         raise RuntimeError("Для облачной озвучки нужен GEMINI_API_KEY.")
-    model = (os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
+    model = (os.environ.get("GEMINI_TTS_MODEL") or os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
     url = "https://generativelanguage.googleapis.com/v1beta/models/" + urllib.parse.quote(model, safe="-._")
     request = urllib.request.Request(url, headers={"x-goog-api-key": _api_key(), "Accept": "application/json"})
     try:
@@ -82,13 +83,18 @@ def _generate_audio(text: str) -> bytes:
     key = _api_key()
     if not key:
         raise RuntimeError("Облачная озвучка требует GEMINI_API_KEY. Укажите ключ Gemini в Центре управления.")
-    model = (os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
-    voice = (os.environ.get("JARVIS_TTS_VOICE") or DEFAULT_TTS_VOICE).strip()
-    # Normalize legacy Windows voice names to Gemini speaker profiles.
+    model = (os.environ.get("GEMINI_TTS_MODEL") or os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
+    voice = (os.environ.get("GEMINI_TTS_VOICE") or os.environ.get("JARVIS_TTS_VOICE") or DEFAULT_TTS_VOICE).strip()
+    language = (os.environ.get("GEMINI_TTS_LANGUAGE") or "ru-RU").strip() or DEFAULT_TTS_LANGUAGE
+    if not language:
+        raise RuntimeError("Язык Gemini TTS не может быть пустым; используйте ru-RU.")
+    # Normalize legacy Windows voice names to supported Gemini speaker profiles.
     voice = {"dmitri medium": "Charon", "dmitri": "Charon", "male": "Charon", "мужской": "Charon", "female": "Aoede", "женский": "Aoede"}.get(voice.casefold(), voice)
     valid_voices = {"Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede", "Callirrhoe", "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba", "Despina", "Erinome", "Algenib", "Rasalgethi", "Laomedeia", "Achernar", "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi", "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat"}
     if voice not in valid_voices:
         voice = DEFAULT_TTS_VOICE
+    if not voice:
+        raise RuntimeError("Имя голоса Gemini TTS не может быть пустым.")
     payload = {
         "model": model,
         "input": [{
@@ -98,12 +104,12 @@ def _generate_audio(text: str) -> bytes:
                 "text": text,
                 "annotations": [{
                     "type": "speech_metadata",
-                    "style": "Speak naturally and clearly in Russian, with a confident, calm assistant delivery.",
+                    "style": f"Speak in {language} (Russian) naturally and clearly, with a confident, calm assistant delivery.",
                 }],
             }],
         }],
         "response_format": {"type": "audio", "mime_type": "audio/wav"},
-        "generation_config": {"speech_config": [{"voice": voice}]},
+        "generation_config": {"speech_config": [{"voice": voice, "language": language}]},
     }
     request = urllib.request.Request(
         TTS_ENDPOINT,
