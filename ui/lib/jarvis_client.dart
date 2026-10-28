@@ -243,13 +243,24 @@ class JarvisIpc {
       ..._history,
       {'role': 'user', 'content': text},
     ];
-    final request = await _httpClient!.postUrl(Uri.parse('$base/chat/completions'));
-    _headers(key).forEach(request.headers.set);
     final bytes = utf8.encode(jsonEncode({'model': selected, 'messages': messages, 'stream': false}));
-    request.contentLength = bytes.length;
-    request.add(bytes);
-    final response = await request.close().timeout(const Duration(seconds: 45));
-    final body = await _readBody(response).timeout(_requestTimeout);
+    late HttpClientResponse response;
+    late String body;
+    // Gemini and other cloud providers can return transient 503/5xx responses.
+    // Retry with bounded exponential backoff before handing control to fallback.
+    for (var attempt = 0; ; attempt++) {
+      final request = await _httpClient!.postUrl(Uri.parse('$base/chat/completions'));
+      _headers(key).forEach(request.headers.set);
+      request.contentLength = bytes.length;
+      request.add(bytes);
+      response = await request.close().timeout(const Duration(seconds: 45));
+      body = await _readBody(response).timeout(_requestTimeout);
+      final retryable = response.statusCode == 429 ||
+          response.statusCode == 500 || response.statusCode == 502 ||
+          response.statusCode == 503 || response.statusCode == 504;
+      if (!retryable || attempt >= 2) break;
+      await Future<void>.delayed(Duration(milliseconds: 700 * (1 << attempt)));
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(_error(response.statusCode, body));
     final j = jsonDecode(body) as Map<String, dynamic>;
     final choices = j['choices'];
