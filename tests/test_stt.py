@@ -15,9 +15,9 @@ class TestSTT:
         self.old_quota_exceeded = stt.quota_exceeded()
         stt._set_quota_exceeded(False)
         self.old = {name: os.environ.get(name) for name in (
-            "JARVIS_STT", "GEMINI_API_KEY", "JARVIS_CHAT_KEY", "JARVIS_STT_MODEL", "GROQ_API_KEY"
+            "JARVIS_STT", "GEMINI_API_KEY", "JARVIS_CHAT_KEY", "JARVIS_STT_MODEL", "GEMINI_STT_MODEL", "GROQ_API_KEY", "JARVIS_STT_FALLBACK_MODEL"
         )}
-        for name in ("JARVIS_STT", "GEMINI_API_KEY", "JARVIS_CHAT_KEY", "JARVIS_STT_MODEL", "GROQ_API_KEY"):
+        for name in ("JARVIS_STT", "GEMINI_API_KEY", "JARVIS_CHAT_KEY", "JARVIS_STT_MODEL", "GEMINI_STT_MODEL", "GROQ_API_KEY", "JARVIS_STT_FALLBACK_MODEL"):
             os.environ.pop(name, None)
 
     def teardown_method(self):
@@ -89,10 +89,43 @@ class TestSTT:
                     stt.transcribe(str(audio))
                 assert urlopen.call_count == 1
 
-    def test_no_groq_code_remains_in_stt_module(self):
+    def test_groq_whisper_is_used_after_gemini_quota_exhaustion(self):
+        os.environ["GEMINI_API_KEY"] = "gemini-test-token"
+        os.environ["GROQ_API_KEY"] = "groq-test-token"
+        detail = b'{"error":{"message":"quota exceeded","status":"RESOURCE_EXHAUSTED"}}'
+        quota_error = urllib.error.HTTPError(
+            "https://generativelanguage.googleapis.com", 429, "Too Many Requests", {},
+            __import__("io").BytesIO(detail),
+        )
+
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return b'{"text":"открой настройки"}'
+
+        with tempfile.TemporaryDirectory() as folder:
+            audio = Path(folder) / "sample.wav"
+            audio.write_bytes(b"RIFF-test")
+            with mock.patch("urllib.request.urlopen", side_effect=[quota_error, Response()]) as urlopen:
+                assert stt.transcribe(str(audio)) == "открой настройки"
+            assert urlopen.call_count == 2
+            groq_request = urlopen.call_args.args[0]
+            assert groq_request.full_url == stt.GROQ_STT_URL
+            assert groq_request.get_header("Authorization") == "Bearer groq-test-token"
+            assert b"whisper-large-v3-turbo" in groq_request.data
+            assert b"RIFF-test" in groq_request.data
+        assert stt.quota_exceeded()
+        assert stt.current_engine() == "groq"
+
+    def test_groq_quota_reserve_is_not_used_before_gemini_quota(self):
+        os.environ["GEMINI_API_KEY"] = "gemini-test-token"
+        os.environ["GROQ_API_KEY"] = "groq-test-token"
+        assert stt.current_engine() == "gemini"
+
+    def test_groq_code_is_present_as_configured_quota_fallback(self):
         source = (Path(__file__).resolve().parent.parent / "agent" / "stt.py").read_text(encoding="utf-8")
-        assert "GROQ_API_KEY" not in source
-        assert "_transcribe_groq" not in source
+        assert "GROQ_API_KEY" in source
+        assert "_transcribe_groq" in source
 
     def test_transcribe_tool_registered(self):
         from agent.runtime import build_agent
