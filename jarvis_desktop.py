@@ -161,7 +161,7 @@ class JarvisDesktop(tk.Tk):
         self._agent_start_pending = False
         self.busy = False
         self.events = queue.Queue()
-        self.voice_controller = VoiceController(UIBridge(self.events), on_text=lambda text: self.events.put((\"voice_text\", text)))
+        self.voice_controller = VoiceController(UIBridge(self.events), on_text=lambda text: self.events.put(("voice_text", text)))
         self.tool_names = []
         self.attachments = []
         self._voice_loop_running = False
@@ -1065,7 +1065,7 @@ class JarvisDesktop(tk.Tk):
         elif name == "launch":
             try:
                 import subprocess
-                out = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-StartApps | Sort-Object Name | ForEach-Object { \"$($_.Name)|$($_.AppID)\" }"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8).stdout
+                out = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-StartApps | Sort-Object Name | ForEach-Object { "$($_.Name)|$($_.AppID)" }"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8).stdout
                 items = [(a.strip(), b.strip()) for line in out.splitlines() if "|" in line for a, b in [line.split("|", 1)] if a.strip()]
             except Exception:
                 items = []
