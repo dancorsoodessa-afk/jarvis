@@ -145,3 +145,48 @@ def test_openai_compatible_provider_fails_over_after_gemini_capacity_error():
     assert request.call_args_list[0].args[0]["model"] == "gemini-3.8-flash"
     assert request.call_args_list[1].args[0]["model"] == "gemini-3.5-flash-lite"
     assert provider.last_used_model == "gemini-3.5-flash-lite"
+
+def test_openai_compatible_provider_fails_over_when_model_is_not_found():
+    from unittest.mock import patch
+    from agent.providers.openai_chat import OpenAIChatProvider
+
+    provider = OpenAIChatProvider(
+        url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        api_key="test-key",
+        model="models/openrouter/free",
+        fallback_models=["gemini-3.5-flash-lite"],
+    )
+    successful = {"choices": [{"message": {"content": "резервная модель ответила", "tool_calls": []}}]}
+    with patch.object(provider, "discover_model", return_value="models/openrouter/free"), patch.object(
+        provider,
+        "_request",
+        side_effect=[
+            RuntimeError("Ошибка API: HTTP 404. models/openrouter/free is not found for API version"),
+            successful,
+        ],
+    ) as request:
+        result = provider.generate("проверь модель")
+
+    assert result == "резервная модель ответила"
+    assert request.call_count == 2
+    assert request.call_args_list[0].args[0]["model"] == "models/openrouter/free"
+    assert request.call_args_list[1].args[0]["model"] == "gemini-3.5-flash-lite"
+    assert provider.last_used_model == "gemini-3.5-flash-lite"
+
+
+def test_openai_compatible_provider_reports_timeout_without_retrying():
+    import socket
+    import pytest
+    from unittest.mock import patch
+    from agent.providers.openai_chat import OpenAIChatProvider
+
+    provider = OpenAIChatProvider(
+        url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        api_key="test-key",
+        model="gemini-3.5-flash-lite",
+        timeout=5,
+    )
+    with patch("urllib.request.urlopen", side_effect=socket.timeout("read timed out")) as urlopen:
+        with pytest.raises(RuntimeError, match="Тайм-аут запроса"):
+            provider._request({"model": "gemini-3.5-flash-lite", "messages": []})
+    assert urlopen.call_count == 1
