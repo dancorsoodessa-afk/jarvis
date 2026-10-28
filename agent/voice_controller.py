@@ -22,6 +22,41 @@ MAX_PHRASE_SECONDS = 12.0
 RECOVERY_DELAYS = (0.5, 1.0, 2.0, 4.0, 5.0)
 
 
+def _supported_capture_rate(sd, device, requested_rate: int = SAMPLE_RATE) -> int:
+    """Choose 16 kHz when supported, otherwise use the input device's native rate."""
+    try:
+        sd.check_input_settings(device=device, samplerate=requested_rate, channels=1, dtype="int16")
+        return requested_rate
+    except Exception as requested_error:
+        try:
+            info = sd.query_devices(device, "input")
+            fallback = int(round(float(info.get("default_samplerate") or 0)))
+            if fallback <= 0:
+                raise RuntimeError("У микрофона не указана частота дискретизации.")
+            sd.check_input_settings(device=device, samplerate=fallback, channels=1, dtype="int16")
+            return fallback
+        except Exception as fallback_error:
+            raise RuntimeError(
+                f"Микрофон не поддерживает {requested_rate} Гц; "
+                f"резервная частота ввода также недоступна: {fallback_error}"
+            ) from requested_error
+
+
+def _resample_pcm16(frames: list[bytes], source_rate: int, target_rate: int = SAMPLE_RATE) -> bytes:
+    """Resample mono signed 16-bit PCM frames to the STT target sample rate."""
+    import numpy as np
+
+    samples = np.frombuffer(b"".join(frames), dtype=np.int16)
+    if samples.size == 0 or source_rate == target_rate:
+        return samples.tobytes()
+    output_size = max(1, int(round(samples.size * target_rate / source_rate)))
+    source_positions = np.arange(samples.size, dtype=np.float64)
+    target_positions = np.arange(output_size, dtype=np.float64) * source_rate / target_rate
+    target_positions = np.minimum(target_positions, samples.size - 1)
+    converted = np.interp(target_positions, source_positions, samples.astype(np.float32))
+    return np.clip(np.rint(converted), -32768, 32767).astype(np.int16).tobytes()
+
+
 def _logger() -> logging.Logger:
     logger = logging.getLogger("jarvis.voice")
     if not logger.handlers:
@@ -85,13 +120,14 @@ class AudioCapture:
         self._on_mic_status = on_mic_status
 
     @staticmethod
-    def _wav(frames: list[bytes]) -> bytes:
+    def _wav(frames: list[bytes], source_rate: int = SAMPLE_RATE) -> bytes:
         stream = io.BytesIO()
+        pcm = _resample_pcm16(frames, source_rate, SAMPLE_RATE)
         with wave.open(stream, "wb") as output:
             output.setnchannels(1)
             output.setsampwidth(2)
             output.setframerate(SAMPLE_RATE)
-            output.writeframes(b"".join(frames))
+            output.writeframes(pcm)
         return stream.getvalue()
 
     def run(self) -> None:
@@ -100,16 +136,17 @@ class AudioCapture:
 
         device_value = os.environ.get("JARVIS_AUDIO_DEVICE", "").strip()
         device = int(device_value) if device_value.isdigit() else (device_value or None)
-        block_size = int(SAMPLE_RATE * BLOCK_SECONDS)
         acquired = False
         try:
             self._mic_lock.acquire("jarvis-audio-capture")
             acquired = True
+            capture_rate = _supported_capture_rate(sd, device, SAMPLE_RATE)
+            block_size = max(160, int(capture_rate * BLOCK_SECONDS))
             with sd.InputStream(
-                samplerate=SAMPLE_RATE, channels=1, dtype="int16",
+                samplerate=capture_rate, channels=1, dtype="int16",
                 blocksize=block_size, device=device, latency="low",
             ) as stream:
-                _logger().info("event=mic_open device=%s rate=%s", device, SAMPLE_RATE)
+                _logger().info("event=mic_open device=%s capture_rate=%s stt_rate=%s", device, capture_rate, SAMPLE_RATE)
                 # Calibrate before declaring LISTENING so the first phrase is not used as noise.
                 noise: list[float] = []
                 for _ in range(12):
@@ -148,7 +185,7 @@ class AudioCapture:
                         frames.append(samples.tobytes())
                         if now - last_voice >= SILENCE_SECONDS:
                             duration = now - started
-                            phrase = self._wav(frames)
+                            phrase = self._wav(frames, capture_rate)
                             frames = []
                             started = last_voice = 0.0
                             if duration >= MIN_SPEECH_SECONDS and not self._stop.is_set():
