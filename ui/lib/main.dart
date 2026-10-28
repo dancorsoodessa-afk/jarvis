@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,7 +15,7 @@ const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
 const kFreePrimaryUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
-const kFreePrimaryModel = 'gemini-3.8-flash';
+const kFreePrimaryModel = 'gemini-2.5-flash';
 const kFreeFallbackUrl = '';
 const kFreeFallbackModel = '';
 
@@ -54,6 +55,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   final _fallbackKey = TextEditingController();
   final _fallbackModel = TextEditingController();
   static const _platform = MethodChannel('com.dancorsoodessa.jarvis/timer');
+  static const _nativeTools = MethodChannel('jarvis.voice');
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -301,22 +303,15 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         storedFallbackKey = legacyFallbackKey;
       }
       await prefs.remove('fallback_key');
-      // JARVIS Android uses the official Gemini OpenAI-compatible endpoint.
-      final usingOldProvider = storedEndpoint != kFreePrimaryUrl;
-      if (usingOldProvider) {
-        _endpoint.text = kFreePrimaryUrl;
-        _model.text = kFreePrimaryModel;
-        // Never reuse a key from a different provider.
-        _apiKey.text = '';
-      } else {
-        _endpoint.text = storedEndpoint;
-        _model.text = storedModel.isEmpty ? kFreePrimaryModel : storedModel;
-        _apiKey.text = storedKey;
-      }
+      // Preserve the user's configured OpenAI-compatible provider and key.
+      // A stale model ID is the common cause of a "connected" UI with failed chat.
+      _endpoint.text = storedEndpoint.isEmpty ? kFreePrimaryUrl : storedEndpoint;
+      _model.text = storedModel.isEmpty ? kFreePrimaryModel : storedModel;
+      _apiKey.text = storedKey;
 
-      _fallbackEndpoint.text = '';
+      _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? '';
       _fallbackKey.text = storedFallbackKey.trim();
-      _fallbackModel.text = '';
+      _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? '';
       // Do not initialize native microphone/speech services during startup.
       // Voice is initialized only after the main UI is visible, preventing
       // device-specific native speech-service crashes from closing JARVIS.
@@ -336,21 +331,30 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _endpoint.text = kFreePrimaryUrl;
-    await prefs.setString('endpoint', kFreePrimaryUrl);
-    await prefs.setString('model', _model.text.trim());
+    final endpoint = _endpoint.text.trim();
+    if (endpoint.isEmpty) throw ArgumentError('Укажите адрес AI API');
+    await prefs.setString('endpoint', endpoint);
+    await prefs.setString('model', _model.text.trim().isEmpty ? kFreePrimaryModel : _model.text.trim());
     await _secureStorage.write(key: 'api_key', value: _apiKey.text.trim());
     await prefs.remove('api_key');
-    await prefs.setString('fallback_endpoint', '');
-    await _secureStorage.delete(key: 'fallback_key');
-    await prefs.remove('fallback_key');
-    await prefs.setString('fallback_model', '');
+    await prefs.setString('fallback_endpoint', _fallbackEndpoint.text.trim());
+    if (_fallbackKey.text.trim().isEmpty) {
+      await _secureStorage.delete(key: 'fallback_key');
+      await prefs.remove('fallback_key');
+    } else {
+      await _secureStorage.write(key: 'fallback_key', value: _fallbackKey.text.trim());
+      await prefs.remove('fallback_key');
+    }
+    await prefs.setString('fallback_model', _fallbackModel.text.trim());
   }
 
   Future<void> _connectAndroid() async {
-    const endpoint = kFreePrimaryUrl;
-    final model = _model.text.trim();
+    final endpoint = _endpoint.text.trim();
+    final model = _model.text.trim().isEmpty ? kFreePrimaryModel : _model.text.trim();
     final key = _apiKey.text.trim();
+    final fallbackEndpoint = _fallbackEndpoint.text.trim();
+    final fallbackKey = _fallbackKey.text.trim();
+    final fallbackModel = _fallbackModel.text.trim();
     if (endpoint.isEmpty || key.isEmpty) {
       if (mounted) setState(() => _status = 'Введите AI URL и API key в Настройках');
       _setVisual(JarvisVisualState.error);
@@ -368,9 +372,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         endpoint,
         apiKey: key,
         model: model,
-        fallbackUrl: '',
-        fallbackKey: '',
-        fallbackModel: '',
+        fallbackUrl: fallbackEndpoint,
+        fallbackKey: fallbackKey,
+        fallbackModel: fallbackModel,
       );
       candidate = next;
       await next.checkConnection();
@@ -428,6 +432,118 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     });
   }
 
+  Future<void> _showTools() async {
+    if (!_android) return;
+    const groups = <String, List<Map<String, String>>>{
+      'Интернет': [
+        {'name': 'open_url', 'title': 'Открыть ссылку', 'args': '{"url":"https://example.com"}', 'hint': 'Открывает сайт в браузере'},
+      ],
+      'Криптоинструменты': [
+        {'name': 'okx_public', 'title': 'Рыночные данные OKX', 'args': '{"path":"/api/v5/market/ticker?instId=BTC-USDT"}', 'hint': 'Публичные данные рынка'},
+        {'name': 'okx_account', 'title': 'Баланс OKX', 'args': '{"path":"/api/v5/account/balance"}', 'hint': 'Требуются API Key, Secret и Passphrase'},
+        {'name': 'okx_order', 'title': 'Выставить ордер OKX', 'args': '{"body":"{}","confirm":false}', 'hint': 'Реальная сделка требует отдельного подтверждения'},
+        {'name': 'coinglass', 'title': 'Данные CoinGlass', 'args': '{"path":"/api/futures/supported-coins"}', 'hint': 'Требуется CoinGlass API Key в настройках Android'},
+      ],
+      'Аналитика': [
+        {'name': 'daily_stock_analysis', 'title': 'Проверить Daily Stock Analysis', 'args': '{"path":"/health","method":"GET","body":"{}"}', 'hint': 'Требуется URL сервиса'},
+        {'name': 'dsa_analyze', 'title': 'Анализ акции', 'args': '{"stock_code":"AAPL","stock_name":"Apple","report_type":"detailed"}', 'hint': 'Требуется настроенный URL Daily Stock Analysis'},
+        {'name': 'dsa_market_review', 'title': 'Обзор рынка', 'args': '{"region":"us"}', 'hint': 'Требуется настроенный URL Daily Stock Analysis'},
+      ],
+    };
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: kPanel,
+      builder: (ctx) => SafeArea(
+        child: DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.8,
+          minChildSize: 0.45,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) => ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(16),
+            children: [
+              const Text('ИНСТРУМЕНТЫ JARVIS', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+              const SizedBox(height: 8),
+              const Text('Доступны инструменты, реализованные в Android-версии. Для сервисов с ключами сначала заполните их настройки.', style: TextStyle(fontSize: 12, color: Colors.white70)),
+              for (final group in groups.entries) ...[
+                const SizedBox(height: 16),
+                Text(group.key.toUpperCase(), style: TextStyle(color: _visualColor, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                for (final tool in group.value)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.build_circle_outlined),
+                    title: Text(tool['title']!),
+                    subtitle: Text(tool['hint']!),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _runAndroidTool(tool['name']!, tool['title']!, tool['args']!);
+                    },
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _runAndroidTool(String name, String title, String initialArgs) async {
+    final argsController = TextEditingController(text: initialArgs);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Аргументы инструмента (JSON). Перед запуском проверьте значения.', style: TextStyle(fontSize: 12)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: argsController,
+                minLines: 3,
+                maxLines: 7,
+                decoration: const InputDecoration(border: OutlineInputBorder(), hintText: '{"key":"value"}'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Запустить')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) { argsController.dispose(); return; }
+    setState(() { _busy = true; _status = 'Выполняю: $title'; });
+    try {
+      final decoded = jsonDecode(argsController.text);
+      if (decoded is! Map<String, dynamic>) throw const FormatException('Нужен JSON-объект');
+      final result = await _nativeTools.invokeMethod<dynamic>('android_tool', {
+        'name': name,
+        'args': jsonEncode(decoded),
+      });
+      final output = result is String ? result : const JsonEncoder.withIndent('  ').convert(result);
+      if (mounted) setState(() {
+        _messages.add(_Msg('$title\n$output', isUser: false));
+        _status = 'Инструмент выполнен: $title';
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        _messages.add(_Msg('$title: ошибка — $e', isUser: false));
+        _status = 'Ошибка инструмента: $e';
+        _visualState = JarvisVisualState.error;
+      });
+    } finally {
+      argsController.dispose();
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _settings() async {
     if (!_android) return;
     _speechSession++;
@@ -440,13 +556,18 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       builder: (ctx) => AlertDialog(
         title: const Text('JARVIS — настройки'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Align(alignment: Alignment.centerLeft, child: Text('Google Gemini API', style: TextStyle(fontWeight: FontWeight.bold))),
-          TextField(controller: _endpoint, readOnly: true, decoration: const InputDecoration(labelText: 'Адрес сервера', hintText: 'https://generativelanguage.googleapis.com/v1beta/openai')),
-          TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'Gemini API Key')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель Gemini', hintText: 'gemini-3.8-flash')),
+          const Align(alignment: Alignment.centerLeft, child: Text('Основной AI-провайдер', style: TextStyle(fontWeight: FontWeight.bold))),
+          TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Base URL', hintText: 'https://generativelanguage.googleapis.com/v1beta/openai')),
+          TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: 'gemini-2.5-flash')),
+          const SizedBox(height: 10),
+          const Align(alignment: Alignment.centerLeft, child: Text('Резервный AI (необязательно)', style: TextStyle(fontWeight: FontWeight.bold))),
+          TextField(controller: _fallbackEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Резервный Base URL')),
+          TextField(controller: _fallbackKey, obscureText: true, decoration: const InputDecoration(labelText: 'Резервный API Key')),
+          TextField(controller: _fallbackModel, decoration: const InputDecoration(labelText: 'Резервная модель')),
           const SizedBox(height: 8),
           const Text(
-            'Подключение выполняется через Google Gemini API. Создайте ключ в Google AI Studio; бесплатный тариф имеет ограничения.',
+            'Для Gemini: создайте ключ в Google AI Studio. Бесплатный тариф и доступность моделей зависят от региона и лимитов. URL и модель не блокируются.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 4),
@@ -630,6 +751,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           ],
         ),
         actions: [
+          IconButton(tooltip: 'Инструменты', onPressed: _showTools, icon: const Icon(Icons.folder_open_rounded)),
           IconButton(tooltip: 'Настройки AI', onPressed: _settings, icon: const Icon(Icons.tune_rounded)),
         ],
       ),
