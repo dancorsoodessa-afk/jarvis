@@ -65,7 +65,7 @@ class TestSTT:
             )
             assert "key=test-token" in request.full_url
             payload = json.loads(request.data.decode("utf-8"))
-            assert payload["contents"][0]["parts"][0]["inline_data"]["mime_type"] == "audio/wav"
+            assert payload["contents"][0]["parts"][1]["inline_data"]["mime_type"] == "audio/wav"
 
     def test_gemini_errors_are_reported_without_provider_fallback(self):
         os.environ["GEMINI_API_KEY"] = "test-token"
