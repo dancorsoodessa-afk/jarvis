@@ -178,8 +178,13 @@ def speak(text: str) -> Path:
     return _write_audio(_generate_audio(text))
 
 
-def speak_and_play(text: str, on_playback_start=None):
-    """Generate cloud audio, signal playback start, then play until it ends."""
+def speak_and_play(text: str, on_playback_start=None, blocking: bool = True):
+    """Generate audio, then play it synchronously or in a worker thread.
+
+    Non-blocking playback allows the microphone loop to keep listening while
+    the assistant speaks. Audio generation remains synchronous so listening
+    does not start until the answer is ready.
+    """
     global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PATH
     path = speak(text)
     stop()
@@ -188,36 +193,44 @@ def speak_and_play(text: str, on_playback_start=None):
         token = _PLAYBACK_TOKEN
         _PLAYBACK_ACTIVE = True
         _PLAYBACK_PATH = path
-    try:
-        if on_playback_start:
-            on_playback_start()
-        if os.name == "nt":
-            import winsound
-            winsound.PlaySound(str(path), winsound.SND_FILENAME)
-        else:
-            import wave
-            import numpy as np
-            import sounddevice as sd
-            with wave.open(str(path), "rb") as wav:
-                frames = wav.readframes(wav.getnframes())
-                rate = wav.getframerate()
-                channels = wav.getnchannels()
-            audio = np.frombuffer(frames, dtype=np.int16)
-            if channels > 1:
-                audio = audio.reshape(-1, channels)
-            sd.play(audio, rate, blocking=True)
-    except Exception as exc:
-        raise RuntimeError(f"Не удалось воспроизвести облачную речь: {exc}") from exc
-    finally:
-        with _PLAYBACK_LOCK:
-            if _PLAYBACK_TOKEN == token:
-                _PLAYBACK_ACTIVE = False
-                _PLAYBACK_PATH = None
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
 
+    def _play():
+        global _PLAYBACK_ACTIVE, _PLAYBACK_PATH
+        try:
+            if on_playback_start:
+                on_playback_start()
+            if os.name == "nt":
+                import winsound
+                winsound.PlaySound(str(path), winsound.SND_FILENAME)
+            else:
+                import wave
+                import numpy as np
+                import sounddevice as sd
+                with wave.open(str(path), "rb") as wav:
+                    frames = wav.readframes(wav.getnframes())
+                    rate = wav.getframerate()
+                    channels = wav.getnchannels()
+                audio = np.frombuffer(frames, dtype=np.int16)
+                if channels > 1:
+                    audio = audio.reshape(-1, channels)
+                sd.play(audio, rate, blocking=True)
+        except Exception as exc:
+            raise RuntimeError(f"Не удалось воспроизвести облачную речь: {exc}") from exc
+        finally:
+            with _PLAYBACK_LOCK:
+                if _PLAYBACK_TOKEN == token:
+                    _PLAYBACK_ACTIVE = False
+                    _PLAYBACK_PATH = None
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    if blocking:
+        _play()
+    else:
+        threading.Thread(target=_play, name="jarvis-tts-playback", daemon=True).start()
+    return path
 
 def stop() -> None:
     global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PATH
