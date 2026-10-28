@@ -18,6 +18,7 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
+import org.json.JSONObject
 
 class MainActivity : FlutterActivity(), RecognitionListener {
     private val voiceChannel = "jarvis.voice"
@@ -30,9 +31,11 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var disposed = false
+    private lateinit var tools: AndroidToolRouter
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        tools = AndroidToolRouter(this)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.dancorsoodessa.jarvis/timer")
             .setMethodCallHandler { call, result ->
@@ -64,6 +67,13 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                 }
                 "load_settings" -> result.success(loadSettings())
                 "save_settings" -> { saveSettings(call); result.success(null) }
+                "android_tool" -> try {
+                    val name = call.argument<String>("name").orEmpty()
+                    val rawArgs = call.argument<String>("args") ?: "{}"
+                    result.success(tools.execute(name, JSONObject(rawArgs)))
+                } catch (error: Exception) {
+                    result.error("TOOL_ERROR", error.message ?: "Ошибка инструмента", null)
+                }
                 "stop" -> {
                     stopListening()
                     result.success(null)
