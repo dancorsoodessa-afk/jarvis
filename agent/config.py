@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 SUPPORTED_PROVIDERS = ("gemini",)
 DEFAULT_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
 
 def normalize_chat_url(_value: str | None) -> str:
