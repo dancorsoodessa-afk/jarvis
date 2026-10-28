@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 SUPPORTED_PROVIDERS = ("gemini",)
 DEFAULT_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 def _timeout_env(name: str, default: int = 30) -> int:
