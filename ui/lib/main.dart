@@ -31,7 +31,7 @@ import 'tools/prompts/prompt_library_screen.dart';
 const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
-const kFreeModel = 'gemini-3.8-flash';
+const kFreeModel = 'gemini-2.5-flash';
 const kGeminiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 const kDefaultEndpoint = kGeminiEndpoint;
 
