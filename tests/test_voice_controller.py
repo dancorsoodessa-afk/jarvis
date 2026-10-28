@@ -87,3 +87,15 @@ def test_stop_voice_command_transitions_to_idle():
     assert controller.status()["state"] == "IDLE"
     assert controller.status()["running"] is False
     controller.shutdown()
+
+
+
+def test_status_reports_cloud_voice_unavailable_without_key(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("JARVIS_CHAT_KEY", raising=False)
+    events = queue.Queue()
+    controller = VoiceController(UIBridge(events), on_text=lambda _text: None)
+    status = controller.status()
+    assert status["cloud_voice_available"] is False
+    assert status["state"] == "IDLE"
+    controller.shutdown()
