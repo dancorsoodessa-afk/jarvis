@@ -73,9 +73,9 @@ class JarvisIpc {
   }
 
   Future<String> _resolveModel(String base, String key, String configured) async {
-    if (configured.trim().isNotEmpty) return configured.trim();
     final cached = _modelCache[base];
     if (cached != null) return cached;
+    if (configured.trim().isNotEmpty) return configured.trim();
     final selected = await _autoModel(base, key);
     _modelCache[base] = selected;
     return selected;
@@ -88,7 +88,7 @@ class JarvisIpc {
 
   bool _isCapacityError(Object error) {
     final message = error.toString();
-    return RegExp(r'HTTP (429|500|502|503|504)\\b').hasMatch(message) ||
+    return RegExp(r'HTTP (429|500|502|503|504)\b').hasMatch(message) ||
         message.toLowerCase().contains('temporarily overloaded') ||
         message.toLowerCase().contains('service unavailable');
   }
