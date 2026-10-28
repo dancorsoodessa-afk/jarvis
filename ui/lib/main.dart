@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -20,9 +21,24 @@ const kFreeFallbackUrl = '';
 const kFreeFallbackModel = '';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runZonedGuarded(() => runApp(const JarvisApp()), (error, stack) {
-    debugPrint('JARVIS error: $error');
+  // The binding and runApp must execute in the same Zone. Initializing the
+  // binding before runZonedGuarded can trigger a Flutter zone-mismatch error
+  // on startup and makes uncaught async errors harder to diagnose.
+  runZonedGuarded(() {
+    WidgetsFlutterBinding.ensureInitialized();
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      debugPrint('JARVIS Flutter error: ${details.exception}');
+      debugPrintStack(stackTrace: details.stack);
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      debugPrint('JARVIS uncaught platform error: $error');
+      debugPrintStack(stackTrace: stack);
+      return true;
+    };
+    runApp(const JarvisApp());
+  }, (error, stack) {
+    debugPrint('JARVIS zone error: $error');
     debugPrintStack(stackTrace: stack);
   });
 }
@@ -400,9 +416,10 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       await previous?.dispose();
 
       await _finishConnect();
-      // Start hands-free voice only after the AI connection and first frame are ready.
-      // Native speech service failures remain non-fatal inside _initVoice().
-      await _initVoice();
+      // Never request microphone permission or initialize speech engines as a
+      // side effect of app launch / API connection. Some Android 10 devices
+      // crash inside vendor speech services. Voice is opt-in via the mic button.
+      // If the user had already enabled voice before opening Settings, resume it.
       if (_voiceReady && mounted) {
         _voiceRunning = true;
         await _startVoiceLoop();
