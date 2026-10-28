@@ -441,6 +441,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       if (mounted) setState(() => _status = 'Не удалось загрузить настройки инструментов: $e');
       return;
     }
+    if (!mounted) return;
     final cg = TextEditingController(text: current['coinglassApiKey']?.toString() ?? '');
     final okxEndpoint = TextEditingController(text: current['okxEndpoint']?.toString() ?? 'https://www.okx.com');
     final okxKey = TextEditingController(text: current['okxApiKey']?.toString() ?? '');
@@ -643,16 +644,20 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         'args': jsonEncode(decoded),
       });
       final output = result is String ? result : const JsonEncoder.withIndent('  ').convert(result);
-      if (mounted) setState(() {
-        _messages.add(_Msg('$title\n$output', isUser: false));
-        _status = 'Инструмент выполнен: $title';
-      });
+      if (mounted) {
+        setState(() {
+          _messages.add(_Msg('$title\n$output', isUser: false));
+          _status = 'Инструмент выполнен: $title';
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() {
-        _messages.add(_Msg('$title: ошибка — $e', isUser: false));
-        _status = 'Ошибка инструмента: $e';
-        _visualState = JarvisVisualState.error;
-      });
+      if (mounted) {
+        setState(() {
+          _messages.add(_Msg('$title: ошибка — $e', isUser: false));
+          _status = 'Ошибка инструмента: $e';
+          _visualState = JarvisVisualState.error;
+        });
+      }
     } finally {
       argsController.dispose();
       if (mounted) setState(() => _busy = false);
