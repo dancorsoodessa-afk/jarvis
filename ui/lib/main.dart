@@ -895,14 +895,14 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final connected = _jarvis != null;
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.bubble_chart, color: Color(0xFF42E8FF), size: 25),
-            SizedBox(width: 9),
-            Text('JARVIS', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w700)),
-            SizedBox(width: 7),
-            Text('XXX', style: TextStyle(color: Color(0xFF42E8FF), fontSize: 11, letterSpacing: 2)),
+            Image.asset('assets/jarvis-reactor-logo.png', width: 28, height: 28, filterQuality: FilterQuality.high),
+            const SizedBox(width: 9),
+            const Text('JARVIS', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 7),
+            const Text('XXX', style: TextStyle(color: Color(0xFF42E8FF), fontSize: 11, letterSpacing: 2)),
           ],
         ),
         actions: [
