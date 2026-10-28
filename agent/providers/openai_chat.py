@@ -306,7 +306,9 @@ class OpenAIChatProvider:
                     except RuntimeError as fallback_exc:
                         last_error = fallback_exc
                         fallback_message = str(fallback_exc).lower()
-                        if not (any(f"http {code}" in fallback_message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in fallback_message):
+                        capacity_error = any(f"http {code}" in fallback_message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in fallback_message
+                        model_unavailable = any(f"http {code}" in fallback_message for code in (400, 404)) or "model not found" in fallback_message or "unknown model" in fallback_message
+                        if not (capacity_error or model_unavailable):
                             raise
                 if body is None:
                     raise RuntimeError(
