@@ -348,7 +348,7 @@ class VoiceController:
             mic_ok = self._mic_ok
             running = self._running
         try:
-            cloud_voice_available = stt.current_engine() == "gemini" and tts.current_engine() == "gemini" and not stt.quota_exceeded()
+            cloud_voice_available = stt.current_engine() in {"gemini", "groq"} and tts.current_engine() == "gemini"
         except Exception as exc:
             self._log.warning("event=voice_availability_check_failed error=%s", exc)
             cloud_voice_available = False
@@ -357,11 +357,11 @@ class VoiceController:
             "last_error": last_error,
             "mic": "ok" if mic_ok else "fail",
             "mic_status": "mic ok" if mic_ok else "mic fail",
-            "cloud_stt_status": "cloud stt off" if stt.quota_exceeded() or stt.current_engine() == "off" else "cloud stt on",
+            "cloud_stt_status": ("cloud stt reserve: Groq" if stt.current_engine() == "groq" else "cloud stt off" if stt.current_engine() == "off" else "cloud stt on"),
             "tts_status": "tts off" if tts.current_engine() == "off" else "tts on",
             "cloud_voice_available": cloud_voice_available,
             "quota_exceeded": stt.quota_exceeded(),
-            "cloud_stt": "off" if stt.quota_exceeded() or stt.current_engine() == "off" else "on",
+            "cloud_stt": "groq" if stt.current_engine() == "groq" else "off" if stt.current_engine() == "off" else "on",
             "tts": "off" if tts.current_engine() == "off" else "on",
             "running": running,
             "is_speaking": self._is_speaking.is_set(),
@@ -578,7 +578,7 @@ class VoiceController:
             if stt.quota_exceeded():
                 self._quota_exceeded = True
                 last_error = RuntimeError(stt.QUOTA_MESSAGE)
-            for attempt, delay in enumerate(() if stt.quota_exceeded() else RECOVERY_DELAYS[:3]):
+            engine = stt.current_engine()\n            attempts = ((0, 0.0),) if engine == "groq" else (() if stt.quota_exceeded() else tuple(enumerate(RECOVERY_DELAYS[:3])))\n            for attempt, delay in attempts:
                 with self._lock:
                     if self._shutdown or not self._running:
                         break
