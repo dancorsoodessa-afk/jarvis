@@ -2,6 +2,7 @@
 
 import json
 import os
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -117,22 +118,36 @@ class OpenAIChatProvider:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers = self._auth_headers()
         retryable = {429, 500, 502, 503, 504}
-        for attempt in range(4):
+        for attempt in range(3):
             req = urllib.request.Request(self.url, data=data, headers=headers)
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="replace")[:500]
-                if exc.code in retryable and attempt < 3:
-                    time.sleep(1.0 * (2 ** attempt))
+                quota_limited = exc.code == 429 and any(
+                    marker in detail.lower()
+                    for marker in ("quota", "resource_exhausted", "free_tier", "daily limit")
+                )
+                if exc.code in retryable and attempt < 2 and not quota_limited:
+                    time.sleep(min(1.0 * (2 ** attempt), 2.0))
                     continue
                 if exc.code == 503:
                     raise RuntimeError(f"{self._provider_name()} временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
                 raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
+            except (TimeoutError, socket.timeout) as exc:
+                raise RuntimeError(
+                    f"Тайм-аут запроса к {self._provider_name()} ({self.timeout} с). "
+                    "Проверьте соединение и повторите запрос."
+                ) from exc
             except urllib.error.URLError as exc:
-                if attempt < 3:
-                    time.sleep(1.0 * (2 ** attempt))
+                if isinstance(exc.reason, (TimeoutError, socket.timeout)) or "timed out" in str(exc.reason).lower():
+                    raise RuntimeError(
+                        f"Тайм-аут запроса к {self._provider_name()} ({self.timeout} с). "
+                        "Проверьте соединение и повторите запрос."
+                    ) from exc
+                if attempt < 2:
+                    time.sleep(min(1.0 * (2 ** attempt), 2.0))
                     continue
                 raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -211,7 +226,7 @@ class OpenAIChatProvider:
         data = json.dumps({**payload, "stream": True}, ensure_ascii=False).encode("utf-8")
         headers = self._auth_headers(stream=True)
         retryable = {429, 500, 502, 503, 504}
-        for attempt in range(4):
+        for attempt in range(3):
             req = urllib.request.Request(self.url, data=data, headers=headers)
             content_parts: list[str] = []
             tool_calls: list[dict] = []
@@ -254,15 +269,29 @@ class OpenAIChatProvider:
                 return {"choices": [{"message": msg}]}
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="replace")[:500]
-                if exc.code in retryable and attempt < 3:
-                    time.sleep(1.0 * (2 ** attempt))
+                quota_limited = exc.code == 429 and any(
+                    marker in detail.lower()
+                    for marker in ("quota", "resource_exhausted", "free_tier", "daily limit")
+                )
+                if exc.code in retryable and attempt < 2 and not quota_limited:
+                    time.sleep(min(1.0 * (2 ** attempt), 2.0))
                     continue
                 if exc.code == 503:
                     raise RuntimeError(f"{self._provider_name()} временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
                 raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
+            except (TimeoutError, socket.timeout) as exc:
+                raise RuntimeError(
+                    f"Тайм-аут запроса к {self._provider_name()} ({self.timeout} с). "
+                    "Проверьте соединение и повторите запрос."
+                ) from exc
             except urllib.error.URLError as exc:
-                if attempt < 3:
-                    time.sleep(1.0 * (2 ** attempt))
+                if isinstance(exc.reason, (TimeoutError, socket.timeout)) or "timed out" in str(exc.reason).lower():
+                    raise RuntimeError(
+                        f"Тайм-аут запроса к {self._provider_name()} ({self.timeout} с). "
+                        "Проверьте соединение и повторите запрос."
+                    ) from exc
+                if attempt < 2:
+                    time.sleep(min(1.0 * (2 ** attempt), 2.0))
                     continue
                 raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
         raise RuntimeError(f"{self._provider_name()} временно недоступен после нескольких попыток.")
@@ -294,7 +323,13 @@ class OpenAIChatProvider:
             except RuntimeError as exc:
                 message = str(exc).lower()
                 capacity_error = any(f"http {code}" in message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in message
-                if not capacity_error:
+                model_unavailable = (
+                    any(f"http {code}" in message for code in (400, 404))
+                    and any(marker in message for marker in (
+                        "model", "not found", "unknown", "does not exist", "not available",
+                    ))
+                )
+                if not (capacity_error or model_unavailable):
                     raise
                 last_error = exc
                 body = None
@@ -302,16 +337,21 @@ class OpenAIChatProvider:
                     if fallback_model in attempted_models:
                         continue
                     attempted_models.add(fallback_model)
-                    payload["model"] = fallback_model
+                    fallback_payload = {**payload, "model": fallback_model}
                     try:
-                        body = self._request_stream(payload) if self.on_delta is not None and "tools" in payload else self._request(payload)
+                        body = self._request_stream(fallback_payload) if self.on_delta is not None and "tools" in fallback_payload else self._request(fallback_payload)
                         model = fallback_model
                         break
                     except RuntimeError as fallback_exc:
                         last_error = fallback_exc
                         fallback_message = str(fallback_exc).lower()
                         capacity_error = any(f"http {code}" in fallback_message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in fallback_message
-                        model_unavailable = any(f"http {code}" in fallback_message for code in (400, 404)) or "model not found" in fallback_message or "unknown model" in fallback_message
+                        model_unavailable = (
+                            any(f"http {code}" in fallback_message for code in (400, 404))
+                            and any(marker in fallback_message for marker in (
+                                "model", "not found", "unknown", "does not exist", "not available",
+                            ))
+                        )
                         if not (capacity_error or model_unavailable):
                             raise
                 if body is None:
