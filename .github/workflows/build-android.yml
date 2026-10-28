@@ -142,7 +142,7 @@ jobs:
           text = manifest.read_text(encoding="utf-8")
           text = re.sub(r'android:icon="[^"]+"', '', text)
           text = re.sub(r'android:roundIcon="[^"]+"', '', text)
-          text = re.sub(r'(<application\\b[^>]*?)>', r'\\1 android:icon="@drawable/jarvis_launcher" android:roundIcon="@drawable/jarvis_launcher">', text, count=1)
+          text = re.sub(r'(<application\b[^>]*?)>', r'\1 android:icon="@drawable/jarvis_launcher" android:roundIcon="@drawable/jarvis_launcher">', text, count=1)
           manifest.write_text(text, encoding="utf-8")
           # Fail the build if the icon or manifest reference is missing.
           assert (res / "drawable" / "jarvis_launcher.xml").stat().st_size > 500
