@@ -15,7 +15,7 @@ DEFAULT_LOCAL_MODEL = "small"
 DEFAULT_STT_MODEL = "gemini-3.8-flash"
 _QUOTA_EXCEEDED = False
 _QUOTA_LOCK = threading.Lock()
-QUOTA_MESSAGE = "Квота Gemini на сегодня исчерпана (free tier). Голос-распознавание недоступно до сброса квоты или смены ключа/тарифа."
+QUOTA_MESSAGE = "Ошибка распознавания Gemini: HTTP 429. Квота на сегодня исчерпана (free tier); голосовое распознавание недоступно до сброса квоты или смены ключа/тарифа."
 
 
 def quota_exceeded() -> bool:
@@ -63,9 +63,10 @@ def current_engine() -> str:
     if mode in ("local", "whisper"):
         return "local" if _local_available() else "off"
     if mode in ("gemini", "cloud", "auto"):
+        # Cloud-first: quota exhaustion must not silently switch to local STT.
+        # Local Whisper is available only when explicitly selected via JARVIS_STT=local.
         if quota_exceeded():
-            return "local" if _local_available() else "off"
-        # Cloud-first: never silently switch providers or download a local model.
+            return "off"
         return "gemini" if _token() else "off"
     return "off"
 
