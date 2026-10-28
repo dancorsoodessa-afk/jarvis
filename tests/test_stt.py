@@ -109,12 +109,12 @@ class TestSTT(unittest.TestCase):
         class Response:
             def __enter__(self): return self
             def __exit__(self, *args): pass
-            def read(self): return b'{"text":"распознанный текст"}'
+            def read(self): return b'{"text":"transcribed text"}'
         with tempfile.TemporaryDirectory() as folder:
             audio = Path(folder) / "voice.wav"
             audio.write_bytes(b"RIFF-audio")
             with mock.patch("urllib.request.urlopen", return_value=Response()) as urlopen:
-                self.assertEqual(stt._transcribe_groq(audio), "распознанный текст")
+                self.assertEqual(stt._transcribe_groq(audio), "transcribed text")
             request = urlopen.call_args.args[0]
             self.assertEqual(request.full_url, stt.GROQ_STT_URL)
             self.assertEqual(request.get_header("Authorization"), "Bearer test-groq")
