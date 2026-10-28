@@ -792,12 +792,12 @@ class JarvisDesktop(tk.Tk):
     def _replace_streaming_reply(self, text, final=False):
         self.chat.configure(state="normal")
         if not getattr(self, "_streaming_reply_started", False):
-            self.chat.insert("end", "JARVIS\\n", "who")
+            self.chat.insert("end", "JARVIS\n", "who")
             self._streaming_reply_started = True
         self.chat.delete("end-1c linestart", "end")
         self.chat.insert("end", text, "stream_body")
         if final:
-            self.chat.insert("end", "\\n\\n")
+            self.chat.insert("end", "\n\n")
             self._streaming_reply_started = False
         self.chat.tag_configure("stream_body", foreground=TEXT)
         self.chat.see("end")
