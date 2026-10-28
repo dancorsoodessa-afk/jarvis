@@ -61,7 +61,7 @@ class TestSTT:
                 assert stt.transcribe(str(audio)) == "открой браузер"
             request = urlopen.call_args.args[0]
             assert request.full_url.startswith(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
             )
             assert "key=test-token" in request.full_url
             payload = json.loads(request.data.decode("utf-8"))
