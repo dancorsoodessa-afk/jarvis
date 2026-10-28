@@ -501,12 +501,18 @@ class VoiceController:
             self._log.warning("event=empty_audio")
             self.ui.post("voice_status", "Микрофон вернул пустой аудиофрагмент.")
             return
+        # Publish UNDERSTANDING before waking the STT worker; otherwise a fast
+        # transcript could set THINKING and then be overwritten by this producer.
+        self._set_state("UNDERSTANDING")
         try:
             self._stt_queue.put_nowait(audio)
-            self._set_state("UNDERSTANDING")
         except queue.Full:
             self._log.warning("event=stt_queue_full")
             self.ui.post("voice_status", "Очередь распознавания занята; фраза пропущена.")
+            with self._lock:
+                running = self._running
+            if running:
+                self._set_state("LISTENING")
 
     def _stt_worker(self) -> None:
         while True:
