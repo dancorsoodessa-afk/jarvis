@@ -302,9 +302,11 @@ class OpenAIChatProvider:
                     if fallback_model in attempted_models:
                         continue
                     attempted_models.add(fallback_model)
-                    payload["model"] = fallback_model
+                    # Use a fresh payload for each attempt. Reusing the same dict lets
+                    # later fallback mutations rewrite earlier mock/logged request payloads.
+                    fallback_payload = {**payload, "model": fallback_model}
                     try:
-                        body = self._request_stream(payload) if self.on_delta is not None and "tools" in payload else self._request(payload)
+                        body = self._request_stream(fallback_payload) if self.on_delta is not None and "tools" in fallback_payload else self._request(fallback_payload)
                         model = fallback_model
                         break
                     except RuntimeError as fallback_exc:
