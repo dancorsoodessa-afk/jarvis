@@ -58,7 +58,7 @@ class OpenAIChatProvider:
         parsed = urlsplit(self.url)
         allowed_hosts = {"generativelanguage.googleapis.com"}
         if parsed.scheme != "https" or parsed.hostname not in allowed_hosts or not parsed.path.endswith("/chat/completions"):
-            raise RuntimeError("Разрешены только защищённые официальные endpoint Gemini и Groq.")
+            raise RuntimeError("Разрешён только официальный endpoint Gemini.")
 
     def _provider_name(self) -> str:
         return "Gemini"
@@ -99,7 +99,6 @@ class OpenAIChatProvider:
 
     @staticmethod
     def _normalize_model(model: str) -> str:
-        # Groq model IDs are passed through unchanged.
         return model.strip()
 
     def _auth_headers(self, *, stream: bool = False) -> dict:
