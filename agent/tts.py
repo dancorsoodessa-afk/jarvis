@@ -178,7 +178,7 @@ def speak(text: str) -> Path:
     return _write_audio(_generate_audio(text))
 
 
-def speak_and_play(text: str, on_playback_start=None, blocking: bool = True):
+def speak_and_play(text: str, on_playback_start=None, blocking: bool = True, cancel_event: threading.Event | None = None):
     """Generate audio, then play it synchronously or in a worker thread.
 
     Non-blocking playback allows the microphone loop to keep listening while
@@ -187,8 +187,14 @@ def speak_and_play(text: str, on_playback_start=None, blocking: bool = True):
     """
     global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PATH
     path = speak(text)
+    if cancel_event is not None and cancel_event.is_set():
+        path.unlink(missing_ok=True)
+        return path
     stop()
     with _PLAYBACK_LOCK:
+        if cancel_event is not None and cancel_event.is_set():
+            path.unlink(missing_ok=True)
+            return path
         _PLAYBACK_TOKEN += 1
         token = _PLAYBACK_TOKEN
         _PLAYBACK_ACTIVE = True
