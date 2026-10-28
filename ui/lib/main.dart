@@ -16,8 +16,8 @@ const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
 const kFreePrimaryUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
 const kFreePrimaryModel = 'gemini-3.8-flash';
-const kFreeFallbackUrl = '';
-const kFreeFallbackModel = '';
+const kFreeFallbackUrl = 'https://api.groq.com/openai/v1';
+const kFreeFallbackModel = 'openai/gpt-oss-120b';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -309,9 +309,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _model.text = storedModel.isEmpty ? kFreePrimaryModel : storedModel;
       _apiKey.text = storedKey;
 
-      _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? '';
+      _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? kFreeFallbackUrl;
       _fallbackKey.text = storedFallbackKey.trim();
-      _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? '';
+      _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? kFreeFallbackModel;
       // Do not initialize native microphone/speech services during startup.
       // Voice is initialized only after the main UI is visible, preventing
       // device-specific native speech-service crashes from closing JARVIS.
@@ -362,7 +362,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
     JarvisIpc? candidate;
     try {
-      if (mounted) setState(() => _status = 'Проверяю ответ Gemini…');
+      if (mounted) setState(() => _status = 'Проверяю основной AI…');
       _setVisual(JarvisVisualState.thinking);
 
       // Keep the active connection alive until the replacement has passed
@@ -386,13 +386,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       await previous?.dispose();
 
       await _finishConnect();
-      // Start hands-free voice only after the AI connection and first frame are ready.
-      // Native speech service failures remain non-fatal inside _initVoice().
-      await _initVoice();
-      if (_voiceReady && mounted) {
-        _voiceRunning = true;
-        await _startVoiceLoop();
-      }
+      // Never start native speech services automatically after an AI connection.
+      // The microphone button is the only entry point for voice initialization.
     } catch (e) {
       await candidate?.dispose();
       if (mounted) setState(() => _status = 'Ошибка ИИ: $e');
@@ -715,11 +710,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           TextField(controller: _fallbackModel, decoration: const InputDecoration(labelText: 'Резервная модель')),
           const SizedBox(height: 8),
           const Text(
-            'Для Gemini: создайте ключ в Google AI Studio. Бесплатный тариф и доступность моделей зависят от региона и лимитов. URL и модель не блокируются.',
+            'Основной ключ Gemini: Google AI Studio. Резерв: GroqCloud — отдельный ключ. Адреса и модели заполнены заранее; ключи нужно получить и вставить самостоятельно.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 4),
-          const Text('Голос: автоматическое ожидание «Джарвис».', style: TextStyle(fontSize: 12)),
+          const Text('Микрофон запускается только вручную. Резерв включится после ввода его API Key.', style: TextStyle(fontSize: 12)),
         ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
