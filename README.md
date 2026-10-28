@@ -6,13 +6,13 @@ JARVIS combines a Python agent core for Windows, a Flutter client for Android, l
 
 - **Primary chat AI:** Google Gemini through its OpenAI-compatible endpoint.
 - **Optional chat fallback:** Groq Cloud, with a separate key, model, and timeout.
-- **Primary speech recognition:** Gemini cloud transcription.
-- **Optional speech fallback:** Groq Whisper transcription when `GROQ_API_KEY` is configured. A Gemini quota/timeout error must not disable text chat or cause a repeated request to a quota-exhausted model.
+- **Primary speech recognition:** local Whisper transcription with no API key or cloud request quota.
+- **Optional cloud speech recognition:** Gemini and Groq can be selected explicitly; both are quota-limited, so local Whisper is the default.
 - **Speech output:** Gemini cloud TTS. No ElevenLabs or bundled offline voice engine is required.
 - **3D interface:** Windows serves the real Three.js/WebGL reactor locally and embeds its Microsoft Edge app window into the main desktop window; Microsoft Edge must be installed. The Flutter Android client has its own animated reactor painter. CI covers embedding logic, but a real launch check on the target PC is still required before release.
 - **Camera:** not implemented; JARVIS does not request camera access.
 
-## Configure cloud AI
+## Speech recognition without API quotas\n\nJARVIS uses local Whisper (`small`, Russian) for recognition by default. The model downloads on first use and then runs on this PC using CPU/int8, without an API key or per-request cloud quota. The first download needs internet and disk space. Install the `all` extra to include the engine. Cloud chat and cloud TTS can still have separate provider limits; local speech recognition does not make cloud services unlimited.\n\n## Configure cloud AI
 
 1. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey).
 2. Open JARVIS → **Центр управления** and save the key under **GEMINI API KEY**.
