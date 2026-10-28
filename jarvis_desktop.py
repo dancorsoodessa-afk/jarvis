@@ -636,7 +636,8 @@ class JarvisDesktop(tk.Tk):
         self._save_settings()
         if self.settings["voice_enabled"]:
             self._start_voice_loop()
-            self.voice_button.config(text="🎙 СЛУШАЮ")
+            if self.voice_controller.status()["running"]:
+                self.voice_button.config(text="🎙 СЛУШАЮ")
         else:
             self._stop_voice()
             self.voice_button.config(text="🎙 ГОЛОС")
