@@ -303,13 +303,13 @@ class JarvisDesktop(tk.Tk):
         self.settings.setdefault("tts_model", "gemini-3.8-flash-tts")
         self.settings.setdefault("tts_timeout", "45")
         self.settings.setdefault("stt_timeout", "45")
-        self.settings.setdefault("stt_model", "gemini-3.8-flash")
-        if str(self.settings.get("stt_model", "")).strip().lower() == "gemini-3.5-flash-lite":
-            self.settings["stt_model"] = "gemini-3.8-flash"
+        self.settings.setdefault("stt_model", "gemini-3.5-flash-lite")
+        if str(self.settings.get("stt_model", "")).strip().lower() == "gemini-3.8-flash":
+            self.settings["stt_model"] = "gemini-3.5-flash-lite"
         # Cloud-first voice: explicitly override stale shell variables so a previous local mode cannot disable Gemini STT.
         os.environ["JARVIS_STT"] = "gemini"
         os.environ["JARVIS_STT_TIMEOUT"] = str(self.settings.get("stt_timeout") or "45")
-        os.environ["JARVIS_STT_MODEL"] = str(self.settings.get("stt_model") or "gemini-3.8-flash")
+        os.environ["JARVIS_STT_MODEL"] = str(self.settings.get("stt_model") or "gemini-3.5-flash-lite")
         os.environ["GEMINI_STT_MODEL"] = os.environ["JARVIS_STT_MODEL"]
         tts_engine = str(self.settings.get("tts_engine", "gemini")).strip().lower() or "gemini"
         if tts_engine not in {"gemini", "off"}:
