@@ -194,6 +194,8 @@ class TTSEngine:
         self._queue: queue.Queue[str | None] = queue.Queue()
         self._shutdown = threading.Event()
         self._active = threading.Event()
+        self._current_cancel: threading.Event | None = None
+        self._lock = threading.Lock()
         self._on_start = on_start
         self._on_end = on_end
         self._on_error = on_error
@@ -208,6 +210,9 @@ class TTSEngine:
         return not self._queue.empty() or self._active.is_set()
 
     def stop(self) -> None:
+        with self._lock:
+            if self._current_cancel is not None:
+                self._current_cancel.set()
         while True:
             try:
                 self._queue.get_nowait()
@@ -228,14 +233,20 @@ class TTSEngine:
                 continue
             if text is None:
                 continue
+            cancel_event = threading.Event()
+            with self._lock:
+                self._current_cancel = cancel_event
             try:
                 self._active.set()
                 self._on_start()
-                tts.speak_and_play(text, blocking=True)
+                tts.speak_and_play(text, blocking=True, cancel_event=cancel_event)
             except Exception as exc:
                 self._on_error(exc)
             finally:
                 self._active.clear()
+                with self._lock:
+                    if self._current_cancel is cancel_event:
+                        self._current_cancel = None
                 self._on_end()
 
 
