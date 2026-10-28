@@ -35,6 +35,7 @@ def test_voice_controller_starts_idle_and_reports_status():
     assert status["running"] is False
     assert status["is_speaking"] is False
     assert status["mic"] == "fail"
+    controller.shutdown()
 
 
 def test_final_transcript_is_delivered_without_gui_access():
@@ -44,6 +45,7 @@ def test_final_transcript_is_delivered_without_gui_access():
     controller.on_text("  открой браузер  ")
     assert seen == ["открой браузер"]
     assert events.get_nowait() == ("voice_state", "UNDERSTANDING", "")
+    controller.shutdown()
 
 
 def test_empty_transcript_is_reported_not_silently_dropped():
@@ -51,3 +53,4 @@ def test_empty_transcript_is_reported_not_silently_dropped():
     controller = VoiceController(UIBridge(events), on_text=lambda _text: None)
     controller.on_text("   ")
     assert events.get_nowait() == ("voice_status", "Речь не распознана. Продолжаю слушать.")
+    controller.shutdown()
