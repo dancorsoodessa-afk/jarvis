@@ -182,7 +182,30 @@ class OpenAIChatProvider:
                 if isinstance(item, dict) and item.get("id")
             }
             if self.model and available and self.model not in available:
-                raise RuntimeError(f"Модель {self.model} отсутствует в списке доступных моделей этого ключа.")
+                # Keys may expose different model subsets. Select a real chat
+                # model from this key instead of declaring the whole provider dead.
+                preferred = (
+                    "gemini-3.5-flash-lite",
+                    "gemini-3.6-flash",
+                    "gemini-3.1-flash-lite",
+                    "gemini-3.8-flash",
+                )
+                selected = next((name for name in preferred if name in available), "")
+                if not selected:
+                    selected = next((
+                        name for name in sorted(available)
+                        if name.startswith("gemini-")
+                        and not any(tag in name.lower() for tag in (
+                            "embedding", "tts", "transcribe", "image", "live", "robotics"
+                        ))
+                    ), "")
+                if not selected:
+                    raise RuntimeError(
+                        f"Модель {self.model} недоступна, а в списке ключа не найдено подходящей Gemini chat-модели."
+                    )
+                self.model = selected
+                self._discovered_model = selected
+                self.last_used_model = selected
             return "ONLINE"
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:250]
