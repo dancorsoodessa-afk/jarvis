@@ -193,6 +193,10 @@ class VoiceController:
         self._log.info("event=state state=%s message=%s", state, message[:300])
         self.ui.post("voice_state", state, message)
 
+    def _capture_blocked(self) -> bool:
+        with self._lock:
+            return self._is_speaking.is_set() or self._state in {"UNDERSTANDING", "THINKING", "SPEAKING"}
+
     def status(self) -> dict:
         with self._lock:
             return {"state": self._state, "last_error": self._last_error,
@@ -290,7 +294,7 @@ class VoiceController:
         while not self._stop.is_set():
             try:
                 self._capture = AudioCapture(
-                    self._mic_lock, self._is_speaking.is_set,
+                    self._mic_lock, self._capture_blocked,
                     self._enqueue_phrase, lambda level: self.ui.post("audio_level", level),
                     lambda ok: setattr(self, "_mic_ok", ok),
                 )
