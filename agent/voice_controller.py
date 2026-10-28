@@ -603,7 +603,10 @@ class VoiceController:
                         break
             if last_error is not None:
                 if self._quota_exceeded or stt.quota_exceeded():
-                    message = stt.QUOTA_MESSAGE
+                    if stt.current_engine() == "groq":
+                        message = f"Квота Gemini STT исчерпана; резервный Groq тоже не сработал: {last_error}"
+                    else:
+                        message = stt.QUOTA_MESSAGE
                     self._set_state("DEGRADED", message)
                     self.ui.post("voice_status", message)
                 else:
