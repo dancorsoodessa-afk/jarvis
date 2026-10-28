@@ -81,6 +81,24 @@ class JarvisIpc {
     return selected;
   }
 
+  bool _isGoogleEndpoint(String base) {
+    final host = Uri.tryParse(base)?.host.toLowerCase() ?? '';
+    return host == 'generativelanguage.googleapis.com';
+  }
+
+  bool _isCapacityError(Object error) {
+    final message = error.toString();
+    return RegExp(r'HTTP (429|500|502|503|504)\\b').hasMatch(message) ||
+        message.toLowerCase().contains('temporarily overloaded') ||
+        message.toLowerCase().contains('service unavailable');
+  }
+
+  List<String> _googleFallbackModels(String primary) => [
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.6-flash',
+  ].where((model) => model != primary.trim()).toList(growable: false);
+
   bool get _standalone => _httpClient != null;
   Stream<Map<int, String>> get deltas => _deltaController.stream;
   int? get activeId => _activeId;
@@ -178,6 +196,19 @@ class JarvisIpc {
         } catch (fallback) {
           throw StateError('Основной AI недоступен: $primary. Резервный AI недоступен: $fallback');
         }
+      }
+      if (_isGoogleEndpoint(_apiUrl!) && _isCapacityError(primary)) {
+        final failures = <String>[];
+        for (final model in _googleFallbackModels(_model ?? '')) {
+          try {
+            await _probeChat(_apiUrl!, _apiKey!, model, 'Резервная модель $model');
+            _modelCache[_apiUrl!] = model;
+            return;
+          } catch (error) {
+            failures.add('$model: $error');
+          }
+        }
+        throw StateError('Gemini не ответил основной моделью и резервными моделями. Основная: $primary. Резервы: ${failures.join(' | ')}. Проверьте статус Google AI, доступность моделей и квоту ключа.');
       }
       rethrow;
     }
@@ -290,15 +321,32 @@ class JarvisIpc {
       if (_history.length > 40) _history.removeRange(0, _history.length - 40);
       return r;
     } catch (primary) {
-      if ((_fallbackUrl ?? '').isEmpty || (_fallbackKey ?? '').isEmpty) rethrow;
-      try {
-        final r = await _call(_fallbackUrl!, _fallbackKey!, _fallbackModel ?? '', text);
-        _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': r.text});
-        if (_history.length > 40) _history.removeRange(0, _history.length - 40);
-        return r;
-      } catch (fallback) {
-        throw StateError('Основной AI недоступен: $primary. Резервный AI недоступен: $fallback');
+      if ((_fallbackUrl ?? '').isNotEmpty && (_fallbackKey ?? '').isNotEmpty) {
+        try {
+          final r = await _call(_fallbackUrl!, _fallbackKey!, _fallbackModel ?? '', text);
+          _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': r.text});
+          if (_history.length > 40) _history.removeRange(0, _history.length - 40);
+          return r;
+        } catch (fallback) {
+          throw StateError('Основной AI недоступен: $primary. Резервный AI недоступен: $fallback');
+        }
       }
+      if (_isGoogleEndpoint(_apiUrl!) && _isCapacityError(primary)) {
+        final failures = <String>[];
+        for (final model in _googleFallbackModels(_model ?? '')) {
+          try {
+            final r = await _call(_apiUrl!, _apiKey!, model, text);
+            _modelCache[_apiUrl!] = model;
+            _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': r.text});
+            if (_history.length > 40) _history.removeRange(0, _history.length - 40);
+            return r;
+          } catch (error) {
+            failures.add('$model: $error');
+          }
+        }
+        throw StateError('Gemini перегружен: не ответила основная модель и резервные модели. Основная: $primary. Резервы: ${failures.join(' | ')}. Это может быть перегрузка Google или лимит/доступность API; проверьте статус Google AI и квоту ключа.');
+      }
+      rethrow;
     }
   }
 
