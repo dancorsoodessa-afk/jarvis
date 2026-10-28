@@ -1003,8 +1003,7 @@ class JarvisDesktop(tk.Tk):
         # have to say the wake word after pressing the microphone button.
         self._voice_armed_until = float("inf")
         if self._voice_loop_running:
-            self.voice_button.config(text="🎙 СЛУШАЮ КОМАНДУ")
-            self._append("VOICE", "Микрофон активен. Говорите команду сейчас — слово «Джарвис» не обязательно.")
+            self._stop_voice()
             return
         self._start_voice_loop()
         if self._voice_loop_running:
