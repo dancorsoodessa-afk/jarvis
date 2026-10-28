@@ -243,9 +243,6 @@ class JarvisDesktop(tk.Tk):
         # An explicitly empty saved key means disconnected; do not resurrect a stale environment key.
         # Groq is permitted only as an explicitly configured speech-to-text reserve;
         # it is never selected as the chat model and never enabled by stale shell values.
-        legacy_groq_key = str(self.settings.get("groq_api_key") or "").strip()
-        if "groq_stt_api_key" not in self.settings and legacy_groq_key:
-            self.settings["groq_stt_api_key"] = legacy_groq_key
         self.settings.pop("groq_api_key", None)
         self.settings.pop("groq_model", None)
         self.settings.pop("groq_timeout", None)
