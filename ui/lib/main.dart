@@ -296,6 +296,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         storedKey = legacyKey;
       }
       await prefs.remove('api_key');
+      final savedFallbackEndpoint = prefs.getString('fallback_endpoint')?.trim() ?? '';
+      final savedFallbackModel = prefs.getString('fallback_model')?.trim() ?? '';
       final legacyFallbackKey = prefs.getString('fallback_key')?.trim() ?? '';
       var storedFallbackKey = await _secureStorage.read(key: 'fallback_key') ?? '';
       if (storedFallbackKey.isEmpty && legacyFallbackKey.isNotEmpty) {
@@ -309,9 +311,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       _model.text = storedModel.isEmpty ? kFreePrimaryModel : storedModel;
       _apiKey.text = storedKey;
 
-      _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? kFreeFallbackUrl;
+      _fallbackEndpoint.text = savedFallbackEndpoint.isEmpty ? kFreeFallbackUrl : savedFallbackEndpoint;
       _fallbackKey.text = storedFallbackKey.trim();
-      _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? kFreeFallbackModel;
+      _fallbackModel.text = savedFallbackModel.isEmpty ? kFreeFallbackModel : savedFallbackModel;
       // Do not initialize native microphone/speech services during startup.
       // Voice is initialized only after the main UI is visible, preventing
       // device-specific native speech-service crashes from closing JARVIS.
