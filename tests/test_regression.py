@@ -56,7 +56,8 @@ def test_desktop_tts_worker_does_not_touch_tk_widgets():
     start = source.index("    def _speak_reply(self, text):")
     end = source.index("    def _replace_streaming_reply", start)
     worker = source[start:end]
-    assert "tts.speak_and_play(text, on_playback_start=" in worker
+    assert "self.voice_controller.speak(text)" in worker
+    assert "tts.speak_and_play(" not in worker
     assert "self._set_visual_state" not in worker
 
 
