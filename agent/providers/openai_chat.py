@@ -167,7 +167,30 @@ class OpenAIChatProvider:
                 if isinstance(item, dict) and item.get("id")
             }
             if self.model and available and self.model not in available:
-                raise RuntimeError(f"Модель {self.model} отсутствует в списке доступных моделей этого ключа.")
+                host = urllib.parse.urlsplit(self.url).hostname or ""
+                if host == "generativelanguage.googleapis.com":
+                    preferred = ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite",
+                                 "gemini-2.0-flash-lite", "gemini-1.5-flash")
+                    eligible = [item for item in available if "gemini" in item.lower()
+                                and "flash" in item.lower()
+                                and not any(bad in item.lower() for bad in ("tts", "embedding", "image", "robotics"))]
+                    replacement = next((item for wanted in preferred for item in eligible
+                                        if item == wanted or item.endswith("/" + wanted)), None)
+                    if replacement is None and eligible:
+                        replacement = sorted(eligible)[0]
+                else:
+                    preferred = ("openai/gpt-oss-120b", "openai/gpt-oss-20b",
+                                 "llama-3.3-70b-versatile", "llama-3.1-8b-instant")
+                    replacement = next((item for wanted in preferred for item in available
+                                        if item == wanted), None)
+                    if replacement is None:
+                        replacement = next((item for item in sorted(available)
+                                             if not any(bad in item.lower() for bad in ("whisper", "embedding", "guard", "moderation"))), None)
+                if replacement:
+                    self.model = replacement
+                    self.last_used_model = replacement
+                else:
+                    raise RuntimeError(f"Модель {self.model} отсутствует в списке доступных моделей этого ключа; подходящая замена не найдена.")
             return "ONLINE"
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:250]
@@ -297,7 +320,8 @@ class OpenAIChatProvider:
             except RuntimeError as exc:
                 message = str(exc).lower()
                 capacity_error = any(f"http {code}" in message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in message
-                if not capacity_error:
+                model_unavailable = any(f"http {code}" in message for code in (400, 404)) or "model not found" in message or "unknown model" in message or "not found for api version" in message
+                if not (capacity_error or model_unavailable):
                     raise
                 last_error = exc
                 body = None
