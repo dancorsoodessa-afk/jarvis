@@ -9,11 +9,10 @@ import base64
 import json
 import os
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 
-DEFAULT_STT_MODEL = "gemini-2.5-flash"
+DEFAULT_STT_MODEL = "gemini-3.5-flash-lite"
 DEFAULT_STT_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
@@ -49,7 +48,8 @@ def transcribe(audio_path: str) -> str:
     url = os.environ.get("JARVIS_STT_URL", DEFAULT_STT_URL).strip().rstrip("/")
     if not url.startswith("https://generativelanguage.googleapis.com/"):
         raise RuntimeError("Распознавание речи разрешено только через Google Gemini API.")
-    endpoint = f"{url}/{DEFAULT_STT_MODEL}:generateContent"
+    model = os.environ.get("JARVIS_STT_MODEL", DEFAULT_STT_MODEL).strip() or DEFAULT_STT_MODEL
+    endpoint = f"{url}/{model}:generateContent"
     payload = {
         "contents": [{
             "parts": [
@@ -69,6 +69,17 @@ def transcribe(audio_path: str) -> str:
             body = response.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:400]
+        if exc.code == 404:
+            raise RuntimeError(
+                f"Модель распознавания Gemini «{model}» не найдена (HTTP 404). "
+                f"Проверьте JARVIS_STT_MODEL и доступность модели для вашего API-ключа."
+            ) from exc
+        if exc.code == 429:
+            raise RuntimeError(
+                "Исчерпана квота Gemini для распознавания речи (HTTP 429). "
+                "Не повторяйте запрос многократно; проверьте квоту или настройте резервный STT-провайдер. "
+                f"Подробности: {detail}"
+            ) from exc
         raise RuntimeError(f"Ошибка облачного распознавания речи: HTTP {exc.code}. {detail}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Не удалось подключиться к облачному распознаванию речи: {exc.reason}") from exc
