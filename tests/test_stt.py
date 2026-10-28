@@ -1,3 +1,4 @@
+import io
 import os
 import sys
 import tempfile
@@ -89,7 +90,7 @@ class TestSTT(unittest.TestCase):
     def test_404_has_clear_model_error(self):
         os.environ["GEMINI_API_KEY"] = "test-key"
         os.environ["JARVIS_STT"] = "gemini"
-        error = urllib.error.HTTPError("https://example.test", 404, "Not Found", {}, None)
+        error = urllib.error.HTTPError("https://example.test", 404, "Not Found", {}, io.BytesIO(b"model not found"))
         with tempfile.TemporaryDirectory() as folder:
             audio = Path(folder) / "sample.wav"
             audio.write_bytes(b"RIFF-test")
@@ -100,7 +101,7 @@ class TestSTT(unittest.TestCase):
     def test_429_has_clear_quota_error_without_retry(self):
         os.environ["GEMINI_API_KEY"] = "test-key"
         os.environ["JARVIS_STT"] = "gemini"
-        error = urllib.error.HTTPError("https://example.test", 429, "Quota exceeded", {}, None)
+        error = urllib.error.HTTPError("https://example.test", 429, "Quota exceeded", {}, io.BytesIO(b"quota exceeded"))
         with tempfile.TemporaryDirectory() as folder:
             audio = Path(folder) / "sample.wav"
             audio.write_bytes(b"RIFF-test")
