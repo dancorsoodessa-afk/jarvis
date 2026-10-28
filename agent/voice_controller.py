@@ -173,6 +173,7 @@ class VoiceController:
         self._running = False
         self._is_speaking = threading.Event()
         self._stop = threading.Event()
+        self._shutdown = threading.Event()
         self._stt_queue: queue.Queue[bytes | None] = queue.Queue(maxsize=3)
         self._tts_queue: queue.Queue[str | None] = queue.Queue()
         self._mic_lock = MicLock()
@@ -182,6 +183,8 @@ class VoiceController:
         self._last_error = ""
         self._mic_ok = False
         self._log = _logger()
+        self._tts_thread = threading.Thread(target=self._tts_worker, name="jarvis-tts-worker", daemon=True)
+        self._tts_thread.start()
 
     def _set_state(self, state: str, message: str = "") -> None:
         if state not in self.STATES:
@@ -218,7 +221,6 @@ class VoiceController:
             self._threads = [
                 threading.Thread(target=self._capture_worker, name="jarvis-audio-capture", daemon=True),
                 threading.Thread(target=self._stt_worker, name="jarvis-stt-worker", daemon=True),
-                threading.Thread(target=self._tts_worker, name="jarvis-tts-worker", daemon=True),
             ]
             for thread in self._threads:
                 thread.start()
@@ -236,11 +238,15 @@ class VoiceController:
             threads = list(self._threads)
         if capture:
             capture.stop()
-        for q in (self._stt_queue, self._tts_queue):
+        try:
+            self._stt_queue.put_nowait(None)
+        except queue.Full:
+            pass
+        while True:
             try:
-                q.put_nowait(None)
-            except queue.Full:
-                pass
+                self._tts_queue.get_nowait()
+            except queue.Empty:
+                break
         tts.stop()
         self._is_speaking.clear()
         self._set_state("IDLE")
@@ -279,8 +285,6 @@ class VoiceController:
         if not value:
             self._log.warning("event=empty_tts")
             return
-        if self._stop.is_set() and self._running:
-            return
         self._set_state("THINKING")
         self._tts_queue.put(value)
 
@@ -288,6 +292,13 @@ class VoiceController:
         self._set_state("ERROR", message)
         if self._running and not self._stop.wait(0.5):
             self._set_state("LISTENING")
+
+    def shutdown(self) -> None:
+        """Stop voice I/O and terminate the persistent TTS queue worker."""
+        self.stop()
+        self._shutdown.set()
+        self._tts_queue.put(None)
+        self._log.info("event=shutdown")
 
     def _capture_worker(self) -> None:
         delay_index = 0
@@ -372,13 +383,13 @@ class VoiceController:
                     self._set_state("LISTENING")
 
     def _tts_worker(self) -> None:
-        while not self._stop.is_set():
+        while not self._shutdown.is_set():
             try:
                 text = self._tts_queue.get(timeout=0.25)
             except queue.Empty:
                 continue
             if text is None:
-                break
+                continue
             self._is_speaking.set()
             self._set_state("SPEAKING")
             try:
@@ -391,6 +402,6 @@ class VoiceController:
                 self._is_speaking.clear()
                 if self._running and not self._stop.is_set():
                     self._set_state("LISTENING")
-                elif not self._running:
+                else:
                     self._set_state("IDLE")
         self._is_speaking.clear()
