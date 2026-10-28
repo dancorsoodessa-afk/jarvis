@@ -120,3 +120,28 @@ def test_router_propagates_stream_callback_to_selected_provider():
     router.on_delta = callback
     router.generate("Открой браузер")
     assert providers["fast"].on_delta is callback
+
+
+def test_openai_compatible_provider_fails_over_after_gemini_capacity_error():
+    from unittest.mock import patch
+    from agent.providers.openai_chat import OpenAIChatProvider
+
+    provider = OpenAIChatProvider(
+        url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        api_key="test-key",
+        model="gemini-3.8-flash",
+        fallback_models=["gemini-3.8-flash", "gemini-3.5-flash-lite"],
+    )
+    successful = {"choices": [{"message": {"content": "резервная модель ответила", "tool_calls": []}}]}
+    with patch.object(provider, "discover_model", return_value="gemini-3.8-flash"), \
+         patch.object(provider, "_request", side_effect=[
+             RuntimeError("Gemini временно перегружен (HTTP 503). overloaded"),
+             successful,
+         ]) as request:
+        result = provider.generate("проверь резерв")
+
+    assert result == "резервная модель ответила"
+    assert request.call_count == 2
+    assert request.call_args_list[0].args[0]["model"] == "gemini-3.8-flash"
+    assert request.call_args_list[1].args[0]["model"] == "gemini-3.5-flash-lite"
+    assert provider.last_used_model == "gemini-3.5-flash-lite"
