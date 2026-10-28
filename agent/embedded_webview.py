@@ -40,12 +40,52 @@ class EmbeddedEdgeView:
             os.environ.get("PROGRAMFILES(X86)", ""),
             os.environ.get("PROGRAMFILES", ""),
             os.environ.get("LOCALAPPDATA", ""),
+            r"C:\\Program Files (x86)",
+            r"C:\\Program Files",
         )
-        for root in roots:
-            if root:
-                candidate = Path(root) / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+        candidates = [
+            Path(root) / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+            for root in roots if root
+        ]
+        # Some Windows installs register Edge without adding it to PATH or
+        # exposing the expected environment variables to packaged applications.
+        try:
+            import winreg
+            registry_locations = (
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe"),
+                (winreg.HKEY_CURRENT_USER, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe"),
+            )
+            for hive, key_name in registry_locations:
+                try:
+                    with winreg.OpenKey(hive, key_name) as key:
+                        registered, _ = winreg.QueryValueEx(key, None)
+                        if registered:
+                            candidates.insert(0, Path(registered))
+                except OSError:
+                    continue
+        except ImportError:
+            pass
+        seen = set()
+        for candidate in candidates:
+            normalized = str(candidate)
+            if normalized.lower() in seen:
+                continue
+            seen.add(normalized.lower())
+            if candidate.is_file():
+                return normalized
+        # Last attempt: query Windows executable lookup explicitly.
+        try:
+            located = subprocess.run(
+                ["where.exe", "msedge.exe"], capture_output=True, text=True,
+                timeout=3, check=False,
+            )
+            for line in located.stdout.splitlines():
+                candidate = Path(line.strip())
                 if candidate.is_file():
                     return str(candidate)
+        except (OSError, subprocess.SubprocessError):
+            pass
         raise RuntimeError(
             "Microsoft Edge не найден. Установите Edge, чтобы встроить настоящий WebGL-реактор в окно JARVIS."
         )
