@@ -197,3 +197,70 @@ def test_openai_compatible_provider_reports_timeout_without_retrying():
         with pytest.raises(RuntimeError, match="Тайм-аут запроса"):
             provider._request({"model": "gemini-3.5-flash-lite", "messages": []})
     assert urlopen.call_count == 1
+
+
+def test_gemini_tool_call_extract_preserves_thought_signature():
+    from agent.providers.openai_chat import OpenAIChatProvider
+
+    signature = "opaque-signature-from-gemini"
+    provider = OpenAIChatProvider(
+        url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        api_key="test-key",
+        model="gemini-3.5-flash-lite",
+    )
+    body = {
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call-1",
+                    "type": "function",
+                    "extra_content": {"google": {"thought_signature": signature}},
+                    "function": {"name": "web_search", "arguments": "{\\"query\\":\\"test\\"}"},
+                }],
+            }
+        }]
+    }
+
+    extracted = provider._extract(body)
+    assert extracted["tool_calls"][0]["extra_content"]["google"]["thought_signature"] == signature
+    # The exact assistant tool-call object must be appended to the next request.
+    history_message = {"role": "assistant", "content": extracted["content"], "tool_calls": extracted["tool_calls"]}
+    assert history_message["tool_calls"][0]["extra_content"]["google"]["thought_signature"] == signature
+
+
+def test_gemini_stream_tool_call_keeps_extra_content_signature():
+    import json
+    from unittest.mock import patch
+    from agent.providers.openai_chat import OpenAIChatProvider
+
+    signature = "stream-signature"
+    chunks = [
+        {"choices": [{"delta": {"tool_calls": [{
+            "index": 0, "id": "call-1", "type": "function",
+            "extra_content": {"google": {"thought_signature": signature}},
+            "function": {"name": "web_search", "arguments": "{\\"query\\":\\"x\\"}"},
+        }]}}]},
+        "[DONE]",
+    ]
+
+    class FakeResponse:
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def __iter__(self):
+            for chunk in chunks:
+                if chunk == "[DONE]":
+                    yield b"data: [DONE]\\n"
+                else:
+                    yield ("data: " + json.dumps(chunk) + "\\n").encode("utf-8")
+
+    provider = OpenAIChatProvider(
+        url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        api_key="test-key",
+        model="gemini-3.5-flash-lite",
+    )
+    with patch("urllib.request.urlopen", return_value=FakeResponse()):
+        body = provider._request_stream({"model": provider.model, "messages": []})
+    tool_call = body["choices"][0]["message"]["tool_calls"][0]
+    assert tool_call["extra_content"]["google"]["thought_signature"] == signature
