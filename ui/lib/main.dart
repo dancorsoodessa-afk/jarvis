@@ -15,7 +15,7 @@ const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
 const kFreePrimaryUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
-const kFreePrimaryModel = 'gemini-3.8-flash';
+const kFreePrimaryModel = 'gemini-3.5-flash-lite';
 const kFreeFallbackUrl = 'https://api.groq.com/openai/v1';
 const kFreeFallbackModel = 'openai/gpt-oss-120b';
 
@@ -308,7 +308,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       // Preserve the user's configured OpenAI-compatible provider and key.
       // A stale model ID is the common cause of a "connected" UI with failed chat.
       _endpoint.text = storedEndpoint.isEmpty ? kFreePrimaryUrl : storedEndpoint;
-      _model.text = storedModel.isEmpty ? kFreePrimaryModel : storedModel;
+      _model.text = storedModel.isEmpty || storedModel == 'gemini-3.8-flash' ? kFreePrimaryModel : storedModel;
       _apiKey.text = storedKey;
 
       _fallbackEndpoint.text = savedFallbackEndpoint.isEmpty ? kFreeFallbackUrl : savedFallbackEndpoint;
@@ -336,7 +336,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final endpoint = _endpoint.text.trim();
     if (endpoint.isEmpty) throw ArgumentError('Укажите адрес AI API');
     await prefs.setString('endpoint', endpoint);
-    await prefs.setString('model', _model.text.trim().isEmpty ? kFreePrimaryModel : _model.text.trim());
+    await prefs.setString('model', _model.text.trim().isEmpty || _model.text.trim() == 'gemini-3.8-flash' ? kFreePrimaryModel : _model.text.trim());
     await _secureStorage.write(key: 'api_key', value: _apiKey.text.trim());
     await prefs.remove('api_key');
     await prefs.setString('fallback_endpoint', _fallbackEndpoint.text.trim());
@@ -352,7 +352,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _connectAndroid() async {
     final endpoint = _endpoint.text.trim();
-    final model = _model.text.trim().isEmpty ? kFreePrimaryModel : _model.text.trim();
+    final model = _model.text.trim().isEmpty || _model.text.trim() == 'gemini-3.8-flash' ? kFreePrimaryModel : _model.text.trim();
     final key = _apiKey.text.trim();
     final fallbackEndpoint = _fallbackEndpoint.text.trim();
     final fallbackKey = _fallbackKey.text.trim();
