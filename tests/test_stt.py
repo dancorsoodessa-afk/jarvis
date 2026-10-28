@@ -18,6 +18,7 @@ class TestSTT(unittest.TestCase):
         os.environ.pop("HF_TOKEN", None)
         os.environ.pop("GEMINI_API_KEY", None)
         os.environ.pop("JARVIS_CHAT_KEY", None)
+        os.environ.pop("GROQ_API_KEY", None)
 
     def tearDown(self):
         for name, value in self.old.items():
