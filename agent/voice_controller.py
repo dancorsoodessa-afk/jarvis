@@ -304,13 +304,23 @@ class VoiceController:
 
     def status(self) -> dict:
         with self._lock:
-            return {
-                "state": self._state,
-                "last_error": self._last_error,
-                "mic": "ok" if self._mic_ok else "fail",
-                "running": self._running,
-                "is_speaking": self._is_speaking.is_set(),
-            }
+            state = self._state
+            last_error = self._last_error
+            mic_ok = self._mic_ok
+            running = self._running
+        try:
+            cloud_voice_available = stt.current_engine() == "gemini" and tts.current_engine() == "gemini"
+        except Exception as exc:
+            self._log.warning("event=voice_availability_check_failed error=%s", exc)
+            cloud_voice_available = False
+        return {
+            "state": state,
+            "last_error": last_error,
+            "mic": "ok" if mic_ok else "fail",
+            "cloud_voice_available": cloud_voice_available,
+            "running": running,
+            "is_speaking": self._is_speaking.is_set(),
+        }
 
     def start(self) -> None:
         with self._lock:
@@ -402,6 +412,7 @@ class VoiceController:
             state = self.status()
             self.speak(
                 f"Состояние голоса: {state['state']}. Микрофон: {state['mic']}. " +
+                f"Облачный голос доступен: {'да' if state['cloud_voice_available'] else 'нет'}. " +
                 (f"Последняя ошибка: {state['last_error']}" if state["last_error"] else "Ошибок нет.")
             )
             return
