@@ -1303,7 +1303,7 @@ class JarvisDesktop(tk.Tk):
             ("Голос Gemini", "tts_voice", self.settings.get("tts_voice", "Charon"), False),
             ("Модель TTS", "tts_model", self.settings.get("tts_model", "gemini-3.8-flash-tts"), False),
             ("Тайм-аут TTS, сек.", "tts_timeout", self.settings.get("tts_timeout", "45"), False),
-            ("Модель STT Gemini", "stt_model", self.settings.get("stt_model", "gemini-3.8-flash"), False),
+            ("Модель STT Gemini", "stt_model", self.settings.get("stt_model", "gemini-3.5-flash-lite"), False),
             ("Ключ Groq STT (резерв)", "groq_stt_api_key", self.settings.get("groq_stt_api_key", ""), True),
             ("Модель резервного STT", "stt_fallback_model", self.settings.get("stt_fallback_model", "whisper-large-v3-turbo"), False),
             ("Тайм-аут STT, сек.", "stt_timeout", self.settings.get("stt_timeout", "45"), False),
