@@ -15,7 +15,7 @@ const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
 const kFreePrimaryUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
-const kFreePrimaryModel = 'gemini-3.8-flash';
+const kFreePrimaryModel = '';
 const kFreeFallbackUrl = '';
 const kFreeFallbackModel = '';
 
@@ -306,7 +306,16 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       // Preserve the user's configured OpenAI-compatible provider and key.
       // A stale model ID is the common cause of a "connected" UI with failed chat.
       _endpoint.text = storedEndpoint.isEmpty ? kFreePrimaryUrl : storedEndpoint;
-      _model.text = storedModel.isEmpty ? kFreePrimaryModel : storedModel;
+      final googleEndpoint = Uri.tryParse(_endpoint.text)?.host.toLowerCase() ==
+          'generativelanguage.googleapis.com';
+      final staleCrossProviderModel = googleEndpoint &&
+          storedModel.toLowerCase().startsWith('openrouter/');
+      // Old versions could save OpenRouter model IDs under Gemini. Clear that
+      // mismatch so the client can discover models allowed by this API key.
+      _model.text = staleCrossProviderModel
+          ? ''
+          : (storedModel.isEmpty ? kFreePrimaryModel : storedModel);
+      if (staleCrossProviderModel) await prefs.setString('model', '');
       _apiKey.text = storedKey;
 
       _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? '';
@@ -362,8 +371,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
     JarvisIpc? candidate;
     try {
-      if (mounted) setState(() => _status = 'Проверяю ответ Gemini…');
+      if (mounted) setState(() => _status = 'Проверяю подключение к AI API…');
       _setVisual(JarvisVisualState.thinking);
+
+      // Persist entered credentials securely even if the first connection
+      // check fails, so users do not lose the key while correcting settings.
+      await _saveSettings();
 
       // Keep the active connection alive until the replacement has passed
       // a real chat probe. Failed settings/network attempts must not break a
@@ -378,6 +391,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       );
       candidate = next;
       await next.checkConnection();
+      _model.text = next.resolvedModel ?? _model.text.trim();
       await _saveSettings();
 
       final previous = _jarvis;
@@ -707,7 +721,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           const Align(alignment: Alignment.centerLeft, child: Text('Основной AI-провайдер', style: TextStyle(fontWeight: FontWeight.bold))),
           TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Base URL', hintText: 'https://generativelanguage.googleapis.com/v1beta/openai')),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: 'gemini-3.8-flash')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель (необязательно)', hintText: 'Оставьте пустым для автоопределения')),
           const SizedBox(height: 10),
           const Align(alignment: Alignment.centerLeft, child: Text('Резервный AI (необязательно)', style: TextStyle(fontWeight: FontWeight.bold))),
           TextField(controller: _fallbackEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Резервный Base URL')),
@@ -715,7 +729,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           TextField(controller: _fallbackModel, decoration: const InputDecoration(labelText: 'Резервная модель')),
           const SizedBox(height: 8),
           const Text(
-            'Для Gemini: создайте ключ в Google AI Studio. Бесплатный тариф и доступность моделей зависят от региона и лимитов. URL и модель не блокируются.',
+            'Для Gemini: ключ из Google AI Studio. Если модель не указана, JARVIS найдёт доступные модели через API. Доступность зависит от ключа и квоты.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 4),
