@@ -83,7 +83,7 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
     tools.register("cloudflare_analytics",universal.cloudflare_analytics,description="Получить данные Cloudflare Analytics GraphQL по запросу пользователя.",parameters={"query":"GraphQL query, необязательно"})
     tools.register("manageengine_monitor",universal.manageengine_monitor,description="Получить данные из ManageEngine Applications Manager REST API.",parameters={"path":"путь API без базового URL"})
     tools.register("edit_file",universal.edit_file,confirm=True,description="Изменить UTF-8 текстовый файл точной заменой. Создаёт резервную копию и требует подтверждения.",parameters={"path":"путь к файлу","old":"точный старый текст","new":"новый текст","count":"сколько замен, по умолчанию 1"})
-    tools.register("run_command",universal.run_command,confirm=True,description="Выполнить команду Windows для диагностики, сборки или исправления проекта. Требует подтверждения.",parameters={"command":"команда Windows"})
+    # Arbitrary shell execution is intentionally not exposed as an AI tool; use dedicated actions.
     tools.register("shutdown",universal.shutdown,confirm=True,description="Выключить, перезагрузить или перевести Windows в сон. Требует подтверждения.",parameters={"action":"shutdown, restart или sleep"})
     tools.register("open_folder",apps.open_path,description="Открыть папку или файл в Проводнике Windows.",parameters={"path":"путь к папке или файлу"})
     tools.register("status",system.status,description="Показать статус системы (ОС, CPU, RAM, диски). Не принимает аргументов.")
