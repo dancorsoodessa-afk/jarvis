@@ -138,7 +138,7 @@ class AudioCapture:
 
                     now = time.monotonic()
                     baseline = sorted(noise)[len(noise) // 2] if noise else 0.0
-                    threshold = max(0.0045, baseline * 2.0)
+                    threshold = max(0.0025, min(0.015, baseline * 2.5 + 0.001))
                     if level >= threshold:
                         if not frames:
                             started = now
