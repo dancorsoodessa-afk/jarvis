@@ -35,6 +35,45 @@ DEFAULT_PROVIDER = "gemini"
 DEFAULT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
 
+_CPU_TIMES_PREVIOUS = None
+
+
+def _cpu_activity_level() -> float:
+    """Return normalized Windows CPU activity for the live 3D scene (0.0–1.0)."""
+    global _CPU_TIMES_PREVIOUS
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        if os.name != "nt":
+            return 0.0
+
+        idle = wintypes.FILETIME()
+        kernel = wintypes.FILETIME()
+        user = wintypes.FILETIME()
+        ok = ctypes.windll.kernel32.GetSystemTimes(
+            ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
+        )
+        if not ok:
+            return 0.0
+
+        def ticks(value):
+            return (value.dwHighDateTime << 32) | value.dwLowDateTime
+
+        current = (ticks(idle), ticks(kernel), ticks(user))
+        previous = _CPU_TIMES_PREVIOUS
+        _CPU_TIMES_PREVIOUS = current
+        if previous is None:
+            return 0.0
+        idle_delta = current[0] - previous[0]
+        total_delta = (current[1] - previous[1]) + (current[2] - previous[2])
+        if total_delta <= 0:
+            return 0.0
+        return max(0.0, min(1.0, (total_delta - idle_delta) / total_delta))
+    except Exception:
+        return 0.0
+
+
 def _safe_endpoint(value: str | None) -> str:
     """Preserve explicitly configured OpenAI-compatible endpoints, including localhost."""
     url = (value or "").strip()
@@ -110,7 +149,11 @@ class JarvisDesktop(tk.Tk):
         self._build_ui()
         # The Three.js scene is served locally; no camera access is requested.
         self._visual_server, self._visual_url = start_visual_server(
-            lambda: {"state": self._visual_state, "level": self._visual_level}
+            lambda: {
+                "state": self._visual_state,
+                "level": self._visual_level,
+                "cpu": _cpu_activity_level(),
+            }
         )
         self.after(900, self._open_3d_scene)
         self._start_agent()
