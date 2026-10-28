@@ -73,11 +73,13 @@ class AudioCapture:
     """Owns exactly one InputStream at a time and segments speech by silence."""
 
     def __init__(self, mic_lock: MicLock, is_speaking: Callable[[], bool],
-                 on_phrase: Callable[[bytes], None], on_level: Callable[[float], None]):
+                 on_phrase: Callable[[bytes], None], on_level: Callable[[float], None],
+                 on_mic_status: Callable[[bool], None]):
         self._mic_lock = mic_lock
         self._is_speaking = is_speaking
         self._on_phrase = on_phrase
         self._on_level = on_level
+        self._on_mic_status = on_mic_status
         self._stop = threading.Event()
         self.mic_ok = False
 
@@ -107,6 +109,7 @@ class AudioCapture:
                 with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                                     blocksize=block_size, device=device, latency="low") as stream:
                     self.mic_ok = True
+                    self._on_mic_status(True)
                     _logger().info("event=mic_open device=%s sample_rate=%s", device, SAMPLE_RATE)
                     noise_levels: list[float] = []
                     frames: list[bytes] = []
@@ -153,6 +156,7 @@ class AudioCapture:
                             self._on_phrase(phrase)
             finally:
                 self.mic_ok = False
+                self._on_mic_status(False)
                 self._mic_lock.release()
         _logger().info("event=mic_closed")
 
@@ -256,6 +260,8 @@ class VoiceController:
         self._set_state("UNDERSTANDING")
         try:
             self._on_text_callback(text)
+            if self._running:
+                self._set_state("THINKING")
         except Exception as exc:
             self._log.exception("event=command_callback_error")
             self._recover(f"Не удалось передать команду: {exc}")
@@ -282,6 +288,7 @@ class VoiceController:
                 self._capture = AudioCapture(
                     self._mic_lock, self._is_speaking.is_set,
                     self._enqueue_phrase, lambda level: self.ui.post("audio_level", level),
+                    lambda ok: setattr(self, "_mic_ok", ok),
                 )
                 self._capture.run()
                 self._mic_ok = self._capture.mic_ok
