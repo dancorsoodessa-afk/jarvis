@@ -715,7 +715,6 @@ class JarvisDesktop(tk.Tk):
                         self._append("VOICE", "STT: " + event[1])
                     elif kind == "reply_delta":
                         self._streaming_reply = getattr(self, "_streaming_reply", "") + str(event[1])
-                        self._set_visual_state("THINKING", 0.7)
                         self._replace_streaming_reply(self._streaming_reply)
                     elif kind == "reply":
                         reply = event[1]
@@ -729,15 +728,11 @@ class JarvisDesktop(tk.Tk):
                         self.attach_button.config(state="normal")
                         self.status.config(text="● ONLINE", fg=GREEN)
                         if self.settings.get("tts_enabled", True):
-                            self._set_visual_state("THINKING", 0.35)
                             threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
                         else:
-                            self._set_visual_state("IDLE", 0.0)
+                            self.voice_controller.complete_without_speech()
                     elif kind == "audio_level":
-                        if not self.busy and self._visual_state not in {"THINKING", "SPEAKING", "ERROR"}:
-                            self._set_visual_state("LISTENING", event[1])
-                        else:
-                            self._visual_level = max(0.0, min(1.0, float(event[1])))
+                        self._visual_level = max(0.0, min(1.0, float(event[1])))
                     elif kind == "voice_capture_done":
                         if not self.busy and self._visual_state == "LISTENING":
                             self._set_visual_state("IDLE", 0.0)
@@ -748,7 +743,6 @@ class JarvisDesktop(tk.Tk):
                         if not self.busy:
                             self._set_visual_state("IDLE", 0.0)
                     elif kind == "voice_text":
-                        self._set_visual_state("LISTENING", 0.75)
                         if self.busy:
                             continue
                         self.input.delete(0, "end")
@@ -780,11 +774,11 @@ class JarvisDesktop(tk.Tk):
                         self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
                         self._append("VOICE", "Прослушивание остановлено: " + event[1] + " Нажмите «Голос», чтобы повторить запуск.")
                     elif kind == "tts_error":
-                        self._set_visual_state("ERROR")
+                        self.voice_controller.report_error(str(event[1]))
                         self.metrics["TTS"].config(text="ERROR", fg=RED)
                         self._append("VOICE", "Не удалось озвучить ответ: " + event[1])
                     elif kind == "request_error":
-                        self._set_visual_state("ERROR")
+                        self.voice_controller.report_error(str(event[1]))
                         self.status.config(text="● API ERROR", fg=RED)
                         self._append("AI", "Запрос не выполнен: " + event[1])
                         self.busy = False
@@ -795,7 +789,7 @@ class JarvisDesktop(tk.Tk):
                         if len(event) > 2 and event[2] != self._agent_generation:
                             continue
                         self._agent_start_pending = False
-                        self._set_visual_state("ERROR")
+                        self.voice_controller.report_error(str(event[1]))
                         self.status.config(text="● ERROR", fg=RED)
                         self._append("SYSTEM", "Не удалось запустить ядро: " + event[1])
                         self.busy = False
@@ -952,7 +946,7 @@ class JarvisDesktop(tk.Tk):
         attachment_payload=self._build_attachment_payload()
         self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
         self.status.config(text="● PROCESSING",fg=CYAN)
-        self._set_visual_state("THINKING", 0.55)
+        self.voice_controller.mark_thinking()
         def work():
             provider = getattr(self.agent, "provider", None)
             try:
