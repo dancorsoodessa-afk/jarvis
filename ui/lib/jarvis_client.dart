@@ -15,10 +15,8 @@ class JarvisReply {
 }
 
 class JarvisIpc {
-  JarvisIpc._({Process? process, HttpClient? client, String? url, String? key, String? model,
-      String? fallbackUrl, String? fallbackKey, String? fallbackModel})
-      : _process = process, _httpClient = client, _apiUrl = url, _apiKey = key, _model = model,
-        _fallbackUrl = fallbackUrl, _fallbackKey = fallbackKey, _fallbackModel = fallbackModel;
+  JarvisIpc._({Process? process, HttpClient? client, String? url, String? key, String? model}
+      : _process = process, _httpClient = client, _apiUrl = url, _apiKey = key, _model = model;
 
   static String _normalize(String value) {
     var v = value.trim().replaceFirst(RegExp(r'/+$'), '');
@@ -29,16 +27,14 @@ class JarvisIpc {
   static Future<JarvisIpc> spawn(String executable, [List<String> args = const ['--ipc']]) async =>
       JarvisIpc._(process: await Process.start(executable, args));
 
-  static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = '',
-      String fallbackUrl = '', String fallbackKey = '', String fallbackModel = ''}) async {
+  static Future<JarvisIpc> connectAi(String apiUrl, {String model = '', String apiKey = ''}) async {
     final url = _normalize(apiUrl);
     if (url.isEmpty) throw ArgumentError('AI URL не указан');
     if (apiKey.trim().isEmpty) throw ArgumentError('API key не указан');
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15)
       ..idleTimeout = const Duration(seconds: 90);
-    return JarvisIpc._(client: client, url: url, key: apiKey.trim(), model: model.trim(),
-      fallbackUrl: _normalize(fallbackUrl), fallbackKey: fallbackKey.trim(), fallbackModel: fallbackModel.trim());
+    return JarvisIpc._(client: client, url: url, key: apiKey.trim(), model: model.trim());
   }
 
   final Process? _process;
@@ -46,9 +42,6 @@ class JarvisIpc {
   final String? _apiUrl;
   final String? _apiKey;
   final String? _model;
-  final String? _fallbackUrl;
-  final String? _fallbackKey;
-  final String? _fallbackModel;
   bool _listening = false;
   StreamSubscription<String>? _stdoutSub;
   StreamSubscription<String>? _stderrSub;
@@ -189,14 +182,6 @@ class JarvisIpc {
       await _probeChat(_apiUrl!, _apiKey!, _model ?? '', 'Основной AI');
       return;
     } catch (primary) {
-      if ((_fallbackUrl ?? '').isNotEmpty && (_fallbackKey ?? '').isNotEmpty) {
-        try {
-          await _probeChat(_fallbackUrl!, _fallbackKey!, _fallbackModel ?? '', 'Резервный AI');
-          return;
-        } catch (fallback) {
-          throw StateError('Основной AI недоступен: $primary. Резервный AI недоступен: $fallback');
-        }
-      }
       if (_isGoogleEndpoint(_apiUrl!) && _isCapacityError(primary)) {
         final failures = <String>[];
         for (final model in _googleFallbackModels(_model ?? '')) {
@@ -321,16 +306,6 @@ class JarvisIpc {
       if (_history.length > 40) _history.removeRange(0, _history.length - 40);
       return r;
     } catch (primary) {
-      if ((_fallbackUrl ?? '').isNotEmpty && (_fallbackKey ?? '').isNotEmpty) {
-        try {
-          final r = await _call(_fallbackUrl!, _fallbackKey!, _fallbackModel ?? '', text);
-          _history..add({'role': 'user', 'content': text})..add({'role': 'assistant', 'content': r.text});
-          if (_history.length > 40) _history.removeRange(0, _history.length - 40);
-          return r;
-        } catch (fallback) {
-          throw StateError('Основной AI недоступен: $primary. Резервный AI недоступен: $fallback');
-        }
-      }
       if (_isGoogleEndpoint(_apiUrl!) && _isCapacityError(primary)) {
         final failures = <String>[];
         for (final model in _googleFallbackModels(_model ?? '')) {
