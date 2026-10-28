@@ -44,8 +44,13 @@ def _device():
 
 
 def _rms(block) -> float:
+    """Return RMS amplitude normalized to the float audio range 0.0–1.0.
+
+    InputStream is configured with dtype=int16, so divide the raw RMS by the
+    full-scale int16 amplitude exactly once.
+    """
     import numpy as np
-    a = np.asarray(block, dtype="float32")
+    a = np.asarray(block, dtype=np.float32)
     if a.size == 0:
         return 0.0
     return float(np.sqrt(np.mean(a * a))) / 32768.0
@@ -89,6 +94,40 @@ def _calibrate(stream, blocks: int, block_size: int) -> float:
     return max(0.0025, levels[max(0, int(len(levels) * 0.75) - 1)])
 
 
+def _supported_capture_rate(sd, requested_rate: int, device) -> int:
+    """Use the requested rate when supported; otherwise use the input device's default."""
+    try:
+        sd.check_input_settings(device=device, samplerate=requested_rate, channels=1, dtype="int16")
+        return requested_rate
+    except Exception as requested_error:
+        try:
+            info = sd.query_devices(device, "input")
+            fallback = int(round(float(info.get("default_samplerate") or 0)))
+            if fallback <= 0:
+                raise RuntimeError("У микрофона не указан допустимый sample rate.")
+            sd.check_input_settings(device=device, samplerate=fallback, channels=1, dtype="int16")
+            return fallback
+        except Exception as fallback_error:
+            raise RuntimeError(
+                f"Микрофон не поддерживает {requested_rate} Гц; "
+                f"резервная частота ввода также недоступна: {fallback_error}"
+            ) from requested_error
+
+
+def _resample_frames(frames, source_rate: int, target_rate: int):
+    """Resample concatenated mono int16 frames without an optional DSP dependency."""
+    import numpy as np
+    samples = np.concatenate(frames).astype(np.float32)
+    if source_rate == target_rate or samples.size == 0:
+        return [samples.astype(np.int16)]
+    output_size = max(1, int(round(samples.size * target_rate / source_rate)))
+    source_positions = np.arange(samples.size, dtype=np.float64)
+    target_positions = np.arange(output_size, dtype=np.float64) * source_rate / target_rate
+    target_positions = np.minimum(target_positions, max(0, samples.size - 1))
+    converted = np.interp(target_positions, source_positions, samples)
+    return [np.clip(np.rint(converted), -32768, 32767).astype(np.int16)]
+
+
 def listen_for_phrase(
     samplerate: int = SAMPLE_RATE,
     silence_seconds: float = 0.55,
@@ -103,7 +142,10 @@ def listen_for_phrase(
     import numpy as np
     import sounddevice as sd
 
-    block_size = max(160, int(samplerate * BLOCK_SECONDS))
+    target_samplerate = samplerate
+    device = _device()
+    capture_samplerate = _supported_capture_rate(sd, target_samplerate, device)
+    block_size = max(160, int(capture_samplerate * BLOCK_SECONDS))
     silence_blocks = max(1, int(silence_seconds / BLOCK_SECONDS))
     timeout_blocks = max(0, int(start_timeout / BLOCK_SECONDS))
     max_blocks = max(1, int(max_seconds / BLOCK_SECONDS))
@@ -119,8 +161,8 @@ def listen_for_phrase(
 
     try:
         with sd.InputStream(
-            samplerate=samplerate, channels=1, dtype="int16", blocksize=block_size,
-            device=_device(), latency="low",
+            samplerate=capture_samplerate, channels=1, dtype="int16", blocksize=block_size,
+            device=device, latency="low",
         ) as stream:
             noise = _calibrate(stream, 6, block_size)
             speech_threshold = max(0.006, noise * 1.8)
@@ -175,7 +217,9 @@ def listen_for_phrase(
 
     if not started or len(chunks) < int(SPEECH_MIN_SECONDS / BLOCK_SECONDS):
         return ""
-    return _recognize(chunks, samplerate)
+    if capture_samplerate != target_samplerate:
+        chunks = _resample_frames(chunks, capture_samplerate, target_samplerate)
+    return _recognize(chunks, target_samplerate)
 
 
 

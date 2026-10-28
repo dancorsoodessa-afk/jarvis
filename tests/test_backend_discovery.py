@@ -28,7 +28,7 @@ class TestCloudOnlyConfiguration(unittest.TestCase):
             "https://openrouter.ai/api/v1/chat/completions",
         ):
             provider = OpenAIChatProvider(url=url, api_key="test", model="test")
-            with self.assertRaisesRegex(RuntimeError, "Разрешены только защищённые официальные endpoint Gemini и Groq"):
+            with self.assertRaisesRegex(RuntimeError, "Разрешён только официальный endpoint Gemini"):
                 provider._ensure_endpoint()
 
     def test_provider_defaults_to_gemini_endpoint(self):

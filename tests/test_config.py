@@ -8,22 +8,19 @@ def test_default_endpoint_is_gemini():
     assert normalize_chat_url(None) == DEFAULT_CHAT_URL
 
 
-def test_all_configured_endpoints_are_forced_to_gemini():
-    assert normalize_chat_url("https://router.huggingface.co/v1/chat/completions") == DEFAULT_CHAT_URL
-    assert normalize_chat_url("https://api.groq.com/openai/v1/chat/completions") == DEFAULT_CHAT_URL
+def test_only_official_gemini_endpoint_is_used():
+    assert normalize_chat_url("https://example.invalid/v1/chat/completions") == DEFAULT_CHAT_URL
     assert normalize_chat_url("http://localhost:11434/v1/chat/completions") == DEFAULT_CHAT_URL
 
 
 def test_only_gemini_provider_is_allowed():
     assert normalize_provider(None) == "gemini"
     assert normalize_provider("gemini") == "gemini"
-    assert normalize_provider("huggingface") == "gemini"
-    assert normalize_provider("groq") == "gemini"
+    assert normalize_provider("unsupported") == "gemini"
 
 
-def test_settings_load_gemini_key_without_huggingface_token(monkeypatch):
+def test_settings_load_gemini_key(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
-    monkeypatch.delenv("HF_TOKEN", raising=False)
     settings = Settings.from_env()
     assert settings.provider == "gemini"
     assert settings.chat_key == "gemini-test-key"

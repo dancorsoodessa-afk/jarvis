@@ -56,12 +56,12 @@ class OpenAIChatProvider:
         if not self.url:
             self.url = DEFAULT_CHAT_URL
         parsed = urlsplit(self.url)
-        allowed_hosts = {"generativelanguage.googleapis.com", "api.groq.com"}
+        allowed_hosts = {"generativelanguage.googleapis.com"}
         if parsed.scheme != "https" or parsed.hostname not in allowed_hosts or not parsed.path.endswith("/chat/completions"):
-            raise RuntimeError("Разрешены только защищённые официальные endpoint Gemini и Groq.")
+            raise RuntimeError("Разрешён только официальный endpoint Gemini.")
 
     def _provider_name(self) -> str:
-        return "Groq" if urllib.parse.urlsplit(self.url).hostname == "api.groq.com" else "Gemini"
+        return "Gemini"
 
     def _messages(self, prompt) -> list[dict]:
         messages = [{"role": "system", "content": self.system_prompt}]
@@ -99,14 +99,11 @@ class OpenAIChatProvider:
 
     @staticmethod
     def _normalize_model(model: str) -> str:
-        # Groq model IDs are passed through unchanged.
         return model.strip()
 
     def _auth_headers(self, *, stream: bool = False) -> dict:
         if not self.api_key:
             host = urllib.parse.urlsplit(self.url).hostname or ""
-            if host == "api.groq.com":
-                raise RuntimeError("Не задан GROQ_API_KEY. Добавьте отдельный ключ Groq в Центре управления JARVIS.")
             raise RuntimeError("Не задан GEMINI_API_KEY. Создайте ключ в Google AI Studio и добавьте его в Центре управления JARVIS.")
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
         if stream:

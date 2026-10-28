@@ -5,7 +5,6 @@ JARVIS is a Windows desktop assistant with a graphical interface, memory, OS too
 ## Architecture
 
 - **Primary cloud AI:** Google Gemini API using the official OpenAI-compatible endpoint.
-- **Independent chat fallback:** Groq Cloud, configured with its own optional API key, model, timeout, and live endpoint check. If Groq is not configured, it is explicitly reported as unavailable.
 - **Voice recognition:** microphone capture on the PC plus cloud Gemini transcription; requires internet and the Gemini API key.
 - **Voice output:** cloud Gemini TTS with a configurable voice, model, and timeout.
 - **3D interface:** real Three.js/WebGL neural reactor served locally and opened in the browser. The scene reacts to live microphone level and the assistant's listening, thinking, speaking, and error states.
@@ -24,7 +23,7 @@ Alternatively, for the current PowerShell session:
 $env:GEMINI_API_KEY = "your_gemini_api_key"
 ```
 
-Default model: `gemini-3.8-flash`. The free tier has model-specific rate limits and may change. Do not enable billing if you require strictly free usage. Free-tier requests may be subject to Google's data-use terms; review the current policy before sending sensitive data.
+Default model: `gemini-3.8-flash`. Gemini is the only configured chat provider; role fallback stays within Gemini models. The free tier has model-specific rate limits and may change. Do not enable billing if you require strictly free usage. Free-tier requests may be subject to Google's data-use terms; review the current policy before sending sensitive data.
 
 ## Build on Windows
 

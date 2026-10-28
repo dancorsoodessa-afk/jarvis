@@ -52,16 +52,8 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         additional = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.additional_model or default_model,
                                         timeout=timeout, history=history, fallback_models=fallback_candidates)
         providers = {"fast": fast, "reasoning": reasoning, "coding": coding, "additional": additional}
-        # Groq is an independent optional cloud backend, not another Gemini role.
-        if settings.groq_key:
-            providers["groq"] = OpenAIChatProvider(
-                url="https://api.groq.com/openai/v1/chat/completions",
-                api_key=settings.groq_key,
-                model=settings.groq_model or "openai/gpt-oss-120b",
-                timeout=max(5, min(180, int(settings.groq_timeout))),
-                history=history,
-            )
-        provider = RoleRouterProvider(providers, fallback_order=("fast", "reasoning", "coding", "additional", "groq"))
+        # Gemini is the only supported cloud provider. Role fallback stays within Gemini.
+        provider = RoleRouterProvider(providers, fallback_order=("fast", "reasoning", "coding", "additional"))
     else:
         raise RuntimeError("JARVIS поддерживает только Gemini API Google.")
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))

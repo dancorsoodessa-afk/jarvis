@@ -91,7 +91,6 @@ def _safe_model_id(value: str | None, fallback: str) -> str:
 _SECRET_SETTING_KEYS = {
     "api_key",
     "gemini_api_key",
-    "groq_api_key",
     "smtp_password",
     "cloudflare_token",
     "manageengine_key",
@@ -207,9 +206,6 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
         os.environ["GEMINI_API_KEY"] = profile["api_key"]
         # An explicitly empty saved key means disconnected; do not resurrect a stale environment key.
-        os.environ["GROQ_API_KEY"] = str(self.settings.get("groq_api_key") or (os.environ.get("GROQ_API_KEY") if "groq_api_key" not in self.settings else "") or "")
-        os.environ["JARVIS_GROQ_MODEL"] = str(self.settings.get("groq_model") or "openai/gpt-oss-120b")
-        os.environ["JARVIS_GROQ_TIMEOUT"] = str(self.settings.get("groq_timeout") or "30")
         os.environ["JARVIS_GEMINI_TIMEOUT"] = str(self.settings.get("gemini_timeout") or "30")
         # Optional integrations are configured from the control center. Explicitly
         # cleared settings override stale process environment values.
@@ -442,7 +438,7 @@ class JarvisDesktop(tk.Tk):
         tk.Label(right, text="REAL-TIME SYSTEM STATUS", bg="#070d16", fg=MUTED,
                  font=("Consolas", 7)).pack(anchor="w", padx=14, pady=(0,12))
         self.metrics = {}
-        for name in ("Core","AI Provider","Gemini API","Groq API","Memory","Tools","Voice","TTS"):
+        for name in ("Core","AI Provider","Gemini API","Memory","Tools","Voice","TTS"):
             row=tk.Frame(right,bg="#0a131f",highlightbackground="#13283a",highlightthickness=1)
             row.pack(fill="x",padx=10,pady=4)
             tk.Label(row,text=name,bg="#0a131f",fg=MUTED,font=("Consolas",8)).pack(side="left",padx=9,pady=9)
@@ -467,7 +463,7 @@ class JarvisDesktop(tk.Tk):
                       highlightthickness=1).pack(fill="x",padx=10,pady=3)
         tk.Label(right,text="AI-МАРШРУТИЗАЦИЯ",bg="#070d16",fg=MUTED,
                  font=("Consolas",8,"bold")).pack(anchor="w",padx=14,pady=(15,5))
-        tk.Label(right,text="Gemini — основной ИИ\nGroq — отдельный резерв\nОблачный STT и TTS",
+        tk.Label(right,text="Gemini — облачный ИИ\nРаспознавание и озвучка речи",
                  bg="#070d16",fg="#8297a5",justify="left",font=("Segoe UI",8),wraplength=235).pack(anchor="w",padx=14)
     def _set_visual_state(self, state, level=None):
         self._visual_state = state
@@ -657,7 +653,7 @@ class JarvisDesktop(tk.Tk):
                         self.agent = event[1]
                         self.tool_names = list(self.agent.tools.names())
                         configured_providers = getattr(self.agent.provider, "providers", {})
-                        provider = "GEMINI PRIMARY" + (" / GROQ BACKUP" if "groq" in configured_providers else "")
+                        provider = "GEMINI CLOUD"
                         # Building the local agent does not prove that the remote API is reachable.
                         self.status.config(text="● ГОТОВ", fg=YELLOW)
                         self.hud_text.config(text="Ядро готово\nAI: " + provider + "\nAPI: проверка при запросе")
@@ -680,8 +676,7 @@ class JarvisDesktop(tk.Tk):
                             color = GREEN if status_text == "ONLINE" else MUTED if status_text == "OFF" else YELLOW if status_text in {"CONFIGURED", "KEY SET"} else RED
                             self.metrics[label].config(text=status_text[:18], fg=color)
                         gemini_status = event[1].get("Gemini API", "UNKNOWN")
-                        groq_status = event[1].get("Groq API", "NOT CONFIGURED")
-                        self._append("SYSTEM", f"Проверка провайдеров — Gemini: {gemini_status}; Groq: {groq_status}")
+                        self._append("SYSTEM", f"Проверка Gemini API: {gemini_status}")
                     elif kind == "stt_ready":
                         self._stt_online = True
                         self.metrics["Voice"].config(text="ONLINE", fg=GREEN)
@@ -1131,7 +1126,7 @@ class JarvisDesktop(tk.Tk):
         win.grab_set()
         tk.Label(win, text="ЦЕНТР УПРАВЛЕНИЯ JARVIS", bg=PANEL, fg=CYAN,
                  font=("Segoe UI", 19, "bold")).pack(anchor="w", padx=24, pady=(22, 4))
-        tk.Label(win, text="Gemini — основной ИИ, Groq — независимый резерв. Gemini также обслуживает облачный STT и TTS.",
+        tk.Label(win, text="Gemini обслуживает чат, распознавание и облачную озвучку речи.",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(0, 16))
 
         body = tk.Frame(win, bg=PANEL)
@@ -1187,32 +1182,13 @@ class JarvisDesktop(tk.Tk):
         shared_key.bind("<Control-v>", lambda _e: self.after(20, lambda: shared_key.icursor("end")))
         shared_key.bind("<Control-V>", lambda _e: self.after(20, lambda: shared_key.icursor("end")))
 
-        groq_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
-        groq_row.pack(fill="x", pady=(0, 10))
-        tk.Label(groq_row, text="РЕЗЕРВНЫЙ ПРОВАЙДЕР GROQ (НЕ ЗАВИСИТ ОТ GEMINI)", bg="#091b29", fg=TEXT,
+        gemini_timeout_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
+        gemini_timeout_row.pack(fill="x", pady=(0, 10))
+        tk.Label(gemini_timeout_row, text="ТАЙМ-АУТ GEMINI, СЕКУНДЫ", bg="#091b29", fg=TEXT,
                  font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
-        groq_key = tk.Entry(groq_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•", exportselection=False)
-        groq_key.insert(0, str(self.settings.get("groq_api_key") or os.environ.get("GROQ_API_KEY", "")))
-        groq_key.pack(fill="x", padx=14, pady=(0, 6), ipady=8)
-        tk.Button(groq_row, text="ОЧИСТИТЬ КЛЮЧ GROQ",
-                  command=lambda: clear_entry(groq_key), bg="#572637", fg=TEXT,
-                  activebackground="#7a3046", relief="flat", padx=10, pady=5).pack(anchor="e", padx=14, pady=(0, 8))
-        groq_fields = {}
-        for label, key, default in (
-            ("Модель Groq", "groq_model", self.settings.get("groq_model", "openai/gpt-oss-120b")),
-            ("Тайм-аут Groq, сек.", "groq_timeout", self.settings.get("groq_timeout", "30")),
-            ("Тайм-аут Gemini, сек.", "gemini_timeout", self.settings.get("gemini_timeout", "30")),
-        ):
-            row = tk.Frame(groq_row, bg="#091b29")
-            row.pack(fill="x", padx=14, pady=3)
-            tk.Label(row, text=label, width=22, anchor="w", bg="#091b29", fg=MUTED).pack(side="left")
-            entry = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
-            entry.insert(0, str(default))
-            entry.pack(side="left", fill="x", expand=True, ipady=6)
-            tk.Button(row, text="×", command=lambda e=entry: clear_entry(e), bg="#572637", fg=TEXT, relief="flat", width=3).pack(side="left", padx=(6, 0))
-            groq_fields[key] = entry
-        tk.Label(groq_row, text="Ключ создаётся отдельно в GroqCloud. Без ключа резервный провайдер отключён.",
-                 bg="#091b29", fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=14, pady=(6, 10))
+        gemini_timeout = tk.Entry(gemini_timeout_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
+        gemini_timeout.insert(0, str(self.settings.get("gemini_timeout", "30")))
+        gemini_timeout.pack(fill="x", padx=14, pady=(0, 10), ipady=6)
 
         additional_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
         additional_row.pack(fill="x", pady=(2, 10))
@@ -1313,11 +1289,9 @@ class JarvisDesktop(tk.Tk):
                 new_profiles[str(i)] = {"provider": "gemini", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "gemini-3.8-flash", "api_key": shared_key.get().strip(), "name": names[i]}
             self.settings["agents"] = new_profiles
             self.settings["gemini_api_key"] = shared_key.get().strip()
-            self.settings["groq_api_key"] = groq_key.get().strip()
             for key, entry in integration_fields.items():
                 self.settings[key] = entry.get().strip()
-            for key, entry in groq_fields.items():
-                self.settings[key] = entry.get().strip()
+            self.settings["gemini_timeout"] = gemini_timeout.get().strip() or "30"
             self.settings.pop("hf_token", None)
             self.settings["additional_model"] = additional_model.get().strip() or "gemini-3.8-flash"
             self.settings["active_agent"] = active
@@ -1383,5 +1357,40 @@ class JarvisDesktop(tk.Tk):
         self.destroy()
 
 
+def _run_desktop():
+    """Launch the UI and persist a traceback if initialization crashes."""
+    import traceback
+
+    try:
+        app = JarvisDesktop()
+        app.mainloop()
+    except Exception:
+        details = traceback.format_exc()
+        log_dir = Path(os.environ.get("APPDATA", str(Path.home()))) / "JARVIS"
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / "startup-error.log").write_text(details, encoding="utf-8")
+        except OSError:
+            pass
+        try:
+            root = getattr(tk, "_default_root", None)
+            created_root = root is None
+            if created_root:
+                root = tk.Tk()
+                root.withdraw()
+            messagebox.showerror(
+                "JARVIS — ошибка запуска",
+                "Приложение не смогло запуститься. Подробный traceback сохранён в:\n"
+                + str(log_dir / "startup-error.log")
+                + "\n\n"
+                + details[-1800:],
+                parent=root,
+            )
+            if created_root:
+                root.destroy()
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
-    JarvisDesktop().mainloop()
+    _run_desktop()

@@ -85,34 +85,6 @@ def test_router_skips_same_backend_after_auth_failure():
     assert providers["fast"].calls == 1
     assert providers["reasoning"].calls == 0
 
-def test_router_uses_groq_when_all_gemini_roles_share_a_failed_backend():
-    class EndpointProvider(FakeProvider):
-        def __init__(self, name, url, api_key, error=None):
-            super().__init__(name)
-            self.url = url
-            self.api_key = api_key
-            self.error = error
-        def generate(self, prompt, tools=None, max_steps=4):
-            self.calls += 1
-            if self.error:
-                raise RuntimeError(self.error)
-            return f"ok:{self.name}"
-
-    gemini_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-    providers = {
-        "fast": EndpointProvider("gemini-fast", gemini_url, "gemini-key", "Ошибка API: HTTP 503. overloaded"),
-        "reasoning": EndpointProvider("gemini-reasoning", gemini_url, "gemini-key"),
-        "coding": EndpointProvider("gemini-coding", gemini_url, "gemini-key"),
-        "additional": EndpointProvider("gemini-additional", gemini_url, "gemini-key"),
-        "groq": EndpointProvider("groq", "https://api.groq.com/openai/v1/chat/completions", "groq-key"),
-    }
-    router = RoleRouterProvider(providers)
-    assert router.generate("обычный вопрос") == "ok:groq"
-    assert providers["fast"].calls == 1
-    assert providers["reasoning"].calls == 0
-    assert providers["groq"].calls == 1
-
-
 def test_router_propagates_stream_callback_to_selected_provider():
     callback = lambda _delta: None
     providers = {r: FakeProvider(r) for r in ("fast", "reasoning", "coding", "additional")}
@@ -133,15 +105,20 @@ def test_openai_compatible_provider_fails_over_after_gemini_capacity_error():
         fallback_models=["gemini-3.8-flash", "gemini-3.5-flash-lite"],
     )
     successful = {"choices": [{"message": {"content": "резервная модель ответила", "tool_calls": []}}]}
+    submitted_payloads = []
+
+    def request_with_snapshot(payload):
+        submitted_payloads.append(dict(payload))
+        if len(submitted_payloads) == 1:
+            raise RuntimeError("Gemini временно перегружен (HTTP 503). overloaded")
+        return successful
+
     with patch.object(provider, "discover_model", return_value="gemini-3.8-flash"), \
-         patch.object(provider, "_request", side_effect=[
-             RuntimeError("Gemini временно перегружен (HTTP 503). overloaded"),
-             successful,
-         ]) as request:
+         patch.object(provider, "_request", side_effect=request_with_snapshot) as request:
         result = provider.generate("проверь резерв")
 
     assert result == "резервная модель ответила"
     assert request.call_count == 2
-    assert request.call_args_list[0].args[0]["model"] == "gemini-3.8-flash"
-    assert request.call_args_list[1].args[0]["model"] == "gemini-3.5-flash-lite"
+    assert submitted_payloads[0]["model"] == "gemini-3.8-flash"
+    assert submitted_payloads[1]["model"] == "gemini-3.5-flash-lite"
     assert provider.last_used_model == "gemini-3.5-flash-lite"

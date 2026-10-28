@@ -48,7 +48,7 @@ def test_desktop_preserves_explicit_local_api_endpoint():
 def test_voice_zero_start_timeout_does_not_immediately_return():
     source = (ROOT / "agent" / "voice.py").read_text(encoding="utf-8")
     assert "timeout_blocks = max(0, int(start_timeout / BLOCK_SECONDS))" in source
-    assert "elif timeout_blocks and idle_blocks >= timeout_blocks:" in source
+    assert "if timeout_blocks and idle_blocks >= timeout_blocks:" in source
 
 
 def test_desktop_tts_worker_does_not_touch_tk_widgets():
@@ -87,6 +87,14 @@ def test_desktop_treats_agent_provider_error_result_as_api_failure():
     source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
     assert 'str(result.text).startswith("Ошибка провайдера:")' in source
     assert 'self.events.put(("request_error", str(result.text).partition(":")[2].strip()))' in source
+
+
+def test_desktop_startup_crash_writes_traceback():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert 'def _run_desktop()' in source
+    assert 'startup-error.log' in source
+    assert 'traceback.format_exc()' in source
+    assert 'messagebox.showerror(' in source
 
 
 def test_desktop_agent_reload_ignores_stale_results_and_has_timeout():

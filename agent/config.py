@@ -32,9 +32,6 @@ class Settings:
     coding_model: str = DEFAULT_MODEL
     additional_model: str = DEFAULT_MODEL
     gemini_timeout: int = 30
-    groq_key: str = ""
-    groq_model: str = "openai/gpt-oss-120b"
-    groq_timeout: int = 30
     memory_path: str = "jarvis_memory.json"
     kg_path: str | None = None
 
@@ -54,9 +51,6 @@ class Settings:
             coding_model=os.environ.get("JARVIS_CODING_MODEL", default_model).strip() or default_model,
             additional_model=os.environ.get("JARVIS_ADDITIONAL_MODEL", default_model).strip() or default_model,
             gemini_timeout=_timeout_env("JARVIS_GEMINI_TIMEOUT", 30),
-            groq_key=os.environ.get("GROQ_API_KEY", "").strip(),
-            groq_model=os.environ.get("JARVIS_GROQ_MODEL", "openai/gpt-oss-120b").strip() or "openai/gpt-oss-120b",
-            groq_timeout=_timeout_env("JARVIS_GROQ_TIMEOUT", 30),
             memory_path=os.environ.get("JARVIS_MEMORY", "jarvis_memory.json").strip() or "jarvis_memory.json",
             kg_path=os.environ.get("JARVIS_KG"),
         )
