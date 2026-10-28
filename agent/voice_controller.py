@@ -203,6 +203,10 @@ class VoiceController:
         with self._lock:
             if self._running:
                 return
+            alive = [thread.name for thread in self._threads if thread.is_alive()]
+            if alive:
+                raise RuntimeError("Предыдущий голосовой цикл ещё останавливается: " + ", ".join(alive))
+            self._threads = []
             self._running = True
             self._stop.clear()
             self._stt_queue = queue.Queue(maxsize=3)
