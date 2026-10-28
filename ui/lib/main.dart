@@ -714,8 +714,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                   ),
                   const SizedBox(width: 7),
                   Expanded(
-                  const SizedBox(width: 7),
-                  Expanded(
                     child: _deckAction(
                       icon: Icons.tune_rounded,
                       label: 'НАСТРОЙКИ',
