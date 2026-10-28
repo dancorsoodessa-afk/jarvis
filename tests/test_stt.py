@@ -12,6 +12,8 @@ from agent import stt
 
 class TestSTT:
     def setup_method(self):
+        self.old_quota_exceeded = stt.quota_exceeded()
+        stt._set_quota_exceeded(False)
         self.old = {name: os.environ.get(name) for name in (
             "JARVIS_STT", "GEMINI_API_KEY", "JARVIS_CHAT_KEY", "JARVIS_STT_MODEL", "GROQ_API_KEY"
         )}
@@ -24,6 +26,7 @@ class TestSTT:
                 os.environ.pop(name, None)
             else:
                 os.environ[name] = value
+        stt._set_quota_exceeded(self.old_quota_exceeded)
 
     def test_cloud_gemini_is_default_when_key_exists(self):
         os.environ["GEMINI_API_KEY"] = "test-token"
