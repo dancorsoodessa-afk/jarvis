@@ -774,7 +774,6 @@ class JarvisDesktop(tk.Tk):
                         self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
                         self._append("VOICE", "Прослушивание остановлено: " + event[1] + " Нажмите «Голос», чтобы повторить запуск.")
                     elif kind == "tts_error":
-                        self.voice_controller.report_error(str(event[1]))
                         self.metrics["TTS"].config(text="ERROR", fg=RED)
                         self._append("VOICE", "Не удалось озвучить ответ: " + event[1])
                     elif kind == "request_error":
