@@ -44,13 +44,15 @@ void main() {
 }
 
 class JarvisApp extends StatelessWidget {
-  const JarvisApp({super.key});
+  const JarvisApp({super.key, this.autoConnect = true});
+  final bool autoConnect;
+
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'JARVIS',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: kBg, colorScheme: ColorScheme.fromSeed(seedColor: kCyan, brightness: Brightness.dark), useMaterial3: true),
-    home: const JarvisHomePage(),
+    home: JarvisHomePage(autoConnect: autoConnect),
   );
 }
 
@@ -114,7 +116,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       if (_voiceRunning) _scheduleVoiceRestart(const Duration(milliseconds: 350));
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || !widget.autoConnect) return;
       _android ? _initAndroid() : _connectDesktop();
     });
   }
@@ -1222,7 +1224,9 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 }
 
 class JarvisHomePage extends StatefulWidget {
-  const JarvisHomePage({super.key});
+  const JarvisHomePage({super.key, this.autoConnect = true});
+  final bool autoConnect;
+
   @override
   State<JarvisHomePage> createState() => _JarvisHomePageState();
 }
