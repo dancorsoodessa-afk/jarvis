@@ -59,16 +59,15 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
           candidates = [Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")]
           changed = False
           for path in candidates:
               if not path.exists():
                   continue
               source = path.read_text(encoding="utf-8")
-              updated = re.sub(r'compileSdk\\s*=\\s*flutter\\.compileSdkVersion', 'compileSdk = 36', source)
-              updated = re.sub(r'compileSdkVersion\\s+flutter\\.compileSdkVersion', 'compileSdkVersion 36', updated)
-              updated = re.sub(r'compileSdk\\s+flutter\\.compileSdkVersion', 'compileSdk 36', updated)
+              updated = source.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 36")
+              updated = updated.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion 36")
+              updated = updated.replace("compileSdk flutter.compileSdkVersion", "compileSdk 36")
               if updated != source:
                   path.write_text(updated, encoding="utf-8")
                   changed = True
