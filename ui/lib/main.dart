@@ -912,10 +912,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
     final screenHeight = screenSize.height;
-    final compactLayout = screenSize.width < 760;
+    // Short landscape windows need a compact reactor as well as narrow phones.
+    // The previous 300px minimum caused a RenderFlex overflow on 600px-tall screens.
+    final compactLayout = screenSize.width < 760 || screenHeight < 650;
     final sceneHeight = compactLayout
-        ? (screenHeight * 0.40).clamp(250.0, 330.0).toDouble()
-        : (screenHeight * 0.48).clamp(300.0, 390.0).toDouble();
+        ? (screenHeight * 0.34).clamp(190.0, 300.0).toDouble()
+        : (screenHeight * 0.44).clamp(280.0, 390.0).toDouble();
     final connected = _jarvis != null;
     return Scaffold(
       appBar: AppBar(
