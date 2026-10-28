@@ -97,6 +97,7 @@ def listen_for_phrase(
     on_speech_start=None,
     on_audio_level=None,
     should_stop=None,
+    interrupt_guard=None,
 ) -> str:
     """Записать одну фразу автоматически по уровню речи и распознать её."""
     import numpy as np
@@ -111,6 +112,10 @@ def listen_for_phrase(
     silent = 0
     spoken_blocks = 0
     idle_blocks = 0
+    onset_blocks = 0
+    onset_frames = []
+    # While TTS is playing, require a longer and louder onset to reduce
+    # false interruptions caused by the speakers leaking into the microphone.
 
     try:
         with sd.InputStream(
@@ -136,17 +141,27 @@ def listen_for_phrase(
                         pass
                 if not started:
                     idle_blocks += 1
-                    if level >= speech_threshold:
-                        started = True
-                        chunks.append(block)
-                        spoken_blocks = 1
-                        if on_speech_start:
-                            try:
-                                on_speech_start()
-                            except Exception:
-                                pass
-                    elif timeout_blocks and idle_blocks >= timeout_blocks:
-                        return ""
+                    playing = bool(interrupt_guard and interrupt_guard())
+                    threshold = max(speech_threshold, 0.014 if playing else speech_threshold)
+                    required_onset = 5 if playing else 2
+                    if level >= threshold:
+                        onset_blocks += 1
+                        onset_frames.append(block)
+                        if onset_blocks >= required_onset:
+                            started = True
+                            chunks.extend(onset_frames)
+                            spoken_blocks = len(onset_frames)
+                            if on_speech_start:
+                                try:
+                                    on_speech_start()
+                                except Exception:
+                                    pass
+                            onset_frames.clear()
+                    else:
+                        onset_blocks = 0
+                        onset_frames.clear()
+                        if timeout_blocks and idle_blocks >= timeout_blocks:
+                            return ""
                     continue
                 chunks.append(block)
                 spoken_blocks += 1
