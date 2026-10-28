@@ -99,3 +99,19 @@ def test_status_reports_cloud_voice_unavailable_without_key(monkeypatch):
     assert status["cloud_voice_available"] is False
     assert status["state"] == "IDLE"
     controller.shutdown()
+
+
+
+def test_status_reports_groq_as_cloud_stt_reserve(monkeypatch):
+    from agent import stt, tts
+    monkeypatch.setenv("GROQ_API_KEY", "groq-test-token")
+    monkeypatch.setattr(stt, "current_engine", lambda: "groq")
+    monkeypatch.setattr(stt, "quota_exceeded", lambda: True)
+    monkeypatch.setattr(tts, "current_engine", lambda: "gemini")
+    controller = VoiceController(UIBridge(queue.Queue()), on_text=lambda _text: None)
+    status = controller.status()
+    assert status["cloud_voice_available"] is True
+    assert status["cloud_stt_status"] == "cloud stt reserve: Groq"
+    assert status["cloud_stt"] == "groq"
+    assert status["quota_exceeded"] is True
+    controller.shutdown()
