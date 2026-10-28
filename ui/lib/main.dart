@@ -15,7 +15,7 @@ const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
 const kFreePrimaryUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
-const kFreePrimaryModel = 'gemini-2.5-flash';
+const kFreePrimaryModel = 'gemini-3.8-flash';
 const kFreeFallbackUrl = '';
 const kFreeFallbackModel = '';
 
@@ -674,7 +674,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           const Align(alignment: Alignment.centerLeft, child: Text('Основной AI-провайдер', style: TextStyle(fontWeight: FontWeight.bold))),
           TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Base URL', hintText: 'https://generativelanguage.googleapis.com/v1beta/openai')),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: 'gemini-2.5-flash')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: 'gemini-3.8-flash')),
           const SizedBox(height: 10),
           const Align(alignment: Alignment.centerLeft, child: Text('Резервный AI (необязательно)', style: TextStyle(fontWeight: FontWeight.bold))),
           TextField(controller: _fallbackEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Резервный Base URL')),
