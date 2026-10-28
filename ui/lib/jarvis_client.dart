@@ -58,6 +58,9 @@ class JarvisIpc {
   final _deltaController = StreamController<Map<int, String>>.broadcast();
   final List<Map<String, String>> _history = [];
   final Map<String, String> _modelCache = {};
+  String? get resolvedModel => _apiUrl == null
+      ? null
+      : (_modelCache[_apiUrl!] ?? (_model?.trim().isNotEmpty == true ? _model!.trim() : null));
   static const int _maxResponseBytes = 1024 * 1024;
   static const Duration _requestTimeout = Duration(seconds: 45);
 
@@ -126,24 +129,80 @@ class JarvisIpc {
     return 'HTTP $code: ${detail.length > 500 ? '${detail.substring(0, 500)}…' : detail}';
   }
 
-  Future<String> _autoModel(String base, String key) async {
+  Future<List<String>> _availableModels(String base, String key) async {
     final request = await _httpClient!.getUrl(Uri.parse('$base/models'));
     final h = _headers(key)..remove(HttpHeaders.contentTypeHeader);
     h.forEach(request.headers.set);
     final response = await request.close().timeout(const Duration(seconds: 45));
     final body = await _readBody(response).timeout(_requestTimeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(_error(response.statusCode, body));
-    final j = jsonDecode(body);
-    if (j is Map && j['data'] is List) {
-      for (final item in j['data']) {
-        if (item is Map && item['id'] is String && item['id'].toString().trim().isNotEmpty) return item['id'].toString().trim();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(_error(response.statusCode, body));
+    }
+
+    final decoded = jsonDecode(body);
+    final dynamic items = decoded is Map
+        ? (decoded['data'] is List ? decoded['data'] : decoded['models'])
+        : null;
+    if (items is! List) throw StateError('AI-сервер не сообщил список моделей');
+
+    final models = <String>{};
+    for (final item in items) {
+      if (item is! Map) continue;
+      final raw = item['id'] ?? item['name'] ?? item['baseModelId'];
+      if (raw is! String || raw.trim().isEmpty) continue;
+      final model = raw.trim().replaceFirst(RegExp(r'^models/'), '');
+      final lower = model.toLowerCase();
+      if (lower.contains('embedding') ||
+          lower.contains('tts') ||
+          lower.contains('image') ||
+          lower.contains('audio') ||
+          lower.contains('transcribe') ||
+          lower.contains('live') ||
+          lower.contains('video') ||
+          lower.contains('robotics')) {
+        continue;
+      }
+      models.add(model);
+    }
+
+    final result = models.toList();
+    int rank(String model) {
+      switch (model) {
+        case 'gemini-3.8-flash': return 0;
+        case 'gemini-3.6-flash': return 1;
+        case 'gemini-3.5-flash-lite': return 2;
+        case 'gemini-3.1-flash-lite': return 3;
+        case 'gemini-2.5-flash': return 4;
+        default: return model.toLowerCase().contains('flash') ? 10 : 20;
       }
     }
-    throw StateError('AI-сервер не сообщил доступных моделей');
+    result.sort((a, b) {
+      final byRank = rank(a).compareTo(rank(b));
+      return byRank != 0 ? byRank : a.compareTo(b);
+    });
+    if (result.isEmpty) throw StateError('В списке API нет подходящих текстовых моделей');
+    return result;
+  }
+
+  Future<String> _autoModel(String base, String key) async {
+    final models = await _availableModels(base, key);
+    return models.first;
+  }
+
+  bool _isModelError(Object error) {
+    final message = error.toString().toLowerCase();
+    final badStatus = message.contains('http 400:') || message.contains('http 404:');
+    return badStatus &&
+        (message.contains('model') ||
+            message.contains('not found') ||
+            message.contains('not supported') ||
+            message.contains('unsupported'));
   }
 
   Future<void> _probeChat(String base, String key, String model, String label) async {
-    final selected = await _resolveModel(base, key, model);
+    final selected = model.trim().isNotEmpty
+        ? model.trim()
+        : await _resolveModel(base, key, model);
     final bytes = utf8.encode(jsonEncode({
       'model': selected,
       'messages': [
@@ -183,12 +242,46 @@ class JarvisIpc {
 
   Future<void> checkConnection() async {
     if (!_standalone) return;
-    // Validate the actual chat endpoint; /models alone does not prove that
-    // the configured model can answer, and HTTP errors must never be ignored.
+    final base = _apiUrl!;
+    final key = _apiKey!;
+    final configuredModel = _model ?? '';
+    // Validate a real chat request, not just reachability of the host.
+    _modelCache.remove(base);
     try {
-      await _probeChat(_apiUrl!, _apiKey!, _model ?? '', 'Основной AI');
+      await _probeChat(base, key, configuredModel, 'Основной AI');
       return;
     } catch (primary) {
+      String? modelRecoveryFailure;
+
+      // A stale saved model (for example openrouter/free entered under Gemini)
+      // must not permanently block a valid API key. Discover models from this
+      // exact endpoint and test candidates against the real chat endpoint.
+      if (_isModelError(primary)) {
+        try {
+          final candidates = (await _availableModels(base, key))
+              .where((model) => model != configuredModel)
+              .take(10);
+          final failures = <String>[];
+          var found = false;
+          for (final model in candidates) {
+            try {
+              await _probeChat(base, key, model, 'Модель $model');
+              _modelCache[base] = model;
+              found = true;
+              break;
+            } catch (error) {
+              failures.add('$model: $error');
+            }
+          }
+          if (found) return;
+          modelRecoveryFailure = failures.isEmpty
+              ? 'Список моделей не содержит альтернативной модели.'
+              : failures.join(' | ');
+        } catch (error) {
+          modelRecoveryFailure = error.toString();
+        }
+      }
+
       if ((_fallbackUrl ?? '').isNotEmpty && (_fallbackKey ?? '').isNotEmpty) {
         try {
           await _probeChat(_fallbackUrl!, _fallbackKey!, _fallbackModel ?? '', 'Резервный AI');
@@ -197,12 +290,20 @@ class JarvisIpc {
           throw StateError('Основной AI недоступен: $primary. Резервный AI недоступен: $fallback');
         }
       }
-      if (_isGoogleEndpoint(_apiUrl!) && _isCapacityError(primary)) {
+
+      if (modelRecoveryFailure != null) {
+        throw StateError(
+          'Указанная модель "${configuredModel.isEmpty ? '(автовыбор)' : configuredModel}" не прошла проверку: $primary. '
+          'Автоподбор моделей не помог: $modelRecoveryFailure',
+        );
+      }
+
+      if (_isGoogleEndpoint(base) && _isCapacityError(primary)) {
         final failures = <String>[];
-        for (final model in _googleFallbackModels(_model ?? '')) {
+        for (final model in _googleFallbackModels(configuredModel)) {
           try {
-            await _probeChat(_apiUrl!, _apiKey!, model, 'Резервная модель $model');
-            _modelCache[_apiUrl!] = model;
+            await _probeChat(base, key, model, 'Резервная модель $model');
+            _modelCache[base] = model;
             return;
           } catch (error) {
             failures.add('$model: $error');
