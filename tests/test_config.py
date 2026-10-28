@@ -3,7 +3,7 @@ from agent.config import DEFAULT_CHAT_URL, DEFAULT_MODEL, normalize_chat_url, no
 
 def test_default_endpoint_is_gemini():
     assert DEFAULT_CHAT_URL == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-    assert DEFAULT_MODEL == "gemini-3.8-flash"
+    assert DEFAULT_MODEL == "gemini-3.5-flash-lite"
     assert normalize_chat_url("") == DEFAULT_CHAT_URL
     assert normalize_chat_url(None) == DEFAULT_CHAT_URL
 
