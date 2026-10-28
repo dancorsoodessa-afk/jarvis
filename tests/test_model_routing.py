@@ -133,17 +133,19 @@ def test_openai_compatible_provider_fails_over_after_gemini_capacity_error():
         fallback_models=["gemini-3.8-flash", "gemini-3.5-flash-lite"],
     )
     successful = {"choices": [{"message": {"content": "резервная модель ответила", "tool_calls": []}}]}
+    models_seen = []
+    def request(payload):
+        models_seen.append(payload["model"])
+        if len(models_seen) == 1:
+            raise RuntimeError("Gemini временно перегружен (HTTP 503). overloaded")
+        return successful
     with patch.object(provider, "discover_model", return_value="gemini-3.8-flash"), \
-         patch.object(provider, "_request", side_effect=[
-             RuntimeError("Gemini временно перегружен (HTTP 503). overloaded"),
-             successful,
-         ]) as request:
+         patch.object(provider, "_request", side_effect=request) as mocked_request:
         result = provider.generate("проверь резерв")
 
     assert result == "резервная модель ответила"
-    assert request.call_count == 2
-    assert request.call_args_list[0].args[0]["model"] == "gemini-3.8-flash"
-    assert request.call_args_list[1].args[0]["model"] == "gemini-3.5-flash-lite"
+    assert mocked_request.call_count == 2
+    assert models_seen == ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
     assert provider.last_used_model == "gemini-3.5-flash-lite"
 
 def test_router_skips_shared_backend_after_timeout():
@@ -183,20 +185,19 @@ def test_openai_compatible_provider_fails_over_when_model_is_not_found():
         fallback_models=["gemini-3.5-flash-lite"],
     )
     successful = {"choices": [{"message": {"content": "резервная модель ответила", "tool_calls": []}}]}
-    with patch.object(provider, "discover_model", return_value="models/openrouter/free"), patch.object(
-        provider,
-        "_request",
-        side_effect=[
-            RuntimeError("Ошибка API: HTTP 404. models/openrouter/free is not found for API version"),
-            successful,
-        ],
-    ) as request:
+    models_seen = []
+    def request(payload):
+        models_seen.append(payload["model"])
+        if len(models_seen) == 1:
+            raise RuntimeError("Ошибка API: HTTP 404. models/openrouter/free is not found for API version")
+        return successful
+    with patch.object(provider, "discover_model", return_value="models/openrouter/free"), \
+         patch.object(provider, "_request", side_effect=request) as mocked_request:
         result = provider.generate("проверь модель")
 
     assert result == "резервная модель ответила"
-    assert request.call_count == 2
-    assert request.call_args_list[0].args[0]["model"] == "models/openrouter/free"
-    assert request.call_args_list[1].args[0]["model"] == "gemini-3.5-flash-lite"
+    assert mocked_request.call_count == 2
+    assert models_seen == ["models/openrouter/free", "gemini-3.5-flash-lite"]
     assert provider.last_used_model == "gemini-3.5-flash-lite"
 
 
