@@ -9,14 +9,30 @@ import urllib.parse
 import urllib.request
 from functools import lru_cache
 from pathlib import Path
+import threading
 
 DEFAULT_LOCAL_MODEL = "small"
 DEFAULT_STT_MODEL = "gemini-3.8-flash"
+_QUOTA_EXCEEDED = False
+_QUOTA_LOCK = threading.Lock()
+QUOTA_MESSAGE = "Квота Gemini на сегодня исчерпана (free tier). Голос-распознавание недоступно до сброса квоты или смены ключа/тарифа."
+
+
+def quota_exceeded() -> bool:
+    with _QUOTA_LOCK:
+        return _QUOTA_EXCEEDED
+
+
+def _set_quota_exceeded(value: bool) -> None:
+    global _QUOTA_EXCEEDED
+    with _QUOTA_LOCK:
+        _QUOTA_EXCEEDED = value
+
 DEFAULT_STT_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
 
 
 def _model() -> str:
-    return (os.environ.get("JARVIS_STT_MODEL") or DEFAULT_STT_MODEL).strip()
+    return (os.environ.get("GEMINI_STT_MODEL") or os.environ.get("JARVIS_STT_MODEL") or DEFAULT_STT_MODEL).strip()
 
 
 def _token() -> str:
@@ -47,6 +63,8 @@ def current_engine() -> str:
     if mode in ("local", "whisper"):
         return "local" if _local_available() else "off"
     if mode in ("gemini", "cloud", "auto"):
+        if quota_exceeded():
+            return "local" if _local_available() else "off"
         # Cloud-first: never silently switch providers or download a local model.
         return "gemini" if _token() else "off"
     return "off"
@@ -107,6 +125,9 @@ def _transcribe_gemini(path: Path) -> str:
             result = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:500]
+        if exc.code == 429 and any(marker in detail.lower() for marker in ("quota", "free_tier", "limit exceeded", "resource_exhausted")):
+            _set_quota_exceeded(True)
+            raise RuntimeError(QUOTA_MESSAGE) from exc
         raise RuntimeError(f"Ошибка распознавания Gemini: HTTP {exc.code}. {detail}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Не удалось подключиться к Gemini STT: {exc.reason}") from exc
