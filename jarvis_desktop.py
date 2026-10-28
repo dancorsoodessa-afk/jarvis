@@ -726,7 +726,7 @@ class JarvisDesktop(tk.Tk):
                         self.agent = event[1]
                         self.tool_names = list(self.agent.tools.names())
                         configured_providers = getattr(self.agent.provider, "providers", {})
-                        provider = "GEMINI PRIMARY" + (" / GROQ BACKUP" if "groq" in configured_providers else "")
+                        provider = "GEMINI CLOUD"
                         # Building the local agent does not prove that the remote API is reachable.
                         self.status.config(text="● ГОТОВ", fg=YELLOW)
                         self.hud_text.config(text="Ядро готово\nAI: " + provider + "\nAPI: проверка при запросе")
@@ -749,8 +749,7 @@ class JarvisDesktop(tk.Tk):
                             color = GREEN if status_text == "ONLINE" else MUTED if status_text == "OFF" else YELLOW if status_text in {"CONFIGURED", "KEY SET"} else RED
                             self.metrics[label].config(text=status_text[:18], fg=color)
                         gemini_status = event[1].get("Gemini API", "UNKNOWN")
-                        groq_status = event[1].get("Groq API", "NOT CONFIGURED")
-                        self._append("SYSTEM", f"Проверка провайдеров — Gemini: {gemini_status}; Groq: {groq_status}")
+                        self._append("SYSTEM", f"Проверка провайдера — Gemini: {gemini_status}")
                     elif kind == "stt_ready":
                         self._stt_online = True
                         self.metrics["Voice"].config(text="ONLINE", fg=GREEN)
