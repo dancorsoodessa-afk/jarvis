@@ -19,7 +19,7 @@ Gemini is the default speech-recognition engine and requires a valid API key and
 
 1. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey).
 2. Open JARVIS → **Центр управления** and save the key under **GEMINI API KEY**.
-3. Optional: configure an independent Groq API key in the control center to enable chat and speech-recognition fallback.
+
 4. Keep keys in the app's protected settings or environment variables. Never commit keys to Git.
 
 Default chat/STT model: `gemini-3.5-flash-lite`. Gemini access and quotas depend on the API project; JARVIS reports API errors instead of pretending a failed request succeeded.
