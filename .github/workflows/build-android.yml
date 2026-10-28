@@ -90,7 +90,7 @@ jobs:
           cp android_tools/TradingTools.kt "$KOTLIN/TradingTools.kt"
           cp android_tools/StockAnalysisTools.kt "$KOTLIN/StockAnalysisTools.kt"
           for dir in database files internet other selfimprovement; do
-            find "android_tools/$dir" -type f -name '*.kt' -exec cp {} "$KOTLIN/" \\;
+            find "android_tools/$dir" -type f -name '*.kt' -exec cp {} "$KOTLIN/" \;
           done
       - name: Configure Android permissions
         working-directory: ui
