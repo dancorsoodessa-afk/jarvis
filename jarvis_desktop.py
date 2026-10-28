@@ -4,6 +4,7 @@ import json
 import base64
 import math
 import os
+import sys
 import queue
 import threading
 import time
@@ -1395,13 +1396,17 @@ class JarvisDesktop(tk.Tk):
         self.destroy()
 
 
-def _run_desktop():
-    """Persist a useful traceback if the desktop UI fails during startup."""
+def _run_desktop() -> int:
+    """Launch the UI, with a non-interactive startup smoke-test mode for CI."""
     import traceback
 
+    smoke_test = "--smoke-test" in sys.argv[1:]
     try:
         app = JarvisDesktop()
+        if smoke_test:
+            app.after(1500, app._close)
         app.mainloop()
+        return 0
     except Exception:
         details = traceback.format_exc()
         log_dir = Path(os.environ.get("APPDATA", str(Path.home()))) / "JARVIS"
@@ -1410,6 +1415,9 @@ def _run_desktop():
             (log_dir / "startup-error.log").write_text(details, encoding="utf-8")
         except OSError:
             pass
+        if smoke_test:
+            print(details, file=sys.stderr)
+            return 1
         try:
             root = getattr(tk, "_default_root", None)
             created_root = root is None
@@ -1428,7 +1436,8 @@ def _run_desktop():
                 root.destroy()
         except Exception:
             pass
+        return 1
 
 
 if __name__ == "__main__":
-    _run_desktop()
+    raise SystemExit(_run_desktop())
