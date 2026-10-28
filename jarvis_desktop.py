@@ -16,7 +16,6 @@ import mimetypes
 
 from agent.runtime import build_agent
 from agent import tts, voice, stt
-from agent.visual_server import start_visual_server
 from agent.secrets import protect_secret, unprotect_secret
 from agent.tools_catalog import TOOLS
 
@@ -148,15 +147,8 @@ class JarvisDesktop(tk.Tk):
             self._save_settings()
         self._build_style()
         self._build_ui()
-        # The Three.js scene is served locally; no camera access is requested.
-        self._visual_server, self._visual_url = start_visual_server(
-            lambda: {
-                "state": self._visual_state,
-                "level": self._visual_level,
-                "cpu": _cpu_activity_level(),
-            }
-        )
-        self.after(900, self._open_3d_scene)
+        # Keep the reactor in the main window; never open an external browser.
+        self.after(80, self._animate_reactor)
         self._start_agent()
         self.after(80, self._drain_events)
         self.protocol("WM_DELETE_WINDOW", self._close)
@@ -394,10 +386,12 @@ class JarvisDesktop(tk.Tk):
         hero = tk.Frame(center, bg="#07101a", highlightbackground="#163246", highlightthickness=1)
         hero.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         hero.grid_columnconfigure(1, weight=1)
-        self.scene_label = tk.Label(hero, text="REAL 3D REACTOR\nОТКРЫВАЕТСЯ В БРАУЗЕРЕ",
-                                    bg="#030811", fg=CYAN, width=34, height=11,
-                                    font=("Consolas", 11, "bold"), justify="center")
-        self.scene_label.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(4, 8), pady=4)
+        self.scene_canvas = tk.Canvas(hero, bg="#030811", width=280, height=208,
+                                      highlightthickness=0, bd=0)
+        self.scene_canvas.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(4, 8), pady=4)
+        self.scene_label = tk.Label(hero, text="ЯДРО ИНИЦИАЛИЗИРУЕТСЯ", bg="#07101a", fg=CYAN,
+                                    font=("Consolas", 10, "bold"), justify="left")
+        self.scene_label.grid(row=0, column=1, sticky="sw", padx=8, pady=(42, 4))
         self.hud_text = tk.Label(hero, text="Инициализация ядра…", bg="#07101a", fg=CYAN,
                                  font=("Segoe UI", 14, "bold"), justify="left")
         self.hud_text.grid(row=0, column=1, sticky="sw", padx=8, pady=(42, 4))
@@ -486,11 +480,67 @@ class JarvisDesktop(tk.Tk):
             self.scene_label.config(text=labels.get(state, state) + "\nTHREE.JS WEBGL")
 
     def _open_3d_scene(self):
+        # Compatibility hook: the reactor is rendered in the main window.
+        self._animate_reactor()
+
+    def _animate_reactor(self):
+        """Draw an animated perspective-projected neural reactor inside the main window."""
+        canvas = getattr(self, "scene_canvas", None)
+        if canvas is None or not canvas.winfo_exists():
+            return
         try:
-            webbrowser.open(self._visual_url, new=1)
-            self.scene_label.config(text="THREE.JS WEBGL\n3D REACTOR ОТКРЫТ\n\nГолос и состояние ИИ\nпередаются в сцену")
-        except Exception as exc:
-            self.scene_label.config(text="НЕ УДАЛОСЬ ОТКРЫТЬ 3D\n" + str(exc)[:100])
+            canvas.delete("all")
+            width, height = max(200, canvas.winfo_width()), max(160, canvas.winfo_height())
+            cx, cy = width / 2, height / 2
+            phase = time.monotonic()
+            state = self._visual_state
+            color = {"IDLE": CYAN, "LISTENING": "#62ffb4", "THINKING": "#ffcf6b",
+                     "SPEAKING": "#7aa7ff", "ERROR": RED}.get(state, CYAN)
+            radius = min(width, height) * (0.31 + 0.035 * self._visual_level)
+            # Rotating latitude rings projected from 3D coordinates.
+            for lat_i in range(1, 9):
+                lat = -math.pi / 2 + lat_i * math.pi / 9
+                ring = []
+                for lon_i in range(49):
+                    lon = lon_i * math.tau / 48 + phase * (0.18 + self._visual_level * 0.5)
+                    x = radius * math.cos(lat) * math.cos(lon)
+                    y = radius * math.sin(lat)
+                    z = radius * math.cos(lat) * math.sin(lon)
+                    tilt = 0.55
+                    yy = y * math.cos(tilt) - z * math.sin(tilt)
+                    zz = y * math.sin(tilt) + z * math.cos(tilt)
+                    scale = 1.0 / (1.0 + zz / max(width, height) * 0.75)
+                    ring.append((cx + x * scale, cy + yy * scale))
+                for a, b in zip(ring, ring[1:]):
+                    canvas.create_line(*a, *b, fill=color, width=1)
+            # Animated orbital paths.
+            for orbit in range(3):
+                coords = []
+                angle = phase * (0.22 + orbit * 0.08) + orbit * 1.05
+                for n in range(101):
+                    t = n * math.tau / 100
+                    x = radius * 1.12 * math.cos(t)
+                    y = radius * (0.42 + orbit * 0.08) * math.sin(t)
+                    coords.extend((cx + x * math.cos(angle) - y * math.sin(angle),
+                                   cy + x * math.sin(angle) + y * math.cos(angle)))
+                canvas.create_line(*coords, fill="#6b87c7" if orbit == 1 else color,
+                                   width=2 if orbit == 1 else 1, smooth=True)
+            glow = 4 + self._visual_level * 8 + _cpu_activity_level() * 4
+            canvas.create_oval(cx-glow, cy-glow, cx+glow, cy+glow,
+                               fill=color, outline="#e8ffff", width=1)
+            for n in range(22):
+                angle = n * math.tau / 22 + phase * 0.15
+                rr = radius * (1.35 + 0.06 * math.sin(phase + n))
+                x, y = cx + math.cos(angle) * rr, cy + math.sin(angle) * rr
+                canvas.create_oval(x-1.5, y-1.5, x+1.5, y+1.5, fill=color, outline="")
+            canvas.create_text(cx, height-14, text="JARVIS • NEURAL REACTOR",
+                               fill=color, font=("Consolas", 8, "bold"))
+            labels = {"IDLE": "СИСТЕМА ГОТОВА", "LISTENING": "СЛУШАЮ ВАС",
+                      "THINKING": "ОБРАБОТКА", "SPEAKING": "ОТВЕЧАЮ", "ERROR": "ОШИБКА"}
+            self.scene_label.config(text=labels.get(state, state) + "\nЖИВОЕ ЯДРО • В ОДНОМ ОКНЕ")
+            self.after(50, self._animate_reactor)
+        except tk.TclError:
+            return
 
     def _start_agent(self):
         # Ignore stale results when settings are saved/reloaded more than once.
