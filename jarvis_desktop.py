@@ -163,13 +163,13 @@ class JarvisDesktop(tk.Tk):
             "name": "JARVIS",
             "provider": "gemini",
             "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
-            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "gemini-3.8-flash",
+            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "gemini-2.5-flash",
             "api_key": (str(self.settings.get("gemini_api_key") or "") if "gemini_api_key" in self.settings else os.environ.get("GEMINI_API_KEY", "")),
         }
         defaults = {
             "0": legacy,
-            "1": {"name": "Gemini Reasoning", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-3.8-flash", "api_key": legacy["api_key"]},
-            "2": {"name": "Gemini Coding", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-3.8-flash", "api_key": legacy["api_key"]},
+            "1": {"name": "Gemini Reasoning", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-2.5-flash", "api_key": legacy["api_key"]},
+            "2": {"name": "Gemini Coding", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-2.5-flash", "api_key": legacy["api_key"]},
         }
         merged = {}
         for key, default in defaults.items():
@@ -254,19 +254,19 @@ class JarvisDesktop(tk.Tk):
         self.settings.setdefault("tts_voice", "Charon")
         if self.settings.get("tts_voice") in {"Windows system voice", "Dmitri", "Microsoft David", "Microsoft Zira", ""}:
             self.settings["tts_voice"] = "Charon"
-        self.settings.setdefault("tts_model", "gemini-3.8-flash-tts")
+        self.settings.setdefault("tts_model", "gemini-2.5-flash-tts")
         self.settings.setdefault("tts_timeout", "45")
         self.settings.setdefault("stt_timeout", "45")
-        self.settings.setdefault("stt_model", "gemini-3.8-flash")
+        self.settings.setdefault("stt_model", "gemini-2.5-flash")
         os.environ["JARVIS_STT_TIMEOUT"] = str(self.settings.get("stt_timeout") or "45")
-        os.environ["JARVIS_STT_MODEL"] = str(self.settings.get("stt_model") or "gemini-3.8-flash")
+        os.environ["JARVIS_STT_MODEL"] = str(self.settings.get("stt_model") or "gemini-2.5-flash")
         tts_engine = str(self.settings.get("tts_engine", "gemini")).strip().lower() or "gemini"
         if tts_engine not in {"gemini", "off"}:
             tts_engine = "gemini"
         self.settings["tts_engine"] = tts_engine
         os.environ["JARVIS_TTS"] = tts_engine
         os.environ["JARVIS_TTS_VOICE"] = str(self.settings.get("tts_voice") or "Charon")
-        os.environ["JARVIS_TTS_MODEL"] = str(self.settings.get("tts_model") or "gemini-3.8-flash-tts")
+        os.environ["JARVIS_TTS_MODEL"] = str(self.settings.get("tts_model") or "gemini-2.5-flash-tts")
         os.environ["JARVIS_TTS_TIMEOUT"] = str(self.settings.get("tts_timeout") or "45")
 
     def _save_settings(self):
@@ -389,12 +389,10 @@ class JarvisDesktop(tk.Tk):
         self.scene_canvas = tk.Canvas(hero, bg="#030811", width=280, height=208,
                                       highlightthickness=0, bd=0)
         self.scene_canvas.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(4, 8), pady=4)
-        self.scene_label = tk.Label(hero, text="ЯДРО ИНИЦИАЛИЗИРУЕТСЯ", bg="#07101a", fg=CYAN,
-                                    font=("Consolas", 10, "bold"), justify="left")
-        self.scene_label.grid(row=0, column=1, sticky="sw", padx=8, pady=(42, 4))
         self.hud_text = tk.Label(hero, text="Инициализация ядра…", bg="#07101a", fg=CYAN,
                                  font=("Segoe UI", 14, "bold"), justify="left")
         self.hud_text.grid(row=0, column=1, sticky="sw", padx=8, pady=(42, 4))
+        self.scene_label = self.hud_text
         tk.Label(hero, text="ЖИВОЙ ВИЗУАЛЬНЫЙ КОНТУР  •  VOICE / AI / TOOLS / MEMORY",
                  bg="#07101a", fg=MUTED, font=("Consolas", 7, "bold")).grid(row=1,column=1,sticky="nw",padx=8,pady=(0,16))
 
@@ -1348,9 +1346,9 @@ class JarvisDesktop(tk.Tk):
         active = int(self.settings.get("active_agent", 0) or 0)
         names = ("FAST / Обычные", "REASONING / Рассуждения", "CODING / Код")
         defaults = (
-            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
-            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
-            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
         )
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
@@ -1415,7 +1413,7 @@ class JarvisDesktop(tk.Tk):
         additional_row.pack(fill="x", pady=(2, 10))
         tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
         additional_model = tk.Entry(additional_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
-        additional_model.insert(0, str(self.settings.get("additional_model", "gemini-3.8-flash")))
+        additional_model.insert(0, str(self.settings.get("additional_model", "gemini-2.5-flash")))
         additional_model.pack(fill="x", padx=14, pady=(0, 4), ipady=6)
         tk.Button(additional_row, text="ОЧИСТИТЬ", command=lambda: clear_entry(additional_model), bg="#572637", fg=TEXT, relief="flat", padx=8, pady=4).pack(anchor="e", padx=14, pady=(0, 8))
 
@@ -1485,9 +1483,9 @@ class JarvisDesktop(tk.Tk):
         for label, key, default, secret in (
             ("Облачный TTS", "tts_engine", self.settings.get("tts_engine", "gemini"), False),
             ("Голос Gemini", "tts_voice", self.settings.get("tts_voice", "Charon"), False),
-            ("Модель TTS", "tts_model", self.settings.get("tts_model", "gemini-3.8-flash-tts"), False),
+            ("Модель TTS", "tts_model", self.settings.get("tts_model", "gemini-2.5-flash-tts"), False),
             ("Тайм-аут TTS, сек.", "tts_timeout", self.settings.get("tts_timeout", "45"), False),
-            ("Модель STT", "stt_model", self.settings.get("stt_model", "gemini-3.8-flash"), False),
+            ("Модель STT", "stt_model", self.settings.get("stt_model", "gemini-2.5-flash"), False),
             ("Тайм-аут STT, сек.", "stt_timeout", self.settings.get("stt_timeout", "45"), False),
         ):
             row = tk.Frame(voice_frame, bg="#091b29")
@@ -1507,7 +1505,7 @@ class JarvisDesktop(tk.Tk):
         def save():
             new_profiles = {}
             for i, fields in enumerate(entries):
-                new_profiles[str(i)] = {"provider": "gemini", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "gemini-3.8-flash", "api_key": shared_key.get().strip(), "name": names[i]}
+                new_profiles[str(i)] = {"provider": "gemini", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "gemini-2.5-flash", "api_key": shared_key.get().strip(), "name": names[i]}
             self.settings["agents"] = new_profiles
             self.settings["gemini_api_key"] = shared_key.get().strip()
             self.settings["groq_api_key"] = groq_key.get().strip()
@@ -1516,7 +1514,7 @@ class JarvisDesktop(tk.Tk):
             for key, entry in groq_fields.items():
                 self.settings[key] = entry.get().strip()
             self.settings.pop("hf_token", None)
-            self.settings["additional_model"] = additional_model.get().strip() or "gemini-3.8-flash"
+            self.settings["additional_model"] = additional_model.get().strip() or "gemini-2.5-flash"
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
