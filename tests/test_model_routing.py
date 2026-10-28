@@ -146,6 +146,32 @@ def test_openai_compatible_provider_fails_over_after_gemini_capacity_error():
     assert request.call_args_list[1].args[0]["model"] == "gemini-3.5-flash-lite"
     assert provider.last_used_model == "gemini-3.5-flash-lite"
 
+def test_router_skips_shared_backend_after_timeout():
+    class EndpointProvider(FakeProvider):
+        def __init__(self, name, url, api_key, error=None):
+            super().__init__(name)
+            self.url = url
+            self.api_key = api_key
+            self.error = error
+        def generate(self, prompt, tools=None, max_steps=4):
+            self.calls += 1
+            if self.error:
+                raise RuntimeError(self.error)
+            return f"ok:{self.name}"
+
+    shared_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    providers = {
+        "fast": EndpointProvider("fast", shared_url, "same-key", "Тайм-аут запроса к Gemini (30 с)"),
+        "reasoning": EndpointProvider("reasoning", shared_url, "same-key"),
+        "coding": EndpointProvider("coding", "https://api.groq.com/openai/v1/chat/completions", "other-key"),
+    }
+    router = RoleRouterProvider(providers)
+    assert router.generate("обычный вопрос") == "ok:coding"
+    assert providers["fast"].calls == 1
+    assert providers["reasoning"].calls == 0
+    assert providers["coding"].calls == 1
+
+
 def test_openai_compatible_provider_fails_over_when_model_is_not_found():
     from unittest.mock import patch
     from agent.providers.openai_chat import OpenAIChatProvider
