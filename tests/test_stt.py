@@ -101,7 +101,7 @@ class TestSTT:
         class Response:
             def __enter__(self): return self
             def __exit__(self, *args): pass
-            def read(self): return b'{"text":"открой настройки"}'
+            def read(self): return json.dumps({"text": "открой настройки"}, ensure_ascii=False).encode("utf-8")
 
         with tempfile.TemporaryDirectory() as folder:
             audio = Path(folder) / "sample.wav"
