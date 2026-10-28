@@ -686,8 +686,8 @@ class JarvisDesktop(tk.Tk):
                         self._stt_online = True
                         self.metrics["Voice"].config(text="ONLINE", fg=GREEN)
                         self.side_voice.config(text="◉ ГОЛОС — ОБЛАКО ДОСТУПНО", fg=GREEN)
-                        if self.settings.get("voice_enabled", True):
-                            self._start_voice_loop()
+                        # Do not open the microphone automatically on application startup.
+                        # Voice capture begins only after the user presses the microphone button.
                     elif kind == "stt_error":
                         self._stt_online = False
                         self.metrics["Voice"].config(text="ERROR", fg=RED)
