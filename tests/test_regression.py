@@ -32,6 +32,14 @@ def test_tts_uses_documented_gemini_cloud_api():
 
 
 
+def test_desktop_startup_failure_persists_traceback():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert "def _run_desktop()" in source
+    assert "startup-error.log" in source
+    assert "traceback.format_exc()" in source
+    assert "messagebox.showerror(" in source
+
+
 def test_desktop_passes_attachment_to_agent():
     source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
     assert "attachment=attachment_payload" in source
