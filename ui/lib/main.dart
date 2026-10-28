@@ -509,6 +509,16 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     dsaKey.dispose();
   }
 
+  IconData _toolGroupIcon(String group) => switch (group) {
+    'Интернет' => Icons.public_rounded,
+    'Файлы' => Icons.folder_open_rounded,
+    'База данных' => Icons.storage_rounded,
+    'Система и память' => Icons.memory_rounded,
+    'Криптоинструменты' => Icons.currency_bitcoin_rounded,
+    'Аналитика' => Icons.query_stats_rounded,
+    _ => Icons.build_circle_outlined,
+  };
+
   Future<void> _showTools() async {
     if (!_android) return;
     const groups = <String, List<Map<String, String>>>{
@@ -583,21 +593,32 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 icon: const Icon(Icons.settings_outlined),
                 label: const Text('Настройки ключей и сервисов'),
               ),
-              for (final group in groups.entries) ...[
-                const SizedBox(height: 16),
-                Text(group.key.toUpperCase(), style: TextStyle(color: _visualColor, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                for (final tool in group.value)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.build_circle_outlined),
-                    title: Text(tool['title']!),
-                    subtitle: Text(tool['hint']!),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _runAndroidTool(tool['name']!, tool['title']!, tool['args']!);
-                    },
+              for (final group in groups.entries)
+                Card(
+                  color: const Color(0xFF101D2A),
+                  margin: const EdgeInsets.only(top: 8),
+                  clipBehavior: Clip.antiAlias,
+                  child: ExpansionTile(
+                    initiallyExpanded: group.key == 'Интернет' || group.key == 'Система и память',
+                    leading: Icon(_toolGroupIcon(group.key), color: _visualColor),
+                    title: Text(group.key, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                    subtitle: Text('${group.value.length} инструментов', style: const TextStyle(fontSize: 12, color: Colors.white60)),
+                    children: [
+                      for (final tool in group.value)
+                        ListTile(
+                          contentPadding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
+                          leading: const Icon(Icons.play_circle_outline_rounded, size: 22),
+                          title: Text(tool['title']!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                          subtitle: Text(tool['hint']!, style: const TextStyle(fontSize: 12, height: 1.3)),
+                          trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _runAndroidTool(tool['name']!, tool['title']!, tool['args']!);
+                          },
+                        ),
+                    ],
                   ),
-              ],
+                ),
             ],
           ),
         ),
@@ -617,13 +638,20 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Аргументы инструмента (JSON). Перед запуском проверьте значения.', style: TextStyle(fontSize: 12)),
+              const Text('Параметры запуска. Для обычного использования оставьте значения по умолчанию. Изменяйте JSON только если понимаете параметры.', style: TextStyle(fontSize: 12, height: 1.35)),
               const SizedBox(height: 8),
               TextField(
                 controller: argsController,
                 minLines: 3,
                 maxLines: 7,
-                decoration: const InputDecoration(border: OutlineInputBorder(), hintText: '{"key":"value"}'),
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                decoration: const InputDecoration(
+                  labelText: 'Параметры',
+                  helperText: 'Формат JSON',
+                  alignLabelWithHint: true,
+                  border: OutlineInputBorder(),
+                  hintText: '{"key":"value"}',
+                ),
               ),
             ],
           ),
