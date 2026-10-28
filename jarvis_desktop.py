@@ -1387,6 +1387,7 @@ class JarvisDesktop(tk.Tk):
 
     def _close(self):
         self._voice_loop_running = False
+        self.voice_controller.shutdown()
         tts.stop()
         view = self._embedded_webview
         self._embedded_webview = None
