@@ -260,12 +260,6 @@ class JarvisIpc {
     return JarvisReply(content.trim(), base, null, false);
   }
 
-  bool _retryable(Object e) {
-    final s = e.toString();
-    return RegExp(r'HTTP (408|425|429|500|502|503|504)(?:\D|$)').hasMatch(s) ||
-        s.contains('SocketException') || s.contains('TimeoutException') || s.contains('Connection closed');
-  }
-
   Future<JarvisReply> _sendStandalone(String text) async {
     try {
       final r = await _call(_apiUrl!, _apiKey!, _model ?? '', text);
