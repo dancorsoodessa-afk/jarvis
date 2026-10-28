@@ -1315,13 +1315,10 @@ class JarvisDesktop(tk.Tk):
             state_label = tk.Label(body, text=("● АКТИВЕН" if enabled_var.get() else "● ВЫКЛЮЧЕН"), bg=PANEL2, fg=GREEN if enabled_var.get() else RED, font=("Segoe UI", 8, "bold"), cursor="hand2")
             state_label.pack(anchor="w", pady=(5, 0))
             state_label.bind("<Button-1>", lambda e, v=enabled_var, l=state_label: (v.set(not v.get()), l.config(text=("● АКТИВЕН" if v.get() else "● ВЫКЛЮЧЕН"), fg=GREEN if v.get() else RED)))
-            def open_card(_event=None, n=name, t=title, d=desc, v=enabled_var):
-                self._open_module_details(n, t, d, v.get())
-            def bind_card(widget):
-                widget.bind("<Button-1>", open_card)
-                for child in widget.winfo_children():
-                    bind_card(child)
-            bind_card(card)
+            action_row = tk.Frame(body, bg=PANEL2)
+            action_row.pack(fill="x", pady=(8, 0))
+            ttk.Button(action_row, text="ОТКРЫТЬ ИНСТРУМЕНТ",
+                       command=lambda n=name, t=title, d=desc, v=enabled_var: self._open_module_details(n, t, d, v.get())).pack(side="left")
             state_label.bind("<Button-1>", lambda e, v=enabled_var, l=state_label: (v.set(not v.get()), l.config(text=("● АКТИВЕН" if v.get() else "● ВЫКЛЮЧЕН"), fg=GREEN if v.get() else RED)))
 
         def save_modules():
