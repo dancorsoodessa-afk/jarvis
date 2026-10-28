@@ -578,7 +578,9 @@ class VoiceController:
             if stt.quota_exceeded():
                 self._quota_exceeded = True
                 last_error = RuntimeError(stt.QUOTA_MESSAGE)
-            engine = stt.current_engine()\n            attempts = ((0, 0.0),) if engine == "groq" else (() if stt.quota_exceeded() else tuple(enumerate(RECOVERY_DELAYS[:3])))\n            for attempt, delay in attempts:
+            engine = stt.current_engine()
+            attempts = ((0, 0.0),) if engine == "groq" else (() if stt.quota_exceeded() else tuple(enumerate(RECOVERY_DELAYS[:3])))
+            for attempt, delay in attempts:
                 with self._lock:
                     if self._shutdown or not self._running:
                         break
