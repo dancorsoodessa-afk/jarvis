@@ -64,12 +64,34 @@ jobs:
         with:
           channel: stable
           cache: true
+      - name: Preserve native Android integration
+        working-directory: ui
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/jarvis-native"
+          cp android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt "$RUNNER_TEMP/jarvis-native/MainActivity.kt"
+          cp android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/JarvisTimerReceiver.kt "$RUNNER_TEMP/jarvis-native/JarvisTimerReceiver.kt"
       - name: Generate Android project
         working-directory: ui
         run: |
           set -e
           flutter create --platforms=android --org=com.dancorsoodessa --project-name=jarvis_ui .
           rm -f test/widget_test.dart
+      - name: Restore native Android tools and channels
+        working-directory: ui
+        shell: bash
+        run: |
+          set -euo pipefail
+          KOTLIN=android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui
+          mkdir -p "$KOTLIN"
+          cp "$RUNNER_TEMP/jarvis-native/MainActivity.kt" "$KOTLIN/MainActivity.kt"
+          cp "$RUNNER_TEMP/jarvis-native/JarvisTimerReceiver.kt" "$KOTLIN/JarvisTimerReceiver.kt"
+          cp android_tool_router.kt "$KOTLIN/AndroidToolRouter.kt"
+          cp android_tools/TradingTools.kt "$KOTLIN/TradingTools.kt"
+          cp android_tools/StockAnalysisTools.kt "$KOTLIN/StockAnalysisTools.kt"
+          for dir in database files internet other selfimprovement; do
+            find "android_tools/$dir" -type f -name '*.kt' -exec cp {} "$KOTLIN/" \\;
+          done
       - name: Configure Android permissions
         working-directory: ui
         shell: bash
