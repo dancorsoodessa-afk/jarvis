@@ -9,6 +9,7 @@ import threading
 import time
 import webbrowser
 import tkinter as tk
+from tkinter import messagebox
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 import mimetypes
@@ -1010,36 +1011,182 @@ class JarvisDesktop(tk.Tk):
             canvas.create_oval(x-2, y-2, x+2, y+2, fill=c1, outline="")
         canvas.create_oval(cx-9, cy-9, cx+9, cy+9, fill=c1, outline="")
         canvas.create_oval(cx-5, cy-6, cx+1, cy, fill="#eaffff", outline="")
-        canvas.create_text(cx, 62, text=str(seed), fill=c1, font=("Segoe UI", 6, "bold"))
 
     def _open_module_details(self, name, title, desc, enabled):
-        items = []
-        if name == "osint":
-            items = [(n, d) for n, t, d, k in TOOLS if k == "intel"]
-        elif name == "ps":
-            try:
-                import csv, subprocess
-                out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8).stdout
-                items = [(r[0], "PID " + r[1]) for r in csv.reader(out.splitlines()) if len(r) >= 2]
-            except Exception:
-                items = []
-        elif name == "launch":
+        """Понятные кнопки вместо списка технических команд и идентификаторов."""
+        win = tk.Toplevel(self)
+        win.title("JARVIS — " + title)
+        win.configure(bg=BG)
+        win.geometry("860x680")
+        win.minsize(620, 480)
+        win.transient(self)
+        tk.Label(win, text=title, bg=BG, fg=CYAN, font=("Segoe UI", 18, "bold")).pack(anchor="w", padx=20, pady=(18, 4))
+        tk.Label(win, text=("Готов к работе" if enabled else "Инструмент выключен"), bg=BG,
+                 fg=GREEN if enabled else RED, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20)
+        content = tk.Frame(win, bg=BG)
+        content.pack(fill="both", expand=True, padx=20, pady=12)
+
+        if name == "launch":
+            tk.Label(content, text="Найдите программу и нажмите «Запустить».", bg=BG, fg=MUTED).pack(anchor="w", pady=(0, 8))
+            query = tk.StringVar()
+            entry = tk.Entry(content, textvariable=query, bg=PANEL, fg=TEXT, insertbackground=CYAN, relief="flat", font=("Segoe UI", 12))
+            entry.pack(fill="x", ipady=10, pady=(0, 10))
+            wrap = tk.Frame(content, bg=PANEL)
+            wrap.pack(fill="both", expand=True)
+            canvas = tk.Canvas(wrap, bg=PANEL, highlightthickness=0)
+            scroll = ttk.Scrollbar(wrap, orient="vertical", command=canvas.yview)
+            canvas.pack(side="left", fill="both", expand=True)
+            scroll.pack(side="right", fill="y")
+            canvas.configure(yscrollcommand=scroll.set)
+            inner = tk.Frame(canvas, bg=PANEL)
+            wid = canvas.create_window((0, 0), window=inner, anchor="nw")
+            inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+            canvas.bind("<Configure>", lambda e: canvas.itemconfigure(wid, width=e.width))
+            status = tk.Label(content, text="Загрузка списка приложений…", bg=BG, fg=MUTED)
+            status.pack(anchor="w", pady=(7, 0))
+            apps = []
             try:
                 import subprocess
-                out = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-StartApps | Sort-Object Name | ForEach-Object { \"$($_.Name)|$($_.AppID)\" }"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8).stdout
-                items = [(a.strip(), b.strip()) for line in out.splitlines() if "|" in line for a, b in [line.split("|", 1)] if a.strip()]
+                out = subprocess.run(
+                    ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                     "Get-StartApps | Sort-Object Name | ForEach-Object { \"$($_.Name)|$($_.AppID)\" }"],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=12
+                )
+                apps = [(p[0].strip(), p[1].strip()) for line in out.stdout.splitlines()
+                        if "|" in line for p in [line.split("|", 1)] if p[0].strip()]
             except Exception:
-                items = []
-        if not items: items = [(name, desc)]
-        win = tk.Toplevel(self); win.title("JARVIS — " + title); win.configure(bg=BG); win.geometry("820x650")
-        tk.Label(win, text=title, bg=BG, fg=CYAN, font=("Segoe UI", 18, "bold")).pack(anchor="w", padx=20, pady=(18, 4))
-        tk.Label(win, text=("● АКТИВЕН" if enabled else "● ВЫКЛЮЧЕН"), bg=BG, fg=GREEN if enabled else RED, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20)
-        tk.Label(win, text="Полный перечень: " + str(len(items)), bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=8)
-        text = tk.Text(win, bg=PANEL, fg=TEXT, relief="flat", wrap="word", font=("Segoe UI", 10))
-        text.pack(fill="both", expand=True, padx=20, pady=10)
-        for item, detail in items: text.insert("end", item + "  —  " + detail + "\n")
-        text.configure(state="disabled")
-        ttk.Button(win, text="ЗАКРЫТЬ", command=win.destroy).pack(anchor="e", padx=20, pady=(0, 14))
+                apps = []
+
+            def launch_app(app_name, app_id):
+                if not app_id:
+                    messagebox.showwarning("JARVIS", "Windows не предоставил способ запуска этой программы.")
+                    return
+                try:
+                    import subprocess
+                    subprocess.Popen(["explorer.exe", "shell:AppsFolder\\" + app_id],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    status.config(text="Запуск программы: " + app_name, fg=GREEN)
+                except Exception as exc:
+                    status.config(text="Не удалось запустить программу: " + str(exc), fg=RED)
+
+            def render_apps(*_args):
+                for child in inner.winfo_children():
+                    child.destroy()
+                term = query.get().strip().casefold()
+                shown = [(n, a) for n, a in apps if term in n.casefold()]
+                for app_name, app_id in shown:
+                    row = tk.Frame(inner, bg=PANEL2, highlightbackground=LINE, highlightthickness=1)
+                    row.pack(fill="x", padx=8, pady=4)
+                    tk.Label(row, text=app_name, bg=PANEL2, fg=TEXT, font=("Segoe UI", 10),
+                             anchor="w").pack(side="left", fill="x", expand=True, padx=12, pady=10)
+                    ttk.Button(row, text="Запустить", command=lambda n=app_name, a=app_id: launch_app(n, a)).pack(side="right", padx=10, pady=6)
+                status.config(text=("Найдено программ: " + str(len(shown))) if apps else
+                              "Список приложений Windows недоступен.", fg=MUTED if apps else RED)
+            query.trace_add("write", render_apps)
+            render_apps()
+
+        elif name == "ps":
+            tk.Label(content, text="Поиск по названию. Системные процессы защищены.", bg=BG, fg=MUTED).pack(anchor="w", pady=(0, 8))
+            query = tk.StringVar()
+            tk.Entry(content, textvariable=query, bg=PANEL, fg=TEXT, insertbackground=CYAN,
+                     relief="flat", font=("Segoe UI", 12)).pack(fill="x", ipady=10, pady=(0, 10))
+            wrap = tk.Frame(content, bg=PANEL)
+            wrap.pack(fill="both", expand=True)
+            canvas = tk.Canvas(wrap, bg=PANEL, highlightthickness=0)
+            scroll = ttk.Scrollbar(wrap, orient="vertical", command=canvas.yview)
+            canvas.pack(side="left", fill="both", expand=True)
+            scroll.pack(side="right", fill="y")
+            canvas.configure(yscrollcommand=scroll.set)
+            inner = tk.Frame(canvas, bg=PANEL)
+            wid = canvas.create_window((0, 0), window=inner, anchor="nw")
+            inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+            canvas.bind("<Configure>", lambda e: canvas.itemconfigure(wid, width=e.width))
+            status = tk.Label(content, text="", bg=BG, fg=MUTED)
+            status.pack(anchor="w", pady=(7, 0))
+            protected = {"system", "registry", "smss.exe", "csrss.exe", "wininit.exe", "services.exe",
+                         "lsass.exe", "winlogon.exe", "svchost.exe", "dwm.exe", "explorer.exe",
+                         "spoolsv.exe", "fontdrvhost.exe", "taskhostw.exe"}
+            processes = []
+
+            def refresh_processes():
+                nonlocal processes
+                try:
+                    import csv, subprocess
+                    out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True,
+                                         encoding="utf-8", errors="replace", timeout=10)
+                    processes = [(r[0], r[1]) for r in csv.reader(out.stdout.splitlines()) if len(r) >= 2]
+                except Exception:
+                    processes = []
+                render_processes()
+
+            def stop_process(proc_name, pid):
+                if proc_name.casefold() in protected:
+                    messagebox.showwarning("JARVIS", "Этот системный процесс защищён.")
+                    return
+                if not messagebox.askyesno("Подтверждение", "Завершить «" + proc_name + "»? Несохранённые данные могут быть потеряны."):
+                    return
+                try:
+                    import subprocess
+                    subprocess.run(["taskkill", "/PID", str(pid), "/T"], capture_output=True, text=True, timeout=8)
+                    status.config(text="Запрос на завершение отправлен: " + proc_name, fg=GREEN)
+                    win.after(700, refresh_processes)
+                except Exception as exc:
+                    status.config(text="Ошибка: " + str(exc), fg=RED)
+
+            def render_processes(*_args):
+                for child in inner.winfo_children():
+                    child.destroy()
+                term = query.get().strip().casefold()
+                shown = [(n, p) for n, p in processes if term in n.casefold()]
+                for proc_name, pid in shown:
+                    row = tk.Frame(inner, bg=PANEL2, highlightbackground=LINE, highlightthickness=1)
+                    row.pack(fill="x", padx=8, pady=4)
+                    tk.Label(row, text=proc_name, bg=PANEL2, fg=TEXT, font=("Segoe UI", 10),
+                             anchor="w").pack(side="left", fill="x", expand=True, padx=12, pady=10)
+                    if proc_name.casefold() in protected:
+                        tk.Label(row, text="Системный процесс", bg=PANEL2, fg=MUTED).pack(side="right", padx=10)
+                    else:
+                        ttk.Button(row, text="Завершить", command=lambda n=proc_name, p=pid: stop_process(n, p)).pack(side="right", padx=10, pady=6)
+                status.config(text="Программ в списке: " + str(len(shown)), fg=MUTED)
+            query.trace_add("write", render_processes)
+            buttons = tk.Frame(content, bg=BG)
+            buttons.pack(fill="x", pady=(0, 8))
+            ttk.Button(buttons, text="Обновить список", command=refresh_processes).pack(side="right")
+            refresh_processes()
+
+        elif name == "osint":
+            tk.Label(content, text="Введите данные и выберите понятное действие.", bg=BG, fg=MUTED).pack(anchor="w", pady=(0, 8))
+            query = tk.StringVar()
+            tk.Entry(content, textvariable=query, bg=PANEL, fg=TEXT, insertbackground=CYAN,
+                     relief="flat", font=("Segoe UI", 12)).pack(fill="x", ipady=10, pady=(0, 14))
+            status = tk.Label(content, text="Результаты появятся в основном окне JARVIS.", bg=BG, fg=MUTED,
+                              wraplength=760, justify="left")
+            status.pack(anchor="w", pady=(12, 0))
+            checks = [
+                ("Проверить домен", "Проверь домен, DNS, IP, RDAP, NS и TLS: "),
+                ("Проверить IP-адрес", "Проверь IP-адрес, географию, ASN и провайдера: "),
+                ("Проверить сайт", "Проверь URL сайта, HTTP-заголовки, ссылки и SHA-256: "),
+                ("Проверить email", "Проверь email и домен: "),
+                ("Проверить имя пользователя", "Проверь публичные профили для username: "),
+            ]
+            def submit_check(prompt, label):
+                value = query.get().strip()
+                if not value:
+                    messagebox.showinfo("JARVIS", "Сначала введите данные для проверки.")
+                    return
+                status.config(text="Проверка отправлена: " + label, fg=CYAN)
+                self.send(prompt + value)
+            for label, prompt in checks:
+                ttk.Button(content, text=label, command=lambda p=prompt, l=label: submit_check(p, l)).pack(fill="x", pady=4)
+
+        else:
+            tk.Label(content, text=desc, bg=BG, fg=MUTED, font=("Segoe UI", 11),
+                     wraplength=760, justify="left").pack(anchor="w", pady=(0, 12))
+            tk.Label(content, text="Управляйте этим инструментом через основные кнопки JARVIS.",
+                     bg=BG, fg=TEXT, font=("Segoe UI", 10)).pack(anchor="w", pady=4)
+
+        ttk.Button(win, text="Закрыть", command=win.destroy).pack(anchor="e", padx=20, pady=(0, 14))
+
     def show_tools(self):
         win = tk.Toplevel(self)
         win.title("JARVIS — Управление модулями")
