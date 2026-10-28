@@ -103,6 +103,7 @@ class VoiceLoop:
             max_seconds=float(os.environ.get("JARVIS_VOICE_UTTERANCE_MAX", "120")),
             start_timeout=timeout,
             on_speech_start=tts.stop,
+            interrupt_guard=tts.is_playing,
         )
 
     def _wait_for_wake(self) -> str:
@@ -168,7 +169,9 @@ class VoiceLoop:
 
                 if answer:
                     # Playback is interruptible by the next speech-start callback.
-                    tts.speak_and_play(answer)
+                    # Prepare cloud audio first, then play in the background so
+                    # _listen() can detect a real user interruption mid-sentence.
+                    tts.speak_and_play(answer, blocking=False)
 
             except KeyboardInterrupt:
                 raise
