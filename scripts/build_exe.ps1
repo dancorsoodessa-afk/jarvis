@@ -39,6 +39,24 @@ No local AI models are bundled.
 Configuration: enter GEMINI_API_KEY in the JARVIS control center.
 "@ | Set-Content -Path "$release\README.txt" -Encoding UTF8
 
+Write-Host "== JARVIS: packaged EXE startup smoke test ==" -ForegroundColor Cyan
+$exePath = (Resolve-Path "$release\JARVIS.exe").Path
+$process = Start-Process -FilePath $exePath -WorkingDirectory (Get-Location).Path -PassThru
+try {
+    Start-Sleep -Seconds 8
+    $process.Refresh()
+    if ($process.HasExited) {
+        throw "JARVIS.exe exited during startup smoke test (exit code $($process.ExitCode))."
+    }
+    Write-Host "Startup smoke test passed: JARVIS.exe stayed alive for 8 seconds." -ForegroundColor Green
+}
+finally {
+    $process.Refresh()
+    if (!$process.HasExited) {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host ""
 Write-Host "Release ready:" -ForegroundColor Green
 Write-Host "  $release\JARVIS.exe"
