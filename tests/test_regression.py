@@ -38,6 +38,9 @@ def test_desktop_startup_failure_persists_traceback():
     assert "startup-error.log" in source
     assert "traceback.format_exc()" in source
     assert "messagebox.showerror(" in source
+    assert '"--smoke-test" in sys.argv[1:]' in source
+    build_script = (ROOT / "scripts" / "build_exe.ps1").read_text(encoding="utf-8")
+    assert "Packaged EXE startup smoke test passed." in build_script
 
 
 def test_desktop_passes_attachment_to_agent():
