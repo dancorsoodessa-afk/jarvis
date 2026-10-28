@@ -33,4 +33,4 @@ def test_android_header_and_launcher_reference_the_same_brand_asset():
     assert 'android:roundIcon="@drawable/jarvis_reactor_logo"' in manifest
     assert "jarvis_reactor_logo.png" in workflow
     assert (ROOT / "ui" / "assets" / "jarvis-reactor-logo.png").is_file()
-    assert (ROOT / "ui" / "android" / "app" / "src" / "main" / "res" / "drawable-nodpi" / "jarvis_reactor_logo.png").is_file()
+    assert (ROOT / "ui" / "android" / "app" / "src" / "main" / "res" / "drawable" / "jarvis_reactor_logo.xml").is_file()
