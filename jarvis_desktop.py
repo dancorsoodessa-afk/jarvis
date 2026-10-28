@@ -817,14 +817,10 @@ class JarvisDesktop(tk.Tk):
                 pass
 
     def _speak_reply(self, text):
-        # VoiceController owns queued speech whenever the voice session is active.
-        # Typed-chat replies retain background playback without touching Tk widgets.
+        # Every reply goes through the controller's persistent TTS queue.
+        # This worker never accesses Tk widgets directly.
         try:
-            if self.voice_controller.status()["running"]:
-                self.voice_controller.speak(text)
-            else:
-                tts.speak_and_play(text, on_playback_start=lambda: self.events.put(("tts_started",)), blocking=True)
-                self.events.put(("tts_done",))
+            self.voice_controller.speak(text)
         except Exception as exc:
             self.events.put(("tts_error", str(exc)))
 
