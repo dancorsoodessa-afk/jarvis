@@ -968,7 +968,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           ),
         ),
       ) : null,
-      body: _mainContent(),
+      body: LayoutBuilder(builder: (context, constraints) => _mainContent(compact: constraints.maxHeight < 760 || constraints.maxWidth < 380)),
     );
   }
 
