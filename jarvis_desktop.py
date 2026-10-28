@@ -520,6 +520,7 @@ class JarvisDesktop(tk.Tk):
         labels = {
             "IDLE": "СИСТЕМА ГОТОВА",
             "LISTENING": "СЛУШАЮ ВАС",
+            "UNDERSTANDING": "РАСПОЗНАЮ КОМАНДУ",
             "THINKING": "ОБРАБОТКА",
             "SPEAKING": "ОТВЕЧАЮ",
             "ERROR": "ОШИБКА",
