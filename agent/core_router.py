@@ -88,6 +88,9 @@ class RoleRouterProvider:
                     or "не удалось подключиться к серверу" in message
                     or "временно перегружен" in message
                     or "временно недоступен" in message
+                    or "тайм-аут" in message
+                    or "timed out" in message
+                    or "timeout" in message
                     or http_failure
                 )
                 if backend_unavailable:
