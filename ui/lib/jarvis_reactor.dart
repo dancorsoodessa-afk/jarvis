@@ -309,20 +309,7 @@ class _EnergyCorePainter extends CustomPainter {
         nucleus,
       );
     }
-    final diamond = Path()
-      ..moveTo(center.dx, center.dy - radius * 0.12)
-      ..lineTo(center.dx + radius * 0.095, center.dy)
-      ..lineTo(center.dx, center.dy + radius * 0.12)
-      ..lineTo(center.dx - radius * 0.095, center.dy)
-      ..close();
-    canvas.drawPath(
-      diamond,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.82)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.1,
-    );
-    canvas.drawCircle(center, radius * 0.025, Paint()..color = Colors.white);
+    // The old white diamond looked like an unrelated control floating over the core.
   }
 
   @override
