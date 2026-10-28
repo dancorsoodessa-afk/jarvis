@@ -15,7 +15,7 @@ const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
 const kFreePrimaryUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
-const kFreePrimaryModel = 'gemini-3.8-flash';
+const kFreePrimaryModel = 'gemini-3.5-flash-lite';
 const kFreeFallbackUrl = '';
 const kFreeFallbackModel = '';
 
@@ -306,7 +306,14 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       // Preserve the user's configured OpenAI-compatible provider and key.
       // A stale model ID is the common cause of a "connected" UI with failed chat.
       _endpoint.text = storedEndpoint.isEmpty ? kFreePrimaryUrl : storedEndpoint;
-      _model.text = storedModel.isEmpty ? kFreePrimaryModel : storedModel;
+      final normalizedSavedModel = storedModel.toLowerCase();
+      final staleSavedModel = normalizedSavedModel.contains('openrouter/free') ||
+          normalizedSavedModel.startsWith('http://') ||
+          normalizedSavedModel.startsWith('https://');
+      _model.text = storedModel.isEmpty || staleSavedModel
+          ? kFreePrimaryModel
+          : storedModel;
+      if (staleSavedModel) await prefs.setString('model', kFreePrimaryModel);
       _apiKey.text = storedKey;
 
       _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? '';
