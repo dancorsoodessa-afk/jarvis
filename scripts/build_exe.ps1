@@ -37,7 +37,12 @@ Copy-Item "dist\jarvis_desktop.exe" "$release\JARVIS.exe"
 Write-Host "== JARVIS: packaged EXE startup smoke test ==" -ForegroundColor Cyan
 $startupLog = Join-Path $env:APPDATA "JARVIS\startup-error.log"
 Remove-Item $startupLog -Force -ErrorAction SilentlyContinue
-$smoke = Start-Process -FilePath (Join-Path $release "JARVIS.exe") -ArgumentList "--smoke-test" -WorkingDirectory (Get-Location).Path -PassThru -Wait
+$smoke = Start-Process -FilePath (Join-Path $release "JARVIS.exe") -ArgumentList "--smoke-test" -WorkingDirectory (Get-Location).Path -PassThru
+if (-not $smoke.WaitForExit(15000)) {
+    Stop-Process -Id $smoke.Id -Force -ErrorAction SilentlyContinue
+    throw "JARVIS.exe startup smoke test timed out after 15 seconds."
+}
+$smoke.Refresh()
 if ($smoke.ExitCode -ne 0) { throw "JARVIS.exe startup smoke test failed with exit code $($smoke.ExitCode)." }
 if (Test-Path $startupLog) { throw "JARVIS.exe wrote a startup-error.log during smoke test." }
 Write-Host "Packaged EXE startup smoke test passed." -ForegroundColor Green
