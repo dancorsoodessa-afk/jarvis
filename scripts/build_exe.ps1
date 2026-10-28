@@ -20,6 +20,11 @@ Write-Host "== JARVIS: desktop import check ==" -ForegroundColor Cyan
 python -c "import jarvis_desktop; print('JARVIS desktop import OK')"
 if ($LASTEXITCODE -ne 0) { throw "Desktop import check failed." }
 
+Write-Host "== JARVIS: generate application icon ==" -ForegroundColor Cyan
+python scripts\create_icon.py
+if ($LASTEXITCODE -ne 0) { throw "Icon generation failed." }
+if (!(Test-Path "assets\jarvis.ico")) { throw "JARVIS icon file was not created." }
+
 Write-Host "== JARVIS: build EXE ==" -ForegroundColor Cyan
 python -m PyInstaller jarvis_desktop.spec --clean --noconfirm
 if ($LASTEXITCODE -ne 0) { throw "JARVIS.exe build failed." }
