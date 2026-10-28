@@ -193,6 +193,18 @@ class TTSEngine:
         self._thread = threading.Thread(target=self._run, name="jarvis-tts-worker", daemon=True)
         self._thread.start()
 
+    def mark_thinking(self) -> None:
+        """Move the state machine into LLM/tool processing."""
+        self._set_state("THINKING")
+
+    def complete_without_speech(self) -> None:
+        """Finish a request when TTS is disabled."""
+        self._set_state("LISTENING" if self._running and not self._stop.is_set() else "IDLE")
+
+    def report_error(self, message: str) -> None:
+        """Publish an error without blocking the caller or terminating the GUI."""
+        threading.Thread(target=self._recover, args=(message,), name="jarvis-voice-recovery", daemon=True).start()
+
     def speak(self, text: str) -> None:
         self._queue.put(text)
 
