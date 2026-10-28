@@ -35,6 +35,33 @@ DEFAULT_PROVIDER = "gemini"
 DEFAULT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
 
+TOOL_SETTINGS_VERSION = 1
+
+
+def _migrate_tool_preferences(settings: dict) -> bool:
+    """Enable the full safe-by-default tool catalog once when upgrading old settings."""
+    try:
+        version = int(settings.get("tool_settings_version", 0) or 0)
+    except (TypeError, ValueError):
+        version = 0
+    if version < TOOL_SETTINGS_VERSION:
+        settings["disabled_tools"] = []
+        settings["tool_settings_version"] = TOOL_SETTINGS_VERSION
+        return True
+
+    known = {entry[0] for entry in TOOLS}
+    current = settings.get("disabled_tools", [])
+    if not isinstance(current, list):
+        current = []
+    normalized = list(dict.fromkeys(
+        name for name in current if isinstance(name, str) and name in known
+    ))
+    if normalized != current:
+        settings["disabled_tools"] = normalized
+        return True
+    return False
+
+
 _CPU_TIMES_PREVIOUS = None
 
 
@@ -143,7 +170,7 @@ class JarvisDesktop(tk.Tk):
         self._visual_level = 0.0
         self.settings = _load_saved_settings()
         self._apply_saved_settings()
-        if getattr(self, "_legacy_tts_settings_removed", False):
+        if getattr(self, "_legacy_tts_settings_removed", False) or getattr(self, "_tool_settings_migrated", False):
             self._save_settings()
         self._build_style()
         self._build_ui()
@@ -246,10 +273,8 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_ADDITIONAL_MODEL"] = self.settings["additional_model"]
         # Independent consultant providers. Keep secrets out of the repository;
         # they live only in the user's settings/environment.
+        self._tool_settings_migrated = _migrate_tool_preferences(self.settings)
         disabled = self.settings.get("disabled_tools", [])
-        if not isinstance(disabled, list):
-            disabled = []
-        self.settings["disabled_tools"] = disabled
         os.environ["JARVIS_DISABLED_TOOLS"] = json.dumps(disabled, ensure_ascii=False)
         self.settings.setdefault("voice_enabled", True)
         self.settings.setdefault("tts_enabled", True)
