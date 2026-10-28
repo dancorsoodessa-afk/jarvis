@@ -109,7 +109,7 @@ def _generate_audio(text: str) -> bytes:
             }],
         }],
         "response_format": {"type": "audio", "mime_type": "audio/wav"},
-        "generation_config": {"speech_config": [{"voice": voice, "language": language}]},
+        "generation_config": {"speech_config": [{"voice": voice}]},
     }
     request = urllib.request.Request(
         TTS_ENDPOINT,
@@ -117,7 +117,7 @@ def _generate_audio(text: str) -> bytes:
         headers={"x-goog-api-key": key, "Content-Type": "application/json", "Accept": "application/json"},
         method="POST",
     )
-    retryable = {429, 500, 502, 503, 504}
+    # Do not retry 429: it may be a depleted quota and repeated requests only waste time.
     for attempt in range(3):
         try:
             with urllib.request.urlopen(request, timeout=_timeout()) as response:
@@ -137,7 +137,7 @@ def _generate_audio(text: str) -> bytes:
             return base64.b64decode(audio, validate=True)
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:400]
-            if exc.code in retryable and attempt < 2:
+            if exc.code in {500, 502, 503, 504} and attempt < 2:
                 import time
                 time.sleep(0.8 * (2 ** attempt))
                 continue
