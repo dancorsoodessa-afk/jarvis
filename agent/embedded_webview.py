@@ -66,18 +66,21 @@ class EmbeddedEdgeView:
             "--window-size=900,600",
         ]
         try:
-            self.process = subprocess.Popen(
+            process = subprocess.Popen(
                 args,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 close_fds=True,
             )
+            self.process = process
             deadline = time.monotonic() + max(3.0, min(30.0, timeout))
             while time.monotonic() < deadline:
-                if self.process.poll() is not None:
+                # Keep a local process reference: close() may run on the Tk thread
+                # while this worker is waiting for Edge to create its window.
+                if process.poll() is not None:
                     raise RuntimeError("Microsoft Edge завершился до открытия 3D-сцены.")
-                hwnd = self._find_main_window(self.process.pid)
+                hwnd = self._find_main_window(process.pid)
                 if hwnd:
                     self._embed(hwnd)
                     self.hwnd = hwnd
