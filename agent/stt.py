@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 
 DEFAULT_LOCAL_MODEL = "small"
-DEFAULT_STT_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_STT_MODEL = "gemini-3.8-flash"
 DEFAULT_STT_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
 
 
