@@ -204,6 +204,9 @@ class TTSEngine:
         if not self._shutdown.is_set():
             self._queue.put(text)
 
+    def has_pending(self) -> bool:
+        return not self._queue.empty() or self._active.is_set()
+
     def stop(self) -> None:
         while True:
             try:
@@ -298,13 +301,13 @@ class VoiceController:
             if self._running:
                 return
             self._running = True
+            self._set_state("LISTENING")
             if self._capture_thread is not None and self._capture_thread.is_alive():
                 # Do not clear the old session's stop event; let it release the device first.
                 self._restart_after_capture = True
                 self._set_state("LISTENING", "Перезапуск микрофона…")
                 return
             self._launch_capture_locked()
-        self._set_state("LISTENING")
         self._log.info("event=start")
 
     def _launch_capture_locked(self) -> None:
@@ -496,10 +499,7 @@ class VoiceController:
                 if delay and self._stt_queue.empty():
                     time.sleep(delay if attempt else 0)
                 try:
-                    transcript = self.stt_engine.transcribe_bytes(audio)
-                    if not transcript:
-                        self._log.warning("event=empty_final")
-                        self.ui.post("voice_status", "Речь не распознана. Продолжаю слушать.")
+                    self.stt_engine.transcribe_bytes(audio)
                     last_error = None
                     break
                 except Exception as exc:
@@ -523,7 +523,10 @@ class VoiceController:
         self._is_speaking.clear()
         with self._lock:
             running = self._running
-        self._set_state("LISTENING" if running else "IDLE")
+        if self.tts_engine.has_pending():
+            self._set_state("THINKING")
+        else:
+            self._set_state("LISTENING" if running else "IDLE")
 
     def _tts_error(self, exc: Exception) -> None:
         self._log.exception("event=tts_error", exc_info=exc)
