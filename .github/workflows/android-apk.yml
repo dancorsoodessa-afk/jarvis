@@ -49,7 +49,7 @@ jobs:
               i = s.find('>', s.find(marker))
               if i < 0:
                   raise SystemExit("Malformed AndroidManifest.xml")
-              s = s[:i+1] + "\\n" + "\\n".join(missing) + s[i+1:]
+              s = s[:i+1] + chr(10) + chr(10).join(missing) + s[i+1:]
               p.write_text(s)
           PY
 
