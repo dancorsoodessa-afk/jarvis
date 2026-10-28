@@ -5,9 +5,8 @@ JARVIS combines a Python agent core for Windows, a Flutter client for Android, l
 ## Architecture
 
 - **Primary chat AI:** Google Gemini through its OpenAI-compatible endpoint.
-- **Optional chat fallback:** Groq Cloud, with a separate key, model, and timeout.
-- **Primary speech recognition:** local Whisper transcription with no API key or cloud request quota.
-- **Optional cloud speech recognition:** Gemini and Groq can be selected explicitly; both are quota-limited, so local Whisper is the default.
+- **Primary speech recognition:** Gemini cloud STT. When the key is missing or the quota is exhausted, voice input reports that it is unavailable instead of silently switching providers.
+- **Optional local speech recognition:** Whisper can be enabled explicitly with `JARVIS_STT=local`; it is not an automatic fallback.
 - **Speech output:** Gemini cloud TTS. No ElevenLabs or bundled offline voice engine is required.
 - **3D interface:** Windows serves the real Three.js/WebGL reactor locally and embeds its Microsoft Edge app window into the main desktop window; Microsoft Edge must be installed. The Flutter Android client has its own animated reactor painter. CI covers embedding logic, but a real launch check on the target PC is still required before release.
 - **Camera:** not implemented; JARVIS does not request camera access.
