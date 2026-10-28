@@ -54,3 +54,36 @@ def test_empty_transcript_is_reported_not_silently_dropped():
     controller.on_text("   ")
     assert events.get_nowait() == ("voice_status", "Речь не распознана. Продолжаю слушать.")
     controller.shutdown()
+
+
+
+def test_controller_exposes_gui_called_state_methods_on_correct_object():
+    controller = VoiceController(UIBridge(queue.Queue()), on_text=lambda _text: None)
+    assert callable(controller.mark_thinking)
+    assert callable(controller.complete_without_speech)
+    assert callable(controller.report_error)
+    assert not hasattr(controller.tts_engine, "mark_thinking")
+    controller.shutdown()
+
+
+def test_ten_final_transcripts_are_routed_without_restarting_controller():
+    events = queue.Queue()
+    routed = []
+    controller = VoiceController(UIBridge(events), on_text=routed.append)
+    commands = [f"команда номер {index}" for index in range(1, 11)]
+    for command in commands:
+        controller.on_text(command)
+    assert routed == commands
+    assert controller.status()["running"] is False
+    controller.shutdown()
+
+
+def test_stop_voice_command_transitions_to_idle():
+    events = queue.Queue()
+    controller = VoiceController(UIBridge(events), on_text=lambda _text: None)
+    controller.start = lambda: None  # This test verifies the command handler without opening a device.
+    controller._running = True
+    controller.on_text("стоп голос")
+    assert controller.status()["state"] == "IDLE"
+    assert controller.status()["running"] is False
+    controller.shutdown()
