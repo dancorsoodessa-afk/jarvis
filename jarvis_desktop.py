@@ -618,6 +618,7 @@ class JarvisDesktop(tk.Tk):
             return
         try:
             self.voice_controller.start()
+            self._voice_loop_running = True
             self.voice_button.config(text="🎙 СЛУШАЮ")
             self._append("VOICE", "Голосовой контур запущен. Говорите команду без слова «Джарвис».")
         except Exception as exc:
@@ -625,6 +626,7 @@ class JarvisDesktop(tk.Tk):
 
     def _stop_voice(self):
         self.voice_controller.stop()
+        self._voice_loop_running = False
         self.voice_button.config(text="🎙 ГОЛОС")
         self._append("VOICE", "Голосовой цикл остановлен. Его можно включить кнопкой «Голос».")
 
@@ -752,6 +754,8 @@ class JarvisDesktop(tk.Tk):
                         self.send(event[1])
                     elif kind == "voice_state":
                         state = str(event[1])
+                        if state == "IDLE":
+                            self._voice_loop_running = False
                         message = str(event[2]) if len(event) > 2 else ""
                         self._set_visual_state(state, 0.75 if state == "LISTENING" else 0.45 if state in {"THINKING", "UNDERSTANDING"} else 0.8 if state == "SPEAKING" else 0.0)
                         if state == "LISTENING":
