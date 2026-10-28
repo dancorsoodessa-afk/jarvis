@@ -239,8 +239,7 @@ class TTSEngine:
             succeeded = True
             try:
                 self._active.set()
-                self._on_start()
-                tts.speak_and_play(text, blocking=True, cancel_event=cancel_event)
+                tts.speak_and_play(text, on_playback_start=self._on_start, blocking=True, cancel_event=cancel_event)
             except Exception as exc:
                 succeeded = False
                 self._on_error(exc)
@@ -420,6 +419,7 @@ class VoiceController:
             self._log.warning("event=empty_tts")
             self.ui.post("voice_status", "Пустой ответ: озвучивать нечего.")
             return
+        self._set_state("THINKING")
         self.tts_engine.speak(value)
 
     def _recover(self, message: str) -> None:
