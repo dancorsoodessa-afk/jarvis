@@ -236,18 +236,20 @@ class TTSEngine:
             cancel_event = threading.Event()
             with self._lock:
                 self._current_cancel = cancel_event
+            succeeded = True
             try:
                 self._active.set()
                 self._on_start()
                 tts.speak_and_play(text, blocking=True, cancel_event=cancel_event)
             except Exception as exc:
+                succeeded = False
                 self._on_error(exc)
             finally:
                 self._active.clear()
                 with self._lock:
                     if self._current_cancel is cancel_event:
                         self._current_cancel = None
-                self._on_end()
+                self._on_end(succeeded)
 
 
 class VoiceController:
@@ -530,18 +532,33 @@ class VoiceController:
         self._is_speaking.set()
         self._set_state("SPEAKING")
 
-    def _tts_ended(self) -> None:
+    def _tts_ended(self, succeeded: bool = True) -> None:
         self._is_speaking.clear()
         with self._lock:
             running = self._running
+        if not succeeded:
+            if running:
+                threading.Thread(target=self._restore_after_error, daemon=True, name="jarvis-tts-recovery").start()
+            else:
+                self._set_state("IDLE")
+            return
         if self.tts_engine.has_pending():
             self._set_state("THINKING")
         else:
             self._set_state("LISTENING" if running else "IDLE")
 
+    def _restore_after_error(self) -> None:
+        time.sleep(RECOVERY_DELAYS[0])
+        with self._lock:
+            running = self._running
+            state = self._state
+        if running and state == "ERROR":
+            self._set_state("LISTENING", "Голосовой контур восстановлен после ошибки TTS.")
+
     def _tts_error(self, exc: Exception) -> None:
-        self._log.exception("event=tts_error", exc_info=exc)
+        self._log.error("event=tts_error error=%s", exc)
         self._set_state("ERROR", f"Не удалось озвучить ответ: {exc}")
+        self.tts_engine.stop()
         self.ui.post("tts_error", str(exc))
         with self._lock:
             running = self._running
