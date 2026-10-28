@@ -115,3 +115,18 @@ def test_status_reports_groq_as_cloud_stt_reserve(monkeypatch):
     assert status["cloud_stt"] == "groq"
     assert status["quota_exceeded"] is True
     controller.shutdown()
+
+
+
+def test_status_reports_tts_off_after_tts_failure(monkeypatch):
+    from agent import stt, tts
+    monkeypatch.setattr(stt, "current_engine", lambda: "gemini")
+    monkeypatch.setattr(stt, "quota_exceeded", lambda: False)
+    monkeypatch.setattr(tts, "current_engine", lambda: "gemini")
+    controller = VoiceController(UIBridge(queue.Queue()), on_text=lambda _text: None)
+    controller._tts_off = True
+    status = controller.status()
+    assert status["tts_status"] == "tts off"
+    assert status["tts"] == "off"
+    assert status["cloud_voice_available"] is False
+    controller.shutdown()
