@@ -39,10 +39,10 @@ JARVIS — Windows x64
 Chat AI: Google Gemini API (internet and GEMINI_API_KEY required).
 Speech recognition: Google Gemini API (GEMINI_API_KEY required).
 Speech output: Google Gemini cloud TTS (GEMINI_API_KEY required).
-Optional backup chat provider: Groq API (GROQ_API_KEY configured in the JARVIS control center).
+No Groq, OpenRouter, or Hugging Face provider is configured.
 No local AI models are bundled.
 
-Configuration: enter GEMINI_API_KEY in the JARVIS control center. Optionally configure GROQ_API_KEY there as a backup chat provider.
+Configuration: enter GEMINI_API_KEY in the JARVIS control center. Speech recognition uses Gemini cloud API by default; local Whisper is available only when explicitly selected.
 "@ | Set-Content -Path "$release\README.txt" -Encoding UTF8
 
 Write-Host ""
