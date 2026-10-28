@@ -71,7 +71,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/jarvis-native"
           cp android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt "$RUNNER_TEMP/jarvis-native/MainActivity.kt"
           cp android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/JarvisTimerReceiver.kt "$RUNNER_TEMP/jarvis-native/JarvisTimerReceiver.kt"
-          cp android/app/src/main/res/drawable-nodpi/jarvis_reactor_logo.png "$RUNNER_TEMP/jarvis-native/jarvis_reactor_logo.png"
+          cp android/app/src/main/res/drawable/jarvis_reactor_logo.xml "$RUNNER_TEMP/jarvis-native/jarvis_reactor_logo.xml"
       - name: Generate Android project
         working-directory: ui
         run: |
@@ -87,8 +87,8 @@ jobs:
           mkdir -p "$KOTLIN"
           cp "$RUNNER_TEMP/jarvis-native/MainActivity.kt" "$KOTLIN/MainActivity.kt"
           cp "$RUNNER_TEMP/jarvis-native/JarvisTimerReceiver.kt" "$KOTLIN/JarvisTimerReceiver.kt"
-          mkdir -p android/app/src/main/res/drawable-nodpi
-          cp "$RUNNER_TEMP/jarvis-native/jarvis_reactor_logo.png" android/app/src/main/res/drawable-nodpi/jarvis_reactor_logo.png
+          mkdir -p android/app/src/main/res/drawable
+          cp "$RUNNER_TEMP/jarvis-native/jarvis_reactor_logo.xml" android/app/src/main/res/drawable/jarvis_reactor_logo.xml
           cp android_tool_router.kt "$KOTLIN/AndroidToolRouter.kt"
           cp android_tools/TradingTools.kt "$KOTLIN/TradingTools.kt"
           cp android_tools/StockAnalysisTools.kt "$KOTLIN/StockAnalysisTools.kt"
