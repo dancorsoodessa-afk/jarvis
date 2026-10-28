@@ -246,7 +246,8 @@ class JarvisDesktop(tk.Tk):
         self.settings.pop("groq_api_key", None)
         self.settings.pop("groq_model", None)
         self.settings.pop("groq_timeout", None)
-        os.environ["GROQ_API_KEY"] = str(self.settings.get("groq_stt_api_key") or "").strip()
+        groq_stt_key = self.settings.get("groq_stt_api_key") if "groq_stt_api_key" in self.settings else os.environ.get("GROQ_API_KEY", "")
+        os.environ["GROQ_API_KEY"] = str(groq_stt_key or "").strip()
         os.environ["JARVIS_STT_FALLBACK_MODEL"] = str(
             self.settings.get("stt_fallback_model") or "whisper-large-v3-turbo"
         ).strip()
