@@ -336,20 +336,35 @@ class VoiceController:
                 with tempfile.NamedTemporaryFile(prefix="jarvis_stt_", suffix=".wav", delete=False) as handle:
                     path = Path(handle.name)
                     handle.write(audio)
-                text = stt.transcribe(str(path))
-                if not text.strip():
+                last_exc = None
+                text = ""
+                for attempt, delay in enumerate((0.0, 0.5, 1.0)):
+                    if self._stop.is_set():
+                        break
+                    if delay and self._stop.wait(delay):
+                        break
+                    try:
+                        text = stt.transcribe(str(path))
+                        last_exc = None
+                        break
+                    except Exception as exc:
+                        last_exc = exc
+                        self._log.exception("event=stt_attempt_failed attempt=%s", attempt + 1)
+                if last_exc is not None:
+                    self._recover(f"Ошибка распознавания после повторов: {last_exc}")
+                elif not text.strip():
                     self._log.warning("event=empty_final")
                     self.ui.post("voice_status", "Речь не распознана. Продолжаю слушать.")
                 else:
                     self._set_state("UNDERSTANDING")
                     self.on_text(text)
             except Exception as exc:
-                self._log.exception("event=stt_error")
-                self._recover(f"Ошибка распознавания: {exc}")
+                self._log.exception("event=stt_worker_error")
+                self._recover(f"Ошибка голосового контура: {exc}")
             finally:
                 if path:
                     path.unlink(missing_ok=True)
-                if self._running and not self._is_speaking.is_set() and self._state not in {"THINKING", "SPEAKING"}:
+                if self._running and not self._is_speaking.is_set() and self._state not in {"THINKING", "SPEAKING", "ERROR"}:
                     self._set_state("LISTENING")
 
     def _tts_worker(self) -> None:
