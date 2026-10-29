@@ -289,3 +289,63 @@ def test_provider_health_check_selects_a_model_exposed_to_this_key():
     with patch("urllib.request.urlopen", return_value=Response()):
         assert provider.health_check() == "ONLINE"
     assert provider.model == "gemini-3.5-flash-lite"
+
+
+def test_gemini_model_priority_prefers_requested_flash_order():
+    from agent.providers.openai_chat import OpenAIChatProvider
+
+    assert OpenAIChatProvider._select_flash_model({
+        "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.5-flash"
+    }) == "gemini-2.5-flash"
+    assert OpenAIChatProvider._select_flash_model({
+        "gemini-2.0-flash", "gemini-flash-latest"
+    }) == "gemini-2.0-flash"
+    assert OpenAIChatProvider._select_flash_model({
+        "gemini-embedding-001", "gemini-3.5-flash-lite"
+    }) == "gemini-3.5-flash-lite"
+    assert OpenAIChatProvider._select_flash_model({"gemini-embedding-001"}) == ""
+
+
+def test_gemini_safe_mode_does_not_send_function_tools(monkeypatch):
+    from agent.providers.openai_chat import OpenAIChatProvider
+
+    monkeypatch.setenv("GEMINI_TOOLS_ENABLED", "false")
+    provider = OpenAIChatProvider(
+        url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        api_key="test-key", model="gemini-2.5-flash",
+    )
+    provider._model_verified = True
+    captured = []
+    provider._request = lambda payload: captured.append(payload.copy()) or {
+        "choices": [{"message": {"role": "assistant", "content": "Текстовый ответ", "tool_calls": []}}]
+    }
+    result = provider.generate("проверь статус", tools=[{
+        "type": "function", "function": {"name": "status", "parameters": {"type": "object"}}
+    }])
+    assert result == "Текстовый ответ"
+    assert captured and "tools" not in captured[0]
+
+
+def test_thought_signature_http400_retries_once_without_tools(monkeypatch):
+    from agent.providers.openai_chat import OpenAIChatProvider
+
+    monkeypatch.setenv("GEMINI_TOOLS_ENABLED", "true")
+    provider = OpenAIChatProvider(
+        url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        api_key="test-key", model="gemini-2.5-flash",
+    )
+    provider._model_verified = True
+    calls = []
+    def fake_request(payload):
+        calls.append(payload.copy())
+        if len(calls) == 1:
+            raise RuntimeError("Ошибка API: HTTP 400. Function call is missing a thought_signature")
+        return {"choices": [{"message": {"role": "assistant", "content": "Ответ без инструментов", "tool_calls": []}}]}
+    provider._request = fake_request
+    result = provider.generate("ответь текстом", tools=[{
+        "type": "function", "function": {"name": "web_search", "parameters": {"type": "object"}}
+    }])
+    assert result == "Ответ без инструментов"
+    assert len(calls) == 2
+    assert "tools" in calls[0]
+    assert "tools" not in calls[1]
