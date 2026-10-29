@@ -35,14 +35,11 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         # Settings.from_env() already resolves environment keys. An empty value here
         # must stay empty so a deliberately cleared key cannot be resurrected.
         shared_key = settings.chat_key
-        default_model = settings.chat_model or "gemini-3.8-flash"
+        default_model = settings.chat_model
         timeout = max(5, min(180, int(settings.gemini_timeout)))
         # The role profiles may point to the same configured model. Add known
         # Gemini alternatives so a capacity outage can fail over to a different model.
-        fallback_candidates = [
-            settings.fast_model, settings.reasoning_model, settings.coding_model, settings.additional_model,
-            "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.6-flash",
-        ]
+        fallback_candidates = []
         fast = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.fast_model or default_model,
                                   timeout=timeout, history=history, fallback_models=fallback_candidates)
         reasoning = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.reasoning_model or default_model,
