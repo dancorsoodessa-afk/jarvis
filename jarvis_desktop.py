@@ -783,6 +783,18 @@ class JarvisDesktop(tk.Tk):
                             self.metrics["Voice"].config(text="LISTENING", fg=GREEN)
                         elif state == "SPEAKING":
                             self.voice_button.config(text="🔊 ГОВОРЮ")
+                        elif state == "DEGRADED":
+                            self.metrics["Voice"].config(text="DEGRADED", fg=YELLOW)
+                            try:
+                                voice_status = self.voice_controller.status()
+                                if voice_status.get("running") and voice_status.get("cloud_stt") == "groq":
+                                    self.voice_button.config(text="🎙 СЛУШАЮ · РЕЗЕРВ")
+                                elif voice_status.get("quota_exceeded"):
+                                    self.voice_button.config(text="🎙 STT КВОТА")
+                                else:
+                                    self.voice_button.config(text="🎙 РЕЖИМ ОГРАНИЧЕН")
+                            except Exception:
+                                self.voice_button.config(text="🎙 РЕЖИМ ОГРАНИЧЕН")
                         elif state == "ERROR":
                             self.metrics["Voice"].config(text="ERROR", fg=RED)
                             if message:
