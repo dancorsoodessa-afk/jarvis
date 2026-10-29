@@ -17,38 +17,19 @@ class TestCloudVoiceRegressions(unittest.TestCase):
             with mock.patch.object(stt, "_token", return_value=""):
                 self.assertEqual(stt.current_engine(), "off")
 
-    def test_tts_auto_uses_gemini_when_key_is_configured(self):
+    def test_tts_stays_off_even_when_api_key_is_configured(self):
         with mock.patch.dict(os.environ, {"JARVIS_TTS": "auto"}):
             with mock.patch.object(tts, "_api_key", return_value="test-key"):
-                self.assertEqual(tts.current_engine(), "gemini")
+                self.assertEqual(tts.current_engine(), "off")
 
     def test_tts_auto_is_off_without_gemini_key(self):
         with mock.patch.dict(os.environ, {"JARVIS_TTS": "auto"}):
             with mock.patch.object(tts, "_api_key", return_value=""):
                 self.assertEqual(tts.current_engine(), "off")
 
-    def test_tts_uses_rest_input_schema_and_reads_audio_from_steps(self):
-        audio = b"RIFF-test-wav-data"
-        encoded = base64.b64encode(audio).decode("ascii")
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = json.dumps({
-            "steps": [{
-                "type": "model_output",
-                "content": [{"type": "audio", "data": encoded}],
-            }]
-        }).encode("utf-8")
-
-        with mock.patch.object(tts, "_api_key", return_value="test-key"):
-            with mock.patch.object(tts.urllib.request, "urlopen", return_value=response) as urlopen:
-                result = tts._generate_audio("Привет, Джарвис")
-
-        request = urlopen.call_args.args[0]
-        payload = json.loads(request.data.decode("utf-8"))
-        text_block = payload["input"][0]["content"][0]
-        self.assertEqual(text_block["text"], "Привет, Джарвис")
-        self.assertEqual(text_block["annotations"][0]["type"], "speech_metadata")
-        self.assertEqual(payload["response_format"], {"type": "audio", "mime_type": "audio/wav"})
-        self.assertEqual(result, audio)
+    def test_tts_api_generation_is_disabled(self):
+        with self.assertRaisesRegex(RuntimeError, "озвучка через Gemini API отключена"):
+            tts._generate_audio("Привет, Джарвис")
 
     def test_raw_gemini_pcm_is_wrapped_in_wav(self):
         import wave
@@ -71,7 +52,7 @@ class TestCloudVoiceRegressions(unittest.TestCase):
 
     def test_tts_rejects_unknown_engine(self):
         with mock.patch.dict(os.environ, {"JARVIS_TTS": "unknown"}):
-            with self.assertRaisesRegex(RuntimeError, "облачную озвучку Gemini"):
+            with self.assertRaisesRegex(RuntimeError, "озвучку Gemini Web"):
                 tts.current_engine()
 
 
