@@ -200,7 +200,7 @@ class JarvisDesktop(tk.Tk):
             "name": "JARVIS",
             "provider": "gemini",
             "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
-            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "gemini-2.5-flash",
+            "model": os.environ.get("GEMINI_MODEL") or self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "gemini-2.5-flash",
             "api_key": (str(self.settings.get("gemini_api_key") or "") if "gemini_api_key" in self.settings else os.environ.get("GEMINI_API_KEY", "")),
         }
         defaults = {
@@ -215,6 +215,9 @@ class JarvisDesktop(tk.Tk):
             merged[key]["provider"] = "gemini"
             merged[key]["url"] = DEFAULT_URL
             merged[key]["api_key"] = legacy["api_key"]
+            preferred_model = os.environ.get("GEMINI_MODEL", "").strip()
+            if preferred_model.lower().startswith("gemini-"):
+                merged[key]["model"] = preferred_model
             # Migrate stale OpenRouter/Hugging Face model IDs to the configured Gemini model.
             # Old saved profiles must never override the selected provider with incompatible model IDs.
             saved_model = str(merged[key].get("model") or "").strip()
