@@ -16,7 +16,7 @@ _PLAYBACK_ACTIVE = False
 _PLAYBACK_TOKEN = 0
 _PLAYBACK_PATH: Path | None = None
 
-DEFAULT_TTS_MODEL = "gemini-2.5-flash-preview-tts"
+DEFAULT_TTS_MODEL = "gemini-3.8-flash-tts"
 DEFAULT_TTS_VOICE = "Charon"
 TTS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
 
