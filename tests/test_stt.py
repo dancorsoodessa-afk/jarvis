@@ -28,10 +28,9 @@ class TestSTT(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             stt.transcribe("nonexistent.wav")
 
-    def test_missing_file_raises_before_network(self):
-        os.environ["JARVIS_STT"] = "gemini"
+    def test_transcription_is_disabled_even_with_api_key(self):
         os.environ["GEMINI_API_KEY"] = "test-token"
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(RuntimeError, "используйте микрофон в Gemini Web"):
             stt.transcribe("no_such_file_123.wav")
 
     def test_cloud_engine_requires_gemini_key(self):
