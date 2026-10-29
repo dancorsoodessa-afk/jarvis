@@ -38,23 +38,12 @@ class TestSTT(unittest.TestCase):
         self.assertEqual(stt.current_engine(), "off")
         os.environ["GEMINI_API_KEY"] = "test-token"
         os.environ["JARVIS_STT"] = "gemini"
-        self.assertEqual(stt.current_engine(), "gemini")
+        self.assertEqual(stt.current_engine(), "off")
 
-    def test_transcribe_posts_audio_to_gemini(self):
+    def test_transcribe_is_disabled_in_gemini_web_only_mode(self):
         os.environ["GEMINI_API_KEY"] = "test-token"
-        os.environ["JARVIS_STT"] = "gemini"
-        class Response:
-            def __enter__(self): return self
-            def __exit__(self, *args): pass
-            def read(self): return b'{"candidates":[{"content":{"parts":[{"text":"hello"}]}}]}'
-        with tempfile.TemporaryDirectory() as folder:
-            audio = Path(folder) / "sample.wav"
-            audio.write_bytes(b"RIFF-test")
-            with mock.patch("urllib.request.urlopen", return_value=Response()) as urlopen:
-                self.assertEqual(stt.transcribe(str(audio)), "hello")
-                request = urlopen.call_args.args[0]
-                self.assertTrue(request.full_url.startswith("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"))
-                self.assertIn("key=test-token", request.full_url)
+        with self.assertRaisesRegex(RuntimeError, "используйте микрофон в Gemini Web"):
+            stt.transcribe("sample.wav")
 
     def test_transcribe_tool_registered(self):
         from agent.runtime import build_agent
