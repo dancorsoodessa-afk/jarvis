@@ -16,7 +16,7 @@ const kCyan = Color(0xFF37D5EE);
 const kBg = Color(0xFF05080F);
 const kPanel = Color(0xFF0D1622);
 const kFreePrimaryUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
-const kFreePrimaryModel = 'gemini-3.8-flash';
+const kFreePrimaryModel = '';
 const kFreeFallbackUrl = '';
 const kFreeFallbackModel = '';
 
@@ -708,7 +708,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           const Align(alignment: Alignment.centerLeft, child: Text('Основной AI-провайдер', style: TextStyle(fontWeight: FontWeight.bold))),
           TextField(controller: _endpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Base URL', hintText: 'https://generativelanguage.googleapis.com/v1beta/openai')),
           TextField(controller: _apiKey, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
-          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: 'gemini-3.8-flash')),
+          TextField(controller: _model, decoration: const InputDecoration(labelText: 'Модель', hintText: '')),
           const SizedBox(height: 10),
           const Align(alignment: Alignment.centerLeft, child: Text('Резервный AI (необязательно)', style: TextStyle(fontWeight: FontWeight.bold))),
           TextField(controller: _fallbackEndpoint, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Резервный Base URL')),
@@ -739,8 +739,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
   }
 
-  Future<void> _openGeminiWeb() async {
-    final prompt = _input.text.trim();
+  Future<void> _openGeminiWeb([String? requestPrompt]) async {
+    final prompt = (requestPrompt ?? _input.text).trim();
     try {
       if (prompt.isNotEmpty) {
         await Clipboard.setData(ClipboardData(text: prompt));
@@ -770,11 +770,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         if (mounted) setState(() => _status = 'Буфер обмена пуст. Скопируйте ответ из Gemini Web.');
         return;
       }
-      _input.value = TextEditingValue(
-        text: answer,
-        selection: TextSelection.collapsed(offset: answer.length),
-      );
-      if (mounted) setState(() => _status = 'Ответ вставлен. Нажмите «Отправить», чтобы продолжить в Jarvis.');
+      _input.clear();
+      if (mounted) {
+        setState(() {
+          _messages.add(_Msg(answer, isUser: false));
+          _status = 'Ответ Gemini Web добавлен в диалог.';
+        });
+      }
     } catch (error) {
       if (mounted) setState(() => _status = 'Не удалось вставить ответ Gemini Web: $error');
     }
@@ -783,9 +785,19 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _send(String text, {bool speakReply = false}) async {
     text = text.trim();
     if (text.isEmpty || _busy) return;
-    // Local Android timers must work even when cloud AI is not configured
-    // or temporarily offline; handle them before requiring an AI connection.
+    // Local Android timers remain local. All AI chat goes through the free consumer Gemini Web app.
     if (await _handleTimer(text)) { _input.clear(); return; }
+    _input.clear();
+    if (mounted) {
+      setState(() {
+        _messages.add(_Msg(text, isUser: true));
+        _status = 'Открываю Gemini Web; запрос скопирован. Вставьте его и отправьте в браузере.';
+        _visualState = JarvisVisualState.thinking;
+      });
+    }
+    await _openGeminiWeb(text);
+    _returnToIdle(const Duration(milliseconds: 500));
+    return;
     if (_jarvis == null) {
       const message = 'AI не подключён. Откройте настройки и подключите Gemini.';
       if (mounted) {
