@@ -927,62 +927,24 @@ class JarvisDesktop(tk.Tk):
             self._append("SYSTEM", "Буфер обмена пуст. Скопируйте ответ из Gemini Web и повторите.")
             return
         self.input.delete(0, "end")
-        self.input.insert(0, answer)
-        self.input.focus_set()
-        self._append("SYSTEM", "Ответ Gemini Web вставлен в поле ввода. Нажмите «ВЫПОЛНИТЬ», чтобы продолжить диалог в Jarvis.")
+        self._append("GEMINI WEB", answer)
+        self._append("SYSTEM", "Ответ Gemini Web добавлен в диалог.")
 
     def send(self, text=None):
-        if text is None: text=self.input.get()
-        text=text.strip()
+        """Send chat prompts to Gemini Web; no API model is called."""
+        if text is None:
+            text = self.input.get()
+        text = text.strip()
         if not text:
-            self._append("SYSTEM", "Введите команду или используйте кнопку «Голос».")
+            self._append("SYSTEM", "Введите запрос или используйте Gemini Web.")
             return
         if self.busy:
             self._append("SYSTEM", "Предыдущая операция ещё выполняется. Дождитесь завершения.")
             return
-        # Gemini Web is the only chat provider: hand the prompt to the consumer app.
         self._append("ВЫ", text)
         self._open_gemini_web(text)
         self.input.delete(0, "end")
         self._clear_attachments()
-        return
-        if self.agent is None:
-            self._append("SYSTEM", "Ядро ещё не готово.")
-            return
-        context=self._build_attachment_context()
-        shown = text + (
-            "\n📎 " + ", ".join(x["name"] for x in self.attachments)
-            if self.attachments else ""
-        )
-        self.input.delete(0, "end")
-        self._append("ВЫ", shown)
-        if self._handle_voice_setting_command(text):
-            self._clear_attachments(); return
-        prompt=text+("\n\n"+context if context else "")
-        attachment_payload=self._build_attachment_payload()
-        self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
-        self.status.config(text="● PROCESSING",fg=CYAN)
-        self._set_visual_state("THINKING", 0.55)
-        def work():
-            provider = getattr(self.agent, "provider", None)
-            try:
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = lambda delta: self.events.put(("reply_delta", delta))
-                result=self.agent.handle(prompt, attachment=attachment_payload)
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = None
-                # JarvisAgent converts provider exceptions into an AgentResult string.
-                # Detect that error explicitly instead of showing it as a successful reply.
-                if str(result.text).startswith("Ошибка провайдера:"):
-                    self.events.put(("request_error", str(result.text).partition(":")[2].strip()))
-                else:
-                    self.events.put(("reply",result.text))
-            except Exception as exc:
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = None
-                self.events.put(("request_error", str(exc)))
-        self._clear_attachments()
-        threading.Thread(target=work,daemon=True).start()
 
     def _on_voice_button_click(self):
         """Start voice capture without allowing a voice callback to hide the main window."""
