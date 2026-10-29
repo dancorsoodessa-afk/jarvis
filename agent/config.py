@@ -1,5 +1,26 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+
+def load_project_env(path=None):
+    env_file = Path(path) if path else Path(__file__).resolve().parents[1] / "config" / ".env"
+    try:
+        lines = env_file.read_text(encoding="utf-8-sig").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        name = name.strip()
+        value = value.strip().strip('"').strip("'")
+        if name and name.replace("_", "").isalnum():
+            os.environ.setdefault(name, value)
+
+
+load_project_env()
 
 SUPPORTED_PROVIDERS = ("gemini",)
 DEFAULT_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
