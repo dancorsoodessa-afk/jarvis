@@ -34,7 +34,6 @@ The build script runs tests before packaging. The executable is written to `rele
 - Input: use the microphone inside Gemini Web; API-based speech recognition is disabled.
 - Output: use Gemini Web's built-in voice features; API-based speech synthesis is disabled.
 - Internet access is required to use Gemini Web.
-- 
 - Check Windows microphone permissions and the selected input device if recording fails.
 
 ## Run from source
