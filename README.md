@@ -26,6 +26,12 @@ $env:GEMINI_API_KEY = "your_gemini_api_key"
 
 Default model: `gemini-3.8-flash`. The free tier has model-specific rate limits and may change. Do not enable billing if you require strictly free usage. Free-tier requests may be subject to Google's data-use terms; review the current policy before sending sensitive data.
 
+## Gemini Web companion (consumer app)
+
+The desktop composer includes **GEMINI WEB** and **ВСТАВИТЬ ОТВЕТ** buttons for the free consumer web app at https://gemini.google.com/app. The first opens the official web app and copies the current prompt; paste it into Gemini Web and submit it there. Copy Gemini's answer, then use **ВСТАВИТЬ ОТВЕТ** to bring it back into Jarvis.
+
+This is a user-mediated browser handoff, not an API integration: Gemini Web has its own Google-account session and quotas, and Jarvis cannot silently submit prompts, read private chat responses, or inherit the web app's login. The Gemini API agent remains the fully integrated agent that can call Jarvis tools. No Gemini Web password or session cookie is stored by Jarvis.
+
 ## Build on Windows
 
 ```powershell
