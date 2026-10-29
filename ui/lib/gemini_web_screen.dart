@@ -58,12 +58,12 @@ class _GeminiWebScreenState extends State<GeminiWebScreen> {
           tooltip: 'Скопировать запрос',
           icon: const Icon(Icons.content_copy_rounded),
           onPressed: widget.initialPrompt.isEmpty ? null : () async {
+            final messenger = ScaffoldMessenger.of(context);
             await Clipboard.setData(ClipboardData(text: widget.initialPrompt));
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Запрос скопирован. Вставьте его в поле Gemini.')),
-              );
-            }
+            if (!mounted) return;
+            messenger.showSnackBar(
+              const SnackBar(content: Text('Запрос скопирован. Вставьте его в поле Gemini.')),
+            );
           },
         ),
         IconButton(
