@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -136,6 +137,12 @@ class TestOpenAIChatProvider(unittest.TestCase):
 
 
 class TestFunctionCalling(unittest.TestCase):
+    def setUp(self):
+        from unittest.mock import patch
+        patcher = patch.dict(os.environ, {"GEMINI_TOOLS_ENABLED": "true"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _provider(self, responses):
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -268,7 +275,9 @@ class TestStreamingIPC(unittest.TestCase):
         p._ensure_endpoint = lambda: None
         deltas = []
         p.on_delta = deltas.append
-        reply = p.generate("hi", tools=[{"type": "function", "function": {"name": "x"}}])
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"GEMINI_TOOLS_ENABLED": "true"}):
+            reply = p.generate("hi", tools=[{"type": "function", "function": {"name": "x"}}])
         self.assertEqual(reply, "Привет")
         self.assertEqual(deltas, ["При", "вет"])
 
