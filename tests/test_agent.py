@@ -45,6 +45,20 @@ class TestAgent(unittest.TestCase):
         self.assertEqual(result.tool_used, "status")
         self.assertIn("os", result.text)
 
+    def test_plain_language_system_status_uses_local_router(self):
+        agent = self.make_agent()
+        agent.tools.register("status", system.status)
+        result = agent.handle("статус системы")
+        self.assertEqual(result.tool_used, "status")
+        self.assertIn("os", result.text)
+
+    def test_plain_language_local_command_does_not_call_llm(self):
+        agent = self.make_agent()
+        agent.tools.register("status", system.status)
+        agent.provider.generate = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called"))
+        result = agent.handle("проверь систему")
+        self.assertEqual(result.tool_used, "status")
+
     def test_unknown_tool(self):
         result = self.make_agent().handle("/nope")
         self.assertIn("Неизвестный инструмент", result.text)
