@@ -129,8 +129,8 @@ def test_openai_compatible_provider_fails_over_after_gemini_capacity_error():
     provider = OpenAIChatProvider(
         url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         api_key="test-key",
-        model="gemini-3.8-flash",
-        fallback_models=["gemini-3.8-flash", "gemini-3.5-flash-lite"],
+        model="chat-model",
+        fallback_models=["chat-model", "fallback-model"],
     )
     successful = {"choices": [{"message": {"content": "резервная модель ответила", "tool_calls": []}}]}
     models_seen = []
@@ -147,10 +147,10 @@ def test_openai_compatible_provider_fails_over_after_gemini_capacity_error():
             raise response
         return response
 
-    with patch.object(provider, "discover_model", return_value="gemini-3.8-flash"), \
+    with patch.object(provider, "discover_model", return_value="chat-model"), \
          patch.object(provider, "_request", side_effect=request):
         result = provider.generate("проверь резерв")
 
     assert result == "резервная модель ответила"
-    assert models_seen == ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
-    assert provider.last_used_model == "gemini-3.5-flash-lite"
+    assert models_seen == ["chat-model", "fallback-model"]
+    assert provider.last_used_model == "fallback-model"
