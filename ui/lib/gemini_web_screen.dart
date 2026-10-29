@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class GeminiWebScreen extends StatefulWidget {
   const GeminiWebScreen({super.key, this.initialPrompt = ''});
@@ -37,9 +38,14 @@ class _GeminiWebScreenState extends State<GeminiWebScreen> {
         onPageFinished: (url) async {
           if (!mounted) return;
           setState(() => _loading = false);
-          if (url.startsWith('https://gemini.google.com/') &&
-              widget.initialPrompt.isNotEmpty) {
-            await Clipboard.setData(ClipboardData(text: widget.initialPrompt));
+          if (url.startsWith('https://gemini.google.com/')) {
+            // Dismiss only visible, clearly labelled Gemini invitation controls.
+            try {
+              await _controller.runJavaScript("(() => {\",\n\"                const visible = e => !!(e && (e.offsetWidth || e.offsetHeight || e.getClientRects().length));\",\n\"                const labels = /^(close|dismiss|закрыть|no thanks|not now|maybe later|не сейчас|нет, спасибо|позже|пропустить)$/i;\",\n\"                const candidates = Array.from(document.querySelectorAll('[role=\"dialog\"] button, [role=\"dialog\"] [role=\"button\"], button[aria-label], [role=\"button\"][aria-label]'));\",\n\"                const target = candidates.find(e => {\",\n\"                  if (!visible(e)) return false;\",\n\"                  const label = (e.getAttribute('aria-label') || e.getAttribute('title') || e.innerText || '').trim();\",\n\"                  return labels.test(label);\",\n\"                });\",\n\"                if (target) target.click();\",\n\"              })();");
+            } catch (_) { /* Gemini may not expose a dismissible invitation. */ }
+            if (widget.initialPrompt.isNotEmpty) {
+              await Clipboard.setData(ClipboardData(text: widget.initialPrompt));
+            }
           }
         },
         onWebResourceError: (error) {
@@ -55,12 +61,18 @@ class _GeminiWebScreenState extends State<GeminiWebScreen> {
   }
 
   Future<void> _openSignIn() async {
-    setState(() {
-      _showingSignIn = true;
-      _loading = true;
-      _error = null;
-    });
-    await _controller.loadRequest(_signInUri);
+    // Google blocks account sign-in inside embedded WebViews.
+    try {
+      final opened = await launchUrl(_geminiUri, mode: LaunchMode.externalApplication);
+      if (!mounted) return;
+      setState(() {
+        _showingSignIn = true;
+        _error = opened ? null : 'Не удалось открыть Gemini в браузере. Проверьте, установлен ли браузер.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = 'Не удалось открыть вход Google: $error');
+    }
   }
 
   Future<void> _openGemini() async {
@@ -118,8 +130,8 @@ class _GeminiWebScreenState extends State<GeminiWebScreen> {
             Expanded(
               child: Text(
                 _showingSignIn
-                    ? 'Войдите в свой аккаунт Google, затем нажмите кнопку Gemini.'
-                    : 'Для работы войдите в Google. Запрос скопирован в буфер обмена — при необходимости вставьте его в Gemini.',
+                    ? 'Вход Google открывается в системном браузере: Google блокирует авторизацию внутри WebView.'
+                    : 'Запрос скопирован. Для входа нажмите «Войти» — откроется официальный Gemini в браузере.',
                 style: const TextStyle(fontSize: 12, height: 1.3),
               ),
             ),
