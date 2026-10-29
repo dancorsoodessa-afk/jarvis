@@ -7,6 +7,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import time
+import threading
+from pathlib import Path
 from typing import Optional
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -22,6 +24,9 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 MAX_HISTORY_MESSAGES = 12
+_MODEL_CACHE: dict[tuple[str, str], tuple[float, set[str]]] = {}
+_MODEL_CACHE_LOCK = threading.Lock()
+_MODEL_CACHE_TTL = 300
 CONFIRMATION_PREFIX = "Инструмент «"
 
 
@@ -47,6 +52,7 @@ class OpenAIChatProvider:
         self.tool_executor = None
         self.on_delta = None
         self._discovered_model: str | None = None
+        self._model_verified = False
         self.fallback_models = [str(x).strip() for x in (fallback_models or []) if str(x).strip()]
         self.last_used_model = self.model
 
@@ -165,85 +171,122 @@ class OpenAIChatProvider:
             path = path.rstrip("/") + "/models"
         return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
-    def health_check(self) -> str:
-        """Actively verify credentials and endpoint reachability without generating tokens."""
+    @staticmethod
+    def _model_id(value: str) -> str:
+        value = str(value or "").strip()
+        return value.removeprefix("models/")
+
+    def _available_models(self, *, refresh: bool = False) -> set[str]:
         self._ensure_endpoint()
-        url = self._models_url()
-        headers = {"Accept": "application/json", "Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        req = urllib.request.Request(url, headers=headers)
+        cache_key = (self.url.rstrip("/"), self.api_key)
+        now = time.monotonic()
+        with _MODEL_CACHE_LOCK:
+            cached = _MODEL_CACHE.get(cache_key)
+            if not refresh and cached and now - cached[0] < _MODEL_CACHE_TTL:
+                return set(cached[1])
+        if not self.api_key:
+            raise RuntimeError("Не задан GEMINI_API_KEY. Добавьте ключ в Центре управления JARVIS.")
+        req = urllib.request.Request(
+            self._models_url(),
+            headers={"Accept": "application/json", "Authorization": f"Bearer {self.api_key}"},
+        )
         try:
             with urllib.request.urlopen(req, timeout=min(self.timeout, 12)) as response:
                 body = json.loads(response.read().decode("utf-8"))
-            if not isinstance(body, dict) or not isinstance(body.get("data"), list):
-                raise RuntimeError("Провайдер ответил, но формат списка моделей неожиданный.")
-            available = {
-                str(item.get("id", "")).strip()
-                for item in body["data"]
-                if isinstance(item, dict) and item.get("id")
-            }
-            if self.model and available and self.model not in available:
-                # Keys may expose different model subsets. Select a real chat
-                # model from this key instead of declaring the whole provider dead.
-                preferred = (
-                    "gemini-3.5-flash-lite",
-                    "gemini-3.6-flash",
-                    "gemini-3.1-flash-lite",
-                    "gemini-3.8-flash",
-                )
-                selected = next((name for name in preferred if name in available), "")
-                if not selected:
-                    selected = next((
-                        name for name in sorted(available)
-                        if name.startswith("gemini-")
-                        and not any(tag in name.lower() for tag in (
-                            "embedding", "tts", "transcribe", "image", "live", "robotics"
-                        ))
-                    ), "")
-                if not selected:
-                    raise RuntimeError(
-                        f"Модель {self.model} недоступна, а в списке ключа не найдено подходящей Gemini chat-модели."
-                    )
-                self.model = selected
-                self._discovered_model = selected
-                self.last_used_model = selected
-            return "ONLINE"
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:250]
-            raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"Сеть недоступна: {exc.reason}") from exc
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise RuntimeError("Провайдер вернул некорректный JSON.") from exc
-
-    def discover_model(self) -> str:
-        if self.model:
-            return self._normalize_model(self.model)
-        if self._discovered_model:
-            return self._normalize_model(self._discovered_model)
-        self._ensure_endpoint()
-        if self._discovered_model:
-            return self._normalize_model(self._discovered_model)
-        url = self._models_url()
-        req = urllib.request.Request(url, headers={"Accept": "application/json", "Authorization": f"Bearer {self.api_key}"} if self.api_key else {"Accept": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=min(self.timeout, 10)) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:300]
-            raise RuntimeError(f"Не удалось получить список моделей: HTTP {exc.code}. {detail}") from exc
+            if exc.code in (401, 403):
+                raise RuntimeError(f"Ключ Gemini отклонён (HTTP {exc.code}). Проверьте API-ключ и доступ.") from exc
+            raise RuntimeError(f"Не удалось получить список моделей Gemini: HTTP {exc.code}. {detail}") from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"Не удалось подключиться к серверу моделей: {exc.reason}") from exc
+            raise RuntimeError(f"Не удалось получить список моделей Gemini: {exc.reason}") from exc
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise RuntimeError("Сервер моделей вернул некорректный JSON") from exc
-        models = body.get("data") if isinstance(body, dict) else None
-        ids = [str(item.get("id", "")).strip() for item in (models or []) if isinstance(item, dict)]
-        ids = [item for item in ids if item]
+            raise RuntimeError("Gemini вернул некорректный JSON списка моделей.") from exc
+        raw = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(raw, list):
+            raise RuntimeError("Gemini не вернул список доступных моделей.")
+        ids = {
+            self._model_id(item.get("id", ""))
+            for item in raw if isinstance(item, dict) and item.get("id")
+        }
+        ids = {item for item in ids if item}
+        with _MODEL_CACHE_LOCK:
+            _MODEL_CACHE[cache_key] = (time.monotonic(), set(ids))
         if not ids:
-            raise RuntimeError(
-                "Сервер ИИ доступен, но не сообщил ни одной модели. "
-                "Укажите JARVIS_CHAT_MODEL вручную или запустите модель на сервере.")
-        self._discovered_model = ids[0]
-        return self._normalize_model(self._discovered_model)
+            raise RuntimeError("Список моделей Gemini пуст. Проверьте ключ, проект и доступ к Gemini API.")
+        return ids
+
+    @staticmethod
+    def _select_flash_model(available: set[str]) -> str:
+        preferred = ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest")
+        for model in preferred:
+            if model in available:
+                return model
+        candidates = sorted(
+            model for model in available
+            if "flash" in model.lower()
+            and not any(tag in model.lower() for tag in ("embedding", "tts", "transcribe", "image", "live", "robotics"))
+        )
+        return candidates[0] if candidates else ""
+
+    @staticmethod
+    def _persist_selected_model(model: str) -> None:
+        if not model:
+            return
+        os.environ["GEMINI_MODEL"] = model
+        os.environ["JARVIS_CHAT_MODEL"] = model
+        # Persist only the selected model, never the API key. In packaged builds
+        # the env-file path can be overridden to a writable per-user config file.
+        configured = os.environ.get("JARVIS_ENV_FILE", "").strip()
+        env_path = Path(configured) if configured else Path(__file__).resolve().parents[2] / "config" / ".env"
+        try:
+            env_path.parent.mkdir(parents=True, exist_ok=True)
+            lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+            out = []
+            replaced = False
+            for line in lines:
+                if line.strip().startswith("GEMINI_MODEL="):
+                    if not replaced:
+                        out.append(f"GEMINI_MODEL={model}")
+                        replaced = True
+                else:
+                    out.append(line)
+            if not replaced:
+                out.append(f"GEMINI_MODEL={model}")
+            env_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+        except OSError:
+            # A read-only installation must still continue with the in-memory model.
+            pass
+
+    def health_check(self) -> str:
+        """Validate the API key, discover real model IDs and select an available Flash model."""
+        available = self._available_models(refresh=True)
+        current = self._model_id(self.model or os.environ.get("GEMINI_MODEL", ""))
+        if current not in available:
+            selected = self._select_flash_model(available)
+            if not selected:
+                raise RuntimeError(
+                    f"Модель {current or '(не задана)'} недоступна; список ключа не содержит подходящей Gemini Flash-модели."
+                )
+            self.model = selected
+            self._discovered_model = selected
+            self.last_used_model = selected
+            self._persist_selected_model(selected)
+        else:
+            self.model = current
+            self._discovered_model = current
+            self._persist_selected_model(current)
+        self._model_verified = True
+        return "ONLINE"
+
+    def discover_model(self) -> str:
+        # Validate once per provider instance before sending a generation request.
+        # The shared model-list cache avoids repeated network calls across role profiles.
+        if not self._model_verified:
+            self.health_check()
+        if not self.model:
+            raise RuntimeError("Не удалось выбрать доступную модель Gemini Flash.")
+        return self._normalize_model(self.model)
 
     def _request_stream(self, payload: dict) -> dict:
         data = json.dumps({**payload, "stream": True}, ensure_ascii=False).encode("utf-8")
