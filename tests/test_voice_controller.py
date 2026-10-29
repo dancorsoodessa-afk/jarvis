@@ -130,3 +130,21 @@ def test_status_reports_tts_off_after_tts_failure(monkeypatch):
     assert status["tts"] == "off"
     assert status["cloud_voice_available"] is False
     controller.shutdown()
+
+
+
+def test_voice_status_exposes_model_quota_and_tools(monkeypatch):
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setenv("GEMINI_TOOLS_ENABLED", "false")
+    controller = VoiceController(UIBridge(queue.Queue()), on_text=lambda _text: None)
+    try:
+        status = controller.status()
+        assert status["model"] == "gemini-2.5-flash"
+        assert status["quota_status"] in {"yes", "no"}
+        assert status["tools_enabled"] is False
+        assert status["tools_status"] == "no (safe mode)"
+        assert "mic_status" in status
+        assert "cloud_stt_status" in status
+        assert "tts_status" in status
+    finally:
+        controller.shutdown()
