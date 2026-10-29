@@ -68,7 +68,12 @@ class OpenAIChatProvider:
             raise RuntimeError("Разрешены только защищённые официальные endpoint Gemini и Groq.")
 
     def _provider_name(self) -> str:
-        return "Groq" if urllib.parse.urlsplit(self.url).hostname == "api.groq.com" else "Gemini"
+        host = urllib.parse.urlsplit(self.url).hostname
+        if host == "api.groq.com":
+            return "Groq"
+        if host == "generativelanguage.googleapis.com":
+            return "Gemini"
+        return "Compatible API"
 
     def _messages(self, prompt) -> list[dict]:
         messages = [{"role": "system", "content": self.system_prompt}]
