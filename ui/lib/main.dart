@@ -298,7 +298,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       await _secureStorage.delete(key: 'api_key');
       await _secureStorage.delete(key: 'fallback_key');
       if (!mounted) return;
-      setState(() => _status = 'Gemini открывается внутри JARVIS');
+      setState(() => _status = 'Gemini Web готов к открытию. Войдите в Google при запросе.');
       _setVisual(JarvisVisualState.idle);
       await _initVoice();
     } catch (e) {
@@ -671,6 +671,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _settings() async {
     if (!_android) return;
+    await _toolSettings();
+    return;
     _speechSession++;
     await _speech.stop();
     if (!mounted) return;
@@ -775,8 +777,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
       setState(() {
         _messages.add(_Msg(text, isUser: true));
         _status = speakReply
-            ? 'Gemini Web открыт. Используйте голос внутри браузера.'
-            : 'Открываю Gemini Web; запрос скопирован. Вставьте его и отправьте в браузере.';
+            ? 'Откроется Gemini Web. При необходимости войдите в аккаунт Google.'
+            : 'Запрос скопирован. В Gemini Web войдите в Google и вставьте запрос.';
         _visualState = JarvisVisualState.thinking;
       });
     }
@@ -880,13 +882,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final sceneHeight = compactLayout
         ? (screenHeight * 0.40).clamp(250.0, 330.0).toDouble()
         : (screenHeight * 0.48).clamp(300.0, 390.0).toDouble();
-    final connected = _android || _jarvis != null;
+    final connected = _jarvis != null;
     return Scaffold(
       appBar: AppBar(
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_android ? Icons.hub_rounded : Icons.bubble_chart, color: const Color(0xFF42E8FF), size: 25),
+            JarvisLogo(size: 27, color: const Color(0xFF42E8FF)),
             const SizedBox(width: 9),
             const Text('JARVIS', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w700)),
             if (!_android) ...[
@@ -1004,25 +1006,19 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 children: [
                   Expanded(
                     child: _deckAction(
-                      icon: Icons.hub_outlined,
-                      label: 'СИСТЕМА',
+                      icon: Icons.auto_awesome_rounded,
+                      label: 'GEMINI',
                       active: true,
-                      onTap: () {
-                        setState(() {
-                          _status = connected
-                              ? 'Система подключена и готова'
-                              : (_android ? 'Gemini Web откроется внутри JARVIS' : 'Ожидается подключение AI в настройках');
-                        });
-                      },
+                      onTap: () => _openGeminiWeb(),
                     ),
                   ),
                   const SizedBox(width: 7),
                   Expanded(
                     child: _deckAction(
-                      icon: Icons.tune_rounded,
-                      label: 'НАСТРОЙКИ',
+                      icon: Icons.build_circle_outlined,
+                      label: 'ИНСТРУМЕНТЫ',
                       active: false,
-                      onTap: _settings,
+                      onTap: _showTools,
                     ),
                   ),
                 ],
@@ -1212,4 +1208,53 @@ class JarvisHomePage extends StatefulWidget {
   const JarvisHomePage({super.key});
   @override
   State<JarvisHomePage> createState() => _JarvisHomePageState();
+}
+
+class JarvisLogo extends StatelessWidget {
+  const JarvisLogo({super.key, this.size = 32, this.color = const Color(0xFF42E8FF)});
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    size: Size.square(size),
+    painter: _JarvisLogoPainter(color),
+  );
+}
+
+class _JarvisLogoPainter extends CustomPainter {
+  const _JarvisLogoPainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = size.shortestSide / 2;
+    final line = Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = r * 0.075;
+    final fill = Paint()..color = color..style = PaintingStyle.fill;
+    canvas.drawCircle(c, r * 0.83, line);
+    canvas.drawCircle(c, r * 0.53, line);
+    final points = <Offset>[
+      Offset(c.dx, c.dy - r * 0.98),
+      Offset(c.dx + r * 0.86, c.dy + r * 0.50),
+      Offset(c.dx - r * 0.86, c.dy + r * 0.50),
+    ];
+    for (final p in points) {
+      canvas.drawLine(c, p, line);
+      canvas.drawCircle(p, r * 0.11, fill);
+    }
+    final hex = Path()
+      ..moveTo(c.dx, c.dy - r * 0.34)
+      ..lineTo(c.dx + r * 0.30, c.dy - r * 0.17)
+      ..lineTo(c.dx + r * 0.30, c.dy + r * 0.17)
+      ..lineTo(c.dx, c.dy + r * 0.34)
+      ..lineTo(c.dx - r * 0.30, c.dy + r * 0.17)
+      ..lineTo(c.dx - r * 0.30, c.dy - r * 0.17)
+      ..close();
+    canvas.drawPath(hex, line);
+    canvas.drawCircle(c, r * 0.09, fill);
+  }
+
+  @override
+  bool shouldRepaint(covariant _JarvisLogoPainter oldDelegate) => oldDelegate.color != color;
 }
