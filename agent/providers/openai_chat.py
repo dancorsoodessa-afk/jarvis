@@ -262,20 +262,17 @@ class OpenAIChatProvider:
         """Validate the API key, discover real model IDs and select an available Flash model."""
         available = self._available_models(refresh=True)
         current = self._model_id(self.model or os.environ.get("GEMINI_MODEL", ""))
-        if current not in available:
-            selected = self._select_flash_model(available)
-            if not selected:
-                raise RuntimeError(
-                    f"Модель {current or '(не задана)'} недоступна; список ключа не содержит подходящей Gemini Flash-модели."
-                )
-            self.model = selected
-            self._discovered_model = selected
-            self.last_used_model = selected
-            self._persist_selected_model(selected)
-        else:
-            self.model = current
-            self._discovered_model = current
-            self._persist_selected_model(current)
+        selected = self._select_flash_model(available)
+        if not selected:
+            raise RuntimeError(
+                f"Модель {current or '(не задана)'} недоступна; список ключа не содержит подходящей Gemini Flash-модели."
+            )
+        # Apply the documented deterministic preference order even if an old
+        # profile still contains a legacy model ID that happens to respond.
+        self.model = selected
+        self._discovered_model = selected
+        self.last_used_model = selected
+        self._persist_selected_model(selected)
         self.fallback_models = [
             candidate for candidate in (
                 "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest",
