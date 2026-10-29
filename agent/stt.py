@@ -153,7 +153,7 @@ def _transcribe_gemini(path: Path) -> str:
             result = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:500]
-        if exc.code == 429 and any(marker in detail.lower() for marker in ("quota", "free_tier", "limit exceeded", "resource_exhausted")):
+        if exc.code == 429:
             _set_quota_exceeded(True)
             raise RuntimeError(QUOTA_MESSAGE) from exc
         raise RuntimeError(f"Ошибка распознавания Gemini: HTTP {exc.code}. {detail}") from exc
