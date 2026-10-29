@@ -910,23 +910,12 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           ],
         ),
         actions: [
-          PopupMenuButton<String>(
-            tooltip: 'Gemini Web',
-            icon: const Icon(Icons.open_in_browser_rounded),
-            onSelected: (value) {
-              if (value == 'open') {
-                _openGeminiWeb();
-              } else if (value == 'paste') {
-                _pasteGeminiWebAnswer();
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'open', child: Text('Открыть Gemini Web и скопировать запрос')),
-              PopupMenuItem(value: 'paste', child: Text('Вставить ответ Gemini Web')),
-            ],
+          IconButton(
+            tooltip: 'Gemini внутри JARVIS',
+            icon: const Icon(Icons.hub_rounded),
+            onPressed: () => _openGeminiWeb(),
           ),
           IconButton(tooltip: 'Инструменты', onPressed: _showTools, icon: const Icon(Icons.folder_open_rounded)),
-          IconButton(tooltip: 'Настройки AI', onPressed: _settings, icon: const Icon(Icons.tune_rounded)),
         ],
       ),
       body: SafeArea(
