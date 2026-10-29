@@ -18,7 +18,7 @@ GROQ_STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 _QUOTA_EXCEEDED = False
 _QUOTA_TOKEN = ""
 _QUOTA_LOCK = threading.Lock()
-QUOTA_MESSAGE = "Квота Gemini на сегодня исчерпана. Голос-STT недоступен до сброса/смены ключа/тарифа."
+QUOTA_MESSAGE = "Ошибка распознавания Gemini: HTTP 429. Квота Gemini на сегодня исчерпана. Голос-STT недоступен до сброса/смены ключа/тарифа."
 
 
 def quota_exceeded() -> bool:
@@ -92,7 +92,7 @@ def current_engine() -> str:
         stt_enabled = os.environ.get("GEMINI_STT_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
         if not stt_enabled:
             return "groq" if _groq_token() else "off"
-        return "gemini" if _token() else ("groq" if _groq_token() else "off")
+        return "gemini" if _token() else "off"
     return "off"
 
 
