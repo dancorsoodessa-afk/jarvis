@@ -4,33 +4,18 @@ JARVIS is a Windows desktop assistant with a graphical interface, memory, OS too
 
 ## Architecture
 
-- **Primary cloud AI:** Google Gemini API using the official OpenAI-compatible endpoint.
-- **Independent chat fallback:** Groq Cloud, configured with its own optional API key, model, timeout, and live endpoint check. If Groq is not configured, it is explicitly reported as unavailable.
-- **Voice recognition:** microphone capture on the PC plus cloud Gemini transcription; requires internet and the Gemini API key.
-- **Voice output:** cloud Gemini TTS with a configurable voice, model, and timeout.
+- **Only chat provider:** the free consumer Gemini Web app at https://gemini.google.com/app, opened in the system browser.
+- Windows and Android copy the current prompt to the clipboard; the user submits it in Gemini Web and copies the answer back into Jarvis.
+- Gemini API model defaults and API-based STT/TTS are disabled. No Gemini API key or paid model is required for the web handoff.
+- Jarvis local tools remain available in the desktop app, but AI responses are handled in Gemini Web rather than an API model.
 - **3D interface:** real Three.js/WebGL neural reactor served locally and opened in the browser. The scene reacts to live microphone level and the assistant's listening, thinking, speaking, and error states.
 - **Camera:** not implemented; JARVIS does not request camera access.
-
-## Get the free Gemini API key
-
-1. Open [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. Create an API key for a project with Gemini API free-tier access.
-3. Open JARVIS → **Центр управления** and paste the key into **GEMINI API KEY**.
-4. Save and restart the core.
-
-Alternatively, for the current PowerShell session:
-
-```powershell
-$env:GEMINI_API_KEY = "your_gemini_api_key"
-```
-
-Default model: `gemini-3.8-flash`. The free tier has model-specific rate limits and may change. Do not enable billing if you require strictly free usage. Free-tier requests may be subject to Google's data-use terms; review the current policy before sending sensitive data.
 
 ## Gemini Web companion (consumer app)
 
 The Windows desktop composer and Android app's **Gemini Web** menu provide a handoff to the free consumer web app at https://gemini.google.com/app. Choose **Open Gemini Web and copy prompt**, paste it into Gemini Web, and submit it there. Copy Gemini's answer, then choose **Paste Gemini Web answer** to bring it back into Jarvis.
 
-This is a user-mediated browser handoff, not an API integration: Gemini Web has its own Google-account session and quotas, and Jarvis cannot silently submit prompts, read private chat responses, or inherit the web app's login. The Gemini API agent remains the fully integrated agent that can call Jarvis tools. No Gemini Web password or session cookie is stored by Jarvis.
+This is a user-mediated browser handoff, not an API integration: Gemini Web has its own Google-account session and quotas, and Jarvis cannot silently submit prompts, read private chat responses, or inherit the web app's login. Jarvis does not call a Gemini API model. Gemini Web responses are transferred manually through the clipboard. No Gemini Web password or session cookie is stored by Jarvis.
 
 ## Build on Windows
 
@@ -46,10 +31,10 @@ The build script runs tests before packaging. The executable is written to `rele
 
 ## Voice
 
-- Input: microphone audio is recorded locally and sent to Gemini for Russian transcription.
-- Output: Gemini cloud TTS generates a WAV voice response using the same Gemini API key.
-- Internet access is required for both cloud recognition and speech generation. If a service is unavailable, JARVIS reports the error rather than silently switching to a different voice engine.
-- Configure the TTS model, voice, and request timeout in the control center.
+- Input: use the microphone inside Gemini Web; API-based speech recognition is disabled.
+- Output: use Gemini Web's built-in voice features; API-based speech synthesis is disabled.
+- Internet access is required to use Gemini Web.
+- 
 - Check Windows microphone permissions and the selected input device if recording fails.
 
 ## Run from source
