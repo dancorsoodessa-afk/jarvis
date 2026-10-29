@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-DEFAULT_STT_MODEL = "gemini-2.5-flash"
+DEFAULT_STT_MODEL = "gemini-3.8-flash"
 
 
 def _model() -> str:
