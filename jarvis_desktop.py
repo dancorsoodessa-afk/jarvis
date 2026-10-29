@@ -947,20 +947,11 @@ class JarvisDesktop(tk.Tk):
         self._clear_attachments()
 
     def _on_voice_button_click(self):
-        """Start voice capture without allowing a voice callback to hide the main window."""
-        try:
-            was_visible = self.state() != "iconic"
-        except Exception:
-            was_visible = True
-        try:
-            self.start_voice()
-        except Exception as exc:
-            try:
-                self._append("VOICE", f"Не удалось запустить голосовой ввод: {exc}")
-            except Exception:
-                pass
-        if was_visible:
-            def keep_main_window_visible():
+        """Open Gemini Web for voice interaction; API speech recognition is disabled."""
+        self._append("SYSTEM", "Голосовой режим доступен в Gemini Web. Открываю браузер.")
+        self._open_gemini_web("")
+
+    def keep_main_window_visible():
                 try:
                     if self.winfo_exists() and self.state() == "iconic":
                         self.deiconify()
