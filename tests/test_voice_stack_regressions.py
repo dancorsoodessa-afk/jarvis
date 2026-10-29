@@ -50,10 +50,9 @@ class TestCloudVoiceRegressions(unittest.TestCase):
         with mock.patch.dict(os.environ, {"JARVIS_TTS": "off"}):
             self.assertEqual(tts.current_engine(), "off")
 
-    def test_tts_rejects_unknown_engine(self):
+    def test_tts_api_is_always_off_in_web_only_mode(self):
         with mock.patch.dict(os.environ, {"JARVIS_TTS": "unknown"}):
-            with self.assertRaisesRegex(RuntimeError, "озвучку Gemini Web"):
-                tts.current_engine()
+            self.assertEqual(tts.current_engine(), "off")
 
 
 if __name__ == "__main__":
