@@ -259,8 +259,21 @@ class OpenAIChatProvider:
             pass
 
     def health_check(self, *, refresh: bool = True) -> str:
-        """Validate the API key, discover real model IDs and select an available Flash model."""
+        """Validate credentials and select a model actually exposed by the active provider."""
         available = self._available_models(refresh=refresh)
+        if self._provider_name() == "Groq":
+            current = self._model_id(self.model)
+            selected = current if current in available else next(
+                (item for item in sorted(available) if not any(tag in item.lower() for tag in ("embedding", "whisper"))),
+                "",
+            )
+            if not selected:
+                raise RuntimeError("Список моделей Groq не содержит подходящей chat-модели.")
+            self.model = selected
+            self._discovered_model = selected
+            self.last_used_model = selected
+            self._model_verified = True
+            return "ONLINE"
         current = self._model_id(self.model or os.environ.get("GEMINI_MODEL", ""))
         selected = self._select_flash_model(available)
         if not selected:
@@ -287,8 +300,12 @@ class OpenAIChatProvider:
         return "ONLINE"
 
     def discover_model(self) -> str:
-        # Validate once per provider instance before sending a generation request.
-        # The shared model-list cache avoids repeated network calls across role profiles.
+        # Validate Gemini IDs against the key's model list before the first request.
+        # Other compatible endpoints retain their configured model behavior.
+        if self._provider_name() != "Gemini":
+            if not self.model:
+                raise RuntimeError("Не задан идентификатор модели для активного AI-провайдера.")
+            return self._normalize_model(self.model)
         if not self._model_verified:
             self.health_check(refresh=False)
         if not self.model:
