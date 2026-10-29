@@ -671,8 +671,6 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _settings() async {
     if (!_android) return;
-    await _toolSettings();
-    return;
     _speechSession++;
     await _speech.stop();
     if (!mounted) return;
@@ -776,9 +774,13 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     if (mounted) {
       setState(() {
         _messages.add(_Msg(text, isUser: true));
-        _status = speakReply
-            ? 'Откроется Gemini Web. При необходимости войдите в аккаунт Google.'
-            : 'Запрос скопирован. В Gemini Web войдите в Google и вставьте запрос.';
+        _status = _android
+            ? (speakReply
+                ? 'Откроется Gemini Web. При необходимости войдите в аккаунт Google.'
+                : 'Запрос скопирован. В Gemini Web войдите в Google и вставьте запрос.')
+            : (speakReply
+                ? 'Gemini Web открыт. Используйте голос внутри браузера.'
+                : 'Открываю Gemini Web; запрос скопирован. Вставьте его и отправьте в браузере.');
         _visualState = JarvisVisualState.thinking;
       });
     }
@@ -888,7 +890,10 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            JarvisLogo(size: 27, color: const Color(0xFF42E8FF)),
+            if (_android)
+              const JarvisLogo(size: 27, color: Color(0xFF42E8FF))
+            else
+              const Icon(Icons.bubble_chart, color: Color(0xFF42E8FF), size: 25),
             const SizedBox(width: 9),
             const Text('JARVIS', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w700)),
             if (!_android) ...[
@@ -1006,19 +1011,27 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                 children: [
                   Expanded(
                     child: _deckAction(
-                      icon: Icons.auto_awesome_rounded,
-                      label: 'GEMINI',
+                      icon: _android ? Icons.auto_awesome_rounded : Icons.hub_outlined,
+                      label: _android ? 'GEMINI' : 'СИСТЕМА',
                       active: true,
-                      onTap: () => _openGeminiWeb(),
+                      onTap: _android
+                          ? () => _openGeminiWeb()
+                          : () {
+                              setState(() {
+                                _status = connected
+                                    ? 'Система подключена и готова'
+                                    : 'Ожидается подключение AI в настройках';
+                              });
+                            },
                     ),
                   ),
                   const SizedBox(width: 7),
                   Expanded(
                     child: _deckAction(
-                      icon: Icons.build_circle_outlined,
-                      label: 'ИНСТРУМЕНТЫ',
+                      icon: _android ? Icons.build_circle_outlined : Icons.tune_rounded,
+                      label: _android ? 'ИНСТРУМЕНТЫ' : 'НАСТРОЙКИ',
                       active: false,
-                      onTap: _showTools,
+                      onTap: _android ? _showTools : _settings,
                     ),
                   ),
                 ],
