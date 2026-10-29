@@ -276,6 +276,16 @@ class OpenAIChatProvider:
             self.model = current
             self._discovered_model = current
             self._persist_selected_model(current)
+        self.fallback_models = [
+            candidate for candidate in (
+                "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest",
+                *sorted(available),
+            )
+            if candidate in available and candidate != self.model
+            and "flash" in candidate.lower()
+            and not any(tag in candidate.lower() for tag in ("embedding", "tts", "transcribe", "image", "live", "robotics"))
+        ]
+        self.fallback_models = list(dict.fromkeys(self.fallback_models))
         self._model_verified = True
         return "ONLINE"
 
