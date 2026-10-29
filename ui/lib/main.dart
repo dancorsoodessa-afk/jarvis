@@ -10,6 +10,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'jarvis_client.dart';
+import 'gemini_web_screen.dart';
 import 'jarvis_reactor.dart';
 
 const kCyan = Color(0xFF37D5EE);
@@ -288,45 +289,20 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _initAndroid() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final storedEndpoint = prefs.getString('endpoint')?.trim() ?? '';
-      final storedModel = prefs.getString('model')?.trim() ?? '';
-      final legacyKey = prefs.getString('api_key')?.trim() ?? '';
-      var storedKey = await _secureStorage.read(key: 'api_key') ?? '';
-      if (storedKey.isEmpty && legacyKey.isNotEmpty) {
-        await _secureStorage.write(key: 'api_key', value: legacyKey);
-        storedKey = legacyKey;
-      }
+      await prefs.remove('endpoint');
+      await prefs.remove('model');
+      await prefs.remove('fallback_endpoint');
+      await prefs.remove('fallback_model');
       await prefs.remove('api_key');
-      final legacyFallbackKey = prefs.getString('fallback_key')?.trim() ?? '';
-      var storedFallbackKey = await _secureStorage.read(key: 'fallback_key') ?? '';
-      if (storedFallbackKey.isEmpty && legacyFallbackKey.isNotEmpty) {
-        await _secureStorage.write(key: 'fallback_key', value: legacyFallbackKey);
-        storedFallbackKey = legacyFallbackKey;
-      }
       await prefs.remove('fallback_key');
-      // Preserve the user's configured OpenAI-compatible provider and key.
-      // A stale model ID is the common cause of a "connected" UI with failed chat.
-      _endpoint.text = storedEndpoint.isEmpty ? kFreePrimaryUrl : storedEndpoint;
-      _model.text = storedModel.isEmpty ? kFreePrimaryModel : storedModel;
-      _apiKey.text = storedKey;
-
-      _fallbackEndpoint.text = prefs.getString('fallback_endpoint')?.trim() ?? '';
-      _fallbackKey.text = storedFallbackKey.trim();
-      _fallbackModel.text = prefs.getString('fallback_model')?.trim() ?? '';
-      // Do not initialize native microphone/speech services during startup.
-      // Voice is initialized only after the main UI is visible, preventing
-      // device-specific native speech-service crashes from closing JARVIS.
+      await _secureStorage.delete(key: 'api_key');
+      await _secureStorage.delete(key: 'fallback_key');
       if (!mounted) return;
-      if (_apiKey.text.isEmpty) {
-        setState(() => _status = 'Введите API key в Настройках');
-      } else {
-        await _connectAndroid();
-      }
+      setState(() => _status = 'Gemini открывается внутри JARVIS');
+      _setVisual(JarvisVisualState.idle);
+      await _initVoice();
     } catch (e) {
-      if (mounted) {
-        setState(() => _status = 'JARVIS запущен · ошибка: $e');
-        _setVisual(JarvisVisualState.error);
-      }
+      if (mounted) setState(() => _status = 'JARVIS запущен · ошибка инициализации: $e');
     }
   }
 
@@ -741,25 +717,16 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _openGeminiWeb([String? requestPrompt]) async {
     final prompt = (requestPrompt ?? _input.text).trim();
-    try {
-      if (prompt.isNotEmpty) {
-        await Clipboard.setData(ClipboardData(text: prompt));
-      }
-      final launched = await launchUrl(
-        Uri.parse('https://gemini.google.com/app'),
-        mode: LaunchMode.externalApplication,
-      );
-      if (!mounted) return;
-      setState(() {
-        _status = launched
-            ? (prompt.isNotEmpty
-                ? 'Gemini Web открыт; запрос скопирован. Вставьте его в Gemini.'
-                : 'Gemini Web открыт. Войдите в Google-аккаунт при необходимости.')
-            : 'Не удалось открыть Gemini Web: проверьте браузер.';
-      });
-    } catch (error) {
-      if (mounted) setState(() => _status = 'Gemini Web: $error');
+    if (prompt.isNotEmpty) {
+      await Clipboard.setData(ClipboardData(text: prompt));
     }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => GeminiWebScreen(initialPrompt: prompt),
+      ),
+    );
+    if (mounted) setState(() => _status = 'Gemini закрыт');
   }
 
   Future<void> _pasteGeminiWebAnswer() async {
