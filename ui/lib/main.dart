@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'jarvis_client.dart';
 import 'jarvis_reactor.dart';
 
@@ -738,6 +739,47 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     }
   }
 
+  Future<void> _openGeminiWeb() async {
+    final prompt = _input.text.trim();
+    try {
+      if (prompt.isNotEmpty) {
+        await Clipboard.setData(ClipboardData(text: prompt));
+      }
+      final launched = await launchUrl(
+        Uri.parse('https://gemini.google.com/app'),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!mounted) return;
+      setState(() {
+        _status = launched
+            ? (prompt.isNotEmpty
+                ? 'Gemini Web открыт; запрос скопирован. Вставьте его в Gemini.'
+                : 'Gemini Web открыт. Войдите в Google-аккаунт при необходимости.')
+            : 'Не удалось открыть Gemini Web: проверьте браузер.';
+      });
+    } catch (error) {
+      if (mounted) setState(() => _status = 'Gemini Web: $error');
+    }
+  }
+
+  Future<void> _pasteGeminiWebAnswer() async {
+    try {
+      final data = await Clipboard.getData('text/plain');
+      final answer = data?.text?.trim() ?? '';
+      if (answer.isEmpty) {
+        if (mounted) setState(() => _status = 'Буфер обмена пуст. Скопируйте ответ из Gemini Web.');
+        return;
+      }
+      _input.value = TextEditingValue(
+        text: answer,
+        selection: TextSelection.collapsed(offset: answer.length),
+      );
+      if (mounted) setState(() => _status = 'Ответ вставлен. Нажмите «Отправить», чтобы продолжить в Jarvis.');
+    } catch (error) {
+      if (mounted) setState(() => _status = 'Не удалось вставить ответ Gemini Web: $error');
+    }
+  }
+
   Future<void> _send(String text, {bool speakReply = false}) async {
     text = text.trim();
     if (text.isEmpty || _busy) return;
@@ -899,6 +941,8 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           ],
         ),
         actions: [
+          IconButton(tooltip: 'Gemini Web: открыть и скопировать запрос', onPressed: _openGeminiWeb, icon: const Icon(Icons.open_in_browser_rounded)),
+          IconButton(tooltip: 'Вставить ответ Gemini Web', onPressed: _pasteGeminiWebAnswer, icon: const Icon(Icons.content_paste_go_rounded)),
           IconButton(tooltip: 'Инструменты', onPressed: _showTools, icon: const Icon(Icons.folder_open_rounded)),
           IconButton(tooltip: 'Настройки AI', onPressed: _settings, icon: const Icon(Icons.tune_rounded)),
         ],
