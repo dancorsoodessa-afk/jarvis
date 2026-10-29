@@ -135,7 +135,7 @@ class OpenAIChatProvider:
                     marker in detail.lower()
                     for marker in ("quota", "resource_exhausted", "free_tier", "daily limit")
                 )
-                if exc.code in retryable and attempt < 2 and not quota_limited:
+                if exc.code in retryable and exc.code != 429 and attempt < 2 and not quota_limited:
                     time.sleep(min(1.0 * (2 ** attempt), 2.0))
                     continue
                 if exc.code == 503:
@@ -258,9 +258,9 @@ class OpenAIChatProvider:
             # A read-only installation must still continue with the in-memory model.
             pass
 
-    def health_check(self) -> str:
+    def health_check(self, *, refresh: bool = True) -> str:
         """Validate the API key, discover real model IDs and select an available Flash model."""
-        available = self._available_models(refresh=True)
+        available = self._available_models(refresh=refresh)
         current = self._model_id(self.model or os.environ.get("GEMINI_MODEL", ""))
         selected = self._select_flash_model(available)
         if not selected:
@@ -290,7 +290,7 @@ class OpenAIChatProvider:
         # Validate once per provider instance before sending a generation request.
         # The shared model-list cache avoids repeated network calls across role profiles.
         if not self._model_verified:
-            self.health_check()
+            self.health_check(refresh=False)
         if not self.model:
             raise RuntimeError("Не удалось выбрать доступную модель Gemini Flash.")
         return self._normalize_model(self.model)
@@ -352,7 +352,7 @@ class OpenAIChatProvider:
                     marker in detail.lower()
                     for marker in ("quota", "resource_exhausted", "free_tier", "daily limit")
                 )
-                if exc.code in retryable and attempt < 2 and not quota_limited:
+                if exc.code in retryable and exc.code != 429 and attempt < 2 and not quota_limited:
                     time.sleep(min(1.0 * (2 ** attempt), 2.0))
                     continue
                 if exc.code == 503:
