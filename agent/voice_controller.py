@@ -332,7 +332,7 @@ class VoiceController:
             raise ValueError(f"Недопустимое состояние голоса: {state}")
         with self._lock:
             self._state = state
-            if state == "ERROR" and message:
+            if state in {"ERROR", "DEGRADED"} and message:
                 self._last_error = message
         self._log.info("event=state state=%s message=%s", state, message[:300])
         self.ui.post("voice_state", state, message)
@@ -347,8 +347,14 @@ class VoiceController:
             last_error = self._last_error
             mic_ok = self._mic_ok
             running = self._running
+        quota = stt.quota_exceeded()
+        engine = stt.current_engine()
+        if quota and state in {"IDLE", "LISTENING"}:
+            state = "DEGRADED"
+        tools_enabled = os.environ.get("GEMINI_TOOLS_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+        model = (os.environ.get("GEMINI_MODEL") or os.environ.get("JARVIS_CHAT_MODEL") or os.environ.get("GEMINI_STT_MODEL") or "не выбрана").strip()
         try:
-            cloud_voice_available = stt.current_engine() in {"gemini", "groq"} and tts.current_engine() == "gemini" and not self._tts_off
+            cloud_voice_available = engine in {"gemini", "groq"} and tts.current_engine() == "gemini" and not self._tts_off
         except Exception as exc:
             self._log.warning("event=voice_availability_check_failed error=%s", exc)
             cloud_voice_available = False
@@ -357,11 +363,15 @@ class VoiceController:
             "last_error": last_error,
             "mic": "ok" if mic_ok else "fail",
             "mic_status": "mic ok" if mic_ok else "mic fail",
-            "cloud_stt_status": ("cloud stt reserve: Groq" if stt.current_engine() == "groq" else "cloud stt off" if stt.current_engine() == "off" else "cloud stt on"),
+            "cloud_stt_status": ("cloud stt reserve: Groq" if engine == "groq" else "cloud stt off" if engine == "off" else "cloud stt on"),
             "tts_status": "tts off" if tts.current_engine() == "off" or self._tts_off else "tts on",
             "cloud_voice_available": cloud_voice_available,
-            "quota_exceeded": stt.quota_exceeded(),
-            "cloud_stt": "groq" if stt.current_engine() == "groq" else "off" if stt.current_engine() == "off" else "on",
+            "quota_exceeded": quota,
+            "quota_status": "yes" if quota else "no",
+            "model": model,
+            "tools_enabled": tools_enabled,
+            "tools_status": "yes" if tools_enabled else "no (safe mode)",
+            "cloud_stt": "groq" if engine == "groq" else "off" if engine == "off" else "on",
             "tts": "off" if tts.current_engine() == "off" or self._tts_off else "on",
             "running": running,
             "is_speaking": self._is_speaking.is_set(),
@@ -455,11 +465,15 @@ class VoiceController:
             return
         if normalized in {"статус голоса", "проверь голос", "состояние голоса"}:
             state = self.status()
-            self.speak(
-                f"Состояние голоса: {state['state']}. Микрофон: {state['mic']}. " +
-                f"Облачный голос доступен: {'да' if state['cloud_voice_available'] else 'нет'}. " +
-                (f"Последняя ошибка: {state['last_error']}" if state["last_error"] else "Ошибок нет.")
+            report = (
+                f"Состояние голоса: {state['state']}. Микрофон: {state['mic']}. "
+                f"STT: {state['cloud_stt_status']}. TTS: {state['tts_status']}. "
+                f"Модель: {state['model']}. Квота исчерпана: {state['quota_status']}. "
+                f"Tools включены: {state['tools_status']}. "
+                + (f"Последняя ошибка: {state['last_error']}" if state["last_error"] else "Последняя ошибка отсутствует.")
             )
+            self.ui.post("voice_status", report)
+            self.speak(report)
             return
 
         self._set_state("UNDERSTANDING")
