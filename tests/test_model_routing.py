@@ -200,6 +200,7 @@ def test_openai_compatible_provider_reports_timeout_without_retrying():
 
 
 def test_gemini_tool_call_extract_preserves_thought_signature():
+    import json
     from agent.providers.openai_chat import OpenAIChatProvider
 
     signature = "opaque-signature-from-gemini"
@@ -217,7 +218,7 @@ def test_gemini_tool_call_extract_preserves_thought_signature():
                     "id": "call-1",
                     "type": "function",
                     "extra_content": {"google": {"thought_signature": signature}},
-                    "function": {"name": "web_search", "arguments": "{\\"query\\":\\"test\\"}"},
+                    "function": {"name": "web_search", "arguments": json.dumps({"query": "test"})},
                 }],
             }
         }]
@@ -240,7 +241,7 @@ def test_gemini_stream_tool_call_keeps_extra_content_signature():
         {"choices": [{"delta": {"tool_calls": [{
             "index": 0, "id": "call-1", "type": "function",
             "extra_content": {"google": {"thought_signature": signature}},
-            "function": {"name": "web_search", "arguments": "{\\"query\\":\\"x\\"}"},
+            "function": {"name": "web_search", "arguments": json.dumps({"query": "x"})},
         }]}}]},
         "[DONE]",
     ]
