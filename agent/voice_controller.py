@@ -309,6 +309,7 @@ class VoiceController:
         self._last_error = ""
         self._mic_ok = False
         self._quota_exceeded = False
+        self._quota_notice_sent = False
         self._tts_off = False
         self._is_speaking = threading.Event()
         self._mic_lock = MicLock()
@@ -328,6 +329,13 @@ class VoiceController:
         self._stt_thread.start()
 
     def _set_state(self, state: str, message: str = "") -> None:
+        if state == "LISTENING" and stt.quota_exceeded():
+            state = "DEGRADED"
+            if not message:
+                message = (
+                    "Квота Gemini на сегодня исчерпана. "
+                    + ("Используется резервный Groq STT." if stt.current_engine() == "groq" else "Голос-STT недоступен до сброса/смены ключа/тарифа.")
+                )
         if state not in self.STATES:
             raise ValueError(f"Недопустимое состояние голоса: {state}")
         with self._lock:
@@ -603,6 +611,13 @@ class VoiceController:
                 try:
                     self.stt_engine.transcribe_bytes(audio)
                     last_error = None
+                    if stt.quota_exceeded() and not self._quota_notice_sent:
+                        self._quota_notice_sent = True
+                        reserve = " Используется резервный Groq STT." if stt.current_engine() == "groq" else ""
+                        self.ui.post(
+                            "voice_status",
+                            stt.QUOTA_MESSAGE + reserve + " Текстовые команды продолжают работать.",
+                        )
                     break
                 except Exception as exc:
                     last_error = exc
