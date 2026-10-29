@@ -3,9 +3,12 @@ a = Analysis(
     ["jarvis_desktop.py"],
     pathex=["."],
     binaries=[],
-    datas=[("docs", "docs"), ("ui/jarvis_3d.html", "ui"), ("ui/vendor", "ui/vendor")],
+    datas=[("docs", "docs"), ("assets/jarvis-reactor-logo.png", "assets"), ("ui/jarvis_3d.html", "ui"), ("ui/vendor", "ui/vendor")],
     hiddenimports=[
         "numpy",
+        "faster_whisper",
+        "ctranslate2",
+        "av",
         "sounddevice",
         "pycaw",
         "pycaw.pycaw",
@@ -13,7 +16,7 @@ a = Analysis(
     ],
     hookspath=[],
     runtime_hooks=[],
-    excludes=["tkinter.test", "unittest", "faster_whisper", "ctranslate2", "av"],
+    excludes=["tkinter.test", "unittest"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
@@ -28,5 +31,5 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    icon=None,
+    icon="assets/jarvis-reactor-logo.ico",
 )

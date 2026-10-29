@@ -1,9 +1,30 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+
+def load_project_env(path=None):
+    env_file = Path(path) if path else Path(__file__).resolve().parents[1] / "config" / ".env"
+    try:
+        lines = env_file.read_text(encoding="utf-8-sig").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        name = name.strip()
+        value = value.strip().strip('"').strip("'")
+        if name and name.replace("_", "").isalnum():
+            os.environ.setdefault(name, value)
+
+
+load_project_env()
 
 SUPPORTED_PROVIDERS = ("gemini",)
 DEFAULT_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 def _timeout_env(name: str, default: int = 30) -> int:
@@ -32,9 +53,6 @@ class Settings:
     coding_model: str = DEFAULT_MODEL
     additional_model: str = DEFAULT_MODEL
     gemini_timeout: int = 30
-    groq_key: str = ""
-    groq_model: str = "openai/gpt-oss-120b"
-    groq_timeout: int = 30
     memory_path: str = "jarvis_memory.json"
     kg_path: str | None = None
 
@@ -44,7 +62,11 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        default_model = os.environ.get("JARVIS_CHAT_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+        default_model = (
+            os.environ.get("GEMINI_MODEL", "").strip()
+            or os.environ.get("JARVIS_CHAT_MODEL", "").strip()
+            or DEFAULT_MODEL
+        )
         key = os.environ.get("GEMINI_API_KEY", "").strip() or os.environ.get("JARVIS_CHAT_KEY", "").strip()
         return cls(
             provider="gemini", chat_url=DEFAULT_CHAT_URL, chat_key=key,
@@ -54,9 +76,6 @@ class Settings:
             coding_model=os.environ.get("JARVIS_CODING_MODEL", default_model).strip() or default_model,
             additional_model=os.environ.get("JARVIS_ADDITIONAL_MODEL", default_model).strip() or default_model,
             gemini_timeout=_timeout_env("JARVIS_GEMINI_TIMEOUT", 30),
-            groq_key=os.environ.get("GROQ_API_KEY", "").strip(),
-            groq_model=os.environ.get("JARVIS_GROQ_MODEL", "openai/gpt-oss-120b").strip() or "openai/gpt-oss-120b",
-            groq_timeout=_timeout_env("JARVIS_GROQ_TIMEOUT", 30),
             memory_path=os.environ.get("JARVIS_MEMORY", "jarvis_memory.json").strip() or "jarvis_memory.json",
             kg_path=os.environ.get("JARVIS_KG"),
         )

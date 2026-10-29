@@ -18,6 +18,7 @@ _PLAYBACK_PATH: Path | None = None
 
 DEFAULT_TTS_MODEL = "gemini-3.8-flash-tts"
 DEFAULT_TTS_VOICE = "Charon"
+DEFAULT_TTS_LANGUAGE = "ru-RU"
 TTS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
 
 
@@ -44,7 +45,7 @@ def health_check(timeout: float | None = None) -> str:
         return "OFF"
     if current_engine() == "off":
         raise RuntimeError("Для облачной озвучки нужен GEMINI_API_KEY.")
-    model = (os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
+    model = (os.environ.get("GEMINI_TTS_MODEL") or os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
     url = "https://generativelanguage.googleapis.com/v1beta/models/" + urllib.parse.quote(model, safe="-._")
     request = urllib.request.Request(url, headers={"x-goog-api-key": _api_key(), "Accept": "application/json"})
     try:
@@ -82,8 +83,18 @@ def _generate_audio(text: str) -> bytes:
     key = _api_key()
     if not key:
         raise RuntimeError("Облачная озвучка требует GEMINI_API_KEY. Укажите ключ Gemini в Центре управления.")
-    model = (os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
-    voice = (os.environ.get("JARVIS_TTS_VOICE") or DEFAULT_TTS_VOICE).strip()
+    model = (os.environ.get("GEMINI_TTS_MODEL") or os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
+    voice = (os.environ.get("GEMINI_TTS_VOICE") or os.environ.get("TTS_VOICE") or os.environ.get("JARVIS_TTS_VOICE") or DEFAULT_TTS_VOICE).strip()
+    language = (os.environ.get("GEMINI_TTS_LANGUAGE") or os.environ.get("TTS_LANGUAGE") or "ru-RU").strip() or DEFAULT_TTS_LANGUAGE
+    if not language:
+        raise RuntimeError("Язык Gemini TTS не может быть пустым; используйте ru-RU.")
+    # Normalize legacy Windows voice names to supported Gemini speaker profiles.
+    voice = {"dmitri medium": "Charon", "dmitri": "Charon", "male": "Charon", "мужской": "Charon", "female": "Aoede", "женский": "Aoede"}.get(voice.casefold(), voice)
+    valid_voices = {"Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede", "Callirrhoe", "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba", "Despina", "Erinome", "Algenib", "Rasalgethi", "Laomedeia", "Achernar", "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi", "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat"}
+    if voice not in valid_voices:
+        voice = DEFAULT_TTS_VOICE
+    if not voice:
+        raise RuntimeError("Имя голоса Gemini TTS не может быть пустым.")
     payload = {
         "model": model,
         "input": [{
@@ -93,7 +104,7 @@ def _generate_audio(text: str) -> bytes:
                 "text": text,
                 "annotations": [{
                     "type": "speech_metadata",
-                    "style": "Speak naturally and clearly in Russian, with a confident, calm assistant delivery.",
+                    "style": f"Speak in {language} (Russian) naturally and clearly, with a confident, calm assistant delivery.",
                 }],
             }],
         }],
@@ -106,7 +117,7 @@ def _generate_audio(text: str) -> bytes:
         headers={"x-goog-api-key": key, "Content-Type": "application/json", "Accept": "application/json"},
         method="POST",
     )
-    retryable = {429, 500, 502, 503, 504}
+    # Do not retry 429: it may be a depleted quota and repeated requests only waste time.
     for attempt in range(3):
         try:
             with urllib.request.urlopen(request, timeout=_timeout()) as response:
@@ -126,7 +137,7 @@ def _generate_audio(text: str) -> bytes:
             return base64.b64decode(audio, validate=True)
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:400]
-            if exc.code in retryable and attempt < 2:
+            if exc.code in {500, 502, 503, 504} and attempt < 2:
                 import time
                 time.sleep(0.8 * (2 ** attempt))
                 continue
@@ -178,7 +189,7 @@ def speak(text: str) -> Path:
     return _write_audio(_generate_audio(text))
 
 
-def speak_and_play(text: str, on_playback_start=None, blocking: bool = True):
+def speak_and_play(text: str, on_playback_start=None, blocking: bool = True, cancel_event: threading.Event | None = None):
     """Generate audio, then play it synchronously or in a worker thread.
 
     Non-blocking playback allows the microphone loop to keep listening while
@@ -187,8 +198,14 @@ def speak_and_play(text: str, on_playback_start=None, blocking: bool = True):
     """
     global _PLAYBACK_ACTIVE, _PLAYBACK_TOKEN, _PLAYBACK_PATH
     path = speak(text)
+    if cancel_event is not None and cancel_event.is_set():
+        path.unlink(missing_ok=True)
+        return path
     stop()
     with _PLAYBACK_LOCK:
+        if cancel_event is not None and cancel_event.is_set():
+            path.unlink(missing_ok=True)
+            return path
         _PLAYBACK_TOKEN += 1
         token = _PLAYBACK_TOKEN
         _PLAYBACK_ACTIVE = True

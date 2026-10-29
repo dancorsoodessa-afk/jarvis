@@ -70,6 +70,14 @@ class JarvisAgent:
         if text.startswith("/"):
             return self._handle_tool_command(text)
 
+        # Deterministic local intents must not depend on Gemini function calling.
+        # Keep this deliberately narrow: read-only status/search and explicit volume
+        # changes only; risky actions still require the normal confirmation gate.
+        local_result = self._dispatch_local_intent(text)
+        if local_result is not None:
+            self._notify(text, local_result.text)
+            return local_result
+
         if self.context_hook:
             try:
                 self.context_hook(text)
@@ -91,6 +99,37 @@ class JarvisAgent:
         self._notify(text, reply)
         return AgentResult(reply, self.provider.name,
                            needs_confirmation=self._pending_tool is not None)
+
+    def _dispatch_local_intent(self, text: str) -> AgentResult | None:
+        import re
+        value = " ".join(text.lower().replace("ё", "е").split())
+        # Exact local system status phrases.
+        if value in {"статус системы", "состояние системы", "проверь систему", "покажи состояние компьютера"}:
+            return self._run_tool("status")
+        if value in {"громкость", "проверь громкость", "какая громкость", "покажи громкость"}:
+            return self._run_tool("volume")
+        match = re.fullmatch(r"(?:установи|поставь|сделай) громкость(?: на)?\s+(\d{1,3})%?", value)
+        if match:
+            level = int(match.group(1))
+            if not 0 <= level <= 100:
+                return AgentResult("Громкость должна быть от 0 до 100 процентов.", self.provider.name)
+            return self._run_tool("set_volume", str(level))
+        if value in {"дата и время", "который час", "сколько времени", "текущее время"}:
+            for name in ("now", "time"):
+                if self.tools.get(name):
+                    return self._run_tool(name)
+        # File search is local and read-only. Never infer destructive file actions.
+        if value.startswith("найди файл "):
+            pattern = text.strip()[len("найди файл "):].strip().strip('"')
+            if pattern and self.tools.get("search"):
+                try:
+                    output = self.tools.call("search", pattern, root=".")
+                except Exception as exc:
+                    return AgentResult(f"Локальный поиск файлов завершился ошибкой: {exc}", self.provider.name)
+                found = list(output or [])
+                summary = "\n".join(str(item) for item in found[:20]) if found else "Совпадений не найдено."
+                return AgentResult(summary, self.provider.name, tool_used="search")
+        return None
 
     def _run_tool(self, name: str, *args, remember: str | None = None,
                   confirmed: bool = False, ask_confirmation: bool = True,

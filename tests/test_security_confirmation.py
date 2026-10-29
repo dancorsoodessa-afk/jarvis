@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -57,7 +58,9 @@ class TestModelConfirmation(unittest.TestCase):
         )
         agent = JarvisAgent(provider, tools=registry)
 
-        ask = agent.handle("удали всё")
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"GEMINI_TOOLS_ENABLED": "true"}):
+            ask = agent.handle("удали всё")
         self.assertTrue(ask.needs_confirmation)
         self.assertIn("требует подтверждения", ask.text)
         self.assertFalse(executed["value"])

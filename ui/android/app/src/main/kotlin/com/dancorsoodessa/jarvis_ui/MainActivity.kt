@@ -2,6 +2,8 @@ package com.dancorsoodessa.jarvis_ui
 
 import android.Manifest
 import android.content.Intent
+import android.media.MediaPlayer
+import java.io.File
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.os.Build
@@ -30,6 +32,8 @@ class MainActivity : FlutterActivity(), RecognitionListener {
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var audioPlayer: MediaPlayer? = null
+    private var pendingAudioResult: MethodChannel.Result? = null
     private var disposed = false
     private lateinit var tools: AndroidToolRouter
 
@@ -86,6 +90,15 @@ class MainActivity : FlutterActivity(), RecognitionListener {
                 "speak" -> {
                     val text = call.argument<String>("text") ?: ""
                     speak(text)
+                    result.success(null)
+                }
+                "playAudioFile" -> {
+                    val path = call.argument<String>("path").orEmpty()
+                    if (path.isBlank()) result.error("AUDIO_PATH_EMPTY", "Путь к аудиофайлу пустой", null)
+                    else playAudioFile(path, result)
+                }
+                "stopAudio" -> {
+                    stopAudioPlayback()
                     result.success(null)
                 }
                 "dispose" -> {
@@ -176,6 +189,7 @@ class MainActivity : FlutterActivity(), RecognitionListener {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
         }
@@ -201,10 +215,64 @@ class MainActivity : FlutterActivity(), RecognitionListener {
         }
     }
 
+    private fun playAudioFile(path: String, result: MethodChannel.Result) {
+        val file = File(path)
+        if (!file.isFile) {
+            result.error("AUDIO_FILE_MISSING", "Аудиофайл озвучки не найден", null)
+            return
+        }
+        stopAudioPlayback()
+        val player = MediaPlayer()
+        audioPlayer = player
+        pendingAudioResult = result
+        player.setOnPreparedListener { prepared ->
+            try {
+                prepared.start()
+            } catch (error: Exception) {
+                finishAudioPlayback(prepared, error)
+            }
+        }
+        player.setOnCompletionListener { completed -> finishAudioPlayback(completed, null) }
+        player.setOnErrorListener { failed, what, extra ->
+            finishAudioPlayback(failed, IllegalStateException("MediaPlayer error $what/$extra"))
+            true
+        }
+        try {
+            player.setDataSource(file.absolutePath)
+            player.prepareAsync()
+        } catch (error: Exception) {
+            finishAudioPlayback(player, error)
+        }
+    }
+
+    private fun finishAudioPlayback(player: MediaPlayer, error: Exception?) {
+        try { player.release() } catch (_: Exception) {}
+        if (audioPlayer === player) audioPlayer = null
+        val callback = pendingAudioResult
+        pendingAudioResult = null
+        if (callback != null) {
+            if (error == null) callback.success(true)
+            else callback.error("AUDIO_PLAYBACK_FAILED", error.message ?: "Не удалось воспроизвести облачную озвучку", null)
+        }
+    }
+
+    private fun stopAudioPlayback() {
+        val player = audioPlayer
+        audioPlayer = null
+        if (player != null) {
+            try { player.setOnCompletionListener(null); player.setOnErrorListener(null); player.stop() } catch (_: Exception) {}
+            try { player.release() } catch (_: Exception) {}
+        }
+        val callback = pendingAudioResult
+        pendingAudioResult = null
+        callback?.success(false)
+    }
+
     private fun releaseVoice() {
         if (disposed) return
         disposed = true
         stopListening()
+        stopAudioPlayback()
         try {
             recognizer?.destroy()
         } catch (_: Exception) {

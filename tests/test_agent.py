@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -44,6 +45,20 @@ class TestAgent(unittest.TestCase):
         result = agent.handle("/status")
         self.assertEqual(result.tool_used, "status")
         self.assertIn("os", result.text)
+
+    def test_plain_language_system_status_uses_local_router(self):
+        agent = self.make_agent()
+        agent.tools.register("status", system.status)
+        result = agent.handle("статус системы")
+        self.assertEqual(result.tool_used, "status")
+        self.assertIn("os", result.text)
+
+    def test_plain_language_local_command_does_not_call_llm(self):
+        agent = self.make_agent()
+        agent.tools.register("status", system.status)
+        agent.provider.generate = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM should not be called"))
+        result = agent.handle("проверь систему")
+        self.assertEqual(result.tool_used, "status")
 
     def test_unknown_tool(self):
         result = self.make_agent().handle("/nope")
@@ -122,6 +137,12 @@ class TestOpenAIChatProvider(unittest.TestCase):
 
 
 class TestFunctionCalling(unittest.TestCase):
+    def setUp(self):
+        from unittest.mock import patch
+        patcher = patch.dict(os.environ, {"GEMINI_TOOLS_ENABLED": "true"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _provider(self, responses):
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -254,7 +275,9 @@ class TestStreamingIPC(unittest.TestCase):
         p._ensure_endpoint = lambda: None
         deltas = []
         p.on_delta = deltas.append
-        reply = p.generate("hi", tools=[{"type": "function", "function": {"name": "x"}}])
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"GEMINI_TOOLS_ENABLED": "true"}):
+            reply = p.generate("hi", tools=[{"type": "function", "function": {"name": "x"}}])
         self.assertEqual(reply, "Привет")
         self.assertEqual(deltas, ["При", "вет"])
 

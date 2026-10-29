@@ -71,6 +71,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/jarvis-native"
           cp android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/MainActivity.kt "$RUNNER_TEMP/jarvis-native/MainActivity.kt"
           cp android/app/src/main/kotlin/com/dancorsoodessa/jarvis_ui/JarvisTimerReceiver.kt "$RUNNER_TEMP/jarvis-native/JarvisTimerReceiver.kt"
+          cp android/app/src/main/res/drawable/jarvis_reactor_logo.xml "$RUNNER_TEMP/jarvis-native/jarvis_reactor_logo.xml"
       - name: Generate Android project
         working-directory: ui
         run: |
@@ -86,6 +87,8 @@ jobs:
           mkdir -p "$KOTLIN"
           cp "$RUNNER_TEMP/jarvis-native/MainActivity.kt" "$KOTLIN/MainActivity.kt"
           cp "$RUNNER_TEMP/jarvis-native/JarvisTimerReceiver.kt" "$KOTLIN/JarvisTimerReceiver.kt"
+          mkdir -p android/app/src/main/res/drawable
+          cp "$RUNNER_TEMP/jarvis-native/jarvis_reactor_logo.xml" android/app/src/main/res/drawable/jarvis_reactor_logo.xml
           cp android_tool_router.kt "$KOTLIN/AndroidToolRouter.kt"
           cp android_tools/TradingTools.kt "$KOTLIN/TradingTools.kt"
           cp android_tools/StockAnalysisTools.kt "$KOTLIN/StockAnalysisTools.kt"
@@ -113,6 +116,8 @@ jobs:
           receiver = '        <receiver android:name=".JarvisTimerReceiver" android:exported="false" />'
           if "JarvisTimerReceiver" not in text:
               text = text.replace("        <meta-data android:name=\"flutterEmbedding\"", receiver + "\n        <meta-data android:name=\"flutterEmbedding\"", 1)
+          if 'android:icon="@drawable/jarvis_reactor_logo"' not in text:
+              text = text.replace("<application", '<application android:icon="@drawable/jarvis_reactor_logo" android:roundIcon="@drawable/jarvis_reactor_logo"', 1)
           p.write_text(text, encoding="utf-8")
           PY
       - name: Get dependencies

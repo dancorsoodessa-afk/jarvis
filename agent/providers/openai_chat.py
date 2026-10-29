@@ -2,10 +2,13 @@
 
 import json
 import os
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
 import time
+import threading
+from pathlib import Path
 from typing import Optional
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -21,6 +24,9 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 MAX_HISTORY_MESSAGES = 12
+_MODEL_CACHE: dict[tuple[str, str], tuple[float, set[str]]] = {}
+_MODEL_CACHE_LOCK = threading.Lock()
+_MODEL_CACHE_TTL = 300
 CONFIRMATION_PREFIX = "Инструмент «"
 
 
@@ -46,6 +52,7 @@ class OpenAIChatProvider:
         self.tool_executor = None
         self.on_delta = None
         self._discovered_model: str | None = None
+        self._model_verified = False
         self.fallback_models = [str(x).strip() for x in (fallback_models or []) if str(x).strip()]
         self.last_used_model = self.model
 
@@ -61,7 +68,12 @@ class OpenAIChatProvider:
             raise RuntimeError("Разрешены только защищённые официальные endpoint Gemini и Groq.")
 
     def _provider_name(self) -> str:
-        return "Groq" if urllib.parse.urlsplit(self.url).hostname == "api.groq.com" else "Gemini"
+        host = urllib.parse.urlsplit(self.url).hostname
+        if host == "api.groq.com":
+            return "Groq"
+        if host == "generativelanguage.googleapis.com":
+            return "Gemini"
+        return "Compatible API"
 
     def _messages(self, prompt) -> list[dict]:
         messages = [{"role": "system", "content": self.system_prompt}]
@@ -117,22 +129,36 @@ class OpenAIChatProvider:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers = self._auth_headers()
         retryable = {429, 500, 502, 503, 504}
-        for attempt in range(4):
+        for attempt in range(3):
             req = urllib.request.Request(self.url, data=data, headers=headers)
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="replace")[:500]
-                if exc.code in retryable and attempt < 3:
-                    time.sleep(1.0 * (2 ** attempt))
+                quota_limited = exc.code == 429 and any(
+                    marker in detail.lower()
+                    for marker in ("quota", "resource_exhausted", "free_tier", "daily limit")
+                )
+                if exc.code in retryable and exc.code != 429 and attempt < 2 and not quota_limited:
+                    time.sleep(min(1.0 * (2 ** attempt), 2.0))
                     continue
                 if exc.code == 503:
                     raise RuntimeError(f"{self._provider_name()} временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
                 raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
+            except (TimeoutError, socket.timeout) as exc:
+                raise RuntimeError(
+                    f"Тайм-аут запроса к {self._provider_name()} ({self.timeout} с). "
+                    "Проверьте соединение и повторите запрос."
+                ) from exc
             except urllib.error.URLError as exc:
-                if attempt < 3:
-                    time.sleep(1.0 * (2 ** attempt))
+                if isinstance(exc.reason, (TimeoutError, socket.timeout)) or "timed out" in str(exc.reason).lower():
+                    raise RuntimeError(
+                        f"Тайм-аут запроса к {self._provider_name()} ({self.timeout} с). "
+                        "Проверьте соединение и повторите запрос."
+                    ) from exc
+                if attempt < 2:
+                    time.sleep(min(1.0 * (2 ** attempt), 2.0))
                     continue
                 raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -150,68 +176,152 @@ class OpenAIChatProvider:
             path = path.rstrip("/") + "/models"
         return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
-    def health_check(self) -> str:
-        """Actively verify credentials and endpoint reachability without generating tokens."""
+    @staticmethod
+    def _model_id(value: str) -> str:
+        value = str(value or "").strip()
+        return value.removeprefix("models/")
+
+    def _available_models(self, *, refresh: bool = False) -> set[str]:
         self._ensure_endpoint()
-        url = self._models_url()
-        headers = {"Accept": "application/json", "Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        req = urllib.request.Request(url, headers=headers)
+        cache_key = (self.url.rstrip("/"), self.api_key)
+        now = time.monotonic()
+        with _MODEL_CACHE_LOCK:
+            cached = _MODEL_CACHE.get(cache_key)
+            if not refresh and cached and now - cached[0] < _MODEL_CACHE_TTL:
+                return set(cached[1])
+        if not self.api_key:
+            raise RuntimeError("Не задан GEMINI_API_KEY. Добавьте ключ в Центре управления JARVIS.")
+        req = urllib.request.Request(
+            self._models_url(),
+            headers={"Accept": "application/json", "Authorization": f"Bearer {self.api_key}"},
+        )
         try:
             with urllib.request.urlopen(req, timeout=min(self.timeout, 12)) as response:
                 body = json.loads(response.read().decode("utf-8"))
-            if not isinstance(body, dict) or not isinstance(body.get("data"), list):
-                raise RuntimeError("Провайдер ответил, но формат списка моделей неожиданный.")
-            available = {
-                str(item.get("id", "")).strip()
-                for item in body["data"]
-                if isinstance(item, dict) and item.get("id")
-            }
-            if self.model and available and self.model not in available:
-                raise RuntimeError(f"Модель {self.model} отсутствует в списке доступных моделей этого ключа.")
-            return "ONLINE"
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:250]
-            raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"Сеть недоступна: {exc.reason}") from exc
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise RuntimeError("Провайдер вернул некорректный JSON.") from exc
-
-    def discover_model(self) -> str:
-        if self.model:
-            return self._normalize_model(self.model)
-        if self._discovered_model:
-            return self._normalize_model(self._discovered_model)
-        self._ensure_endpoint()
-        if self._discovered_model:
-            return self._normalize_model(self._discovered_model)
-        url = self._models_url()
-        req = urllib.request.Request(url, headers={"Accept": "application/json", "Authorization": f"Bearer {self.api_key}"} if self.api_key else {"Accept": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=min(self.timeout, 10)) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:300]
-            raise RuntimeError(f"Не удалось получить список моделей: HTTP {exc.code}. {detail}") from exc
+            if exc.code in (401, 403):
+                raise RuntimeError(f"Ключ Gemini отклонён (HTTP {exc.code}). Проверьте API-ключ и доступ.") from exc
+            raise RuntimeError(f"Не удалось получить список моделей Gemini: HTTP {exc.code}. {detail}") from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"Не удалось подключиться к серверу моделей: {exc.reason}") from exc
+            raise RuntimeError(f"Не удалось получить список моделей Gemini: {exc.reason}") from exc
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise RuntimeError("Сервер моделей вернул некорректный JSON") from exc
-        models = body.get("data") if isinstance(body, dict) else None
-        ids = [str(item.get("id", "")).strip() for item in (models or []) if isinstance(item, dict)]
-        ids = [item for item in ids if item]
+            raise RuntimeError("Gemini вернул некорректный JSON списка моделей.") from exc
+        raw = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(raw, list):
+            raise RuntimeError("Gemini не вернул список доступных моделей.")
+        ids = {
+            self._model_id(item.get("id", ""))
+            for item in raw if isinstance(item, dict) and item.get("id")
+        }
+        ids = {item for item in ids if item}
+        with _MODEL_CACHE_LOCK:
+            _MODEL_CACHE[cache_key] = (time.monotonic(), set(ids))
         if not ids:
+            raise RuntimeError("Список моделей Gemini пуст. Проверьте ключ, проект и доступ к Gemini API.")
+        return ids
+
+    @staticmethod
+    def _select_flash_model(available: set[str]) -> str:
+        preferred = ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest")
+        for model in preferred:
+            if model in available:
+                return model
+        candidates = sorted(
+            model for model in available
+            if "flash" in model.lower()
+            and not any(tag in model.lower() for tag in ("embedding", "tts", "transcribe", "image", "live", "robotics"))
+        )
+        return candidates[0] if candidates else ""
+
+    @staticmethod
+    def _persist_selected_model(model: str) -> None:
+        if not model:
+            return
+        os.environ["GEMINI_MODEL"] = model
+        os.environ["JARVIS_CHAT_MODEL"] = model
+        # Persist only the selected model, never the API key. In packaged builds
+        # the env-file path can be overridden to a writable per-user config file.
+        configured = os.environ.get("JARVIS_ENV_FILE", "").strip()
+        env_path = Path(configured) if configured else Path(__file__).resolve().parents[2] / "config" / ".env"
+        try:
+            env_path.parent.mkdir(parents=True, exist_ok=True)
+            lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+            out = []
+            replaced = False
+            for line in lines:
+                if line.strip().startswith("GEMINI_MODEL="):
+                    if not replaced:
+                        out.append(f"GEMINI_MODEL={model}")
+                        replaced = True
+                else:
+                    out.append(line)
+            if not replaced:
+                out.append(f"GEMINI_MODEL={model}")
+            env_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+        except OSError:
+            # A read-only installation must still continue with the in-memory model.
+            pass
+
+    def health_check(self, *, refresh: bool = True) -> str:
+        """Validate credentials and select a model actually exposed by the active provider."""
+        available = self._available_models(refresh=refresh)
+        if self._provider_name() == "Groq":
+            current = self._model_id(self.model)
+            selected = current if current in available else next(
+                (item for item in sorted(available) if not any(tag in item.lower() for tag in ("embedding", "whisper"))),
+                "",
+            )
+            if not selected:
+                raise RuntimeError("Список моделей Groq не содержит подходящей chat-модели.")
+            self.model = selected
+            self._discovered_model = selected
+            self.last_used_model = selected
+            self._model_verified = True
+            return "ONLINE"
+        current = self._model_id(self.model or os.environ.get("GEMINI_MODEL", ""))
+        selected = self._select_flash_model(available)
+        if not selected:
             raise RuntimeError(
-                "Сервер ИИ доступен, но не сообщил ни одной модели. "
-                "Укажите JARVIS_CHAT_MODEL вручную или запустите модель на сервере.")
-        self._discovered_model = ids[0]
-        return self._normalize_model(self._discovered_model)
+                f"Модель {current or '(не задана)'} недоступна; список ключа не содержит подходящей Gemini Flash-модели."
+            )
+        # Apply the documented deterministic preference order even if an old
+        # profile still contains a legacy model ID that happens to respond.
+        self.model = selected
+        self._discovered_model = selected
+        self.last_used_model = selected
+        self._persist_selected_model(selected)
+        self.fallback_models = [
+            candidate for candidate in (
+                "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest",
+                *sorted(available),
+            )
+            if candidate in available and candidate != self.model
+            and "flash" in candidate.lower()
+            and not any(tag in candidate.lower() for tag in ("embedding", "tts", "transcribe", "image", "live", "robotics"))
+        ]
+        self.fallback_models = list(dict.fromkeys(self.fallback_models))
+        self._model_verified = True
+        return "ONLINE"
+
+    def discover_model(self) -> str:
+        # Validate Gemini IDs against the key's model list before the first request.
+        # Other compatible endpoints retain their configured model behavior.
+        if self._provider_name() != "Gemini":
+            if not self.model:
+                raise RuntimeError("Не задан идентификатор модели для активного AI-провайдера.")
+            return self._normalize_model(self.model)
+        if not self._model_verified:
+            self.health_check(refresh=False)
+        if not self.model:
+            raise RuntimeError("Не удалось выбрать доступную модель Gemini Flash.")
+        return self._normalize_model(self.model)
 
     def _request_stream(self, payload: dict) -> dict:
         data = json.dumps({**payload, "stream": True}, ensure_ascii=False).encode("utf-8")
         headers = self._auth_headers(stream=True)
         retryable = {429, 500, 502, 503, 504}
-        for attempt in range(4):
+        for attempt in range(3):
             req = urllib.request.Request(self.url, data=data, headers=headers)
             content_parts: list[str] = []
             tool_calls: list[dict] = []
@@ -243,6 +353,12 @@ class OpenAIChatProvider:
                             dst = tool_calls[idx]
                             if tc.get("id"):
                                 dst["id"] = tc["id"]
+                            # Gemini 3 requires the thought signature to be echoed
+                            # unchanged with the assistant tool-call message. The
+                            # OpenAI-compatible endpoint carries it in extra_content.
+                            extra = tc.get("extra_content")
+                            if isinstance(extra, dict):
+                                dst["extra_content"] = extra
                             fn = tc.get("function") or {}
                             if fn.get("name"):
                                 dst["function"]["name"] += fn["name"]
@@ -254,15 +370,29 @@ class OpenAIChatProvider:
                 return {"choices": [{"message": msg}]}
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="replace")[:500]
-                if exc.code in retryable and attempt < 3:
-                    time.sleep(1.0 * (2 ** attempt))
+                quota_limited = exc.code == 429 and any(
+                    marker in detail.lower()
+                    for marker in ("quota", "resource_exhausted", "free_tier", "daily limit")
+                )
+                if exc.code in retryable and exc.code != 429 and attempt < 2 and not quota_limited:
+                    time.sleep(min(1.0 * (2 ** attempt), 2.0))
                     continue
                 if exc.code == 503:
                     raise RuntimeError(f"{self._provider_name()} временно перегружен (HTTP 503). Повторите запрос через минуту. " + detail) from exc
                 raise RuntimeError(f"Ошибка API: HTTP {exc.code}. {detail}") from exc
+            except (TimeoutError, socket.timeout) as exc:
+                raise RuntimeError(
+                    f"Тайм-аут запроса к {self._provider_name()} ({self.timeout} с). "
+                    "Проверьте соединение и повторите запрос."
+                ) from exc
             except urllib.error.URLError as exc:
-                if attempt < 3:
-                    time.sleep(1.0 * (2 ** attempt))
+                if isinstance(exc.reason, (TimeoutError, socket.timeout)) or "timed out" in str(exc.reason).lower():
+                    raise RuntimeError(
+                        f"Тайм-аут запроса к {self._provider_name()} ({self.timeout} с). "
+                        "Проверьте соединение и повторите запрос."
+                    ) from exc
+                if attempt < 2:
+                    time.sleep(min(1.0 * (2 ** attempt), 2.0))
                     continue
                 raise RuntimeError(f"Не удалось подключиться к ИИ: {exc.reason}") from exc
         raise RuntimeError(f"{self._provider_name()} временно недоступен после нескольких попыток.")
@@ -272,7 +402,18 @@ class OpenAIChatProvider:
             msg = body["choices"][0]["message"]
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(f"ИИ вернул неожиданный ответ: {body!r}") from exc
-        return {"content": msg.get("content") or "", "tool_calls": msg.get("tool_calls") or []}
+        # Keep provider-specific metadata on tool calls; stripping extra_content
+        # loses Gemini's required thought_signature and causes HTTP 400 next turn.
+        tool_calls = []
+        for call in msg.get("tool_calls") or []:
+            if not isinstance(call, dict):
+                continue
+            normalized = {
+                key: value for key, value in call.items()
+                if key in {"id", "type", "function", "extra_content"}
+            }
+            tool_calls.append(normalized)
+        return {"content": msg.get("content") or "", "tool_calls": tool_calls}
 
     def generate(self, prompt, tools: Optional[list] = None, max_steps: int = 4) -> str:
         self._ensure_endpoint()
@@ -284,8 +425,12 @@ class OpenAIChatProvider:
         attempted_models = {primary_model}
         messages = self._messages(prompt)
         payload = {"model": model, "messages": messages, "temperature": 0.25}
-        if tools:
-            payload["tools"] = tools
+        tools_enabled = os.environ.get("GEMINI_TOOLS_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+        active_tools = tools if tools_enabled else None
+        # Safe mode is default: Gemini returns plain text; local tools remain
+        # available through JarvisAgent's deterministic command router.
+        if active_tools:
+            payload["tools"] = active_tools
 
         result_content = ""
         for step_index in range(max_steps):
@@ -293,36 +438,69 @@ class OpenAIChatProvider:
                 body = self._request_stream(payload) if self.on_delta is not None and "tools" in payload else self._request(payload)
             except RuntimeError as exc:
                 message = str(exc).lower()
-                capacity_error = any(f"http {code}" in message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in message
-                if not capacity_error:
-                    raise
-                last_error = exc
-                body = None
-                for fallback_model in model_candidates:
-                    if fallback_model in attempted_models:
-                        continue
-                    attempted_models.add(fallback_model)
-                    payload["model"] = fallback_model
+                if "thought_signature" in message and "tools" in payload:
+                    # One bounded recovery attempt: discard tool-call history and
+                    # retry the same user turn as plain text. Never retry-loop.
+                    safe_messages = [
+                        item for item in messages
+                        if item.get("role") != "tool"
+                        and not (item.get("role") == "assistant" and item.get("tool_calls"))
+                    ]
+                    safe_payload = {key: value for key, value in payload.items() if key != "tools"}
+                    safe_payload["messages"] = safe_messages
                     try:
-                        body = self._request_stream(payload) if self.on_delta is not None and "tools" in payload else self._request(payload)
-                        model = fallback_model
-                        break
-                    except RuntimeError as fallback_exc:
-                        last_error = fallback_exc
-                        fallback_message = str(fallback_exc).lower()
-                        capacity_error = any(f"http {code}" in fallback_message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in fallback_message
-                        model_unavailable = any(f"http {code}" in fallback_message for code in (400, 404)) or "model not found" in fallback_message or "unknown model" in fallback_message
-                        if not (capacity_error or model_unavailable):
-                            raise
+                        body = self._request(safe_payload)
+                        messages = safe_messages
+                        payload = safe_payload
+                    except RuntimeError as retry_exc:
+                        raise RuntimeError(
+                            "Gemini отклонил вызов инструмента из-за thought_signature; "
+                            f"повтор без tools также не выполнен: {retry_exc}"
+                        ) from retry_exc
+                else:
+                    body = None
                 if body is None:
-                    raise RuntimeError(
-                        f"Основная модель {primary_model} и резервные модели недоступны. Последняя ошибка: {last_error}"
-                    ) from last_error
+                    capacity_error = any(f"http {code}" in message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in message
+                    model_unavailable = (
+                        any(f"http {code}" in message for code in (400, 404))
+                        and any(marker in message for marker in (
+                            "model", "not found", "unknown", "does not exist", "not available",
+                        ))
+                    )
+                    if not (capacity_error or model_unavailable):
+                        raise
+                    last_error = exc
+                    body = None
+                    for fallback_model in model_candidates:
+                        if fallback_model in attempted_models:
+                            continue
+                        attempted_models.add(fallback_model)
+                        fallback_payload = {**payload, "model": fallback_model}
+                        try:
+                            body = self._request_stream(fallback_payload) if self.on_delta is not None and "tools" in fallback_payload else self._request(fallback_payload)
+                            model = fallback_model
+                            break
+                        except RuntimeError as fallback_exc:
+                            last_error = fallback_exc
+                            fallback_message = str(fallback_exc).lower()
+                            capacity_error = any(f"http {code}" in fallback_message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in fallback_message
+                            model_unavailable = (
+                                any(f"http {code}" in fallback_message for code in (400, 404))
+                                and any(marker in fallback_message for marker in (
+                                    "model", "not found", "unknown", "does not exist", "not available",
+                                ))
+                            )
+                            if not (capacity_error or model_unavailable):
+                                raise
+                    if body is None:
+                        raise RuntimeError(
+                            f"Основная модель {primary_model} и резервные модели недоступны. Последняя ошибка: {last_error}"
+                        ) from last_error
             payload["model"] = model
             reply = self._extract(body)
             result_content = reply["content"]
             tool_calls = reply["tool_calls"]
-            if not tool_calls or self.tool_executor is None:
+            if not tool_calls or self.tool_executor is None or not active_tools:
                 break
             messages.append({"role": "assistant", "content": reply["content"], "tool_calls": tool_calls})
             confirmation_pending = False
@@ -342,8 +520,8 @@ class OpenAIChatProvider:
             if confirmation_pending:
                 break
             payload = {"model": model, "messages": messages, "temperature": 0.25}
-            if tools:
-                payload["tools"] = tools
+            if active_tools:
+                payload["tools"] = active_tools
         else:
             result_content = result_content or "Достигнут предел шагов агента."
 

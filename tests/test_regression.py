@@ -32,6 +32,17 @@ def test_tts_uses_documented_gemini_cloud_api():
 
 
 
+def test_desktop_startup_failure_persists_traceback():
+    source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
+    assert "def _run_desktop()" in source
+    assert "startup-error.log" in source
+    assert "traceback.format_exc()" in source
+    assert "messagebox.showerror(" in source
+    assert '"--smoke-test" in sys.argv[1:]' in source
+    build_script = (ROOT / "scripts" / "build_exe.ps1").read_text(encoding="utf-8")
+    assert "Packaged EXE startup smoke test passed." in build_script
+
+
 def test_desktop_passes_attachment_to_agent():
     source = (ROOT / "jarvis_desktop.py").read_text(encoding="utf-8")
     assert "attachment=attachment_payload" in source
@@ -48,7 +59,7 @@ def test_desktop_preserves_explicit_local_api_endpoint():
 def test_voice_zero_start_timeout_does_not_immediately_return():
     source = (ROOT / "agent" / "voice.py").read_text(encoding="utf-8")
     assert "timeout_blocks = max(0, int(start_timeout / BLOCK_SECONDS))" in source
-    assert "elif timeout_blocks and idle_blocks >= timeout_blocks:" in source
+    assert "if timeout_blocks and idle_blocks >= timeout_blocks:" in source
 
 
 def test_desktop_tts_worker_does_not_touch_tk_widgets():
@@ -56,7 +67,8 @@ def test_desktop_tts_worker_does_not_touch_tk_widgets():
     start = source.index("    def _speak_reply(self, text):")
     end = source.index("    def _replace_streaming_reply", start)
     worker = source[start:end]
-    assert "tts.speak_and_play(text, on_playback_start=" in worker
+    assert "self.voice_controller.speak(text)" in worker
+    assert "tts.speak_and_play(" not in worker
     assert "self._set_visual_state" not in worker
 
 

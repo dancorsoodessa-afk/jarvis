@@ -4,10 +4,10 @@ import json
 import base64
 import math
 import os
+import sys
 import queue
 import threading
 import time
-import webbrowser
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -15,7 +15,9 @@ import mimetypes
 
 from agent.runtime import build_agent
 from agent import tts, voice, stt
+from agent.voice_controller import UIBridge, VoiceController
 from agent.visual_server import start_visual_server
+from agent.embedded_webview import EmbeddedEdgeView
 from agent.secrets import protect_secret, unprotect_secret
 from agent.tools_catalog import TOOLS
 
@@ -33,6 +35,32 @@ APP_DIR = Path(os.environ.get("APPDATA", Path.home())) / "JARVIS"
 SETTINGS_FILE = APP_DIR / "settings.json"
 DEFAULT_PROVIDER = "gemini"
 DEFAULT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+
+
+TOOL_SETTINGS_VERSION = 1
+
+
+def _migrate_tool_preferences(settings: dict) -> bool:
+    """Enable the full safe-by-default tool catalog once when upgrading old settings."""
+    try:
+        version = int(settings.get("tool_settings_version", 0) or 0)
+    except (TypeError, ValueError):
+        version = 0
+    if version < TOOL_SETTINGS_VERSION:
+        settings["disabled_tools"] = []
+        settings["tool_settings_version"] = TOOL_SETTINGS_VERSION
+        return True
+
+    known = {entry[0] for entry in TOOLS}
+    stored = settings.get("disabled_tools", [])
+    current = stored if isinstance(stored, list) else []
+    normalized = list(dict.fromkeys(
+        name for name in current if isinstance(name, str) and name in known
+    ))
+    if not isinstance(stored, list) or normalized != stored:
+        settings["disabled_tools"] = normalized
+        return True
+    return False
 
 
 _CPU_TIMES_PREVIOUS = None
@@ -91,7 +119,7 @@ def _safe_model_id(value: str | None, fallback: str) -> str:
 _SECRET_SETTING_KEYS = {
     "api_key",
     "gemini_api_key",
-    "groq_api_key",
+    "groq_stt_api_key",
     "smtp_password",
     "cloudflare_token",
     "manageengine_key",
@@ -135,15 +163,17 @@ class JarvisDesktop(tk.Tk):
         self._agent_start_pending = False
         self.busy = False
         self.events = queue.Queue()
+        self.voice_controller = VoiceController(UIBridge(self.events), on_text=lambda text: self.events.put(("voice_text", text)))
         self.tool_names = []
         self.attachments = []
         self._voice_loop_running = False
         self._voice_armed_until = 0.0
         self._visual_state = "IDLE"
         self._visual_level = 0.0
+        self._embedded_webview = None
         self.settings = _load_saved_settings()
         self._apply_saved_settings()
-        if getattr(self, "_legacy_tts_settings_removed", False):
+        if getattr(self, "_legacy_tts_settings_removed", False) or getattr(self, "_tool_settings_migrated", False):
             self._save_settings()
         self._build_style()
         self._build_ui()
@@ -170,13 +200,13 @@ class JarvisDesktop(tk.Tk):
             "name": "JARVIS",
             "provider": "gemini",
             "url": _safe_endpoint(self.settings.get("url") or os.environ.get("JARVIS_CHAT_URL") or DEFAULT_URL),
-            "model": self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "gemini-3.8-flash",
+            "model": os.environ.get("GEMINI_MODEL") or self.settings.get("model") or os.environ.get("JARVIS_CHAT_MODEL") or "gemini-2.5-flash",
             "api_key": (str(self.settings.get("gemini_api_key") or "") if "gemini_api_key" in self.settings else os.environ.get("GEMINI_API_KEY", "")),
         }
         defaults = {
             "0": legacy,
-            "1": {"name": "Gemini Reasoning", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-3.8-flash", "api_key": legacy["api_key"]},
-            "2": {"name": "Gemini Coding", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-3.8-flash", "api_key": legacy["api_key"]},
+            "1": {"name": "Gemini Reasoning", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-2.5-flash", "api_key": legacy["api_key"]},
+            "2": {"name": "Gemini Coding", "provider": "gemini", "url": DEFAULT_URL, "model": "gemini-2.5-flash", "api_key": legacy["api_key"]},
         }
         merged = {}
         for key, default in defaults.items():
@@ -185,9 +215,16 @@ class JarvisDesktop(tk.Tk):
             merged[key]["provider"] = "gemini"
             merged[key]["url"] = DEFAULT_URL
             merged[key]["api_key"] = legacy["api_key"]
+            preferred_model = os.environ.get("GEMINI_MODEL", "").strip()
+            if preferred_model.lower().startswith("gemini-"):
+                merged[key]["model"] = preferred_model
             # Migrate stale OpenRouter/Hugging Face model IDs to the configured Gemini model.
             # Old saved profiles must never override the selected provider with incompatible model IDs.
             saved_model = str(merged[key].get("model") or "").strip()
+            # Migrate the old default model that caused 404 responses for some keys.
+            if saved_model.lower() == "gemini-3.8-flash":
+                merged[key]["model"] = default["model"]
+                saved_model = default["model"]
             # Migrate stale non-Gemini model IDs, but preserve valid custom Gemini
             # model names selected by the user in the control center.
             if not saved_model.lower().startswith("gemini-"):
@@ -207,9 +244,16 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_CHAT_KEY"] = profile["api_key"]
         os.environ["GEMINI_API_KEY"] = profile["api_key"]
         # An explicitly empty saved key means disconnected; do not resurrect a stale environment key.
-        os.environ["GROQ_API_KEY"] = str(self.settings.get("groq_api_key") or (os.environ.get("GROQ_API_KEY") if "groq_api_key" not in self.settings else "") or "")
-        os.environ["JARVIS_GROQ_MODEL"] = str(self.settings.get("groq_model") or "openai/gpt-oss-120b")
-        os.environ["JARVIS_GROQ_TIMEOUT"] = str(self.settings.get("groq_timeout") or "30")
+        # Groq is permitted only as an explicitly configured speech-to-text reserve;
+        # it is never selected as the chat model and never enabled by stale shell values.
+        self.settings.pop("groq_api_key", None)
+        self.settings.pop("groq_model", None)
+        self.settings.pop("groq_timeout", None)
+        groq_stt_key = self.settings.get("groq_stt_api_key") if "groq_stt_api_key" in self.settings else os.environ.get("GROQ_API_KEY", "")
+        os.environ["GROQ_API_KEY"] = str(groq_stt_key or "").strip()
+        os.environ["JARVIS_STT_FALLBACK_MODEL"] = str(
+            self.settings.get("stt_fallback_model") or "whisper-large-v3-turbo"
+        ).strip()
         os.environ["JARVIS_GEMINI_TIMEOUT"] = str(self.settings.get("gemini_timeout") or "30")
         # Optional integrations are configured from the control center. Explicitly
         # cleared settings override stale process environment values.
@@ -231,6 +275,10 @@ class JarvisDesktop(tk.Tk):
                 value = os.environ.get(env_name, default)
             os.environ[env_name] = str(value or default).strip()
         os.environ.pop("HF_TOKEN", None)
+        os.environ["GEMINI_MODEL"] = profile["model"]
+        os.environ["GEMINI_TOOLS_ENABLED"] = "false"
+        os.environ["GEMINI_STT_ENABLED"] = "true"
+        os.environ["VOICE_DEGRADE_ON_429"] = "true"
         os.environ["JARVIS_CHAT_MODEL"] = profile["model"]
         os.environ["JARVIS_FAST_MODEL"] = merged["0"]["model"]
         os.environ["JARVIS_REASONING_MODEL"] = merged["1"]["model"]
@@ -242,10 +290,8 @@ class JarvisDesktop(tk.Tk):
         os.environ["JARVIS_ADDITIONAL_MODEL"] = self.settings["additional_model"]
         # Independent consultant providers. Keep secrets out of the repository;
         # they live only in the user's settings/environment.
+        self._tool_settings_migrated = _migrate_tool_preferences(self.settings)
         disabled = self.settings.get("disabled_tools", [])
-        if not isinstance(disabled, list):
-            disabled = []
-        self.settings["disabled_tools"] = disabled
         os.environ["JARVIS_DISABLED_TOOLS"] = json.dumps(disabled, ensure_ascii=False)
         self.settings.setdefault("voice_enabled", True)
         self.settings.setdefault("tts_enabled", True)
@@ -264,17 +310,25 @@ class JarvisDesktop(tk.Tk):
         self.settings.setdefault("tts_model", "gemini-3.8-flash-tts")
         self.settings.setdefault("tts_timeout", "45")
         self.settings.setdefault("stt_timeout", "45")
-        self.settings.setdefault("stt_model", "gemini-3.8-flash")
+        self.settings.setdefault("stt_model", "gemini-2.5-flash")
+        if str(self.settings.get("stt_model", "")).strip().lower() == "gemini-3.8-flash":
+            self.settings["stt_model"] = "gemini-2.5-flash"
+        # Cloud-first voice: explicitly override stale shell variables so a previous local mode cannot disable Gemini STT.
+        os.environ["JARVIS_STT"] = "gemini"
         os.environ["JARVIS_STT_TIMEOUT"] = str(self.settings.get("stt_timeout") or "45")
-        os.environ["JARVIS_STT_MODEL"] = str(self.settings.get("stt_model") or "gemini-3.8-flash")
+        os.environ["JARVIS_STT_MODEL"] = str(self.settings.get("stt_model") or "gemini-2.5-flash")
+        os.environ["GEMINI_STT_MODEL"] = os.environ["JARVIS_STT_MODEL"]
         tts_engine = str(self.settings.get("tts_engine", "gemini")).strip().lower() or "gemini"
         if tts_engine not in {"gemini", "off"}:
             tts_engine = "gemini"
         self.settings["tts_engine"] = tts_engine
         os.environ["JARVIS_TTS"] = tts_engine
-        os.environ["JARVIS_TTS_VOICE"] = str(self.settings.get("tts_voice") or "Charon")
+        os.environ["JARVIS_TTS_VOICE"] = str(self.settings.get("tts_voice") or os.environ.get("TTS_VOICE") or "Charon")
+        os.environ["TTS_VOICE"] = os.environ["JARVIS_TTS_VOICE"]
         os.environ["JARVIS_TTS_MODEL"] = str(self.settings.get("tts_model") or "gemini-3.8-flash-tts")
         os.environ["JARVIS_TTS_TIMEOUT"] = str(self.settings.get("tts_timeout") or "45")
+        os.environ["TTS_LANGUAGE"] = str(self.settings.get("tts_language") or os.environ.get("TTS_LANGUAGE") or "ru-RU")
+        os.environ["GEMINI_TTS_LANGUAGE"] = os.environ["TTS_LANGUAGE"]
 
     def _save_settings(self):
         APP_DIR.mkdir(parents=True, exist_ok=True)
@@ -310,9 +364,20 @@ class JarvisDesktop(tk.Tk):
         top.grid_columnconfigure(1, weight=1)
         brand = tk.Frame(top, bg="#070d17")
         brand.grid(row=0, column=0, sticky="w", padx=16)
-        tk.Label(brand, text="J·A·R·V·I·S", bg="#070d17", fg=CYAN,
+        try:
+            logo_path = Path(__file__).resolve().parent / "assets" / "jarvis-reactor-logo.png"
+            self._brand_image = tk.PhotoImage(file=str(logo_path))
+            self._brand_image_small = self._brand_image.subsample(4, 4)
+            self.iconphoto(True, self._brand_image)
+            tk.Label(brand, image=self._brand_image_small, bg="#070d17", bd=0).pack(side="left", padx=(0, 10))
+        except (tk.TclError, OSError):
+            self._brand_image = None
+            self._brand_image_small = None
+        brand_text = tk.Frame(brand, bg="#070d17")
+        brand_text.pack(side="left", anchor="w")
+        tk.Label(brand_text, text="J·A·R·V·I·S", bg="#070d17", fg=CYAN,
                  font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        tk.Label(brand, text="ПЕРСОНАЛЬНАЯ AI-ОПЕРАЦИОННАЯ СИСТЕМА", bg="#070d17", fg=MUTED,
+        tk.Label(brand_text, text="ПЕРСОНАЛЬНАЯ AI-ОПЕРАЦИОННАЯ СИСТЕМА", bg="#070d17", fg=MUTED,
                  font=("Consolas", 7, "bold")).pack(anchor="w")
         core = tk.Frame(top, bg="#070d17")
         core.grid(row=0, column=1, sticky="w", padx=22)
@@ -393,10 +458,11 @@ class JarvisDesktop(tk.Tk):
         hero = tk.Frame(center, bg="#07101a", highlightbackground="#163246", highlightthickness=1)
         hero.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         hero.grid_columnconfigure(1, weight=1)
-        self.scene_label = tk.Label(hero, text="REAL 3D REACTOR\nОТКРЫВАЕТСЯ В БРАУЗЕРЕ",
+        self.scene_label = tk.Label(hero, text="LIVE 3D REACTOR\nВСТРОЕННЫЙ WEBGL",
                                     bg="#030811", fg=CYAN, width=34, height=11,
                                     font=("Consolas", 11, "bold"), justify="center")
         self.scene_label.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(4, 8), pady=4)
+        self.scene_label.bind("<Configure>", self._resize_embedded_3d)
         self.hud_text = tk.Label(hero, text="Инициализация ядра…", bg="#07101a", fg=CYAN,
                                  font=("Segoe UI", 14, "bold"), justify="left")
         self.hud_text.grid(row=0, column=1, sticky="sw", padx=8, pady=(42, 4))
@@ -423,8 +489,6 @@ class JarvisDesktop(tk.Tk):
         self.input.bind("<Return>", lambda _e: self.send())
         self.voice_button = ttk.Button(compose, text="🎙 ГОЛОС", command=self._on_voice_button_click)
         self.voice_button.grid(row=0,column=1,padx=3,ipadx=7,ipady=3)
-        # Several voice status handlers update this control; keep a valid reference.
-        self.voice_control = self.voice_button
         self.attach_button = ttk.Button(compose, text="📎 ФАЙЛ", command=self.pick_attachments)
         self.attach_button.grid(row=0,column=2,padx=3,ipadx=7,ipady=3)
         self.send_button = ttk.Button(compose, text="▶  ВЫПОЛНИТЬ", style="Accent.TButton", command=self.send)
@@ -442,7 +506,7 @@ class JarvisDesktop(tk.Tk):
         tk.Label(right, text="REAL-TIME SYSTEM STATUS", bg="#070d16", fg=MUTED,
                  font=("Consolas", 7)).pack(anchor="w", padx=14, pady=(0,12))
         self.metrics = {}
-        for name in ("Core","AI Provider","Gemini API","Groq API","Memory","Tools","Voice","TTS"):
+        for name in ("Core","AI Provider","Gemini API","Memory","Tools","Voice","TTS"):
             row=tk.Frame(right,bg="#0a131f",highlightbackground="#13283a",highlightthickness=1)
             row.pack(fill="x",padx=10,pady=4)
             tk.Label(row,text=name,bg="#0a131f",fg=MUTED,font=("Consolas",8)).pack(side="left",padx=9,pady=9)
@@ -467,7 +531,7 @@ class JarvisDesktop(tk.Tk):
                       highlightthickness=1).pack(fill="x",padx=10,pady=3)
         tk.Label(right,text="AI-МАРШРУТИЗАЦИЯ",bg="#070d16",fg=MUTED,
                  font=("Consolas",8,"bold")).pack(anchor="w",padx=14,pady=(15,5))
-        tk.Label(right,text="Gemini — основной ИИ\nGroq — отдельный резерв\nОблачный STT и TTS",
+        tk.Label(right,text="Gemini — основной ИИ\nОблачный STT и TTS",
                  bg="#070d16",fg="#8297a5",justify="left",font=("Segoe UI",8),wraplength=235).pack(anchor="w",padx=14)
     def _set_visual_state(self, state, level=None):
         self._visual_state = state
@@ -476,6 +540,7 @@ class JarvisDesktop(tk.Tk):
         labels = {
             "IDLE": "СИСТЕМА ГОТОВА",
             "LISTENING": "СЛУШАЮ ВАС",
+            "UNDERSTANDING": "РАСПОЗНАЮ КОМАНДУ",
             "THINKING": "ОБРАБОТКА",
             "SPEAKING": "ОТВЕЧАЮ",
             "ERROR": "ОШИБКА",
@@ -484,12 +549,33 @@ class JarvisDesktop(tk.Tk):
         if hasattr(self, "scene_label"):
             self.scene_label.config(text=labels.get(state, state) + "\nTHREE.JS WEBGL")
 
-    def _open_3d_scene(self):
+    def _resize_embedded_3d(self, _event=None):
+        view = self._embedded_webview
+        if view is None:
+            return
         try:
-            webbrowser.open(self._visual_url, new=1)
-            self.scene_label.config(text="THREE.JS WEBGL\n3D REACTOR ОТКРЫТ\n\nГолос и состояние ИИ\nпередаются в сцену")
+            view.resize(self.scene_label.winfo_width(), self.scene_label.winfo_height())
         except Exception as exc:
-            self.scene_label.config(text="НЕ УДАЛОСЬ ОТКРЫТЬ 3D\n" + str(exc)[:100])
+            self.events.put(("visual_error", str(exc)))
+
+    def _open_3d_scene(self):
+        if os.name != "nt":
+            self.scene_label.config(text="ВСТРОЕННЫЙ WEBGL ДОСТУПЕН\nТОЛЬКО В WINDOWS")
+            return
+        self.scene_label.config(text="ЗАПУСК ВСТРОЕННОГО\nTHREE.JS WEBGL…")
+        parent_hwnd = int(self.scene_label.winfo_id())
+        def worker():
+            view = EmbeddedEdgeView(parent_hwnd, self._visual_url)
+            self._embedded_webview = view
+            try:
+                view.start(timeout=15.0)
+                self.events.put(("visual_embedded",))
+            except Exception as exc:
+                view.close()
+                if self._embedded_webview is view:
+                    self._embedded_webview = None
+                self.events.put(("visual_error", str(exc)))
+        threading.Thread(target=worker, name="jarvis-embedded-reactor", daemon=True).start()
 
     def _start_agent(self):
         # Ignore stale results when settings are saved/reloaded more than once.
@@ -506,7 +592,7 @@ class JarvisDesktop(tk.Tk):
                 agent = build_agent()
                 self.events.put(("ready", agent, generation))
                 if generation == self._agent_generation:
-                    threading.Thread(target=self._warmup_stt, daemon=True).start()
+                    # Validate/select a model first; STT must not start with a stale model ID.
                     threading.Thread(target=self._check_provider_health, args=(agent, generation), daemon=True).start()
             except Exception as exc:
                 self.events.put(("agent_error", str(exc), generation))
@@ -523,6 +609,22 @@ class JarvisDesktop(tk.Tk):
         try:
             provider = getattr(agent, "provider", None)
             checks = provider.health_checks() if provider and hasattr(provider, "health_checks") else {}
+            model_ready = any(
+                "gemini" in str(name).lower() and value == "ONLINE"
+                for name, value in checks.items()
+            )
+            if model_ready:
+                selected_model = (os.environ.get("GEMINI_MODEL") or os.environ.get("JARVIS_CHAT_MODEL") or "").strip()
+                if selected_model:
+                    os.environ["GEMINI_STT_MODEL"] = selected_model
+                    os.environ["JARVIS_STT_MODEL"] = selected_model
+                try:
+                    stt.warmup()
+                    self.events.put(("stt_ready", None))
+                except Exception as stt_exc:
+                    self.events.put(("stt_error", str(stt_exc)))
+            else:
+                self.events.put(("stt_error", "Модель Gemini не подтверждена списком доступных моделей. Голосовой ввод отключён; текстовые команды продолжают работать."))
             if not self.settings.get("tts_enabled", True):
                 checks["TTS"] = "OFF"
             else:
@@ -542,90 +644,39 @@ class JarvisDesktop(tk.Tk):
             self.events.put(("stt_error", str(exc)))
 
     def _start_voice_loop(self):
-        if not self.settings.get("voice_enabled", True) or self._voice_loop_running:
+        """Start the dedicated voice pipeline; workers only publish queue events."""
+        if not self.settings.get("voice_enabled", True) or self.voice_controller.status()["running"]:
             return
         if not getattr(self, "_stt_online", False):
-            self._append("VOICE", "Проверяю доступность облачного распознавания речи. Подождите несколько секунд.")
+            self._append("VOICE", "Облачное распознавание ещё проверяется или недоступно.")
             return
         if not voice.available():
             self._append("VOICE", "Голосовой ввод недоступен: проверьте ключ Gemini и входной микрофон.")
             return
-        self._voice_loop_running = True
-        self.voice_button.config(text="🎙 СЛУШАЮ")
-        self.voice_control.config(text="🔊  Голос: ВКЛ")
-        last_level_event = [0.0]
-        def on_audio_level(level):
-            now = time.monotonic()
-            if now - last_level_event[0] >= 0.08:
-                last_level_event[0] = now
-                self.events.put(("audio_level", max(0.0, min(1.0, float(level)))))
-        def work():
-            wake_words = ("jarvis", "джарвис")
-            while self._voice_loop_running and self.settings.get("voice_enabled", True):
-                try:
-                    if tts.is_playing():
-                        time.sleep(0.12)
-                        continue
-                    heard = voice.listen_for_phrase(
-                        silence_seconds=0.55,
-                        max_seconds=10.0,
-                        start_timeout=2.0,
-                        on_audio_level=on_audio_level,
-                        should_stop=tts.is_playing,
-                    )
-                    self.events.put(("voice_capture_done",))
-                    if not heard or not self._voice_loop_running:
-                        continue
-                    normalized = " ".join(heard.lower().split())
-                    command = None
-                    activated = False
-                    for word in wake_words:
-                        if normalized.startswith(word):
-                            activated = True
-                            command = normalized[len(word):].strip(" ,.!")
-                            self._voice_armed_until = float("inf")
-                            break
-                    if activated and not command:
-                        self.events.put(("voice_status", "Jarvis активирован. Слушаю вас."))
-                        command = voice.listen_for_phrase(
-                            silence_seconds=0.55,
-                            max_seconds=10.0,
-                            start_timeout=4.0,
-                            on_audio_level=on_audio_level,
-                            should_stop=tts.is_playing,
-                        )
-                        self.events.put(("voice_capture_done",))
-                    elif not activated and time.monotonic() < self._voice_armed_until:
-                        command = normalized
-                    else:
-                        continue
-                    if command in {"стоп", "режим ожидания", "перейди в режим ожидания", "спасибо джарвис", "спасибо джарвис"}:
-                        self._voice_armed_until = 0.0
-                        self.events.put(("voice_status", "Голосовой режим: ожидание. Скажите «Джарвис», чтобы продолжить."))
-                        continue
-                    if command and self._voice_loop_running:
-                        self._voice_armed_until = float("inf")
-                        self.events.put(("voice_text", command))
-                except Exception as exc:
-                    self.events.put(("voice_error", str(exc)))
-                    break
-            self._voice_loop_running = False
-        threading.Thread(target=work, daemon=True).start()
+        try:
+            self.voice_controller.start()
+            self._voice_loop_running = True
+            self.voice_button.config(text="🎙 СЛУШАЮ")
+            self._append("VOICE", "Голосовой контур запущен. Говорите команду без слова «Джарвис».")
+        except Exception as exc:
+            self._append("VOICE", "Не удалось запустить голосовой контур: " + str(exc))
 
     def _stop_voice(self):
+        self.voice_controller.stop()
         self._voice_loop_running = False
         self.voice_button.config(text="🎙 ГОЛОС")
-        self._append("VOICE", "Голосовой цикл остановлен. Его можно включить снова кнопкой «Голос». ")
+        self._append("VOICE", "Голосовой цикл остановлен. Его можно включить кнопкой «Голос».")
 
     def toggle_voice(self):
         self.settings["voice_enabled"] = not self.settings.get("voice_enabled", True)
         self._save_settings()
         if self.settings["voice_enabled"]:
             self._start_voice_loop()
-            self.voice_control.config(text="🔊  Голос: ВКЛ")
+            if self.voice_controller.status()["running"]:
+                self.voice_button.config(text="🎙 СЛУШАЮ")
         else:
             self._stop_voice()
-            self.voice_control.config(text="🔇  Голос: ВЫКЛ")
+            self.voice_button.config(text="🎙 ГОЛОС")
         self._update_voice_status()
 
     def toggle_tts(self):
@@ -650,14 +701,24 @@ class JarvisDesktop(tk.Tk):
                 event = self.events.get_nowait()
                 kind = event[0]
                 try:
-                    if kind == "ready":
+                    if kind == "visual_embedded":
+                        self._resize_embedded_3d()
+                        self.scene_label.config(text="ВСТРОЕННЫЙ THREE.JS WEBGL")
+                    elif kind == "visual_error":
+                        detail = str(event[1])
+                        self.scene_label.config(text="3D-РЕАКТОР НЕДОСТУПЕН\nРезервный индикатор активен")
+                        if not getattr(self, "_edge_warning_shown", False):
+                            self._edge_warning_shown = True
+                            self._append("SYSTEM", "Для встроенного 3D установите Microsoft Edge или WebView2 Runtime. Остальной JARVIS продолжает работать.")
+                        self._log.warning("embedded 3D unavailable: %s", detail)
+                    elif kind == "ready":
                         if len(event) > 2 and event[2] != self._agent_generation:
                             continue
                         self._agent_start_pending = False
                         self.agent = event[1]
                         self.tool_names = list(self.agent.tools.names())
                         configured_providers = getattr(self.agent.provider, "providers", {})
-                        provider = "GEMINI PRIMARY" + (" / GROQ BACKUP" if "groq" in configured_providers else "")
+                        provider = "GEMINI CLOUD"
                         # Building the local agent does not prove that the remote API is reachable.
                         self.status.config(text="● ГОТОВ", fg=YELLOW)
                         self.hud_text.config(text="Ядро готово\nAI: " + provider + "\nAPI: проверка при запросе")
@@ -680,8 +741,7 @@ class JarvisDesktop(tk.Tk):
                             color = GREEN if status_text == "ONLINE" else MUTED if status_text == "OFF" else YELLOW if status_text in {"CONFIGURED", "KEY SET"} else RED
                             self.metrics[label].config(text=status_text[:18], fg=color)
                         gemini_status = event[1].get("Gemini API", "UNKNOWN")
-                        groq_status = event[1].get("Groq API", "NOT CONFIGURED")
-                        self._append("SYSTEM", f"Проверка провайдеров — Gemini: {gemini_status}; Groq: {groq_status}")
+                        self._append("SYSTEM", f"Проверка провайдера — Gemini: {gemini_status}")
                     elif kind == "stt_ready":
                         self._stt_online = True
                         self.metrics["Voice"].config(text="ONLINE", fg=GREEN)
@@ -695,7 +755,6 @@ class JarvisDesktop(tk.Tk):
                         self._append("VOICE", "STT: " + event[1])
                     elif kind == "reply_delta":
                         self._streaming_reply = getattr(self, "_streaming_reply", "") + str(event[1])
-                        self._set_visual_state("THINKING", 0.7)
                         self._replace_streaming_reply(self._streaming_reply)
                     elif kind == "reply":
                         reply = event[1]
@@ -709,15 +768,11 @@ class JarvisDesktop(tk.Tk):
                         self.attach_button.config(state="normal")
                         self.status.config(text="● ONLINE", fg=GREEN)
                         if self.settings.get("tts_enabled", True):
-                            self._set_visual_state("THINKING", 0.35)
                             threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
                         else:
-                            self._set_visual_state("IDLE", 0.0)
+                            self.voice_controller.complete_without_speech()
                     elif kind == "audio_level":
-                        if not self.busy and self._visual_state not in {"THINKING", "SPEAKING", "ERROR"}:
-                            self._set_visual_state("LISTENING", event[1])
-                        else:
-                            self._visual_level = max(0.0, min(1.0, float(event[1])))
+                        self._visual_level = max(0.0, min(1.0, float(event[1])))
                     elif kind == "voice_capture_done":
                         if not self.busy and self._visual_state == "LISTENING":
                             self._set_visual_state("IDLE", 0.0)
@@ -728,12 +783,40 @@ class JarvisDesktop(tk.Tk):
                         if not self.busy:
                             self._set_visual_state("IDLE", 0.0)
                     elif kind == "voice_text":
-                        self._set_visual_state("LISTENING", 0.75)
                         if self.busy:
                             continue
                         self.input.delete(0, "end")
                         self.input.insert(0, event[1])
                         self.send(event[1])
+                    elif kind == "voice_state":
+                        state = str(event[1])
+                        if state == "IDLE":
+                            self._voice_loop_running = False
+                        message = str(event[2]) if len(event) > 2 else ""
+                        self._set_visual_state(state, 0.75 if state == "LISTENING" else 0.45 if state in {"THINKING", "UNDERSTANDING"} else 0.8 if state == "SPEAKING" else 0.0)
+                        if state == "LISTENING":
+                            self.voice_button.config(text="🎙 СЛУШАЮ")
+                            self.metrics["Voice"].config(text="LISTENING", fg=GREEN)
+                        elif state == "SPEAKING":
+                            self.voice_button.config(text="🔊 ГОВОРЮ")
+                        elif state == "DEGRADED":
+                            self.metrics["Voice"].config(text="DEGRADED", fg=YELLOW)
+                            try:
+                                voice_status = self.voice_controller.status()
+                                if voice_status.get("running") and voice_status.get("cloud_stt") == "groq":
+                                    self.voice_button.config(text="🎙 СЛУШАЮ · РЕЗЕРВ")
+                                elif voice_status.get("quota_exceeded"):
+                                    self.voice_button.config(text="🎙 STT КВОТА")
+                                else:
+                                    self.voice_button.config(text="🎙 РЕЖИМ ОГРАНИЧЕН")
+                            except Exception:
+                                self.voice_button.config(text="🎙 РЕЖИМ ОГРАНИЧЕН")
+                        elif state == "ERROR":
+                            self.metrics["Voice"].config(text="ERROR", fg=RED)
+                            if message:
+                                self._append("VOICE", message)
+                        elif state == "IDLE":
+                            self.voice_button.config(text="🎙 ГОЛОС")
                     elif kind == "voice_status":
                         self._append("VOICE", event[1])
                     elif kind == "voice_error":
@@ -743,11 +826,10 @@ class JarvisDesktop(tk.Tk):
                         self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
                         self._append("VOICE", "Прослушивание остановлено: " + event[1] + " Нажмите «Голос», чтобы повторить запуск.")
                     elif kind == "tts_error":
-                        self._set_visual_state("ERROR")
                         self.metrics["TTS"].config(text="ERROR", fg=RED)
                         self._append("VOICE", "Не удалось озвучить ответ: " + event[1])
                     elif kind == "request_error":
-                        self._set_visual_state("ERROR")
+                        self.voice_controller.report_error(str(event[1]))
                         self.status.config(text="● API ERROR", fg=RED)
                         self._append("AI", "Запрос не выполнен: " + event[1])
                         self.busy = False
@@ -758,7 +840,7 @@ class JarvisDesktop(tk.Tk):
                         if len(event) > 2 and event[2] != self._agent_generation:
                             continue
                         self._agent_start_pending = False
-                        self._set_visual_state("ERROR")
+                        self.voice_controller.report_error(str(event[1]))
                         self.status.config(text="● ERROR", fg=RED)
                         self._append("SYSTEM", "Не удалось запустить ядро: " + event[1])
                         self.busy = False
@@ -781,11 +863,10 @@ class JarvisDesktop(tk.Tk):
                 pass
 
     def _speak_reply(self, text):
-        # This function runs on a worker thread. Never call Tk widgets here:
-        # Tkinter is not thread-safe and a UI exception used to prevent TTS itself.
+        # Every reply goes through the controller's persistent TTS queue.
+        # This worker never accesses Tk widgets directly.
         try:
-            tts.speak_and_play(text, on_playback_start=lambda: self.events.put(("tts_started",)))
-            self.events.put(("tts_done",))
+            self.voice_controller.speak(text)
         except Exception as exc:
             self.events.put(("tts_error", str(exc)))
 
@@ -916,7 +997,7 @@ class JarvisDesktop(tk.Tk):
         attachment_payload=self._build_attachment_payload()
         self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
         self.status.config(text="● PROCESSING",fg=CYAN)
-        self._set_visual_state("THINKING", 0.55)
+        self.voice_controller.mark_thinking()
         def work():
             provider = getattr(self.agent, "provider", None)
             try:
@@ -972,8 +1053,7 @@ class JarvisDesktop(tk.Tk):
         # have to say the wake word after pressing the microphone button.
         self._voice_armed_until = float("inf")
         if self._voice_loop_running:
-            self.voice_button.config(text="🎙 СЛУШАЮ КОМАНДУ")
-            self._append("VOICE", "Микрофон активен. Говорите команду сейчас — слово «Джарвис» не обязательно.")
+            self._stop_voice()
             return
         self._start_voice_loop()
         if self._voice_loop_running:
@@ -1131,7 +1211,7 @@ class JarvisDesktop(tk.Tk):
         win.grab_set()
         tk.Label(win, text="ЦЕНТР УПРАВЛЕНИЯ JARVIS", bg=PANEL, fg=CYAN,
                  font=("Segoe UI", 19, "bold")).pack(anchor="w", padx=24, pady=(22, 4))
-        tk.Label(win, text="Gemini — основной ИИ, Groq — независимый резерв. Gemini также обслуживает облачный STT и TTS.",
+        tk.Label(win, text="Gemini — основной ИИ. Gemini также обслуживает облачный STT и TTS.",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=24, pady=(0, 16))
 
         body = tk.Frame(win, bg=PANEL)
@@ -1151,9 +1231,9 @@ class JarvisDesktop(tk.Tk):
         active = int(self.settings.get("active_agent", 0) or 0)
         names = ("FAST / Обычные", "REASONING / Рассуждения", "CODING / Код")
         defaults = (
-            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
-            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
-            ("gemini", DEFAULT_URL, "gemini-3.8-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
+            ("gemini", DEFAULT_URL, "gemini-2.5-flash"),
         )
         shared_key_row = tk.Frame(inner, bg="#091b29", highlightbackground=CYAN, highlightthickness=1)
         shared_key_row.pack(fill="x", pady=(0, 10))
@@ -1187,38 +1267,13 @@ class JarvisDesktop(tk.Tk):
         shared_key.bind("<Control-v>", lambda _e: self.after(20, lambda: shared_key.icursor("end")))
         shared_key.bind("<Control-V>", lambda _e: self.after(20, lambda: shared_key.icursor("end")))
 
-        groq_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
-        groq_row.pack(fill="x", pady=(0, 10))
-        tk.Label(groq_row, text="РЕЗЕРВНЫЙ ПРОВАЙДЕР GROQ (НЕ ЗАВИСИТ ОТ GEMINI)", bg="#091b29", fg=TEXT,
-                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
-        groq_key = tk.Entry(groq_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat", show="•", exportselection=False)
-        groq_key.insert(0, str(self.settings.get("groq_api_key") or os.environ.get("GROQ_API_KEY", "")))
-        groq_key.pack(fill="x", padx=14, pady=(0, 6), ipady=8)
-        tk.Button(groq_row, text="ОЧИСТИТЬ КЛЮЧ GROQ",
-                  command=lambda: clear_entry(groq_key), bg="#572637", fg=TEXT,
-                  activebackground="#7a3046", relief="flat", padx=10, pady=5).pack(anchor="e", padx=14, pady=(0, 8))
-        groq_fields = {}
-        for label, key, default in (
-            ("Модель Groq", "groq_model", self.settings.get("groq_model", "openai/gpt-oss-120b")),
-            ("Тайм-аут Groq, сек.", "groq_timeout", self.settings.get("groq_timeout", "30")),
-            ("Тайм-аут Gemini, сек.", "gemini_timeout", self.settings.get("gemini_timeout", "30")),
-        ):
-            row = tk.Frame(groq_row, bg="#091b29")
-            row.pack(fill="x", padx=14, pady=3)
-            tk.Label(row, text=label, width=22, anchor="w", bg="#091b29", fg=MUTED).pack(side="left")
-            entry = tk.Entry(row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
-            entry.insert(0, str(default))
-            entry.pack(side="left", fill="x", expand=True, ipady=6)
-            tk.Button(row, text="×", command=lambda e=entry: clear_entry(e), bg="#572637", fg=TEXT, relief="flat", width=3).pack(side="left", padx=(6, 0))
-            groq_fields[key] = entry
-        tk.Label(groq_row, text="Ключ создаётся отдельно в GroqCloud. Без ключа резервный провайдер отключён.",
-                 bg="#091b29", fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=14, pady=(6, 10))
+        # Groq is exposed only as a separate cloud STT reserve, not as a chat provider.
 
         additional_row = tk.Frame(inner, bg="#091b29", highlightbackground=LINE, highlightthickness=1)
         additional_row.pack(fill="x", pady=(2, 10))
         tk.Label(additional_row, text="4. ADDITIONAL — резерв / второе мнение", bg="#091b29", fg=TEXT, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(10, 4))
         additional_model = tk.Entry(additional_row, bg=PANEL2, fg=TEXT, insertbackground=CYAN, relief="flat")
-        additional_model.insert(0, str(self.settings.get("additional_model", "gemini-3.8-flash")))
+        additional_model.insert(0, str(self.settings.get("additional_model", "gemini-2.5-flash")))
         additional_model.pack(fill="x", padx=14, pady=(0, 4), ipady=6)
         tk.Button(additional_row, text="ОЧИСТИТЬ", command=lambda: clear_entry(additional_model), bg="#572637", fg=TEXT, relief="flat", padx=8, pady=4).pack(anchor="e", padx=14, pady=(0, 8))
 
@@ -1290,7 +1345,9 @@ class JarvisDesktop(tk.Tk):
             ("Голос Gemini", "tts_voice", self.settings.get("tts_voice", "Charon"), False),
             ("Модель TTS", "tts_model", self.settings.get("tts_model", "gemini-3.8-flash-tts"), False),
             ("Тайм-аут TTS, сек.", "tts_timeout", self.settings.get("tts_timeout", "45"), False),
-            ("Модель STT", "stt_model", self.settings.get("stt_model", "gemini-3.8-flash"), False),
+            ("Модель STT Gemini", "stt_model", self.settings.get("stt_model", "gemini-2.5-flash"), False),
+            ("Ключ Groq STT (резерв)", "groq_stt_api_key", self.settings.get("groq_stt_api_key", ""), True),
+            ("Модель резервного STT", "stt_fallback_model", self.settings.get("stt_fallback_model", "whisper-large-v3-turbo"), False),
             ("Тайм-аут STT, сек.", "stt_timeout", self.settings.get("stt_timeout", "45"), False),
         ):
             row = tk.Frame(voice_frame, bg="#091b29")
@@ -1310,16 +1367,15 @@ class JarvisDesktop(tk.Tk):
         def save():
             new_profiles = {}
             for i, fields in enumerate(entries):
-                new_profiles[str(i)] = {"provider": "gemini", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "gemini-3.8-flash", "api_key": shared_key.get().strip(), "name": names[i]}
+                new_profiles[str(i)] = {"provider": "gemini", "url": DEFAULT_URL, "model": fields["model"].get().strip() or "gemini-2.5-flash", "api_key": shared_key.get().strip(), "name": names[i]}
             self.settings["agents"] = new_profiles
             self.settings["gemini_api_key"] = shared_key.get().strip()
-            self.settings["groq_api_key"] = groq_key.get().strip()
+            for key in ("groq_api_key", "groq_model", "groq_timeout"):
+                self.settings.pop(key, None)
             for key, entry in integration_fields.items():
                 self.settings[key] = entry.get().strip()
-            for key, entry in groq_fields.items():
-                self.settings[key] = entry.get().strip()
             self.settings.pop("hf_token", None)
-            self.settings["additional_model"] = additional_model.get().strip() or "gemini-3.8-flash"
+            self.settings["additional_model"] = additional_model.get().strip() or "gemini-2.5-flash"
             self.settings["active_agent"] = active
             self.settings["voice_enabled"] = bool(voice_var.get())
             self.settings["tts_enabled"] = bool(tts_var.get())
@@ -1374,7 +1430,15 @@ class JarvisDesktop(tk.Tk):
 
     def _close(self):
         self._voice_loop_running = False
+        self.voice_controller.shutdown()
         tts.stop()
+        view = self._embedded_webview
+        self._embedded_webview = None
+        if view is not None:
+            try:
+                view.close()
+            except Exception:
+                pass
         try:
             self._visual_server.shutdown()
             self._visual_server.server_close()
@@ -1383,5 +1447,48 @@ class JarvisDesktop(tk.Tk):
         self.destroy()
 
 
+def _run_desktop() -> int:
+    """Launch the UI, with a non-interactive startup smoke-test mode for CI."""
+    import traceback
+
+    smoke_test = "--smoke-test" in sys.argv[1:]
+    try:
+        app = JarvisDesktop()
+        if smoke_test:
+            app.after(1500, app._close)
+        app.mainloop()
+        return 0
+    except Exception:
+        details = traceback.format_exc()
+        log_dir = Path(os.environ.get("APPDATA", str(Path.home()))) / "JARVIS"
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / "startup-error.log").write_text(details, encoding="utf-8")
+        except OSError:
+            pass
+        if smoke_test:
+            print(details, file=sys.stderr)
+            return 1
+        try:
+            root = getattr(tk, "_default_root", None)
+            created_root = root is None
+            if created_root:
+                root = tk.Tk()
+                root.withdraw()
+            messagebox.showerror(
+                "JARVIS — ошибка запуска",
+                "Приложение не смогло запуститься. Подробный traceback сохранён в:\n"
+                + str(log_dir / "startup-error.log")
+                + "\n\n"
+                + details[-1800:],
+                parent=root,
+            )
+            if created_root:
+                root.destroy()
+        except Exception:
+            pass
+        return 1
+
+
 if __name__ == "__main__":
-    JarvisDesktop().mainloop()
+    raise SystemExit(_run_desktop())

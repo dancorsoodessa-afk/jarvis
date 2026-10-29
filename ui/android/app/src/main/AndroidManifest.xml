@@ -9,6 +9,8 @@
     </queries>
     <application
         android:label="JARVIS"
+        android:icon="@drawable/jarvis_reactor_logo"
+        android:roundIcon="@drawable/jarvis_reactor_logo"
         android:usesCleartextTraffic="false"
         android:theme="@style/LaunchTheme">
         <meta-data android:name="flutterEmbedding" android:value="2" />
