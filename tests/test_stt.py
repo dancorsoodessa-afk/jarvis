@@ -89,6 +89,13 @@ class TestSTT:
                     stt.transcribe(str(audio))
                 assert urlopen.call_count == 1
 
+    def test_changing_gemini_key_clears_quota_degraded_state(self):
+        os.environ["GEMINI_API_KEY"] = "old-key"
+        stt._set_quota_exceeded(True)
+        assert stt.quota_exceeded() is True
+        os.environ["GEMINI_API_KEY"] = "new-key"
+        assert stt.quota_exceeded() is False
+
     def test_groq_whisper_is_used_after_gemini_quota_exhaustion(self):
         os.environ["GEMINI_API_KEY"] = "gemini-test-token"
         os.environ["GROQ_API_KEY"] = "groq-test-token"
