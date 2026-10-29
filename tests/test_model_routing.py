@@ -251,9 +251,9 @@ def test_gemini_stream_tool_call_keeps_extra_content_signature():
         def __iter__(self):
             for chunk in chunks:
                 if chunk == "[DONE]":
-                    yield b"data: [DONE]\\n"
+                    yield b"data: [DONE]" + bytes([10])
                 else:
-                    yield ("data: " + json.dumps(chunk) + "\\n").encode("utf-8")
+                    yield ("data: " + json.dumps(chunk) + chr(10)).encode("utf-8")
 
     provider = OpenAIChatProvider(
         url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
