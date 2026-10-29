@@ -16,7 +16,7 @@ _PLAYBACK_ACTIVE = False
 _PLAYBACK_TOKEN = 0
 _PLAYBACK_PATH: Path | None = None
 
-DEFAULT_TTS_MODEL = "gemini-3.8-flash-tts"
+DEFAULT_TTS_MODEL = ""
 DEFAULT_TTS_VOICE = "Charon"
 TTS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
 
@@ -30,12 +30,8 @@ def available_engines() -> list[str]:
 
 
 def current_engine() -> str:
-    mode = os.environ.get("JARVIS_TTS", "gemini").strip().lower()
-    if mode == "off":
-        return "off"
-    if mode not in {"auto", "gemini", "cloud"}:
-        raise RuntimeError("JARVIS поддерживает облачную озвучку Gemini или режим off.")
-    return "gemini" if _api_key() else "off"
+    # Consumer Gemini Web owns voice input/output; no Gemini API TTS model is configured.
+    return "off"
 
 
 def health_check(timeout: float | None = None) -> str:
@@ -81,7 +77,7 @@ def _timeout() -> float:
 def _generate_audio(text: str) -> bytes:
     key = _api_key()
     if not key:
-        raise RuntimeError("Облачная озвучка требует GEMINI_API_KEY. Укажите ключ Gemini в Центре управления.")
+        raise RuntimeError("Озвучка через API отключена: используйте голосовой режим Gemini Web.")
     model = (os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
     voice = (os.environ.get("JARVIS_TTS_VOICE") or DEFAULT_TTS_VOICE).strip()
     payload = {
