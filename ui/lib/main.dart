@@ -785,62 +785,19 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
   Future<void> _send(String text, {bool speakReply = false}) async {
     text = text.trim();
     if (text.isEmpty || _busy) return;
-    // Local Android timers remain local. All AI chat goes through the free consumer Gemini Web app.
     if (await _handleTimer(text)) { _input.clear(); return; }
     _input.clear();
     if (mounted) {
       setState(() {
         _messages.add(_Msg(text, isUser: true));
-        _status = 'Открываю Gemini Web; запрос скопирован. Вставьте его и отправьте в браузере.';
+        _status = speakReply
+            ? 'Gemini Web открыт. Используйте голос внутри браузера.'
+            : 'Открываю Gemini Web; запрос скопирован. Вставьте его и отправьте в браузере.';
         _visualState = JarvisVisualState.thinking;
       });
     }
     await _openGeminiWeb(text);
     _returnToIdle(const Duration(milliseconds: 500));
-    return;
-    if (_jarvis == null) {
-      const message = 'AI не подключён. Откройте настройки и подключите Gemini.';
-      if (mounted) {
-        setState(() {
-          _status = message;
-          _messages.add(_Msg(message, isUser: false));
-        });
-        _setVisual(JarvisVisualState.error);
-      }
-      if (speakReply) await _speak(message);
-      return;
-    }
-    _input.clear();
-    setState(() {
-      _messages.add(_Msg(text, isUser: true));
-      _busy = true;
-      _streamText = '';
-      _visualState = JarvisVisualState.thinking;
-      _status = 'Думаю…';
-    });
-    try {
-      final reply = await _jarvis!.sendMessage(text);
-      if (mounted) {
-        setState(() {
-          _messages.add(_Msg(reply.text, isUser: false));
-          _visualState = JarvisVisualState.speaking;
-          _status = 'Готов';
-        });
-      }
-      if (speakReply) await _speak(reply.text);
-      _returnToIdle(const Duration(milliseconds: 800));
-    } catch (e) {
-      if (mounted) {
-        final errorText = 'Ошибка: $e';
-        setState(() => _messages.add(_Msg(errorText, isUser: false)));
-        _setVisual(JarvisVisualState.error);
-        setState(() => _status = 'Ошибка ИИ: $e');
-      }
-      if (speakReply) await _speak('Произошла ошибка. Проверьте подключение к AI.');
-    } finally {
-      if (mounted) setState(() { _busy = false; _streamText = ''; });
-      if (_voiceRunning && !_ttsSpeaking) _scheduleVoiceRestart(const Duration(milliseconds: 500));
-    }
   }
 
   void _setVisual(JarvisVisualState state) {
