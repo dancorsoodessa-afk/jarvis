@@ -41,7 +41,6 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         # Gemini alternatives so a capacity outage can fail over to a different model.
         fallback_candidates = [
             settings.fast_model, settings.reasoning_model, settings.coding_model, settings.additional_model,
-            "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-3.6-flash",
         ]
         fast = OpenAIChatProvider(url=shared_url, api_key=shared_key, model=settings.fast_model or default_model,
                                   timeout=timeout, history=history, fallback_models=fallback_candidates)
