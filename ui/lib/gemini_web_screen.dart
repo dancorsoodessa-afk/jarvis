@@ -13,7 +13,6 @@ class GeminiWebScreen extends StatefulWidget {
 
 class _GeminiWebScreenState extends State<GeminiWebScreen> {
   static final Uri _geminiUri = Uri.parse('https://gemini.google.com/app');
-  static final Uri _signInUri = Uri.parse('https://accounts.google.com/');
   late final WebViewController _controller;
   bool _loading = true;
   bool _showingSignIn = false;
@@ -41,7 +40,24 @@ class _GeminiWebScreenState extends State<GeminiWebScreen> {
           if (url.startsWith('https://gemini.google.com/')) {
             // Dismiss only visible, clearly labelled Gemini invitation controls.
             try {
-              await _controller.runJavaScript("(() => {\",\n\"                const visible = e => !!(e && (e.offsetWidth || e.offsetHeight || e.getClientRects().length));\",\n\"                const labels = /^(close|dismiss|закрыть|no thanks|not now|maybe later|не сейчас|нет, спасибо|позже|пропустить)$/i;\",\n\"                const candidates = Array.from(document.querySelectorAll('[role=\"dialog\"] button, [role=\"dialog\"] [role=\"button\"], button[aria-label], [role=\"button\"][aria-label]'));\",\n\"                const target = candidates.find(e => {\",\n\"                  if (!visible(e)) return false;\",\n\"                  const label = (e.getAttribute('aria-label') || e.getAttribute('title') || e.innerText || '').trim();\",\n\"                  return labels.test(label);\",\n\"                });\",\n\"                if (target) target.click();\",\n\"              })();");
+              await _controller.runJavaScript(r'''
+                (() => {
+                  const dismiss = () => {
+                    const visible = e => !!(e && (e.offsetWidth || e.offsetHeight || e.getClientRects().length));
+                    const labels = /^(close|dismiss|закрыть|no thanks|not now|maybe later|не сейчас|нет, спасибо|позже|пропустить)$/i;
+                    const candidates = Array.from(document.querySelectorAll('[role="dialog"] button, [role="dialog"] [role="button"], button[aria-label], [role="button"][aria-label]'));
+                    const target = candidates.find(e => {
+                      if (!visible(e)) return false;
+                      const label = (e.getAttribute('aria-label') || e.getAttribute('title') || e.innerText || '').trim();
+                      return labels.test(label);
+                    });
+                    if (target) target.click();
+                  };
+                  dismiss();
+                  setTimeout(dismiss, 700);
+                  setTimeout(dismiss, 1800);
+                })();
+              ''');
             } catch (_) { /* Gemini may not expose a dismissible invitation. */ }
             if (widget.initialPrompt.isNotEmpty) {
               await Clipboard.setData(ClipboardData(text: widget.initialPrompt));
