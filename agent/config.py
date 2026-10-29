@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 SUPPORTED_PROVIDERS = ("gemini",)
 DEFAULT_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_MODEL = ""
 
 
 def _timeout_env(name: str, default: int = 30) -> int:
@@ -44,7 +44,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        default_model = os.environ.get("JARVIS_CHAT_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+        default_model = os.environ.get("JARVIS_CHAT_MODEL", DEFAULT_MODEL).strip()
         key = os.environ.get("GEMINI_API_KEY", "").strip() or os.environ.get("JARVIS_CHAT_KEY", "").strip()
         return cls(
             provider="gemini", chat_url=DEFAULT_CHAT_URL, chat_key=key,
