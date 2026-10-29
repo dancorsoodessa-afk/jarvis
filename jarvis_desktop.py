@@ -429,6 +429,10 @@ class JarvisDesktop(tk.Tk):
         self.attach_button.grid(row=0,column=2,padx=3,ipadx=7,ipady=3)
         self.send_button = ttk.Button(compose, text="▶  ВЫПОЛНИТЬ", style="Accent.TButton", command=self.send)
         self.send_button.grid(row=0,column=3,padx=(3,0),ipadx=8,ipady=3)
+        self.gemini_web_button = ttk.Button(compose, text="GEMINI WEB", command=self._open_gemini_web)
+        self.gemini_web_button.grid(row=0,column=4,padx=(6,0),ipadx=5,ipady=3)
+        self.paste_web_answer_button = ttk.Button(compose, text="ВСТАВИТЬ ОТВЕТ", command=self._paste_gemini_web_answer)
+        self.paste_web_answer_button.grid(row=0,column=5,padx=(3,0),ipadx=4,ipady=3)
 
         self.attachment_label = tk.Label(center, text="Вложений нет", bg="#050912", fg=MUTED,
                                          anchor="w", font=("Consolas",8))
@@ -890,6 +894,42 @@ class JarvisDesktop(tk.Tk):
 
     def _clear_attachments(self):
         self.attachments=[]; self._refresh_attachment_label()
+
+    def _open_gemini_web(self):
+        """Open Google's consumer Gemini app and hand off the current prompt via clipboard."""
+        from agent.gemini_web import handoff_to_gemini_web
+
+        prompt = self.input.get().strip()
+        def copy_text(value):
+            self.clipboard_clear()
+            self.clipboard_append(value)
+            self.update_idletasks()
+
+        try:
+            result = handoff_to_gemini_web(prompt, copy_text, webbrowser.open_new_tab)
+        except Exception as exc:
+            self._append("SYSTEM", f"Не удалось открыть Gemini Web: {exc}")
+            return
+        if not result["opened"]:
+            self._append("SYSTEM", "Браузер не подтвердил открытие Gemini Web. Проверьте браузер по умолчанию.")
+        elif result["prompt_copied"]:
+            self._append("SYSTEM", "Gemini Web открыт. Запрос скопирован в буфер обмена — вставьте его в поле Gemini и отправьте.")
+        else:
+            self._append("SYSTEM", "Gemini Web открыт. Войдите в Google-аккаунт при необходимости.")
+
+    def _paste_gemini_web_answer(self):
+        """Paste a response copied from Gemini Web into the Jarvis input field."""
+        try:
+            answer = self.clipboard_get().strip()
+        except tk.TclError:
+            answer = ""
+        if not answer:
+            self._append("SYSTEM", "Буфер обмена пуст. Скопируйте ответ из Gemini Web и повторите.")
+            return
+        self.input.delete(0, "end")
+        self.input.insert(0, answer)
+        self.input.focus_set()
+        self._append("SYSTEM", "Ответ Gemini Web вставлен в поле ввода. Нажмите «ВЫПОЛНИТЬ», чтобы продолжить диалог в Jarvis.")
 
     def send(self, text=None):
         if text is None: text=self.input.get()
