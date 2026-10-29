@@ -12,12 +12,12 @@ from pathlib import Path
 import threading
 
 DEFAULT_LOCAL_MODEL = "small"
-DEFAULT_STT_MODEL = "gemini-3.8-flash"
+DEFAULT_STT_MODEL = "gemini-2.5-flash"
 DEFAULT_GROQ_STT_MODEL = "whisper-large-v3-turbo"
 GROQ_STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 _QUOTA_EXCEEDED = False
 _QUOTA_LOCK = threading.Lock()
-QUOTA_MESSAGE = "Ошибка распознавания Gemini: HTTP 429. Квота на сегодня исчерпана (free tier); голосовое распознавание недоступно до сброса квоты или смены ключа/тарифа."
+QUOTA_MESSAGE = "Квота Gemini на сегодня исчерпана. Голос-STT недоступен до сброса/смены ключа/тарифа."
 
 
 def quota_exceeded() -> bool:
@@ -34,7 +34,12 @@ DEFAULT_STT_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
 
 
 def _model() -> str:
-    return (os.environ.get("GEMINI_STT_MODEL") or os.environ.get("JARVIS_STT_MODEL") or DEFAULT_STT_MODEL).strip()
+    return (
+        os.environ.get("GEMINI_STT_MODEL")
+        or os.environ.get("GEMINI_MODEL")
+        or os.environ.get("JARVIS_STT_MODEL")
+        or DEFAULT_STT_MODEL
+    ).strip()
 
 
 def _token() -> str:
@@ -75,7 +80,10 @@ def current_engine() -> str:
         # Never silently load a local model or switch providers without a configured Groq key.
         if quota_exceeded():
             return "groq" if _groq_token() else "off"
-        return "gemini" if _token() else "off"
+        stt_enabled = os.environ.get("GEMINI_STT_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
+        if not stt_enabled:
+            return "groq" if _groq_token() else "off"
+        return "gemini" if _token() else ("groq" if _groq_token() else "off")
     return "off"
 
 
