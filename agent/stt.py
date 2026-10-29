@@ -16,19 +16,28 @@ DEFAULT_STT_MODEL = "gemini-2.5-flash"
 DEFAULT_GROQ_STT_MODEL = "whisper-large-v3-turbo"
 GROQ_STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 _QUOTA_EXCEEDED = False
+_QUOTA_TOKEN = ""
 _QUOTA_LOCK = threading.Lock()
 QUOTA_MESSAGE = "Квота Gemini на сегодня исчерпана. Голос-STT недоступен до сброса/смены ключа/тарифа."
 
 
 def quota_exceeded() -> bool:
+    global _QUOTA_EXCEEDED, _QUOTA_TOKEN
+    current_token = (os.environ.get("GEMINI_API_KEY") or os.environ.get("JARVIS_CHAT_KEY") or "").strip()
     with _QUOTA_LOCK:
+        # A changed or cleared key starts a fresh quota state.
+        if _QUOTA_EXCEEDED and current_token != _QUOTA_TOKEN:
+            _QUOTA_EXCEEDED = False
+            _QUOTA_TOKEN = ""
         return _QUOTA_EXCEEDED
 
 
 def _set_quota_exceeded(value: bool) -> None:
-    global _QUOTA_EXCEEDED
+    global _QUOTA_EXCEEDED, _QUOTA_TOKEN
+    current_token = (os.environ.get("GEMINI_API_KEY") or os.environ.get("JARVIS_CHAT_KEY") or "").strip()
     with _QUOTA_LOCK:
         _QUOTA_EXCEEDED = value
+        _QUOTA_TOKEN = current_token if value else ""
 
 DEFAULT_STT_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
 
