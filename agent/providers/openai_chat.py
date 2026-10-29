@@ -396,8 +396,12 @@ class OpenAIChatProvider:
         attempted_models = {primary_model}
         messages = self._messages(prompt)
         payload = {"model": model, "messages": messages, "temperature": 0.25}
-        if tools:
-            payload["tools"] = tools
+        tools_enabled = os.environ.get("GEMINI_TOOLS_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+        active_tools = tools if tools_enabled else None
+        # Safe mode is default: Gemini returns plain text; local tools remain
+        # available through JarvisAgent's deterministic command router.
+        if active_tools:
+            payload["tools"] = active_tools
 
         result_content = ""
         for step_index in range(max_steps):
@@ -405,47 +409,69 @@ class OpenAIChatProvider:
                 body = self._request_stream(payload) if self.on_delta is not None and "tools" in payload else self._request(payload)
             except RuntimeError as exc:
                 message = str(exc).lower()
-                capacity_error = any(f"http {code}" in message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in message
-                model_unavailable = (
-                    any(f"http {code}" in message for code in (400, 404))
-                    and any(marker in message for marker in (
-                        "model", "not found", "unknown", "does not exist", "not available",
-                    ))
-                )
-                if not (capacity_error or model_unavailable):
-                    raise
-                last_error = exc
-                body = None
-                for fallback_model in model_candidates:
-                    if fallback_model in attempted_models:
-                        continue
-                    attempted_models.add(fallback_model)
-                    fallback_payload = {**payload, "model": fallback_model}
+                if "thought_signature" in message and "tools" in payload:
+                    # One bounded recovery attempt: discard tool-call history and
+                    # retry the same user turn as plain text. Never retry-loop.
+                    safe_messages = [
+                        item for item in messages
+                        if item.get("role") != "tool"
+                        and not (item.get("role") == "assistant" and item.get("tool_calls"))
+                    ]
+                    safe_payload = {key: value for key, value in payload.items() if key != "tools"}
+                    safe_payload["messages"] = safe_messages
                     try:
-                        body = self._request_stream(fallback_payload) if self.on_delta is not None and "tools" in fallback_payload else self._request(fallback_payload)
-                        model = fallback_model
-                        break
-                    except RuntimeError as fallback_exc:
-                        last_error = fallback_exc
-                        fallback_message = str(fallback_exc).lower()
-                        capacity_error = any(f"http {code}" in fallback_message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in fallback_message
-                        model_unavailable = (
-                            any(f"http {code}" in fallback_message for code in (400, 404))
-                            and any(marker in fallback_message for marker in (
-                                "model", "not found", "unknown", "does not exist", "not available",
-                            ))
-                        )
-                        if not (capacity_error or model_unavailable):
-                            raise
+                        body = self._request(safe_payload)
+                        messages = safe_messages
+                        payload = safe_payload
+                    except RuntimeError as retry_exc:
+                        raise RuntimeError(
+                            "Gemini отклонил вызов инструмента из-за thought_signature; "
+                            f"повтор без tools также не выполнен: {retry_exc}"
+                        ) from retry_exc
+                else:
+                    body = None
                 if body is None:
-                    raise RuntimeError(
-                        f"Основная модель {primary_model} и резервные модели недоступны. Последняя ошибка: {last_error}"
-                    ) from last_error
+                    capacity_error = any(f"http {code}" in message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in message
+                    model_unavailable = (
+                        any(f"http {code}" in message for code in (400, 404))
+                        and any(marker in message for marker in (
+                            "model", "not found", "unknown", "does not exist", "not available",
+                        ))
+                    )
+                    if not (capacity_error or model_unavailable):
+                        raise
+                    last_error = exc
+                    body = None
+                    for fallback_model in model_candidates:
+                        if fallback_model in attempted_models:
+                            continue
+                        attempted_models.add(fallback_model)
+                        fallback_payload = {**payload, "model": fallback_model}
+                        try:
+                            body = self._request_stream(fallback_payload) if self.on_delta is not None and "tools" in fallback_payload else self._request(fallback_payload)
+                            model = fallback_model
+                            break
+                        except RuntimeError as fallback_exc:
+                            last_error = fallback_exc
+                            fallback_message = str(fallback_exc).lower()
+                            capacity_error = any(f"http {code}" in fallback_message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in fallback_message
+                            model_unavailable = (
+                                any(f"http {code}" in fallback_message for code in (400, 404))
+                                and any(marker in fallback_message for marker in (
+                                    "model", "not found", "unknown", "does not exist", "not available",
+                                ))
+                            )
+                            if not (capacity_error or model_unavailable):
+                                raise
+                    if body is None:
+                        raise RuntimeError(
+                            f"Основная модель {primary_model} и резервные модели недоступны. Последняя ошибка: {last_error}"
+                        ) from last_error
             payload["model"] = model
             reply = self._extract(body)
             result_content = reply["content"]
             tool_calls = reply["tool_calls"]
-            if not tool_calls or self.tool_executor is None:
+            if not tool_calls or self.tool_executor is None or not active_tools:
                 break
             messages.append({"role": "assistant", "content": reply["content"], "tool_calls": tool_calls})
             confirmation_pending = False
@@ -465,8 +491,8 @@ class OpenAIChatProvider:
             if confirmation_pending:
                 break
             payload = {"model": model, "messages": messages, "temperature": 0.25}
-            if tools:
-                payload["tools"] = tools
+            if active_tools:
+                payload["tools"] = active_tools
         else:
             result_content = result_content or "Достигнут предел шагов агента."
 
