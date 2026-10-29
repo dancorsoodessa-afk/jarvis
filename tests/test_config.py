@@ -1,9 +1,9 @@
 from agent.config import DEFAULT_CHAT_URL, DEFAULT_MODEL, normalize_chat_url, normalize_provider, Settings
 
 
-def test_default_endpoint_is_gemini():
+def test_default_model_is_removed_for_gemini_web_only():
     assert DEFAULT_CHAT_URL == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-    assert DEFAULT_MODEL == "gemini-3.8-flash"
+    assert DEFAULT_MODEL == ""
     assert normalize_chat_url("") == DEFAULT_CHAT_URL
     assert normalize_chat_url(None) == DEFAULT_CHAT_URL
 
@@ -21,9 +21,9 @@ def test_only_gemini_provider_is_allowed():
     assert normalize_provider("groq") == "gemini"
 
 
-def test_settings_load_gemini_key_without_huggingface_token(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
+def test_gemini_web_mode_does_not_require_api_key(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("HF_TOKEN", raising=False)
     settings = Settings.from_env()
     assert settings.provider == "gemini"
-    assert settings.chat_key == "gemini-test-key"
+    assert settings.chat_key == ""\n    assert settings.chat_model == ""
