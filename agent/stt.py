@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-DEFAULT_STT_MODEL = "gemini-3.8-flash"
+DEFAULT_STT_MODEL = ""
 
 
 def _model() -> str:
@@ -26,10 +26,8 @@ def available_engines() -> list[str]:
 
 
 def current_engine() -> str:
-    mode = os.environ.get("JARVIS_STT", "auto").strip().lower()
-    if mode == "off":
-        return "off"
-    return "gemini" if _token() else "off"
+    # Jarvis now hands chat requests to the consumer Gemini Web app; no Gemini API model is configured.
+    return "off"
 
 
 def health_check(timeout: float = 10.0) -> str:
@@ -68,7 +66,7 @@ def _request_timeout() -> float:
 def transcribe(audio_path: str) -> str:
     token = _token()
     if current_engine() == "off" or not token:
-        raise RuntimeError("Голосовой ввод требует бесплатный GEMINI_API_KEY из Google AI Studio. Вставьте его в Центр управления.")
+        raise RuntimeError("Голосовой ввод через API отключён: используйте микрофон в Gemini Web.")
     path = Path(audio_path)
     if not path.is_file():
         raise ValueError(f"Файл не найден: {audio_path}")
