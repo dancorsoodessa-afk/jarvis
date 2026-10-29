@@ -724,9 +724,11 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           Uri.parse('https://gemini.google.com/app'),
           mode: LaunchMode.externalApplication,
         );
-        if (mounted) setState(() => _status = launched
-            ? 'Gemini Web открыт; запрос скопирован.'
-            : 'Не удалось открыть Gemini Web.');
+        if (mounted) {
+          setState(() => _status = launched
+              ? 'Gemini Web открыт; запрос скопирован.'
+              : 'Не удалось открыть Gemini Web.');
+        }
       } catch (error) {
         if (mounted) setState(() => _status = 'Gemini Web: $error');
       }
