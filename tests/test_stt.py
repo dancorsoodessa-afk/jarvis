@@ -17,7 +17,7 @@ class TestSTT:
         self.old = {name: os.environ.get(name) for name in (
             "JARVIS_STT", "GEMINI_API_KEY", "JARVIS_CHAT_KEY", "GEMINI_MODEL", "JARVIS_STT_MODEL", "GEMINI_STT_MODEL", "GROQ_API_KEY", "JARVIS_STT_FALLBACK_MODEL"
         )}
-        for name in ("JARVIS_STT", "GEMINI_API_KEY", "JARVIS_CHAT_KEY", "JARVIS_STT_MODEL", "GEMINI_STT_MODEL", "GROQ_API_KEY", "JARVIS_STT_FALLBACK_MODEL"):
+        for name in ("JARVIS_STT", "GEMINI_API_KEY", "JARVIS_CHAT_KEY", "GEMINI_MODEL", "JARVIS_STT_MODEL", "GEMINI_STT_MODEL", "GROQ_API_KEY", "JARVIS_STT_FALLBACK_MODEL"):
             os.environ.pop(name, None)
 
     def teardown_method(self):
@@ -71,7 +71,7 @@ class TestSTT:
                 assert stt.transcribe(str(audio)) == "открой браузер"
             request = urlopen.call_args.args[0]
             assert request.full_url.startswith(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
             )
             assert "key=test-token" in request.full_url
             payload = json.loads(request.data.decode("utf-8"))
