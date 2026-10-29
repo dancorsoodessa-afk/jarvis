@@ -133,15 +133,24 @@ def test_openai_compatible_provider_fails_over_after_gemini_capacity_error():
         fallback_models=["gemini-3.8-flash", "gemini-3.5-flash-lite"],
     )
     successful = {"choices": [{"message": {"content": "резервная модель ответила", "tool_calls": []}}]}
+    models_seen = []
+    responses = iter([
+        RuntimeError("Gemini временно перегружен (HTTP 503). overloaded"),
+        successful,
+    ])
+
+    def request(payload):
+        # Snapshot model IDs because the provider reuses and mutates its payload dict.
+        models_seen.append(payload["model"])
+        response = next(responses)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
     with patch.object(provider, "discover_model", return_value="gemini-3.8-flash"), \
-         patch.object(provider, "_request", side_effect=[
-             RuntimeError("Gemini временно перегружен (HTTP 503). overloaded"),
-             successful,
-         ]) as request:
+         patch.object(provider, "_request", side_effect=request):
         result = provider.generate("проверь резерв")
 
     assert result == "резервная модель ответила"
-    assert request.call_count == 2
-    assert request.call_args_list[0].args[0]["model"] == "gemini-3.8-flash"
-    assert request.call_args_list[1].args[0]["model"] == "gemini-3.5-flash-lite"
+    assert models_seen == ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
     assert provider.last_used_model == "gemini-3.5-flash-lite"
