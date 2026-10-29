@@ -26,7 +26,7 @@ def _api_key() -> str:
 
 
 def available_engines() -> list[str]:
-    return ["gemini"] if _api_key() else []
+    return []
 
 
 def current_engine() -> str:
@@ -35,7 +35,8 @@ def current_engine() -> str:
 
 
 def health_check(timeout: float | None = None) -> str:
-    """Check the TTS model endpoint and credentials without generating audio."""
+    """API TTS is disabled in Gemini Web-only mode."""
+    return "OFF"
     if os.environ.get("JARVIS_TTS", "gemini").strip().lower() == "off":
         return "OFF"
     if current_engine() == "off":
@@ -75,6 +76,7 @@ def _timeout() -> float:
 
 
 def _generate_audio(text: str) -> bytes:
+    raise RuntimeError("Озвучка через Gemini API отключена. Используйте голосовой режим Gemini Web.")
     key = _api_key()
     if not key:
         raise RuntimeError("Озвучка через API отключена: используйте голосовой режим Gemini Web.")
