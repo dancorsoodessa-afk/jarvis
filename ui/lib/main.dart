@@ -878,17 +878,15 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
     final sceneHeight = compactLayout
         ? (screenHeight * 0.40).clamp(250.0, 330.0).toDouble()
         : (screenHeight * 0.48).clamp(300.0, 390.0).toDouble();
-    final connected = _jarvis != null;
+    final connected = _android || _jarvis != null;
     return Scaffold(
       appBar: AppBar(
         title: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.bubble_chart, color: Color(0xFF42E8FF), size: 25),
+            Icon(Icons.hub_rounded, color: Color(0xFF42E8FF), size: 25),
             SizedBox(width: 9),
             Text('JARVIS', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w700)),
-            SizedBox(width: 7),
-            Text('XXX', style: TextStyle(color: Color(0xFF42E8FF), fontSize: 11, letterSpacing: 2)),
           ],
         ),
         actions: [
@@ -1007,7 +1005,7 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
                         setState(() {
                           _status = connected
                               ? 'Система подключена и готова'
-                              : 'Ожидается подключение AI в настройках';
+                              : 'Gemini Web откроется внутри JARVIS';
                         });
                       },
                     ),
