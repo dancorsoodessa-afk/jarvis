@@ -686,8 +686,12 @@ class JarvisDesktop(tk.Tk):
                         self._resize_embedded_3d()
                         self.scene_label.config(text="ВСТРОЕННЫЙ THREE.JS WEBGL")
                     elif kind == "visual_error":
-                        self.scene_label.config(text="ОШИБКА ВСТРОЕННОГО 3D\n" + str(event[1])[:120])
-                        self._append("SYSTEM", "Не удалось встроить 3D-реактор в окно JARVIS: " + str(event[1]))
+                        detail = str(event[1])
+                        self.scene_label.config(text="3D-РЕАКТОР НЕДОСТУПЕН\nРезервный индикатор активен")
+                        if not getattr(self, "_edge_warning_shown", False):
+                            self._edge_warning_shown = True
+                            self._append("SYSTEM", "Для встроенного 3D установите Microsoft Edge или WebView2 Runtime. Остальной JARVIS продолжает работать.")
+                        self._log.warning("embedded 3D unavailable: %s", detail)
                     elif kind == "ready":
                         if len(event) > 2 and event[2] != self._agent_generation:
                             continue
