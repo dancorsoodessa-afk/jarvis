@@ -84,6 +84,21 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
         tools = AndroidToolRouter(this)
+        // Gemini Web is the only Android AI entry point. Remove obsolete
+        // native model/provider credentials so they cannot be reused accidentally.
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .remove(KEY_ENDPOINT)
+            .remove(KEY_MODEL)
+            .remove(KEY_AI_API_KEY)
+            .remove(KEY_APIHOST)
+            .remove(KEY_MODEL1)
+            .remove(KEY_MODEL2)
+            .remove(KEY_MODEL3)
+            .remove(KEY_KEY1)
+            .remove(KEY_KEY2)
+            .remove(KEY_KEY3)
+            .remove(KEY_ACTIVE_MODEL)
+            .apply()
         MethodChannel(engine.dartExecutor.binaryMessenger, VOICE_CHANNEL).setMethodCallHandler { call: MethodCall, result: MethodChannel.Result ->
             when (call.method) {
                 "initialize" -> result.success(initializeVoice())
