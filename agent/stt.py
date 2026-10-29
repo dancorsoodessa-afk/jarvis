@@ -22,7 +22,7 @@ def _token() -> str:
 
 
 def available_engines() -> list[str]:
-    return ["gemini"] if _token() else []
+    return []
 
 
 def current_engine() -> str:
@@ -31,7 +31,8 @@ def current_engine() -> str:
 
 
 def health_check(timeout: float = 10.0) -> str:
-    """Verify Gemini credentials, model availability, and network reachability without transcribing audio."""
+    """API STT is disabled in Gemini Web-only mode."""
+    raise RuntimeError("Распознавание через Gemini API отключено. Используйте микрофон в Gemini Web.")
     token = _token()
     if not token:
         raise RuntimeError("Не задан GEMINI_API_KEY для облачного распознавания речи.")
