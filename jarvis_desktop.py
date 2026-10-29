@@ -592,7 +592,7 @@ class JarvisDesktop(tk.Tk):
                 agent = build_agent()
                 self.events.put(("ready", agent, generation))
                 if generation == self._agent_generation:
-                    threading.Thread(target=self._warmup_stt, daemon=True).start()
+                    # Validate/select a model first; STT must not start with a stale model ID.
                     threading.Thread(target=self._check_provider_health, args=(agent, generation), daemon=True).start()
             except Exception as exc:
                 self.events.put(("agent_error", str(exc), generation))
@@ -609,6 +609,22 @@ class JarvisDesktop(tk.Tk):
         try:
             provider = getattr(agent, "provider", None)
             checks = provider.health_checks() if provider and hasattr(provider, "health_checks") else {}
+            model_ready = any(
+                "gemini" in str(name).lower() and value == "ONLINE"
+                for name, value in checks.items()
+            )
+            if model_ready:
+                selected_model = (os.environ.get("GEMINI_MODEL") or os.environ.get("JARVIS_CHAT_MODEL") or "").strip()
+                if selected_model:
+                    os.environ["GEMINI_STT_MODEL"] = selected_model
+                    os.environ["JARVIS_STT_MODEL"] = selected_model
+                try:
+                    stt.warmup()
+                    self.events.put(("stt_ready", None))
+                except Exception as stt_exc:
+                    self.events.put(("stt_error", str(stt_exc)))
+            else:
+                self.events.put(("stt_error", "Модель Gemini не подтверждена списком доступных моделей. Голосовой ввод отключён; текстовые команды продолжают работать."))
             if not self.settings.get("tts_enabled", True):
                 checks["TTS"] = "OFF"
             else:
