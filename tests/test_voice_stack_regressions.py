@@ -28,7 +28,7 @@ class TestCloudVoiceRegressions(unittest.TestCase):
                 self.assertEqual(tts.current_engine(), "off")
 
     def test_tts_api_generation_is_disabled(self):
-        with self.assertRaisesRegex(RuntimeError, "озвучка через Gemini API отключена"):
+        with self.assertRaisesRegex(RuntimeError, "Озвучка через Gemini API отключена"):
             tts._generate_audio("Привет, Джарвис")
 
     def test_raw_gemini_pcm_is_wrapped_in_wav(self):
