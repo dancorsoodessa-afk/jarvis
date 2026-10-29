@@ -15,7 +15,7 @@ class TestSTT:
         self.old_quota_exceeded = stt.quota_exceeded()
         stt._set_quota_exceeded(False)
         self.old = {name: os.environ.get(name) for name in (
-            "JARVIS_STT", "GEMINI_API_KEY", "JARVIS_CHAT_KEY", "JARVIS_STT_MODEL", "GEMINI_STT_MODEL", "GROQ_API_KEY", "JARVIS_STT_FALLBACK_MODEL"
+            "JARVIS_STT", "GEMINI_API_KEY", "JARVIS_CHAT_KEY", "GEMINI_MODEL", "JARVIS_STT_MODEL", "GEMINI_STT_MODEL", "GROQ_API_KEY", "JARVIS_STT_FALLBACK_MODEL"
         )}
         for name in ("JARVIS_STT", "GEMINI_API_KEY", "JARVIS_CHAT_KEY", "JARVIS_STT_MODEL", "GEMINI_STT_MODEL", "GROQ_API_KEY", "JARVIS_STT_FALLBACK_MODEL"):
             os.environ.pop(name, None)
