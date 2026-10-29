@@ -265,3 +265,27 @@ def test_gemini_stream_tool_call_keeps_extra_content_signature():
         body = provider._request_stream({"model": provider.model, "messages": []})
     tool_call = body["choices"][0]["message"]["tool_calls"][0]
     assert tool_call["extra_content"]["google"]["thought_signature"] == signature
+
+
+def test_provider_health_check_selects_a_model_exposed_to_this_key():
+    import json
+    from unittest.mock import patch
+    from agent.providers.openai_chat import OpenAIChatProvider
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self):
+            return json.dumps({"data": [
+                {"id": "gemini-3.5-flash-lite"},
+                {"id": "gemini-embedding-001"},
+            ]}).encode("utf-8")
+
+    provider = OpenAIChatProvider(
+        url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        api_key="test-key",
+        model="gemini-3.8-flash",
+    )
+    with patch("urllib.request.urlopen", return_value=Response()):
+        assert provider.health_check() == "ONLINE"
+    assert provider.model == "gemini-3.5-flash-lite"
