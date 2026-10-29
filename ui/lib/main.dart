@@ -717,6 +717,21 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
 
   Future<void> _openGeminiWeb([String? requestPrompt]) async {
     final prompt = (requestPrompt ?? _input.text).trim();
+    if (!_android) {
+      try {
+        if (prompt.isNotEmpty) await Clipboard.setData(ClipboardData(text: prompt));
+        final launched = await launchUrl(
+          Uri.parse('https://gemini.google.com/app'),
+          mode: LaunchMode.externalApplication,
+        );
+        if (mounted) setState(() => _status = launched
+            ? 'Gemini Web открыт; запрос скопирован.'
+            : 'Не удалось открыть Gemini Web.');
+      } catch (error) {
+        if (mounted) setState(() => _status = 'Gemini Web: $error');
+      }
+      return;
+    }
     if (prompt.isNotEmpty) {
       await Clipboard.setData(ClipboardData(text: prompt));
     }
@@ -877,12 +892,31 @@ class _JarvisHomePageState extends State<JarvisHomePage> {
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: 'Gemini внутри JARVIS',
-            icon: const Icon(Icons.hub_rounded),
-            onPressed: () => _openGeminiWeb(),
-          ),
+          if (_android)
+            IconButton(
+              tooltip: 'Gemini внутри JARVIS',
+              icon: const Icon(Icons.hub_rounded),
+              onPressed: () => _openGeminiWeb(),
+            )
+          else
+            PopupMenuButton<String>(
+              tooltip: 'Gemini Web',
+              icon: const Icon(Icons.open_in_browser_rounded),
+              onSelected: (value) {
+                if (value == 'open') {
+                  _openGeminiWeb();
+                } else if (value == 'paste') {
+                  _pasteGeminiWebAnswer();
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'open', child: Text('Открыть Gemini Web и скопировать запрос')),
+                PopupMenuItem(value: 'paste', child: Text('Вставить ответ Gemini Web')),
+              ],
+            ),
           IconButton(tooltip: 'Инструменты', onPressed: _showTools, icon: const Icon(Icons.folder_open_rounded)),
+          if (!_android)
+            IconButton(tooltip: 'Настройки AI', onPressed: _settings, icon: const Icon(Icons.tune_rounded)),
         ],
       ),
       body: SafeArea(
