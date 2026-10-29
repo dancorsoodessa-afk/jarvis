@@ -84,8 +84,8 @@ def _generate_audio(text: str) -> bytes:
     if not key:
         raise RuntimeError("Облачная озвучка требует GEMINI_API_KEY. Укажите ключ Gemini в Центре управления.")
     model = (os.environ.get("GEMINI_TTS_MODEL") or os.environ.get("JARVIS_TTS_MODEL") or DEFAULT_TTS_MODEL).strip()
-    voice = (os.environ.get("GEMINI_TTS_VOICE") or os.environ.get("JARVIS_TTS_VOICE") or DEFAULT_TTS_VOICE).strip()
-    language = (os.environ.get("GEMINI_TTS_LANGUAGE") or "ru-RU").strip() or DEFAULT_TTS_LANGUAGE
+    voice = (os.environ.get("GEMINI_TTS_VOICE") or os.environ.get("TTS_VOICE") or os.environ.get("JARVIS_TTS_VOICE") or DEFAULT_TTS_VOICE).strip()
+    language = (os.environ.get("GEMINI_TTS_LANGUAGE") or os.environ.get("TTS_LANGUAGE") or "ru-RU").strip() or DEFAULT_TTS_LANGUAGE
     if not language:
         raise RuntimeError("Язык Gemini TTS не может быть пустым; используйте ru-RU.")
     # Normalize legacy Windows voice names to supported Gemini speaker profiles.
