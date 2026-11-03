@@ -54,20 +54,29 @@ class PublicMarketClient:
             raise ValueError("Некорректная торговая пара")
         return value
 
-    def fetch(self, symbol: str = "BTCUSDT", timeframe: str = "1h", limit: int = 200) -> MarketSnapshot:
+    def fetch_all(self, symbol: str = "BTCUSDT", timeframe: str = "1h", limit: int = 200) -> tuple[MarketSnapshot, ...]:
         pair = self._symbol(symbol)
         interval = self.TIMEFRAMES.get(timeframe)
         if not interval:
             raise ValueError("Неподдерживаемый таймфрейм")
+        snapshots = []
         errors = []
-        for exchange in ("Binance", "Bybit"):
+        for exchange in ("Binance", "Bybit", "OKX"):
             try:
                 if exchange == "Binance":
-                    return self._binance(pair, interval, limit)
-                return self._bybit(pair, interval, limit)
+                    snapshots.append(self._binance(pair, interval, limit))
+                elif exchange == "Bybit":
+                    snapshots.append(self._bybit(pair, interval, limit))
+                else:
+                    snapshots.append(self._okx(pair, interval, limit))
             except (MarketDataError, ValueError, KeyError, TypeError) as exc:
                 errors.append(f"{exchange}: {exc}")
-        raise MarketDataError(" | ".join(errors))
+        if not snapshots:
+            raise MarketDataError(" | ".join(errors) or "Нет доступных источников")
+        return tuple(snapshots)
+
+    def fetch(self, symbol: str = "BTCUSDT", timeframe: str = "1h", limit: int = 200) -> MarketSnapshot:
+        return self.fetch_all(symbol, timeframe, limit)[0]
 
     def _binance(self, pair: str, interval: str, limit: int) -> MarketSnapshot:
         root = "https://api.binance.com"
@@ -113,4 +122,35 @@ class PublicMarketClient:
         return MarketSnapshot(
             pair, "Bybit", price, float(ticker.get("price24hPcnt", 0.0)) * 100.0,
             float(ticker.get("turnover24h", 0.0)), candles, time.time(), "Bybit V5 Spot REST",
+        )
+
+
+    def _okx(self, pair: str, interval: str, limit: int) -> MarketSnapshot:
+        root = "https://www.okx.com"
+        base = pair[:-4]
+        inst_id = f"{base}-USDT"
+        ticker_body = self._get_json(
+            f"{root}/api/v5/market/ticker?{urllib.parse.urlencode({'instId': inst_id})}"
+        )
+        items = ticker_body.get("data", [])
+        if not items:
+            raise MarketDataError("Тикер не найден")
+        ticker = items[0]
+        bar_map = {"15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D"}
+        candle_body = self._get_json(
+            f"{root}/api/v5/market/candles?{urllib.parse.urlencode({'instId': inst_id, 'bar': bar_map[interval], 'limit': min(max(int(limit), 30), 300)})}"
+        )
+        rows = candle_body.get("data", [])
+        candles = tuple(
+            (float(row[0]), float(row[1]), float(row[2]), float(row[3]), float(row[4]), float(row[5]))
+            for row in reversed(rows)
+        )
+        price = float(ticker["last"])
+        open_24h = float(ticker.get("open24h") or price)
+        change = ((price / open_24h) - 1.0) * 100.0 if open_24h else 0.0
+        if not candles or price <= 0:
+            raise MarketDataError("Биржа вернула пустые или некорректные данные")
+        return MarketSnapshot(
+            pair, "OKX", price, change, float(ticker.get("volCcy24h") or 0.0),
+            candles, time.time(), "OKX V5 Spot REST",
         )
