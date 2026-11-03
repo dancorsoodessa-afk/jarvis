@@ -39,6 +39,8 @@ class CryptoWindow(tk.Toplevel):
         self.capital = tk.DoubleVar(value=1000.0)
         self.risk_pct = tk.DoubleVar(value=1.0)
         self._busy = False
+        self._auto_refresh = False
+        self._refresh_job = None
         self._snapshot = None
         self._report = None
         self._plan = None
@@ -78,7 +80,8 @@ class CryptoWindow(tk.Toplevel):
                  font=("Consolas", 8, "bold")).pack(side="left", padx=(18, 6))
         for timeframe in self.TIMEFRAMES:
             self._button(controls, timeframe, lambda t=timeframe: self.select_timeframe(t)).pack(side="left", padx=3)
-        self._button(controls, "ОБНОВИТЬ РЫНОК", self.refresh, True).pack(side="right", padx=10)
+        self._button(controls, "АВТООБНОВЛЕНИЕ: ВЫКЛ", self.toggle_auto_refresh).pack(side="right", padx=4)
+        self._button(controls, "ОБНОВИТЬ РЫНОК", self.refresh, True).pack(side="right", padx=4)
 
         body = tk.Frame(self, bg=BG)
         body.pack(fill="both", expand=True, padx=18, pady=10)
@@ -99,9 +102,12 @@ class CryptoWindow(tk.Toplevel):
         self.change_label = tk.Label(left, text="Ожидание данных", bg=PANEL, fg=MUTED,
                                      font=("Consolas", 10))
         self.change_label.pack(anchor="w", padx=16, pady=(2, 12))
-        self.source_label = tk.Label(left, text="Источник: —", bg=PANEL, fg=MUTED,
+        self.source_label = tk.Label(left, text="Источники: —", bg=PANEL, fg=MUTED,
                                      font=("Consolas", 8))
         self.source_label.pack(anchor="w", padx=16)
+        self.exchange_label = tk.Label(left, text="Сравнение бирж: —", bg=PANEL, fg=MUTED,
+                                       font=("Consolas", 8), justify="left", anchor="w")
+        self.exchange_label.pack(anchor="w", padx=16, pady=(5, 0))
         self.analysis_label = tk.Label(left, text="Нажмите «ОБНОВИТЬ РЫНОК» для анализа.",
                                        bg=PANEL, fg=TEXT, justify="left", anchor="nw",
                                        font=("Segoe UI", 10), wraplength=550)
@@ -155,22 +161,25 @@ class CryptoWindow(tk.Toplevel):
         self.analysis_label.config(text="Запрашиваю публичные рыночные данные Binance / Bybit…")
         def worker():
             try:
-                snapshot = self.client.fetch(self.symbol, self.timeframe)
+                snapshots = self.client.fetch_all(self.symbol, self.timeframe)
+                snapshot = snapshots[0]
                 report = analyze(snapshot)
-                self.after(0, lambda: self._show_result(snapshot, report))
+                self.after(0, lambda: self._show_result(snapshot, report, snapshots))
             except Exception as exc:
                 error = str(exc)
                 self.after(0, lambda message=error: self._show_error(message))
         threading.Thread(target=worker, daemon=True).start()
 
-    def _show_result(self, snapshot, report):
+    def _show_result(self, snapshot, report, snapshots):
         self._busy = False
         self._snapshot, self._report = snapshot, report
         self.status.config(text=f"ONLINE · {snapshot.exchange}", fg=GREEN)
         self.price_label.config(text=f"{snapshot.price:,.6f} USDT")
         color = GREEN if snapshot.change_24h_pct >= 0 else RED
         self.change_label.config(text=f"24ч: {snapshot.change_24h_pct:+.2f}%   |   Объём: {snapshot.quote_volume_24h:,.0f} USDT", fg=color)
-        self.source_label.config(text=f"Источник: {snapshot.source} · обновлено {__import__('time').strftime('%H:%M:%S')}")
+        self.source_label.config(text=f"Источники: {', '.join(item.exchange for item in snapshots)} · {__import__('time').strftime('%H:%M:%S')}")
+        prices = "   |   ".join(f"{item.exchange}: {item.price:,.6f}" for item in snapshots)
+        self.exchange_label.config(text="Сравнение бирж: " + prices)
         self.signal_label.config(text=report.direction, fg=GREEN if report.direction == "LONG" else RED if report.direction == "SHORT" else AMBER)
         lines = [
             f"EMA 9:  {report.ema9:,.6f}",
@@ -225,6 +234,28 @@ class CryptoWindow(tk.Toplevel):
         except Exception as exc:
             self._plan = None
             self.plan_label.config(text="Проверьте капитал и риск.\n" + str(exc))
+
+    def toggle_auto_refresh(self):
+        self._auto_refresh = not self._auto_refresh
+        for child in self.winfo_children():
+            if isinstance(child, tk.Frame):
+                for nested in child.winfo_children():
+                    if isinstance(nested, tk.Frame):
+                        for widget in nested.winfo_children():
+                            if isinstance(widget, tk.Button) and "АВТООБНОВЛЕНИЕ" in widget.cget("text"):
+                                widget.config(text="АВТООБНОВЛЕНИЕ: ВКЛ" if self._auto_refresh else "АВТООБНОВЛЕНИЕ: ВЫКЛ")
+        if self._auto_refresh:
+            self._schedule_auto_refresh()
+        elif self._refresh_job is not None:
+            self.after_cancel(self._refresh_job)
+            self._refresh_job = None
+
+    def _schedule_auto_refresh(self):
+        if not self._auto_refresh or not self.winfo_exists():
+            return
+        if not self._busy:
+            self.refresh()
+        self._refresh_job = self.after(20000, self._schedule_auto_refresh)
 
     def save_plan(self):
         if not self._plan:
