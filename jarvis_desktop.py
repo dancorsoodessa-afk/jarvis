@@ -1055,7 +1055,7 @@ class JarvisDesktop(tk.Tk):
         self.tool_status_label = tk.Label(header, text="", bg=BG, fg=GREEN,
                                           font=("Segoe UI", 10, "bold"))
         self.tool_status_label.pack(side="right")
-        tk.Label(win, text="Нажми на модуль, чтобы открыть его. Переключатель «АКТИВЕН» включает или отключает функцию. JARVIS сам выбирает нужный инструмент по вашей задаче — команды вводить не нужно.",
+        tk.Label(win, text="Показаны основные инструменты. Специализированные функции остаются доступны JARVIS автоматически и не загромождают главное меню. Нажми на карточку или переключатель — команды вводить не нужно.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9), wraplength=1040, justify="left").pack(anchor="w", padx=22, pady=(0, 10))
 
         outer = tk.Frame(win, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
@@ -1076,8 +1076,17 @@ class JarvisDesktop(tk.Tk):
 
         disabled = set(self.settings.get("disabled_tools", []))
         switches = {}
-        catalog = {name: (title, desc, kind) for name, title, desc, kind in TOOLS}
-        for index, (name, title, desc, kind) in enumerate(TOOLS, start=1):
+        # Keep the visible tools window focused on frequently used essentials.
+        # Specialized/advanced tools remain registered for the agent but do not
+        # clutter the main button grid.
+        core_tool_names = {
+            "status", "launch", "ps", "inspect_file", "search", "open_folder",
+            "screenshot", "volume", "change_volume", "web_search", "weather",
+            "osint", "remember", "recall", "remind", "reminders", "calc", "now",
+            "run_self_tests", "project_check", "git_status",
+        }
+        display_tools = [item for item in TOOLS if item[0] in core_tool_names]
+        for index, (name, title, desc, kind) in enumerate(display_tools, start=1):
             enabled_var = tk.BooleanVar(value=name not in disabled)
             switches[name] = enabled_var
             row = (index - 1) // 2
@@ -1107,8 +1116,13 @@ class JarvisDesktop(tk.Tk):
             state_label.bind("<Button-1>", lambda e, v=enabled_var, l=state_label: (v.set(not v.get()), l.config(text=("● АКТИВЕН" if v.get() else "● ВЫКЛЮЧЕН"), fg=GREEN if v.get() else RED)))
 
         def save_modules():
-            new_disabled = [name for name, var in switches.items() if not var.get()]
-            self.settings["disabled_tools"] = new_disabled
+            new_disabled = set(self.settings.get("disabled_tools", []))
+            for name, var in switches.items():
+                if var.get():
+                    new_disabled.discard(name)
+                else:
+                    new_disabled.add(name)
+            self.settings["disabled_tools"] = sorted(new_disabled)
             os.environ["JARVIS_DISABLED_TOOLS"] = json.dumps(new_disabled, ensure_ascii=False)
             self._save_settings()
             win.destroy()
