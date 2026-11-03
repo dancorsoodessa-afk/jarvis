@@ -45,6 +45,7 @@ class CryptoWindow(tk.Toplevel):
         self._report = None
         self._plan = None
         self._build()
+        self.protocol("WM_DELETE_WINDOW", self._close_window)
         self.refresh()
 
     def _button(self, parent, label, command, accent=False):
@@ -80,7 +81,8 @@ class CryptoWindow(tk.Toplevel):
                  font=("Consolas", 8, "bold")).pack(side="left", padx=(18, 6))
         for timeframe in self.TIMEFRAMES:
             self._button(controls, timeframe, lambda t=timeframe: self.select_timeframe(t)).pack(side="left", padx=3)
-        self._button(controls, "АВТООБНОВЛЕНИЕ: ВЫКЛ", self.toggle_auto_refresh).pack(side="right", padx=4)
+        self.auto_button = self._button(controls, "АВТООБНОВЛЕНИЕ: ВЫКЛ", self.toggle_auto_refresh)
+        self.auto_button.pack(side="right", padx=4)
         self._button(controls, "ОБНОВИТЬ РЫНОК", self.refresh, True).pack(side="right", padx=4)
 
         body = tk.Frame(self, bg=BG)
@@ -237,18 +239,21 @@ class CryptoWindow(tk.Toplevel):
 
     def toggle_auto_refresh(self):
         self._auto_refresh = not self._auto_refresh
-        for child in self.winfo_children():
-            if isinstance(child, tk.Frame):
-                for nested in child.winfo_children():
-                    if isinstance(nested, tk.Frame):
-                        for widget in nested.winfo_children():
-                            if isinstance(widget, tk.Button) and "АВТООБНОВЛЕНИЕ" in widget.cget("text"):
-                                widget.config(text="АВТООБНОВЛЕНИЕ: ВКЛ" if self._auto_refresh else "АВТООБНОВЛЕНИЕ: ВЫКЛ")
+        self.auto_button.config(text="АВТООБНОВЛЕНИЕ: ВКЛ" if self._auto_refresh else "АВТООБНОВЛЕНИЕ: ВЫКЛ")
         if self._auto_refresh:
             self._schedule_auto_refresh()
         elif self._refresh_job is not None:
             self.after_cancel(self._refresh_job)
             self._refresh_job = None
+
+    def _close_window(self):
+        self._auto_refresh = False
+        if self._refresh_job is not None:
+            try:
+                self.after_cancel(self._refresh_job)
+            except tk.TclError:
+                pass
+        self.destroy()
 
     def _schedule_auto_refresh(self):
         if not self._auto_refresh or not self.winfo_exists():
