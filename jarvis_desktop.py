@@ -359,6 +359,7 @@ class JarvisDesktop(tk.Tk):
             return b
 
         self.tools_button = nav("⌁  МОДУЛИ И ИНСТРУМЕНТЫ", self.show_tools, True)
+        nav("₿  CRYPTO INTELLIGENCE", self.show_crypto, True)
         nav("⚙  НАСТРОЙКИ И AI-ПРОВАЙДЕРЫ", self.show_settings)
         nav("◉  ЗАПУСК ПРИЛОЖЕНИЙ", lambda: self._open_module_details("launch","Все установленные приложения","Полный список приложений Windows",True))
         nav("▣  ПРОЦЕССЫ ПК", lambda: self._open_module_details("ps","Все процессы Windows","Список активных процессов",True))
@@ -1120,6 +1121,14 @@ class JarvisDesktop(tk.Tk):
         ttk.Button(bottom, text="СОХРАНИТЬ И ПЕРЕЗАПУСТИТЬ ЯДРО", style="Accent.TButton",
                    command=save_modules).pack(side="right")
         self.tool_status_label.config(text=f"Активно сейчас: {len(self.tool_names)} / {len(TOOLS)}")
+
+    def show_crypto(self):
+        """Open the button-driven crypto dashboard without using the chat command field."""
+        try:
+            from agent.crypto.window import CryptoWindow
+            CryptoWindow(self)
+        except Exception as exc:
+            messagebox.showerror("JARVIS CRYPTO", "Не удалось открыть криптомодуль: " + str(exc), parent=self)
 
     def show_settings(self):
         win = tk.Toplevel(self)
