@@ -44,3 +44,17 @@ def test_risk_rejects_more_than_two_percent():
         assert "2%" in str(exc)
     else:
         raise AssertionError("Risk above 2% must be rejected")
+
+
+def test_fetch_all_returns_each_available_exchange(monkeypatch):
+    client = PublicMarketClient()
+    snapshot = _snapshot([100.0] * 80)
+    monkeypatch.setattr(client, "_binance", lambda *args: snapshot)
+    monkeypatch.setattr(client, "_bybit", lambda *args: MarketSnapshot(
+        "BTCUSDT", "Bybit", 100.1, 0.1, 200000.0, snapshot.candles, 1.0, "mock"
+    ))
+    monkeypatch.setattr(client, "_okx", lambda *args: MarketSnapshot(
+        "BTCUSDT", "OKX", 99.9, -0.1, 300000.0, snapshot.candles, 1.0, "mock"
+    ))
+    result = client.fetch_all("BTCUSDT", "1h")
+    assert [item.exchange for item in result] == ["Binance", "Bybit", "OKX"]
