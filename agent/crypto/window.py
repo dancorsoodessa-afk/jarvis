@@ -159,7 +159,8 @@ class CryptoWindow(tk.Toplevel):
                 report = analyze(snapshot)
                 self.after(0, lambda: self._show_result(snapshot, report))
             except Exception as exc:
-                self.after(0, lambda: self._show_error(str(exc)))
+                error = str(exc)
+                self.after(0, lambda message=error: self._show_error(message))
         threading.Thread(target=worker, daemon=True).start()
 
     def _show_result(self, snapshot, report):
@@ -186,13 +187,13 @@ class CryptoWindow(tk.Toplevel):
             *[f"ВНИМАНИЕ: {warning}" for warning in report.warnings],
             f"Оценка согласованности: {report.confidence}/85",
         ]
-        self.analysis_label.config(text="\\n".join(lines))
+        self.analysis_label.config(text="\n".join(lines))
         self.recalculate()
 
     def _show_error(self, error):
         self._busy = False
         self.status.config(text="НЕТ ДАННЫХ", fg=RED)
-        self.analysis_label.config(text="Не удалось получить свежие данные. Сигнал не формируется.\\n\\n" + error)
+        self.analysis_label.config(text="Не удалось получить свежие данные. Сигнал не формируется.\n\n" + error)
         self.signal_label.config(text="NO TRADE", fg=AMBER)
         self.plan_label.config(text="План недоступен: источник данных не подтвердил актуальную цену.")
 
@@ -207,7 +208,7 @@ class CryptoWindow(tk.Toplevel):
                 self.capital.get(), self.risk_pct.get(), 2.0, 1.0,
             )
             self._plan = plan
-            self.plan_label.config(text="\\n".join([
+            self.plan_label.config(text="\n".join([
                 f"Направление: {plan.direction}",
                 f"Вход: {plan.entry:,.6f}",
                 f"Stop Loss: {plan.stop_loss:,.6f}",
@@ -223,7 +224,7 @@ class CryptoWindow(tk.Toplevel):
             ]))
         except Exception as exc:
             self._plan = None
-            self.plan_label.config(text="Проверьте капитал и риск.\\n" + str(exc))
+            self.plan_label.config(text="Проверьте капитал и риск.\n" + str(exc))
 
     def save_plan(self):
         if not self._plan:
