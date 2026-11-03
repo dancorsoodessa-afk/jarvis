@@ -1,8 +1,12 @@
 """Compact, button-first crypto dashboard for the JARVIS desktop app."""
 from __future__ import annotations
 
+import json
+import os
 import threading
+import time
 import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox, ttk
 
 from .analysis import analyze
@@ -203,6 +207,9 @@ class CryptoWindow(tk.Toplevel):
 
     def _show_error(self, error):
         self._busy = False
+        self._snapshot = None
+        self._report = None
+        self._plan = None
         self.status.config(text="НЕТ ДАННЫХ", fg=RED)
         self.analysis_label.config(text="Не удалось получить свежие данные. Сигнал не формируется.\n\n" + error)
         self.signal_label.config(text="NO TRADE", fg=AMBER)
@@ -266,8 +273,35 @@ class CryptoWindow(tk.Toplevel):
         if not self._plan:
             messagebox.showinfo("JARVIS CRYPTO", "Нет готового торгового плана для сохранения.", parent=self)
             return
+        directory = Path(os.environ.get("APPDATA", str(Path.home()))) / "JARVIS" / "crypto"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / "trade_plans.json"
+        record = {
+            "saved_at": time.time(),
+            "symbol": self.symbol,
+            "timeframe": self.timeframe,
+            "exchange": self._snapshot.exchange,
+            "direction": self._plan.direction,
+            "entry": self._plan.entry,
+            "stop_loss": self._plan.stop_loss,
+            "take_profit_1": self._plan.take_profit_1,
+            "take_profit_2": self._plan.take_profit_2,
+            "quantity": self._plan.quantity,
+            "position_value": self._plan.position_value,
+            "risk_amount": self._plan.risk_amount,
+            "risk_percent": self.risk_pct.get(),
+        }
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+            if not isinstance(existing, list):
+                existing = []
+            existing.append(record)
+            path.write_text(json.dumps(existing[-500:], ensure_ascii=False, indent=2), encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("JARVIS CRYPTO", "Не удалось сохранить план: " + str(exc), parent=self)
+            return
         messagebox.showinfo(
-            "Торговый план сохранён",
-            "План показан для ручной проверки. Реальный ордер не отправлялся.",
+            "План сохранён",
+            f"План добавлен в журнал: {path}\nРеальный ордер не отправлялся.",
             parent=self,
         )
