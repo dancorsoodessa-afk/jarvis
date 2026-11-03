@@ -22,6 +22,7 @@ def test_analysis_returns_hold_for_flat_market():
     report = analyze(_snapshot([100.0] * 80))
     assert report.direction == "HOLD"
     assert report.confidence == 0
+    assert report.rsi14 == 50.0
 
 
 def test_risk_plan_long_has_correct_order_and_bounded_risk():
