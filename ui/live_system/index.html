@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JARVIS — Live System Map</title>
+<script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
+<style>
+:root{color-scheme:dark;--bg:#030811;--panel:rgba(7,18,31,.9);--line:#183448;--cyan:#48eaff;--muted:#829aaa;--text:#e6f8ff}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:12px "Segoe UI",Arial,sans-serif}
+#scene{position:fixed;inset:0}canvas{display:block;width:100%;height:100%}
+header{position:fixed;top:18px;left:22px;right:22px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;pointer-events:none}
+.brand{font-size:10px;letter-spacing:.28em;color:var(--cyan);font-weight:700}.heading{font-size:clamp(20px,2.6vw,34px);font-weight:300;letter-spacing:.12em;margin-top:6px}.sub{font-size:9px;color:var(--muted);letter-spacing:.16em;margin-top:6px}
+.pill,.panel{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);border-radius:5px}.pill{padding:10px 13px;font:10px monospace;letter-spacing:.1em}.pill strong{color:var(--cyan)}
+.legend{position:fixed;left:20px;bottom:18px;padding:12px 14px;display:flex;gap:13px;flex-wrap:wrap;max-width:min(650px,70vw)}.legend span{font:9px monospace;color:#b6c9d5}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.detail{position:fixed;right:20px;top:105px;width:min(280px,34vw);padding:14px;display:none}.detail.open{display:block}.detail h3{margin:0 0 12px;font-size:14px}.kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid #142a3b;color:var(--muted);font:10px monospace}.kv b{color:var(--text);text-align:right;overflow-wrap:anywhere}
+.hint{position:fixed;right:22px;bottom:20px;color:#668094;font:9px monospace;text-align:right;line-height:1.8}
+#notice{position:fixed;top:80px;left:22px;color:#f5c76c;font:9px monospace;letter-spacing:.12em}
+button{pointer-events:auto;background:#0b2533;border:1px solid #1a6072;color:#c9f8ff;padding:7px 10px;border-radius:3px;cursor:pointer;font:9px monospace}
+@media(max-width:700px){header{left:12px;right:12px;top:12px}.detail{right:10px;top:auto;bottom:85px;width:min(260px,65vw)}.legend{left:10px;bottom:10px;max-width:65vw;gap:8px}.hint{display:none}}
+</style></head>
+<body>
+<div id="scene"></div>
+<header><div><div class="brand">JARVIS / SYSTEM INTELLIGENCE</div><div class="heading">LIVE SYSTEM MAP</div><div class="sub">3D GRAPH · MODULES · PROCESSES · WORKFLOWS</div></div><div class="pill">DATA LINK: <strong id="link">DEMO MODE</strong><br><span id="count">0 OBJECTS</span></div></header>
+<div id="notice">DEMO DATA — РЕАЛЬНАЯ ТЕЛЕМЕТРИЯ ЕЩЁ НЕ ПОДКЛЮЧЕНА</div>
+<aside id="detail" class="detail panel"><h3 id="d-title">Объект</h3><div class="kv"><span>ТИП</span><b id="d-type">—</b></div><div class="kv"><span>СОСТОЯНИЕ</span><b id="d-status">—</b></div><div class="kv"><span>НАГРУЗКА</span><b id="d-load">—</b></div><div class="kv"><span>ИСТОЧНИК</span><b id="d-source">—</b></div><div class="kv"><span>ID</span><b id="d-id">—</b></div><p style="color:#829aaa;font:10px/1.5 monospace">Нажмите на другой узел, чтобы посмотреть его свойства.</p><button id="close">ЗАКРЫТЬ</button></aside>
+<div class="legend panel">
+<span><i class="dot" style="background:#38d9ef"></i>АКТИВНОСТЬ</span><span><i class="dot" style="background:#46dc91"></i>НОРМА</span><span><i class="dot" style="background:#f0ca55"></i>СРЕДНЯЯ</span><span><i class="dot" style="background:#ff923f"></i>ВЫСОКАЯ</span><span><i class="dot" style="background:#ff536b"></i>ОШИБКА</span><span><i class="dot" style="background:#71869a"></i>НЕАКТИВНО</span>
+</div><div class="hint">DRAG — ВРАЩЕНИЕ<br>SCROLL — ПРИБЛИЖЕНИЕ<br>CLICK — ДЕТАЛИ ОБЪЕКТА</div>
+<script type="module">
+import * as THREE from 'three';
+const mount=document.querySelector('#scene');
+const colors={active:0x38d9ef,idle:0x46dc91,warning:0xf0ca55,busy:0xff923f,error:0xff536b,offline:0x71869a};
+const demo=[
+{id:'jarvis',type:'root',label:'JARVIS CORE',status:'active',load:.32,source:'demo'},
+{id:'agent-router',type:'module',label:'AGENT ROUTER',status:'busy',load:.78,source:'demo'},
+{id:'voice',type:'module',label:'VOICE PIPELINE',status:'active',load:.48,source:'demo'},
+{id:'memory',type:'module',label:'MEMORY',status:'idle',load:.12,source:'demo'},
+{id:'web',type:'agent',label:'WEB AGENT',status:'active',load:.63,source:'demo'},
+{id:'crypto',type:'module',label:'CRYPTO ANALYST',status:'warning',load:.84,source:'demo'},
+{id:'osint',type:'module',label:'OSINT',status:'idle',load:.08,source:'demo'},
+{id:'task-01',type:'task',label:'TASK 01',status:'busy',load:.71,source:'demo'},
+{id:'process-01',type:'process',label:'PROCESS 01',status:'active',load:.28,source:'demo'},
+{id:'folder-docs',type:'folder',label:'DOCS',status:'idle',load:.05,source:'demo'},
+{id:'deal-01',type:'deal',label:'DEAL 01',status:'warning',load:.56,source:'demo'}
+];
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x030811);scene.fog=new THREE.FogExp2(0x030811,.035);
+const camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.1,100);camera.position.set(0,0,10);
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'low-power'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);mount.appendChild(renderer.domElement);
+scene.add(new THREE.AmbientLight(0x8abbd0,1.5));const light=new THREE.PointLight(0x36dff5,35,30);light.position.set(2,3,5);scene.add(light);
+const rootGroup=new THREE.Group();scene.add(rootGroup);
+const nodes=[];const positions=[];
+const rootGeo=new THREE.IcosahedronGeometry(.8,2);const rootMat=new THREE.MeshStandardMaterial({color:0x0c6478,emissive:0x06313c,metalness:.65,roughness:.28,wireframe:true});
+const core=new THREE.Mesh(rootGeo,rootMat);rootGroup.add(core);
+const ring=new THREE.Mesh(new THREE.TorusGeometry(1.1,.012,8,120),new THREE.MeshBasicMaterial({color:0x31dff5,transparent:true,opacity:.65}));rootGroup.add(ring);
+const ring2=new THREE.Mesh(new THREE.TorusGeometry(1.35,.008,8,120),new THREE.MeshBasicMaterial({color:0x1c7189,transparent:true,opacity:.5}));ring2.rotation.x=1.1;rootGroup.add(ring2);
+const items=demo.slice(1);items.forEach((item,i)=>{const a=i/items.length*Math.PI*2;const r=3.15+(i%2)*.55;const p=new THREE.Vector3(Math.cos(a)*r,Math.sin(a)*r*.66,(i%3-1)*.5);positions.push(p);const color=colors[item.status]??colors.offline;const geo=new THREE.SphereGeometry(.13+(item.load??0)*.12,20,16);const mat=new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.65,metalness:.2,roughness:.35});const mesh=new THREE.Mesh(geo,mat);mesh.position.copy(p);mesh.userData.item=item;rootGroup.add(mesh);nodes.push(mesh);
+const lineGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),p]);const line=new THREE.Line(lineGeo,new THREE.LineBasicMaterial({color,transparent:true,opacity:.32}));rootGroup.add(line);});
+const starsGeo=new THREE.BufferGeometry();const starPoints=[];for(let i=0;i<500;i++)starPoints.push((Math.random()-.5)*24,(Math.random()-.5)*16,(Math.random()-.5)*10);starsGeo.setAttribute('position',new THREE.Float32BufferAttribute(starPoints,3));scene.add(new THREE.Points(starsGeo,new THREE.PointsMaterial({color:0x2c8299,size:.018,transparent:true,opacity:.55})));
+document.querySelector('#count').textContent=(items.length+1)+' OBJECTS · '+items.length+' LINKS';
+const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();let down=null,dragging=false,selected=null;
+function show(item){selected=item;document.querySelector('#detail').classList.add('open');document.querySelector('#d-title').textContent=item.label;document.querySelector('#d-type').textContent=item.type;document.querySelector('#d-status').textContent=item.status.toUpperCase();document.querySelector('#d-load').textContent=item.load==null?'НЕТ ДАННЫХ':Math.round(item.load*100)+'%';document.querySelector('#d-source').textContent=item.source??'unknown';document.querySelector('#d-id').textContent=item.id;}
+renderer.domElement.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY,rx:rootGroup.rotation.y,ry:rootGroup.rotation.x};dragging=false;});
+renderer.domElement.addEventListener('pointermove',e=>{if(!down)return;const dx=e.clientX-down.x,dy=e.clientY-down.y;if(Math.abs(dx)+Math.abs(dy)>4)dragging=true;if(dragging){rootGroup.rotation.y=down.rx+dx*.006;rootGroup.rotation.x=Math.max(-.8,Math.min(.8,down.ry+dy*.005));}});
+renderer.domElement.addEventListener('pointerup',e=>{if(dragging){down=null;return;}pointer.x=e.clientX/innerWidth*2-1;pointer.y=-(e.clientY/innerHeight)*2+1;raycaster.setFromCamera(pointer,camera);const hits=raycaster.intersectObjects(nodes);if(hits.length)show(hits[0].object.userData.item);down=null;});
+renderer.domElement.addEventListener('wheel',e=>{camera.position.z=Math.max(5,Math.min(16,camera.position.z+e.deltaY*.008));},{passive:true});
+document.querySelector('#close').addEventListener('click',()=>document.querySelector('#detail').classList.remove('open'));
+let last=0;
+async function refresh(){try{const res=await fetch('/system-map',{cache:'no-store'});if(!res.ok)throw new Error('endpoint unavailable');const data=await res.json();if(!Array.isArray(data.nodes))throw new Error('invalid payload');document.querySelector('#link').textContent='LIVE';document.querySelector('#notice').style.display='none';document.querySelector('#count').textContent=data.nodes.length+' OBJECTS';/* Live node reconciliation is added with backend integration. */}catch(_){document.querySelector('#link').textContent='DEMO MODE';}}
+setInterval(refresh,2000);refresh();
+function animate(t){requestAnimationFrame(animate);const dt=Math.min((t-last)/1000,.05);last=t;core.rotation.y+=dt*.24;core.rotation.x+=dt*.12;ring.rotation.z-=dt*.2;ring2.rotation.z+=dt*.14;nodes.forEach((n,i)=>{n.scale.setScalar(1+.08*Math.sin(t*.002+i));n.material.emissiveIntensity=.45+.3*(.5+.5*Math.sin(t*.002+i));});renderer.render(scene,camera);}
+requestAnimationFrame(animate);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script></body></html>
