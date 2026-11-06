@@ -9,6 +9,7 @@ from .model_router import RoleRouterProvider
 from .reminders import ReminderService
 from .tools import apps, audio, clipboard, files, processes, screenshot, system, web, osint, universal, self_modify
 from .tools.registry import ToolRegistry
+from .crypto.register import register_crypto_tools
 from . import stt, tts
 from .skills import NoteStore, calculate, now, wikipedia_search, dictionary_lookup, news_search, youtube_search, youtube_download, google_maps_search, open_website, play_music, location_lookup, todo_add, todo_list, todo_done
 
@@ -66,6 +67,7 @@ def build_agent(settings: Settings | None = None) -> JarvisAgent:
         raise RuntimeError("JARVIS поддерживает только Gemini API Google.")
     reminders=ReminderService(str(Path(settings.memory_path).with_name("jarvis_reminders.json")))
     tools=ToolRegistry()
+    register_crypto_tools(tools)
     tools.register("read_source", self_modify.read_source, description="Прочитать исходный код или конфигурацию внутри проекта JARVIS.", parameters={"path":"относительный путь внутри репозитория"})
     tools.register("write_source", self_modify.write_source, confirm=True, description="Изменить исходный файл проекта с созданием резервной копии. Требует подтверждения.", parameters={"path":"относительный путь внутри репозитория","content":"полное новое содержимое файла"})
     tools.register("run_self_tests", self_modify.run_tests, description="Запустить набор pytest-тестов проекта JARVIS и вернуть результаты.")
