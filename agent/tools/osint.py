@@ -116,6 +116,16 @@ def _get_public_http_url(value: str, timeout: int = TIMEOUT) -> tuple[int, dict[
 
     raise RuntimeError("Превышен лимит перенаправлений URL")
 
+
+def _get(url: str, timeout: int = TIMEOUT) -> tuple[int, dict[str, str], bytes]:
+    """Fetch a fixed, trusted service endpoint (RDAP/IP metadata)."""
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, dict(resp.headers.items()), resp.read(2_000_000)
+    except Exception as exc:
+        raise RuntimeError(f"HTTP ошибка: {exc}") from exc
+
 def _json(url: str) -> dict:
     status, _, body = _get(url)
     if status < 200 or status >= 300:
