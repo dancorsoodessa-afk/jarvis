@@ -113,3 +113,13 @@ def test_live_stop_phrase_returns_to_wake_mode():
     assert command is None
     assert response == "Ожидаю."
     assert loop.active is False
+
+
+
+def test_ten_sequential_commands_work_after_one_wake_word():
+    agent = FakeAgent()
+    loop = make_loop(agent)
+    assert loop.step("Джарвис") == "Слушаю."
+    for number in range(1, 11):
+        assert loop.step(f"команда номер {number}") == f"ответ на команда номер {number}"
+    assert len(agent.calls) == 10
