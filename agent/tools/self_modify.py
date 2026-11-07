@@ -7,6 +7,8 @@ signed source files.
 """
 from __future__ import annotations
 
+import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -47,9 +49,10 @@ def write_source(path: str, content: str) -> str:
         raise ValueError("Файл слишком большой для одной операции")
     BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    backup = BACKUP_ROOT / f"{stamp}_{target.relative_to(ROOT).as_posix().replace('/', '__')}"
+    backup = BACKUP_ROOT / stamp / target.relative_to(ROOT)
     if target.exists():
-        backup.write_text(target.read_text(encoding="utf-8"), encoding="utf-8")
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(target, backup)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
     return f"Изменено: {target.relative_to(ROOT)}; резервная копия: {backup.relative_to(ROOT)}"
@@ -82,12 +85,44 @@ def git_status() -> str:
 
 def rollback_last_backup() -> str:
     """Restore the newest backup created by write_source."""
-    backups = sorted(BACKUP_ROOT.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not backups:
+    if not BACKUP_ROOT.exists():
         raise FileNotFoundError("Резервных копий нет")
-    backup = backups[0]
-    marker = backup.name.split("_", 2)[-1]
-    relative = marker.replace("__", "/")
-    target = _safe_path(relative)
-    target.write_text(backup.read_text(encoding="utf-8"), encoding="utf-8")
-    return f"Восстановлено: {target.relative_to(ROOT)} из {backup.relative_to(ROOT)}"
+
+    # New backups preserve the original relative path inside a timestamp folder.
+    backup_dirs = sorted(
+        (path for path in BACKUP_ROOT.iterdir() if path.is_dir()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for backup_dir in backup_dirs:
+        candidates = sorted(
+            (path for path in backup_dir.rglob("*") if path.is_file()),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if not candidates:
+            continue
+        backup = candidates[0]
+        relative = backup.relative_to(backup_dir).as_posix()
+        target = _safe_path(relative)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(backup, target)
+        return f"Восстановлено: {target.relative_to(ROOT)} из {backup.relative_to(ROOT)}"
+
+    # Backward compatibility for backups created by the previous flat naming scheme.
+    legacy = sorted(
+        (path for path in BACKUP_ROOT.iterdir() if path.is_file()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for backup in legacy:
+        match = re.match(r"^\\d{8}_\\d{6}_\\d{6}_(.+)$", backup.name)
+        if not match:
+            continue
+        relative = match.group(1).replace("__", "/")
+        target = _safe_path(relative)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(backup, target)
+        return f"Восстановлено: {target.relative_to(ROOT)} из {backup.relative_to(ROOT)}"
+
+    raise FileNotFoundError("Резервных копий нет")
