@@ -73,7 +73,7 @@ class VoiceLoop:
         wake_enabled: bool | None = None, tmp_dir: str | None = None,
         stop_event=None, on_command=None, on_response=None, on_status=None,
         on_error=None, on_command_error=None, on_audio_level=None, on_playback_start=None,
-        on_playback_done=None, execution_lock=None,
+        on_playback_done=None, execution_lock=None, tts_lock=None,
         speak_responses: bool = True,
     ):
         import threading
@@ -99,6 +99,7 @@ class VoiceLoop:
         self.on_playback_start = on_playback_start
         self.on_playback_done = on_playback_done
         self.execution_lock = execution_lock
+        self.tts_lock = tts_lock
         self.speak_responses = speak_responses
 
     @staticmethod
@@ -183,13 +184,23 @@ class VoiceLoop:
         if not text or not enabled:
             return
         try:
-            if tts.current_engine() == "gemini":
-                tts.speak_and_play(
-                    text,
-                    on_playback_start=lambda: self._notify(self.on_playback_start),
-                    blocking=True,
-                )
-                self._notify(self.on_playback_done)
+            if self.tts_lock is None:
+                if tts.current_engine() == "gemini":
+                    tts.speak_and_play(
+                        text,
+                        on_playback_start=lambda: self._notify(self.on_playback_start),
+                        blocking=True,
+                    )
+                    self._notify(self.on_playback_done)
+            else:
+                with self.tts_lock:
+                    if tts.current_engine() == "gemini":
+                        tts.speak_and_play(
+                            text,
+                            on_playback_start=lambda: self._notify(self.on_playback_start),
+                            blocking=True,
+                        )
+                        self._notify(self.on_playback_done)
         except Exception as exc:
             self._notify(self.on_error, exc)
             self.log.warning("Ошибка TTS: %s", exc, exc_info=True)
