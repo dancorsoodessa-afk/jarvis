@@ -81,7 +81,7 @@ def transcribe(audio_path: str) -> str:
     mime = "audio/wav" if suffix == ".wav" else "audio/mpeg" if suffix == ".mp3" else "audio/" + suffix.lstrip(".")
     payload = {
         "contents": [{"role": "user", "parts": [
-            {"text": "Точно распознай речь в аудио. Язык русский. Верни только распознанные слова без комментариев."},
+            {"text": "Дословно транскрибируй речь на русском языке. Не переводи русскую речь на другой язык. Записывай русские слова кириллицей. Сохраняй имена собственные, числа, названия программ, команд и англоязычные технические термины так, как они произнесены. Не пересказывай, не сокращай и не добавляй пояснений. Верни только транскрипцию."},
             {"inline_data": {"mime_type": mime, "data": base64.b64encode(audio).decode("ascii")}}
         ]}],
         "generationConfig": {"temperature": 0, "maxOutputTokens": 1024}
