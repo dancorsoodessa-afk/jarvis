@@ -35,6 +35,12 @@ class TestOsintUrlSafety(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "только HTTP и HTTPS"):
             osint._validate_public_http_url("file:///etc/passwd")
 
+    def test_private_ip_intel_does_not_call_external_provider(self):
+        with mock.patch.object(osint, "_json") as json_lookup:
+            with self.assertRaisesRegex(ValueError, "только для публичных IP"):
+                osint.ip_intel("192.168.1.10")
+        json_lookup.assert_not_called()
+
     def test_rejects_credentials_in_url(self):
         with self.assertRaisesRegex(ValueError, "логином или паролем"):
             osint._validate_public_http_url("https://user:pass@example.com")
