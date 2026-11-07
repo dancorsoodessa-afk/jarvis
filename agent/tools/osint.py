@@ -19,11 +19,53 @@ from pathlib import Path
 from .web import USER_AGENT, TIMEOUT
 
 
-def _get(url: str, timeout: int = TIMEOUT) -> tuple[int, dict[str, str], bytes]:
+def _validate_public_http_url(value: str):
+    """Reject non-HTTP URLs and hosts resolving to loopback/private/reserved IPs."""
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise ValueError("Разрешены только HTTP и HTTPS URL")
+    if parsed.username or parsed.password:
+        raise ValueError("URL с логином или паролем запрещён")
+    host = parsed.hostname
+    if not host or host.lower() == "localhost" or host.lower().endswith((".localhost", ".local")):
+        raise ValueError("Локальные адреса запрещены для OSINT URL")
+    try:
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+    except ValueError as exc:
+        raise ValueError("Некорректный порт URL") from exc
+    try:
+        addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError as exc:
+        raise ValueError(f"Не удалось проверить DNS-адрес URL: {exc}") from exc
+    if not addresses:
+        raise ValueError("Домен URL не имеет IP-адресов")
+    for address in addresses:
+        try:
+            ip = ipaddress.ip_address(address[4][0].split("%", 1)[0])
+        except ValueError as exc:
+            raise ValueError("DNS вернул некорректный IP-адрес") from exc
+        if not ip.is_global:
+            raise ValueError(f"Доступ к непубличному IP запрещён: {ip}")
+    return parsed
+
+
+class _PublicOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _validate_public_http_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _get(url: str, timeout: int = TIMEOUT, validate_public: bool = False) -> tuple[int, dict[str, str], bytes]:
+    opener = urllib.request.build_opener(_PublicOnlyRedirectHandler()) if validate_public else None
+    if validate_public:
+        _validate_public_http_url(url)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        response = opener.open(req, timeout=timeout) if opener else urllib.request.urlopen(req, timeout=timeout)
+        with response as resp:
             return resp.status, dict(resp.headers.items()), resp.read(2_000_000)
+    except (ValueError, RuntimeError):
+        raise
     except Exception as exc:
         raise RuntimeError(f"HTTP ошибка: {exc}") from exc
 
@@ -119,7 +161,8 @@ def url_intel(value: str) -> str:
     parsed = urllib.parse.urlparse(value)
     if not parsed.hostname:
         raise ValueError("Некорректный URL")
-    status, headers, body = _get(value)
+    _validate_public_http_url(value)
+    status, headers, body = _get(value, validate_public=True)
     text = body.decode("utf-8", errors="replace")
     title = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
     links = []
