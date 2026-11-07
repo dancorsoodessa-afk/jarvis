@@ -7,6 +7,7 @@ standard HTTP. Results are intentionally evidence-oriented and concise.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import ipaddress
 import json
 import re
@@ -19,8 +20,8 @@ from pathlib import Path
 from .web import USER_AGENT, TIMEOUT
 
 
-def _validate_public_http_url(value: str):
-    """Reject non-HTTP URLs and hosts resolving to loopback/private/reserved IPs."""
+def _parse_public_http_url(value: str):
+    """Parse an HTTP URL and pin every resolved address to a public IP."""
     parsed = urllib.parse.urlparse(value)
     if parsed.scheme.lower() not in {"http", "https"}:
         raise ValueError("Разрешены только HTTP и HTTPS URL")
@@ -38,41 +39,82 @@ def _validate_public_http_url(value: str):
     except ValueError as exc:
         raise ValueError("Некорректный порт URL") from exc
     try:
-        addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except OSError as exc:
         raise ValueError(f"Не удалось проверить DNS-адрес URL: {exc}") from exc
-    if not addresses:
-        raise ValueError("Домен URL не имеет IP-адресов")
-    for address in addresses:
+    addresses = []
+    for record in records:
         try:
-            ip = ipaddress.ip_address(address[4][0].split("%", 1)[0])
+            ip = ipaddress.ip_address(record[4][0].split("%", 1)[0])
         except ValueError as exc:
             raise ValueError("DNS вернул некорректный IP-адрес") from exc
         if not ip.is_global:
             raise ValueError(f"Доступ к непубличному IP запрещён: {ip}")
-    return parsed
+        if str(ip) not in addresses:
+            addresses.append(str(ip))
+    if not addresses:
+        raise ValueError("Домен URL не имеет публичных IP-адресов")
+    return parsed, addresses
 
 
-class _PublicOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        _validate_public_http_url(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+def _validate_public_http_url(value: str):
+    """Compatibility validator used by tests and callers."""
+    return _parse_public_http_url(value)[0]
 
 
-def _get(url: str, timeout: int = TIMEOUT, validate_public: bool = False) -> tuple[int, dict[str, str], bytes]:
-    opener = urllib.request.build_opener(_PublicOnlyRedirectHandler()) if validate_public else None
-    if validate_public:
-        _validate_public_http_url(url)
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    try:
-        response = opener.open(req, timeout=timeout) if opener else urllib.request.urlopen(req, timeout=timeout)
-        with response as resp:
-            return resp.status, dict(resp.headers.items()), resp.read(2_000_000)
-    except (ValueError, RuntimeError):
-        raise
-    except Exception as exc:
-        raise RuntimeError(f"HTTP ошибка: {exc}") from exc
+def _get_public_http_url(value: str, timeout: int = TIMEOUT) -> tuple[int, dict[str, str], bytes]:
+    """Fetch a public URL while connecting to the exact IPs validated by DNS.
 
+    Every redirect is independently resolved and checked. The socket connects
+    to the validated IP, while HTTP Host and TLS SNI retain the original domain.
+    """
+    current = value
+    for redirect_count in range(6):
+        parsed, addresses = _parse_public_http_url(current)
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+        target = urllib.parse.urlunsplit(("", "", parsed.path or "/", parsed.query, ""))
+        last_error = None
+        response_data = None
+
+        for address in addresses:
+            connection = None
+            try:
+                if parsed.scheme.lower() == "https":
+                    connection = http.client.HTTPSConnection(
+                        host, port, timeout=timeout, context=ssl.create_default_context()
+                    )
+                    raw_socket = socket.create_connection((address, port), timeout=timeout)
+                    connection.sock = connection._context.wrap_socket(raw_socket, server_hostname=host)
+                else:
+                    connection = http.client.HTTPConnection(host, port, timeout=timeout)
+                    connection.sock = socket.create_connection((address, port), timeout=timeout)
+
+                connection.request("GET", target, headers={"User-Agent": USER_AGENT})
+                response = connection.getresponse()
+                body = response.read(2_000_000)
+                headers = dict(response.getheaders())
+                response_data = (response.status, headers, body)
+                break
+            except Exception as exc:
+                last_error = exc
+            finally:
+                if connection is not None:
+                    connection.close()
+
+        if response_data is None:
+            raise RuntimeError(f"Не удалось подключиться к публичному адресу: {last_error}")
+
+        status, headers, body = response_data
+        location = next((value for key, value in headers.items() if key.lower() == "location"), None)
+        if status in {301, 302, 303, 307, 308} and location:
+            if redirect_count >= 5:
+                raise RuntimeError("Превышен лимит перенаправлений URL")
+            current = urllib.parse.urljoin(current, location)
+            continue
+        return status, headers, body
+
+    raise RuntimeError("Превышен лимит перенаправлений URL")
 
 def _json(url: str) -> dict:
     status, _, body = _get(url)
@@ -96,16 +138,9 @@ def _domain(value: str) -> str:
 
 def domain_intel(value: str) -> str:
     domain = _domain(value)
-    # Domain OSINT also opens a TLS connection; reject private DNS targets
-    # before connecting so a crafted domain cannot probe internal services.
-    _validate_public_http_url(f"https://{domain}")
-    lines = [f"OSINT: {domain}"]
-    try:
-        infos = socket.getaddrinfo(domain, 443, type=socket.SOCK_STREAM)
-        ips = sorted({item[4][0] for item in infos})
-        lines.append("IP: " + ", ".join(ips))
-    except OSError as exc:
-        lines.append(f"DNS/IP: ошибка {exc}")
+    # Resolve once, validate, then connect to one of those exact public IPs.
+    _parsed, ips = _parse_public_http_url(f"https://{domain}")
+    lines = [f"OSINT: {domain}", "IP: " + ", ".join(ips)]
 
     try:
         rdap = _json(f"https://rdap.org/domain/{urllib.parse.quote(domain)}")
@@ -128,7 +163,7 @@ def domain_intel(value: str) -> str:
 
     try:
         context = ssl.create_default_context()
-        with socket.create_connection((domain, 443), timeout=TIMEOUT) as sock:
+        with socket.create_connection((ips[0], 443), timeout=TIMEOUT) as sock:
             with context.wrap_socket(sock, server_hostname=domain) as tls:
                 cert = tls.getpeercert()
                 subject = dict(x[0] for x in cert.get("subject", []))
@@ -168,8 +203,7 @@ def url_intel(value: str) -> str:
     parsed = urllib.parse.urlparse(value)
     if not parsed.hostname:
         raise ValueError("Некорректный URL")
-    _validate_public_http_url(value)
-    status, headers, body = _get(value, validate_public=True)
+    status, headers, body = _get_public_http_url(value)
     text = body.decode("utf-8", errors="replace")
     title = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
     links = []
