@@ -107,13 +107,31 @@ class VoiceLoop:
         )
 
     def _wait_for_wake(self) -> str:
+        """Wait indefinitely for a wake phrase and return the original transcript."""
         while True:
             heard = self._listen(timeout=0.0)
-            if not heard:
-                continue
-            command = self.strip_wake(heard, self.wake_words)
-            if command is not None:
-                return command
+            if heard and self.strip_wake(heard, self.wake_words) is not None:
+                return heard
+
+    def _route_input(self, text: str) -> tuple[str | None, str | None]:
+        """Convert one recognized utterance into a command or a voice-mode response."""
+        normalized = " ".join(str(text or "").lower().split())
+        if not normalized:
+            return None, None
+
+        if self.is_stop(normalized):
+            self.active = False
+            return None, "Ожидаю."
+
+        if self.wake_enabled and not self.active:
+            command = self.strip_wake(normalized, self.wake_words)
+            if command is None:
+                return None, None
+            self.active = True
+            return (command, None) if command else (None, "Слушаю.")
+
+        self.active = True
+        return normalized, None
 
     def step(self, text: str):
         """Synchronous compatibility adapter for tests and text-driven callers.
@@ -121,25 +139,12 @@ class VoiceLoop:
         The live microphone path uses run(); this method preserves the old API
         while following the new one-wake continuous-dialog behavior.
         """
-        text = " ".join(str(text).lower().split())
-        if not text:
+        command, response = self._route_input(text)
+        if response is not None:
+            return response
+        if command is None:
             return None
 
-        if self.is_stop(text):
-            self.active = False
-            return "Ожидаю."
-
-        if self.wake_enabled and not self.active:
-            command = self.strip_wake(text, self.wake_words)
-            if command is None:
-                return None
-            if not command:
-                self.active = True
-                return "Слушаю."
-        else:
-            command = text
-
-        self.active = True
         result = self.agent.handle(command)
         return str(getattr(result, "text", result) or "").strip()
 
@@ -151,18 +156,19 @@ class VoiceLoop:
 
         while True:
             try:
-                command = self._wait_for_wake() if self.wake_enabled and not self.active else self._listen()
+                heard = self._wait_for_wake() if self.wake_enabled and not self.active else self._listen()
+                command, response = self._route_input(heard)
 
-                if not command:
+                if response is not None:
+                    if response == "Ожидаю.":
+                        tts.stop()
+                        self.log.info("Голосовой режим: ожидание")
+                    tts.speak_and_play(response, blocking=False)
                     continue
 
-                if self.is_stop(command):
-                    self.active = False
-                    tts.stop()
-                    self.log.info("Голосовой режим: ожидание")
+                if command is None:
                     continue
 
-                self.active = True
                 result = self.agent.handle(command)
                 answer = str(result.text or "").strip()
                 self.log.info("Голос: %r -> %r", command, answer[:80])
