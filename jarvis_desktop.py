@@ -941,14 +941,15 @@ class JarvisDesktop(tk.Tk):
         self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
         self.status.config(text="● PROCESSING",fg=CYAN)
         self._set_visual_state("THINKING", 0.55)
+        agent = self.agent
         def work():
-            provider = getattr(self.agent, "provider", None)
+            provider = getattr(agent, "provider", None)
             try:
                 with self._agent_execution_lock:
                     if provider is not None and hasattr(provider, "on_delta"):
                         provider.on_delta = lambda delta: self.events.put(("reply_delta", delta))
                     try:
-                        result = self.agent.handle(prompt, attachment=attachment_payload)
+                        result = agent.handle(prompt, attachment=attachment_payload)
                     finally:
                         if provider is not None and hasattr(provider, "on_delta"):
                             provider.on_delta = None
