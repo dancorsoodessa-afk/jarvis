@@ -189,12 +189,59 @@ class VoiceLoop:
             self.log.warning("Ошибка TTS: %s", exc, exc_info=True)
 
     def run(self):
+        """Listen continuously while a single worker processes queued commands.
+
+        The microphone remains available during AI requests. Commands spoken
+        while the previous request is running are queued and processed in order.
+        TTS playback is serialized; speech onset interrupts the current playback.
+        """
+        import queue
+        import threading
+
         if not voice.available():
             raise RuntimeError("Голосовой ввод недоступен: установите sounddevice и numpy")
 
-        self.log.info("Голосовой режим включён: единый непрерывный цикл")
-        while not self.stop_event.is_set():
-            try:
+        self.log.info("Голосовой режим включён: очередь команд и непрерывное прослушивание")
+        commands = queue.Queue()
+        sentinel = object()
+
+        def process_commands():
+            while True:
+                item = commands.get()
+                try:
+                    if item is sentinel:
+                        return
+                    kind, value = item
+                    if kind == "command":
+                        try:
+                            result = self.agent.handle(value)
+                            answer = str(getattr(result, "text", result) or "").strip()
+                            self.log.info("Голос: %r -> %r", value, answer[:80])
+                            self._notify(self.on_response, answer)
+                        except Exception as exc:
+                            self._notify(self.on_error, exc)
+                            self.log.warning("Ошибка обработки голосовой команды %r: %s", value, exc, exc_info=True)
+                            continue
+                    else:
+                        answer = value
+
+                    # Do not overlap two replies. A new user utterance interrupts
+                    # current playback through voice.listen_for_phrase/on_speech_start.
+                    while tts.is_playing() and not self.stop_event.is_set():
+                        self.stop_event.wait(0.05)
+                    if not self.stop_event.is_set():
+                        self._speak(answer)
+                finally:
+                    commands.task_done()
+
+        worker = threading.Thread(
+            target=process_commands,
+            name="jarvis-voice-command-worker",
+            daemon=True,
+        )
+        worker.start()
+        try:
+            while not self.stop_event.is_set():
                 heard = self._wait_for_wake() if self.wake_enabled and not self.active else self._listen()
                 if self.stop_event.is_set():
                     break
@@ -205,23 +252,23 @@ class VoiceLoop:
                     if response == "Ожидаю.":
                         tts.stop()
                         self.log.info("Голосовой режим: ожидание")
-                    self._speak(response)
+                    commands.put(("response", response))
                     continue
 
                 if command is None:
                     continue
 
                 self._notify(self.on_command, command)
-                result = self.agent.handle(command)
-                answer = str(getattr(result, "text", result) or "").strip()
-                self.log.info("Голос: %r -> %r", command, answer[:80])
-                self._notify(self.on_response, answer)
-                self._speak(answer)
-
-            except KeyboardInterrupt:
-                raise
-            except Exception as exc:
-                self._notify(self.on_error, exc)
-                self.log.warning("Ошибка голосового цикла: %s", exc, exc_info=True)
-                self.stop_event.wait(0.5)
-
+                commands.put(("command", command))
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            self._notify(self.on_error, exc)
+            self.log.warning("Ошибка голосового цикла: %s", exc, exc_info=True)
+            raise
+        finally:
+            commands.put(sentinel)
+            # Drain accepted commands before exiting; this prevents the UI
+            # from losing commands already recognized and queued.
+            commands.join()
+            worker.join(timeout=2.0)
