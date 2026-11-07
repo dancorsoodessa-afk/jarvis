@@ -30,6 +30,18 @@ class TestSelfModifyBackups(unittest.TestCase):
                 with self.assertRaises(FileNotFoundError):
                     self_modify.rollback_last_backup()
 
+    def test_rollback_removes_file_created_by_self_modification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "agent" / "new_module.py"
+            backups = root / ".jarvis_backups"
+            with mock.patch.object(self_modify, "ROOT", root), mock.patch.object(self_modify, "BACKUP_ROOT", backups):
+                self_modify.write_source("agent/new_module.py", "created = True\n")
+                self.assertTrue(target.is_file())
+                result = self_modify.rollback_last_backup()
+            self.assertIn("Удалён новый файл", result)
+            self.assertFalse(target.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
