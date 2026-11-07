@@ -72,7 +72,7 @@ class VoiceLoop:
         self, agent, recorder: Recorder | None = None, wake_words=None,
         wake_enabled: bool | None = None, tmp_dir: str | None = None,
         stop_event=None, on_command=None, on_response=None, on_status=None,
-        on_error=None, on_audio_level=None, on_playback_start=None,
+        on_error=None, on_command_error=None, on_audio_level=None, on_playback_start=None,
         speak_responses: bool = True,
     ):
         import threading
@@ -93,6 +93,7 @@ class VoiceLoop:
         self.on_response = on_response
         self.on_status = on_status
         self.on_error = on_error
+        self.on_command_error = on_command_error
         self.on_audio_level = on_audio_level
         self.on_playback_start = on_playback_start
         self.speak_responses = bool(speak_responses)
@@ -175,7 +176,8 @@ class VoiceLoop:
                 self.log.debug("Ошибка callback голосового цикла", exc_info=True)
 
     def _speak(self, text: str):
-        if not text or not self.speak_responses:
+        enabled = self.speak_responses() if callable(self.speak_responses) else self.speak_responses
+        if not text or not enabled:
             return
         try:
             if tts.current_engine() == "gemini":
@@ -219,7 +221,7 @@ class VoiceLoop:
                             self.log.info("Голос: %r -> %r", value, answer[:80])
                             self._notify(self.on_response, answer)
                         except Exception as exc:
-                            self._notify(self.on_error, exc)
+                            self._notify(self.on_command_error, exc)
                             self.log.warning("Ошибка обработки голосовой команды %r: %s", value, exc, exc_info=True)
                             continue
                     else:
