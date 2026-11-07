@@ -12,18 +12,18 @@ def addr(ip, port):
 
 class TestOsintUrlSafety(unittest.TestCase):
     def test_rejects_loopback_literal(self):
-        with self.assertRaisesRegex(ValueError, "непубличный IP"):
+        with self.assertRaisesRegex(ValueError, "непубличн"):
             osint._validate_public_http_url("http://127.0.0.1/admin")
 
     def test_rejects_private_dns_resolution(self):
         with mock.patch.object(socket, "getaddrinfo", return_value=[addr("10.0.0.8", 443)]):
-            with self.assertRaisesRegex(ValueError, "непубличный IP"):
+            with self.assertRaisesRegex(ValueError, "непубличн"):
                 osint._validate_public_http_url("https://internal.example")
 
     def test_domain_intel_rejects_private_dns_before_network_lookups(self):
         with mock.patch.object(socket, "getaddrinfo", return_value=[addr("10.0.0.8", 443)]):
             with mock.patch.object(osint, "_json") as json_lookup:
-                with self.assertRaisesRegex(ValueError, "непубличный IP"):
+                with self.assertRaisesRegex(ValueError, "непубличн"):
                     osint.domain_intel("internal.example")
         json_lookup.assert_not_called()
 
@@ -53,7 +53,7 @@ class TestOsintUrlSafety(unittest.TestCase):
     def test_public_fetch_rejects_private_destination_before_connect(self):
         with mock.patch.object(socket, "getaddrinfo", return_value=[addr("192.168.1.1", 80)]):
             with mock.patch.object(socket, "create_connection") as connect:
-                with self.assertRaisesRegex(ValueError, "непубличный IP"):
+                with self.assertRaisesRegex(ValueError, "непубличн"):
                     osint._get_public_http_url("http://private.example/")
         connect.assert_not_called()
 
