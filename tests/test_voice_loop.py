@@ -77,3 +77,39 @@ def test_step_agent_error_propagates():
     loop = make_loop(Boom())
     with pytest.raises(RuntimeError):
         loop.step("джарвис привет")
+
+
+
+def test_live_wake_word_alone_activates_continuous_mode():
+    loop = make_loop(FakeAgent())
+    command, response = loop._route_input("Джарвис")
+    assert command is None
+    assert response == "Слушаю."
+    assert loop.active is True
+
+
+def test_live_wake_word_with_command_routes_command():
+    agent = FakeAgent()
+    loop = make_loop(agent)
+    command, response = loop._route_input("Джарвис, открой браузер")
+    assert command == "открой браузер"
+    assert response is None
+    assert loop.active is True
+
+
+def test_live_continuous_mode_accepts_next_command_without_wake_word():
+    agent = FakeAgent()
+    loop = make_loop(agent)
+    loop.active = True
+    command, response = loop._route_input("покажи погоду")
+    assert command == "покажи погоду"
+    assert response is None
+
+
+def test_live_stop_phrase_returns_to_wake_mode():
+    loop = make_loop(FakeAgent())
+    loop.active = True
+    command, response = loop._route_input("режим ожидания")
+    assert command is None
+    assert response == "Ожидаю."
+    assert loop.active is False
