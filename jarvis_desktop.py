@@ -689,10 +689,11 @@ class JarvisDesktop(tk.Tk):
                         else:
                             self._append("JARVIS", reply)
                         self._streaming_reply = ""
-                        self.busy = False
-                        self.send_button.config(state="normal")
-                        self.attach_button.config(state="normal")
-                        self.status.config(text="● ONLINE", fg=GREEN)
+                        self._text_request_pending = False
+                        self.busy = self._voice_pending_commands > 0
+                        self.send_button.config(state="disabled" if self.busy else "normal")
+                        self.attach_button.config(state="disabled" if self.busy else "normal")
+                        self.status.config(text="● ОБРАБОТКА" if self.busy else "● ONLINE", fg=YELLOW if self.busy else GREEN)
                         if self.settings.get("tts_enabled", True):
                             self._set_visual_state("THINKING", 0.35)
                             threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
@@ -729,7 +730,7 @@ class JarvisDesktop(tk.Tk):
                     elif kind == "voice_reply":
                         self._append("JARVIS", event[1])
                         self._voice_pending_commands = max(0, self._voice_pending_commands - 1)
-                        self.busy = self._voice_pending_commands > 0
+                        self.busy = self._text_request_pending or self._voice_pending_commands > 0
                         self.send_button.config(state="disabled" if self.busy else "normal")
                         self.attach_button.config(state="disabled" if self.busy else "normal")
                         self.status.config(text="● ОБРАБОТКА" if self.busy else "● ONLINE", fg=YELLOW if self.busy else GREEN)
@@ -738,7 +739,7 @@ class JarvisDesktop(tk.Tk):
                     elif kind == "voice_command_error":
                         self._append("VOICE", "Команда не выполнена: " + event[1])
                         self._voice_pending_commands = max(0, self._voice_pending_commands - 1)
-                        self.busy = self._voice_pending_commands > 0
+                        self.busy = self._text_request_pending or self._voice_pending_commands > 0
                         self.send_button.config(state="disabled" if self.busy else "normal")
                         self.attach_button.config(state="disabled" if self.busy else "normal")
                     elif kind == "voice_error_detail":
@@ -756,9 +757,9 @@ class JarvisDesktop(tk.Tk):
                         self.metrics["Voice"].config(text="ERROR", fg=RED)
                         self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
                         self._voice_pending_commands = 0
-                        self.busy = False
-                        self.send_button.config(state="normal")
-                        self.attach_button.config(state="normal")
+                        self.busy = self._text_request_pending
+                        self.send_button.config(state="disabled" if self.busy else "normal")
+                        self.attach_button.config(state="disabled" if self.busy else "normal")
                         self._append("VOICE", "Прослушивание остановлено: " + event[1] + " Нажмите «Голос», чтобы повторить запуск.")
                     elif kind == "tts_error":
                         self._set_visual_state("ERROR")
@@ -768,9 +769,10 @@ class JarvisDesktop(tk.Tk):
                         self._set_visual_state("ERROR")
                         self.status.config(text="● API ERROR", fg=RED)
                         self._append("AI", "Запрос не выполнен: " + event[1])
-                        self.busy = False
-                        self.send_button.config(state="normal")
-                        self.attach_button.config(state="normal")
+                        self._text_request_pending = False
+                        self.busy = self._voice_pending_commands > 0
+                        self.send_button.config(state="disabled" if self.busy else "normal")
+                        self.attach_button.config(state="disabled" if self.busy else "normal")
                         self._streaming_reply = ""
                     elif kind == "agent_error":
                         if len(event) > 2 and event[2] != self._agent_generation:
