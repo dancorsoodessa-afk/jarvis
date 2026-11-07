@@ -73,7 +73,7 @@ class VoiceLoop:
         wake_enabled: bool | None = None, tmp_dir: str | None = None,
         stop_event=None, on_command=None, on_response=None, on_status=None,
         on_error=None, on_command_error=None, on_audio_level=None, on_playback_start=None,
-        on_playback_done=None,
+        on_playback_done=None, execution_lock=None,
         speak_responses: bool = True,
     ):
         import threading
@@ -98,6 +98,7 @@ class VoiceLoop:
         self.on_audio_level = on_audio_level
         self.on_playback_start = on_playback_start
         self.on_playback_done = on_playback_done
+        self.execution_lock = execution_lock
         self.speak_responses = speak_responses
 
     @staticmethod
@@ -219,7 +220,11 @@ class VoiceLoop:
                     kind, value = item
                     if kind == "command":
                         try:
-                            result = self.agent.handle(value)
+                            if self.execution_lock is None:
+                                result = self.agent.handle(value)
+                            else:
+                                with self.execution_lock:
+                                    result = self.agent.handle(value)
                             answer = str(getattr(result, "text", result) or "").strip()
                             self.log.info("Голос: %r -> %r", value, answer[:80])
                             self._notify(self.on_response, answer)
