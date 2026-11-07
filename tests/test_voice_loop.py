@@ -123,3 +123,10 @@ def test_ten_sequential_commands_work_after_one_wake_word():
     for number in range(1, 11):
         assert loop.step(f"команда номер {number}") == f"ответ на команда номер {number}"
     assert len(agent.calls) == 10
+
+
+
+def test_live_wake_listener_preserves_wake_only_utterance():
+    loop = make_loop(FakeAgent())
+    loop._listen = lambda timeout=0.0: "Джарвис"
+    assert loop._wait_for_wake() == "Джарвис"
