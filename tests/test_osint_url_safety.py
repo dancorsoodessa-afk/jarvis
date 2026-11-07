@@ -20,6 +20,13 @@ class TestOsintUrlSafety(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "непубличный IP"):
                 osint._validate_public_http_url("https://internal.example")
 
+    def test_domain_intel_rejects_private_dns_before_network_lookups(self):
+        with mock.patch.object(socket, "getaddrinfo", return_value=[addr("10.0.0.8", 443)]):
+            with mock.patch.object(osint, "_json") as json_lookup:
+                with self.assertRaisesRegex(ValueError, "непубличный IP"):
+                    osint.domain_intel("internal.example")
+        json_lookup.assert_not_called()
+
     def test_rejects_localhost_hostname(self):
         with self.assertRaisesRegex(ValueError, "Локальные адреса запрещены"):
             osint._validate_public_http_url("http://localhost:8080")
