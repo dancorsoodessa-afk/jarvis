@@ -68,5 +68,37 @@ class TestModelConfirmation(unittest.TestCase):
         self.assertTrue(executed["value"])
 
 
+class TestLocalDataAccessConfirmation(unittest.TestCase):
+    def test_sensitive_local_inspection_tools_require_confirmation(self):
+        import os
+        import tempfile
+        from agent.runtime import build_agent
+        from agent.tools.registry import ConfirmationRequired
+
+        with tempfile.TemporaryDirectory() as folder:
+            old = os.environ.get("JARVIS_MEMORY")
+            os.environ["JARVIS_MEMORY"] = str(Path(folder) / "memory.json")
+            try:
+                agent = build_agent()
+            finally:
+                if old is None:
+                    os.environ.pop("JARVIS_MEMORY", None)
+                else:
+                    os.environ["JARVIS_MEMORY"] = old
+
+        protected = {
+            "run_self_tests", "inspect_file", "inspect_archive",
+            "find_errors", "project_check", "android_app_diagnostics",
+            "image_metadata",
+        }
+        for name in protected:
+            with self.subTest(tool=name):
+                entry = agent.tools.get(name)
+                self.assertIsNotNone(entry)
+                self.assertTrue(entry.confirm, f"{name} must require user confirmation")
+                with self.assertRaises(ConfirmationRequired):
+                    agent.tools.call(name, _confirmed=False)
+
+
 if __name__ == "__main__":
     unittest.main()

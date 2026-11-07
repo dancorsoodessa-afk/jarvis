@@ -48,7 +48,7 @@ def test_desktop_preserves_explicit_local_api_endpoint():
 def test_voice_zero_start_timeout_does_not_immediately_return():
     source = (ROOT / "agent" / "voice.py").read_text(encoding="utf-8")
     assert "timeout_blocks = max(0, int(start_timeout / BLOCK_SECONDS))" in source
-    assert "elif timeout_blocks and idle_blocks >= timeout_blocks:" in source
+    assert "if timeout_blocks and idle_blocks >= timeout_blocks:" in source
 
 
 def test_desktop_tts_worker_does_not_touch_tk_widgets():

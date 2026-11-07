@@ -94,11 +94,23 @@ class ToolRegistry:
             raise KeyError(name)
         if entry.confirm and not _confirmed:
             raise ConfirmationRequired(name)
-        if args and len(args) > 1 and len(entry.parameters) == 1 and not kwargs:
-            args = (" ".join(map(str, args)),)
         try:
+            signature = inspect.signature(entry.fn)
+        except (TypeError, ValueError):
             return entry.fn(*args, **kwargs)
-        except TypeError:
+
+        try:
+            signature.bind(*args, **kwargs)
+        except TypeError as bind_error:
+            # Preserve free-text slash commands without invoking a tool twice.
+            # Only retry with joined text if signature binding proves that this
+            # is a valid one-argument call; exceptions inside the tool propagate.
             if len(args) > 1 and not kwargs:
-                return entry.fn(" ".join(map(str, args)))
+                joined = " ".join(map(str, args))
+                try:
+                    signature.bind(joined)
+                except TypeError:
+                    raise bind_error
+                return entry.fn(joined)
             raise
+        return entry.fn(*args, **kwargs)

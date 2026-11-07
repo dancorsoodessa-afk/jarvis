@@ -15,6 +15,7 @@ import mimetypes
 
 from agent.runtime import build_agent
 from agent import tts, voice, stt
+from agent.voice_loop import VoiceLoop
 from agent.visual_server import start_visual_server
 from agent.secrets import protect_secret, unprotect_secret
 from agent.tools_catalog import TOOLS
@@ -131,6 +132,9 @@ class JarvisDesktop(tk.Tk):
         self.minsize(1180, 740)
         self.configure(bg=BG)
         self.agent = None
+        self._agent_execution_lock = threading.RLock()
+        self._tts_lock = threading.RLock()
+        self._text_request_pending = False
         self._agent_generation = 0
         self._agent_start_pending = False
         self.busy = False
@@ -139,6 +143,7 @@ class JarvisDesktop(tk.Tk):
         self.attachments = []
         self._voice_loop_running = False
         self._voice_armed_until = 0.0
+        self._voice_pending_commands = 0
         self._visual_state = "IDLE"
         self._visual_level = 0.0
         self.settings = _load_saved_settings()
@@ -544,78 +549,59 @@ class JarvisDesktop(tk.Tk):
     def _start_voice_loop(self):
         if not self.settings.get("voice_enabled", True) or self._voice_loop_running:
             return
+        if self.agent is None:
+            self._append("VOICE", "Голосовой режим ждёт запуска ядра JARVIS.")
+            return
         if not getattr(self, "_stt_online", False):
-            self._append("VOICE", "Проверяю доступность облачного распознавания речи. Подождите несколько секунд.")
+            self._append("VOICE", "Облачное распознавание речи ещё проверяется или недоступно.")
             return
         if not voice.available():
-            self._append("VOICE", "Голосовой ввод недоступен: проверьте ключ Gemini и входной микрофон.")
+            self._append("VOICE", "Голосовой ввод недоступен: проверьте Gemini API и микрофон.")
             return
+
+        self._voice_stop_event = threading.Event()
         self._voice_loop_running = True
         self.voice_button.config(text="🎙 СЛУШАЮ")
         self.voice_control.config(text="🔊  Голос: ВКЛ")
-        last_level_event = [0.0]
+
         def on_audio_level(level):
-            now = time.monotonic()
-            if now - last_level_event[0] >= 0.08:
-                last_level_event[0] = now
-                self.events.put(("audio_level", max(0.0, min(1.0, float(level)))))
+            self.events.put(("audio_level", max(0.0, min(1.0, float(level)))))
+
+        loop = VoiceLoop(
+            self.agent,
+            stop_event=self._voice_stop_event,
+            on_command=lambda command: self.events.put(("voice_command_started", command)),
+            on_response=lambda answer: self.events.put(("voice_reply", answer)),
+            on_status=lambda message: self.events.put(("voice_status", message)),
+            on_error=lambda error: self.events.put(("voice_error_detail", str(error))),
+            on_command_error=lambda error: self.events.put(("voice_command_error", str(error))),
+            on_audio_level=on_audio_level,
+            on_playback_start=lambda: self.events.put(("tts_started",)),
+            on_playback_done=lambda: self.events.put(("tts_done",)),
+            speak_responses=lambda: self.settings.get("tts_enabled", True),
+            execution_lock=self._agent_execution_lock,
+            tts_lock=self._tts_lock,
+        )
+
         def work():
-            wake_words = ("jarvis", "джарвис")
-            while self._voice_loop_running and self.settings.get("voice_enabled", True):
-                try:
-                    if tts.is_playing():
-                        time.sleep(0.12)
-                        continue
-                    heard = voice.listen_for_phrase(
-                        silence_seconds=0.55,
-                        max_seconds=10.0,
-                        start_timeout=2.0,
-                        on_audio_level=on_audio_level,
-                        should_stop=tts.is_playing,
-                    )
-                    self.events.put(("voice_capture_done",))
-                    if not heard or not self._voice_loop_running:
-                        continue
-                    normalized = " ".join(heard.lower().split())
-                    command = None
-                    activated = False
-                    for word in wake_words:
-                        if normalized.startswith(word):
-                            activated = True
-                            command = normalized[len(word):].strip(" ,.!")
-                            self._voice_armed_until = float("inf")
-                            break
-                    if activated and not command:
-                        self.events.put(("voice_status", "Jarvis активирован. Слушаю вас."))
-                        command = voice.listen_for_phrase(
-                            silence_seconds=0.55,
-                            max_seconds=10.0,
-                            start_timeout=4.0,
-                            on_audio_level=on_audio_level,
-                            should_stop=tts.is_playing,
-                        )
-                        self.events.put(("voice_capture_done",))
-                    elif not activated and time.monotonic() < self._voice_armed_until:
-                        command = normalized
-                    else:
-                        continue
-                    if command in {"стоп", "режим ожидания", "перейди в режим ожидания", "спасибо джарвис", "спасибо джарвис"}:
-                        self._voice_armed_until = 0.0
-                        self.events.put(("voice_status", "Голосовой режим: ожидание. Скажите «Джарвис», чтобы продолжить."))
-                        continue
-                    if command and self._voice_loop_running:
-                        self._voice_armed_until = float("inf")
-                        self.events.put(("voice_text", command))
-                except Exception as exc:
-                    self.events.put(("voice_error", str(exc)))
-                    break
-            self._voice_loop_running = False
-        threading.Thread(target=work, daemon=True).start()
+            try:
+                loop.run()
+            except Exception as exc:
+                self.events.put(("voice_error", str(exc)))
+            finally:
+                self._voice_loop_running = False
+                self.events.put(("voice_loop_stopped",))
+
+        threading.Thread(target=work, name="jarvis-voice-loop", daemon=True).start()
 
     def _stop_voice(self):
         self._voice_loop_running = False
+        stop_event = getattr(self, "_voice_stop_event", None)
+        if stop_event is not None:
+            stop_event.set()
+        tts.stop()
         self.voice_button.config(text="🎙 ГОЛОС")
-        self._append("VOICE", "Голосовой цикл остановлен. Его можно включить снова кнопкой «Голос». ")
+        self._append("VOICE", "Голосовой цикл остановлен. Его можно включить снова кнопкой «Голос».")
 
     def toggle_voice(self):
         self.settings["voice_enabled"] = not self.settings.get("voice_enabled", True)
@@ -686,8 +672,9 @@ class JarvisDesktop(tk.Tk):
                         self._stt_online = True
                         self.metrics["Voice"].config(text="ONLINE", fg=GREEN)
                         self.side_voice.config(text="◉ ГОЛОС — ОБЛАКО ДОСТУПНО", fg=GREEN)
-                        # Do not open the microphone automatically on application startup.
-                        # Voice capture begins only after the user presses the microphone button.
+                        # The setting controls whether wake-word listening starts after STT is ready.
+                        if self.settings.get("voice_enabled", True):
+                            self._start_voice_loop()
                     elif kind == "stt_error":
                         self._stt_online = False
                         self.metrics["Voice"].config(text="ERROR", fg=RED)
@@ -704,10 +691,11 @@ class JarvisDesktop(tk.Tk):
                         else:
                             self._append("JARVIS", reply)
                         self._streaming_reply = ""
-                        self.busy = False
-                        self.send_button.config(state="normal")
-                        self.attach_button.config(state="normal")
-                        self.status.config(text="● ONLINE", fg=GREEN)
+                        self._text_request_pending = False
+                        self.busy = self._voice_pending_commands > 0
+                        self.send_button.config(state="disabled" if self.busy else "normal")
+                        self.attach_button.config(state="disabled" if self.busy else "normal")
+                        self.status.config(text="● ОБРАБОТКА" if self.busy else "● ONLINE", fg=YELLOW if self.busy else GREEN)
                         if self.settings.get("tts_enabled", True):
                             self._set_visual_state("THINKING", 0.35)
                             threading.Thread(target=self._speak_reply, args=(reply,), daemon=True).start()
@@ -734,6 +722,35 @@ class JarvisDesktop(tk.Tk):
                         self.input.delete(0, "end")
                         self.input.insert(0, event[1])
                         self.send(event[1])
+                    elif kind == "voice_command_started":
+                        self._set_visual_state("LISTENING", 0.75)
+                        self._append("YOU", event[1])
+                        self._voice_pending_commands += 1
+                        self.busy = True
+                        self.send_button.config(state="disabled")
+                        self.attach_button.config(state="disabled")
+                    elif kind == "voice_reply":
+                        self._append("JARVIS", event[1])
+                        self._voice_pending_commands = max(0, self._voice_pending_commands - 1)
+                        self.busy = self._text_request_pending or self._voice_pending_commands > 0
+                        self.send_button.config(state="disabled" if self.busy else "normal")
+                        self.attach_button.config(state="disabled" if self.busy else "normal")
+                        self.status.config(text="● ОБРАБОТКА" if self.busy else "● ONLINE", fg=YELLOW if self.busy else GREEN)
+                        if not tts.is_playing():
+                            self._set_visual_state("IDLE", 0.0)
+                    elif kind == "voice_command_error":
+                        self._append("VOICE", "Команда не выполнена: " + event[1])
+                        self._voice_pending_commands = max(0, self._voice_pending_commands - 1)
+                        self.busy = self._text_request_pending or self._voice_pending_commands > 0
+                        self.send_button.config(state="disabled" if self.busy else "normal")
+                        self.attach_button.config(state="disabled" if self.busy else "normal")
+                    elif kind == "voice_error_detail":
+                        self._append("VOICE", "Ошибка голосового/TTS-компонента: " + event[1])
+                    elif kind == "voice_loop_stopped":
+                        self._voice_loop_running = False
+                        self.voice_button.config(text="🎙 ГОЛОС")
+                        if not self._voice_stop_event.is_set():
+                            self._append("VOICE", "Голосовой цикл завершился.")
                     elif kind == "voice_status":
                         self._append("VOICE", event[1])
                     elif kind == "voice_error":
@@ -741,6 +758,10 @@ class JarvisDesktop(tk.Tk):
                         self.voice_button.config(text="🎙 ГОЛОС")
                         self.metrics["Voice"].config(text="ERROR", fg=RED)
                         self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
+                        self._voice_pending_commands = 0
+                        self.busy = self._text_request_pending
+                        self.send_button.config(state="disabled" if self.busy else "normal")
+                        self.attach_button.config(state="disabled" if self.busy else "normal")
                         self._append("VOICE", "Прослушивание остановлено: " + event[1] + " Нажмите «Голос», чтобы повторить запуск.")
                     elif kind == "tts_error":
                         self._set_visual_state("ERROR")
@@ -750,9 +771,10 @@ class JarvisDesktop(tk.Tk):
                         self._set_visual_state("ERROR")
                         self.status.config(text="● API ERROR", fg=RED)
                         self._append("AI", "Запрос не выполнен: " + event[1])
-                        self.busy = False
-                        self.send_button.config(state="normal")
-                        self.attach_button.config(state="normal")
+                        self._text_request_pending = False
+                        self.busy = self._voice_pending_commands > 0
+                        self.send_button.config(state="disabled" if self.busy else "normal")
+                        self.attach_button.config(state="disabled" if self.busy else "normal")
                         self._streaming_reply = ""
                     elif kind == "agent_error":
                         if len(event) > 2 and event[2] != self._agent_generation:
@@ -784,7 +806,8 @@ class JarvisDesktop(tk.Tk):
         # This function runs on a worker thread. Never call Tk widgets here:
         # Tkinter is not thread-safe and a UI exception used to prevent TTS itself.
         try:
-            tts.speak_and_play(text, on_playback_start=lambda: self.events.put(("tts_started",)))
+            with self._tts_lock:
+                tts.speak_and_play(text, on_playback_start=lambda: self.events.put(("tts_started",)))
             self.events.put(("tts_done",))
         except Exception as exc:
             self.events.put(("tts_error", str(exc)))
@@ -914,26 +937,29 @@ class JarvisDesktop(tk.Tk):
             self._clear_attachments(); return
         prompt=text+("\n\n"+context if context else "")
         attachment_payload=self._build_attachment_payload()
+        self._text_request_pending = True
         self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
         self.status.config(text="● PROCESSING",fg=CYAN)
         self._set_visual_state("THINKING", 0.55)
+        agent = self.agent
         def work():
-            provider = getattr(self.agent, "provider", None)
+            provider = getattr(agent, "provider", None)
             try:
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = lambda delta: self.events.put(("reply_delta", delta))
-                result=self.agent.handle(prompt, attachment=attachment_payload)
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = None
+                with self._agent_execution_lock:
+                    if provider is not None and hasattr(provider, "on_delta"):
+                        provider.on_delta = lambda delta: self.events.put(("reply_delta", delta))
+                    try:
+                        result = agent.handle(prompt, attachment=attachment_payload)
+                    finally:
+                        if provider is not None and hasattr(provider, "on_delta"):
+                            provider.on_delta = None
                 # JarvisAgent converts provider exceptions into an AgentResult string.
                 # Detect that error explicitly instead of showing it as a successful reply.
                 if str(result.text).startswith("Ошибка провайдера:"):
                     self.events.put(("request_error", str(result.text).partition(":")[2].strip()))
                 else:
-                    self.events.put(("reply",result.text))
+                    self.events.put(("reply", result.text))
             except Exception as exc:
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = None
                 self.events.put(("request_error", str(exc)))
         self._clear_attachments()
         threading.Thread(target=work,daemon=True).start()
@@ -966,22 +992,15 @@ class JarvisDesktop(tk.Tk):
             self._append("VOICE", "Голос выключен. Включите его в настройках.")
             return
         if not getattr(self, "_stt_online", False):
-            self._append("VOICE", "Облачное распознавание ещё проверяется или недоступно. Повторите после статуса ONLINE.")
+            self._append("VOICE", "Облачное распознавание ещё проверяется или недоступно.")
             return
-        # A manual click explicitly arms command capture: the user should not
-        # have to say the wake word after pressing the microphone button.
-        self._voice_armed_until = float("inf")
         if self._voice_loop_running:
-            self.voice_button.config(text="🎙 СЛУШАЮ КОМАНДУ")
-            self._append("VOICE", "Микрофон активен. Говорите команду сейчас — слово «Джарвис» не обязательно.")
+            self.voice_button.config(text="🎙 СЛУШАЮ")
+            self._append("VOICE", "Голосовой режим уже активен. Скажите «Джарвис», затем команду.")
             return
         self._start_voice_loop()
         if self._voice_loop_running:
-            self._append("VOICE", "Микрофон включён. Говорите команду сейчас — слово «Джарвис» не обязательно.")
-        else:
-            devices = voice.audio_devices()
-            detail = " Доступные микрофоны: " + ", ".join(devices) if devices else " Windows не обнаружил входной микрофон."
-            self._append("VOICE", "Голосовой ввод не запущен. Проверьте разрешение микрофона в Windows и API-ключ Gemini." + detail)
+            self._append("VOICE", "Микрофон включён. Скажите «Джарвис», затем команду.")
 
     def _draw_tool_avatar(self, canvas, kind, seed):
         palette = {
@@ -1368,12 +1387,17 @@ class JarvisDesktop(tk.Tk):
             parent.destroy()
 
     def _reload_agent(self):
+        if self._voice_loop_running:
+            self._stop_voice()
         self.agent = None
         self.status.config(text="● RESTARTING", fg=YELLOW)
         self._start_agent()
 
     def _close(self):
         self._voice_loop_running = False
+        stop_event = getattr(self, "_voice_stop_event", None)
+        if stop_event is not None:
+            stop_event.set()
         tts.stop()
         try:
             self._visual_server.shutdown()
