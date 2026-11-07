@@ -116,7 +116,7 @@ def rollback_last_backup() -> str:
         reverse=True,
     )
     for backup in legacy:
-        match = re.match(r"^\\d{8}_\\d{6}_\\d{6}_(.+)$", backup.name)
+        match = re.match(r"^\d{8}_\d{6}_\d{6}_(.+)$", backup.name)
         if not match:
             continue
         relative = match.group(1).replace("__", "/")
