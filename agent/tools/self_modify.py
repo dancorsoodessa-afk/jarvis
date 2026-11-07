@@ -7,6 +7,7 @@ signed source files.
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -49,10 +50,17 @@ def write_source(path: str, content: str) -> str:
         raise ValueError("Файл слишком большой для одной операции")
     BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    backup = BACKUP_ROOT / stamp / target.relative_to(ROOT)
+    backup_dir = BACKUP_ROOT / stamp
+    backup = backup_dir / target.relative_to(ROOT)
+    backup_dir.mkdir(parents=True, exist_ok=True)
     if target.exists():
         backup.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(target, backup)
+    else:
+        (backup_dir / "__created__.json").write_text(
+            json.dumps({"path": target.relative_to(ROOT).as_posix()}, ensure_ascii=False),
+            encoding="utf-8",
+        )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
     return f"Изменено: {target.relative_to(ROOT)}; резервная копия: {backup.relative_to(ROOT)}"
@@ -95,8 +103,17 @@ def rollback_last_backup() -> str:
         reverse=True,
     )
     for backup_dir in backup_dirs:
+        created_marker = backup_dir / "__created__.json"
+        if created_marker.is_file():
+            data = json.loads(created_marker.read_text(encoding="utf-8"))
+            relative = str(data.get("path") or "")
+            target = _safe_path(relative)
+            if target.is_file():
+                target.unlink()
+            return f"Удалён новый файл: {target.relative_to(ROOT)}"
+
         candidates = sorted(
-            (path for path in backup_dir.rglob("*") if path.is_file()),
+            (path for path in backup_dir.rglob("*") if path.is_file() and path.name != "__created__.json"),
             key=lambda path: path.stat().st_mtime,
             reverse=True,
         )
