@@ -752,6 +752,10 @@ class JarvisDesktop(tk.Tk):
                         self.voice_button.config(text="🎙 ГОЛОС")
                         self.metrics["Voice"].config(text="ERROR", fg=RED)
                         self.side_voice.config(text="◉ ГОЛОС — ОШИБКА", fg=RED)
+                        self._voice_pending_commands = 0
+                        self.busy = False
+                        self.send_button.config(state="normal")
+                        self.attach_button.config(state="normal")
                         self._append("VOICE", "Прослушивание остановлено: " + event[1] + " Нажмите «Голос», чтобы повторить запуск.")
                     elif kind == "tts_error":
                         self._set_visual_state("ERROR")
