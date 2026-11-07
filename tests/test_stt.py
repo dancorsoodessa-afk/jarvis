@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -61,9 +62,6 @@ class TestSTT(unittest.TestCase):
         self.assertIn("transcribe", build_agent().tools.names())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
     def test_transcription_prompt_preserves_russian_and_technical_terms(self):
         os.environ["GEMINI_API_KEY"] = "test-token"
         os.environ["JARVIS_STT"] = "gemini"
@@ -87,3 +85,7 @@ if __name__ == "__main__":
                 self.assertIn("не переводи", instruction)
                 self.assertIn("англоязычные технические термины", instruction)
                 self.assertIn("только транскрипцию", instruction)
+
+
+if __name__ == "__main__":
+    unittest.main()
