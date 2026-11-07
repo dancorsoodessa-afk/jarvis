@@ -70,7 +70,7 @@ def write_source(path: str, content: str) -> str:
         )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    return f"Изменено: {target.relative_to(root)}; резервная копия: {backup_reference.relative_to(root)}"
+    return f"Изменено: {target.relative_to(root).as_posix()}; резервная копия: {backup_reference.relative_to(root).as_posix()}"
 
 
 def run_tests() -> str:
@@ -119,7 +119,7 @@ def rollback_last_backup() -> str:
             target = _safe_path(relative)
             if target.is_file():
                 target.unlink()
-            return f"Удалён новый файл: {target.relative_to(root)}"
+            return f"Удалён новый файл: {target.relative_to(root).as_posix()}"
 
         candidates = sorted(
             (path for path in backup_dir.rglob("*") if path.is_file() and path.name != "__created__.json"),
@@ -133,7 +133,7 @@ def rollback_last_backup() -> str:
         target = _safe_path(relative)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(backup, target)
-        return f"Восстановлено: {target.relative_to(root)} из {backup.relative_to(root)}"
+        return f"Восстановлено: {target.relative_to(root).as_posix()} из {backup.relative_to(root).as_posix()}"
 
     # Backward compatibility for backups created by the previous flat naming scheme.
     legacy = sorted(
@@ -149,6 +149,6 @@ def rollback_last_backup() -> str:
         target = _safe_path(relative)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(backup, target)
-        return f"Восстановлено: {target.relative_to(root)} из {backup.relative_to(root)}"
+        return f"Восстановлено: {target.relative_to(root).as_posix()} из {backup.relative_to(root).as_posix()}"
 
     raise FileNotFoundError("Резервных копий нет")
