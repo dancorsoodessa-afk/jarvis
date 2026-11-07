@@ -94,8 +94,6 @@ class ToolRegistry:
             raise KeyError(name)
         if entry.confirm and not _confirmed:
             raise ConfirmationRequired(name)
-        if args and len(args) > 1 and len(entry.parameters) == 1 and not kwargs:
-            args = (" ".join(map(str, args)),)
         try:
             signature = inspect.signature(entry.fn)
         except (TypeError, ValueError):
@@ -103,20 +101,16 @@ class ToolRegistry:
 
         try:
             signature.bind(*args, **kwargs)
-        except TypeError:
-            # Preserve the legacy "join positional fragments" adapter, but
-            # decide before invoking the callable. A TypeError raised inside
-            # the tool must never cause the tool to execute a second time.
-            positional = [
-                parameter for parameter in signature.parameters.values()
-                if parameter.kind in (
-                    inspect.Parameter.POSITIONAL_ONLY,
-                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                )
-            ]
-            if len(args) > 1 and not kwargs and len(positional) == 1:
+        except TypeError as bind_error:
+            # Preserve free-text slash commands without invoking a tool twice.
+            # Only retry with joined text if signature binding proves that this
+            # is a valid one-argument call; exceptions inside the tool propagate.
+            if len(args) > 1 and not kwargs:
                 joined = " ".join(map(str, args))
-                signature.bind(joined)
+                try:
+                    signature.bind(joined)
+                except TypeError:
+                    raise bind_error
                 return entry.fn(joined)
             raise
         return entry.fn(*args, **kwargs)
