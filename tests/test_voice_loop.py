@@ -130,3 +130,24 @@ def test_live_wake_listener_preserves_wake_only_utterance():
     loop = make_loop(FakeAgent())
     loop._listen = lambda timeout=0.0: "Джарвис"
     assert loop._wait_for_wake() == "Джарвис"
+
+
+
+def test_speech_onset_interrupts_current_tts(monkeypatch):
+    import agent.voice_loop as voice_loop_module
+
+    calls = []
+    captured = {}
+
+    def fake_listen(**kwargs):
+        captured.update(kwargs)
+        kwargs["on_speech_start"]()
+        return "перебиваю"
+
+    monkeypatch.setattr(voice_loop_module.voice, "listen_for_phrase", fake_listen)
+    monkeypatch.setattr(voice_loop_module.tts, "stop", lambda: calls.append("stop"))
+    loop = make_loop(FakeAgent())
+
+    assert loop._listen() == "перебиваю"
+    assert calls == ["stop"]
+    assert captured["interrupt_guard"] is voice_loop_module.tts.is_playing
