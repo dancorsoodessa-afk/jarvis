@@ -132,6 +132,8 @@ class JarvisDesktop(tk.Tk):
         self.minsize(1180, 740)
         self.configure(bg=BG)
         self.agent = None
+        self._agent_execution_lock = threading.RLock()
+        self._text_request_pending = False
         self._agent_generation = 0
         self._agent_start_pending = False
         self.busy = False
@@ -576,6 +578,7 @@ class JarvisDesktop(tk.Tk):
             on_playback_start=lambda: self.events.put(("tts_started",)),
             on_playback_done=lambda: self.events.put(("tts_done",)),
             speak_responses=lambda: self.settings.get("tts_enabled", True),
+            execution_lock=self._agent_execution_lock,
         )
 
         def work():
@@ -929,26 +932,28 @@ class JarvisDesktop(tk.Tk):
             self._clear_attachments(); return
         prompt=text+("\n\n"+context if context else "")
         attachment_payload=self._build_attachment_payload()
+        self._text_request_pending = True
         self.busy=True; self.send_button.config(state="disabled"); self.attach_button.config(state="disabled")
         self.status.config(text="● PROCESSING",fg=CYAN)
         self._set_visual_state("THINKING", 0.55)
         def work():
             provider = getattr(self.agent, "provider", None)
             try:
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = lambda delta: self.events.put(("reply_delta", delta))
-                result=self.agent.handle(prompt, attachment=attachment_payload)
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = None
+                with self._agent_execution_lock:
+                    if provider is not None and hasattr(provider, "on_delta"):
+                        provider.on_delta = lambda delta: self.events.put(("reply_delta", delta))
+                    try:
+                        result = self.agent.handle(prompt, attachment=attachment_payload)
+                    finally:
+                        if provider is not None and hasattr(provider, "on_delta"):
+                            provider.on_delta = None
                 # JarvisAgent converts provider exceptions into an AgentResult string.
                 # Detect that error explicitly instead of showing it as a successful reply.
                 if str(result.text).startswith("Ошибка провайдера:"):
                     self.events.put(("request_error", str(result.text).partition(":")[2].strip()))
                 else:
-                    self.events.put(("reply",result.text))
+                    self.events.put(("reply", result.text))
             except Exception as exc:
-                if provider is not None and hasattr(provider, "on_delta"):
-                    provider.on_delta = None
                 self.events.put(("request_error", str(exc)))
         self._clear_attachments()
         threading.Thread(target=work,daemon=True).start()
