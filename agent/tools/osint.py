@@ -30,7 +30,11 @@ def _validate_public_http_url(value: str):
     if not host or host.lower() == "localhost" or host.lower().endswith((".localhost", ".local")):
         raise ValueError("Локальные адреса запрещены для OSINT URL")
     try:
-        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+        port = parsed.port
+        if port is None:
+            port = 443 if parsed.scheme.lower() == "https" else 80
+        if not 1 <= port <= 65535:
+            raise ValueError("Некорректный порт URL")
     except ValueError as exc:
         raise ValueError("Некорректный порт URL") from exc
     try:
@@ -92,6 +96,9 @@ def _domain(value: str) -> str:
 
 def domain_intel(value: str) -> str:
     domain = _domain(value)
+    # Domain OSINT also opens a TLS connection; reject private DNS targets
+    # before connecting so a crafted domain cannot probe internal services.
+    _validate_public_http_url(f"https://{domain}")
     lines = [f"OSINT: {domain}"]
     try:
         infos = socket.getaddrinfo(domain, 443, type=socket.SOCK_STREAM)
