@@ -37,3 +37,22 @@ def test_tool_schema_has_no_required_arguments_when_all_have_defaults():
     )
 
     assert registry.spec("example")["function"]["parameters"]["required"] == []
+
+
+def test_internal_type_error_does_not_retry_tool():
+    registry = ToolRegistry()
+    calls = []
+
+    def broken(value: str):
+        calls.append(value)
+        raise TypeError("internal implementation error")
+
+    registry.register("broken", broken, description="Broken tool", parameters={"value": "Value"})
+    try:
+        registry.call("broken", "payload")
+    except TypeError as exc:
+        assert "internal implementation error" in str(exc)
+    else:
+        raise AssertionError("TypeError should propagate")
+
+    assert calls == ["payload"]
