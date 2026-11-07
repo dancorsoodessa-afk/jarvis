@@ -574,6 +574,7 @@ class JarvisDesktop(tk.Tk):
             on_command_error=lambda error: self.events.put(("voice_command_error", str(error))),
             on_audio_level=on_audio_level,
             on_playback_start=lambda: self.events.put(("tts_started",)),
+            on_playback_done=lambda: self.events.put(("tts_done",)),
             speak_responses=lambda: self.settings.get("tts_enabled", True),
         )
 
