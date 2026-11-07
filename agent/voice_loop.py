@@ -73,6 +73,7 @@ class VoiceLoop:
         wake_enabled: bool | None = None, tmp_dir: str | None = None,
         stop_event=None, on_command=None, on_response=None, on_status=None,
         on_error=None, on_command_error=None, on_audio_level=None, on_playback_start=None,
+        on_playback_done=None,
         speak_responses: bool = True,
     ):
         import threading
@@ -96,7 +97,8 @@ class VoiceLoop:
         self.on_command_error = on_command_error
         self.on_audio_level = on_audio_level
         self.on_playback_start = on_playback_start
-        self.speak_responses = bool(speak_responses)
+        self.on_playback_done = on_playback_done
+        self.speak_responses = speak_responses
 
     @staticmethod
     def strip_wake(text: str, wake_words) -> str | None:
@@ -184,8 +186,9 @@ class VoiceLoop:
                 tts.speak_and_play(
                     text,
                     on_playback_start=lambda: self._notify(self.on_playback_start),
-                    blocking=False,
+                    blocking=True,
                 )
+                self._notify(self.on_playback_done)
         except Exception as exc:
             self._notify(self.on_error, exc)
             self.log.warning("Ошибка TTS: %s", exc, exc_info=True)
