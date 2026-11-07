@@ -63,3 +63,27 @@ class TestSTT(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_transcription_prompt_preserves_russian_and_technical_terms(self):
+        os.environ["GEMINI_API_KEY"] = "test-token"
+        os.environ["JARVIS_STT"] = "gemini"
+
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self):
+                return json.dumps(
+                    {"candidates": [{"content": {"parts": [{"text": "Открой настройки"}]}}]},
+                    ensure_ascii=False,
+                ).encode("utf-8")
+
+        with tempfile.TemporaryDirectory() as folder:
+            audio = Path(folder) / "sample.wav"
+            audio.write_bytes(b"RIFF-test")
+            with mock.patch("urllib.request.urlopen", return_value=Response()) as urlopen:
+                self.assertEqual(stt.transcribe(str(audio)), "Открой настройки")
+                payload = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
+                instruction = payload["contents"][0]["parts"][0]["text"].lower()
+                self.assertIn("не переводи", instruction)
+                self.assertIn("англоязычные термины", instruction)
+                self.assertIn("только транскрипцию", instruction)
