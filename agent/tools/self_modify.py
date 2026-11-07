@@ -38,7 +38,7 @@ def _safe_path(path: str) -> Path:
 def read_source(path: str) -> str:
     """Read a source/config file from the project."""
     target = _safe_path(path)
-    if not target.exists():
+    if not target.is_file():
         raise FileNotFoundError(path)
     return target.read_text(encoding="utf-8")
 
@@ -46,6 +46,8 @@ def read_source(path: str) -> str:
 def write_source(path: str, content: str) -> str:
     """Backup and replace a project source/config file."""
     target = _safe_path(path)
+    if target.exists() and not target.is_file():
+        raise ValueError("Можно изменять только файлы, не папки")
     if len(content) > 2_000_000:
         raise ValueError("Файл слишком большой для одной операции")
     BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
@@ -56,14 +58,16 @@ def write_source(path: str, content: str) -> str:
     if target.exists():
         backup.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(target, backup)
+        backup_reference = backup
     else:
-        (backup_dir / "__created__.json").write_text(
+        backup_reference = backup_dir / "__created__.json"
+        backup_reference.write_text(
             json.dumps({"path": target.relative_to(ROOT).as_posix()}, ensure_ascii=False),
             encoding="utf-8",
         )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    return f"Изменено: {target.relative_to(ROOT)}; резервная копия: {backup.relative_to(ROOT)}"
+    return f"Изменено: {target.relative_to(ROOT)}; резервная копия: {backup_reference.relative_to(ROOT)}"
 
 
 def run_tests() -> str:
