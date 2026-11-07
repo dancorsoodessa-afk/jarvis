@@ -42,7 +42,7 @@ class TestOsintUrlSafety(unittest.TestCase):
         with mock.patch.object(socket, "getaddrinfo", return_value=[addr("192.168.1.1", 80)]):
             with self.assertRaisesRegex(ValueError, "непубличный IP"):
                 handler.redirect_request(
-                    mock.Mock(), mock.Mock(), 302, "Found", {}, "http://router.local/"
+                    mock.Mock(), mock.Mock(), 302, "Found", {}, "http://192.168.1.1/"
                 )
 
 
