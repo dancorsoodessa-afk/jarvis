@@ -85,5 +85,5 @@ if __name__ == "__main__":
                 payload = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
                 instruction = payload["contents"][0]["parts"][0]["text"].lower()
                 self.assertIn("не переводи", instruction)
-                self.assertIn("англоязычные термины", instruction)
+                self.assertIn("англоязычные технические термины", instruction)
                 self.assertIn("только транскрипцию", instruction)
