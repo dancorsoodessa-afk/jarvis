@@ -133,6 +133,7 @@ class JarvisDesktop(tk.Tk):
         self.configure(bg=BG)
         self.agent = None
         self._agent_execution_lock = threading.RLock()
+        self._tts_lock = threading.RLock()
         self._text_request_pending = False
         self._agent_generation = 0
         self._agent_start_pending = False
@@ -579,6 +580,7 @@ class JarvisDesktop(tk.Tk):
             on_playback_done=lambda: self.events.put(("tts_done",)),
             speak_responses=lambda: self.settings.get("tts_enabled", True),
             execution_lock=self._agent_execution_lock,
+            tts_lock=self._tts_lock,
         )
 
         def work():
@@ -804,7 +806,8 @@ class JarvisDesktop(tk.Tk):
         # This function runs on a worker thread. Never call Tk widgets here:
         # Tkinter is not thread-safe and a UI exception used to prevent TTS itself.
         try:
-            tts.speak_and_play(text, on_playback_start=lambda: self.events.put(("tts_started",)))
+            with self._tts_lock:
+                tts.speak_and_play(text, on_playback_start=lambda: self.events.put(("tts_started",)))
             self.events.put(("tts_done",))
         except Exception as exc:
             self.events.put(("tts_error", str(exc)))
