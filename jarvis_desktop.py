@@ -140,6 +140,7 @@ class JarvisDesktop(tk.Tk):
         self.attachments = []
         self._voice_loop_running = False
         self._voice_armed_until = 0.0
+        self._voice_pending_commands = 0
         self._visual_state = "IDLE"
         self._visual_level = 0.0
         self.settings = _load_saved_settings()
@@ -591,6 +592,7 @@ class JarvisDesktop(tk.Tk):
         stop_event = getattr(self, "_voice_stop_event", None)
         if stop_event is not None:
             stop_event.set()
+        tts.stop()
         self.voice_button.config(text="🎙 ГОЛОС")
         self._append("VOICE", "Голосовой цикл остановлен. Его можно включить снова кнопкой «Голос».")
 
@@ -715,19 +717,22 @@ class JarvisDesktop(tk.Tk):
                     elif kind == "voice_command_started":
                         self._set_visual_state("LISTENING", 0.75)
                         self._append("YOU", event[1])
+                        self._voice_pending_commands += 1
                         self.busy = True
                         self.send_button.config(state="disabled")
                         self.attach_button.config(state="disabled")
                     elif kind == "voice_reply":
                         self._append("JARVIS", event[1])
-                        self.busy = False
-                        self.send_button.config(state="normal")
-                        self.attach_button.config(state="normal")
-                        self.status.config(text="● ONLINE", fg=GREEN)
+                        self._voice_pending_commands = max(0, self._voice_pending_commands - 1)
+                        self.busy = self._voice_pending_commands > 0
+                        self.send_button.config(state="disabled" if self.busy else "normal")
+                        self.attach_button.config(state="disabled" if self.busy else "normal")
+                        self.status.config(text="● ОБРАБОТКА" if self.busy else "● ONLINE", fg=YELLOW if self.busy else GREEN)
                         if not tts.is_playing():
                             self._set_visual_state("IDLE", 0.0)
                     elif kind == "voice_error_detail":
                         self._append("VOICE", "Ошибка голосового/TTS-компонента: " + event[1])
+                        self._voice_pending_commands = 0
                         self.busy = False
                         self.send_button.config(state="normal")
                         self.attach_button.config(state="normal")
@@ -1363,6 +1368,8 @@ class JarvisDesktop(tk.Tk):
             parent.destroy()
 
     def _reload_agent(self):
+        if self._voice_loop_running:
+            self._stop_voice()
         self.agent = None
         self.status.config(text="● RESTARTING", fg=YELLOW)
         self._start_agent()
