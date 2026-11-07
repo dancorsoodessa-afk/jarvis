@@ -571,9 +571,10 @@ class JarvisDesktop(tk.Tk):
             on_response=lambda answer: self.events.put(("voice_reply", answer)),
             on_status=lambda message: self.events.put(("voice_status", message)),
             on_error=lambda error: self.events.put(("voice_error_detail", str(error))),
+            on_command_error=lambda error: self.events.put(("voice_command_error", str(error))),
             on_audio_level=on_audio_level,
             on_playback_start=lambda: self.events.put(("tts_started",)),
-            speak_responses=self.settings.get("tts_enabled", True),
+            speak_responses=lambda: self.settings.get("tts_enabled", True),
         )
 
         def work():
@@ -730,12 +731,14 @@ class JarvisDesktop(tk.Tk):
                         self.status.config(text="● ОБРАБОТКА" if self.busy else "● ONLINE", fg=YELLOW if self.busy else GREEN)
                         if not tts.is_playing():
                             self._set_visual_state("IDLE", 0.0)
+                    elif kind == "voice_command_error":
+                        self._append("VOICE", "Команда не выполнена: " + event[1])
+                        self._voice_pending_commands = max(0, self._voice_pending_commands - 1)
+                        self.busy = self._voice_pending_commands > 0
+                        self.send_button.config(state="disabled" if self.busy else "normal")
+                        self.attach_button.config(state="disabled" if self.busy else "normal")
                     elif kind == "voice_error_detail":
                         self._append("VOICE", "Ошибка голосового/TTS-компонента: " + event[1])
-                        self._voice_pending_commands = 0
-                        self.busy = False
-                        self.send_button.config(state="normal")
-                        self.attach_button.config(state="normal")
                     elif kind == "voice_loop_stopped":
                         self._voice_loop_running = False
                         self.voice_button.config(text="🎙 ГОЛОС")
@@ -1376,6 +1379,9 @@ class JarvisDesktop(tk.Tk):
 
     def _close(self):
         self._voice_loop_running = False
+        stop_event = getattr(self, "_voice_stop_event", None)
+        if stop_event is not None:
+            stop_event.set()
         tts.stop()
         try:
             self._visual_server.shutdown()
