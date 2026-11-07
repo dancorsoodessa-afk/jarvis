@@ -202,3 +202,60 @@ def test_live_run_processes_ten_commands_after_one_wake(monkeypatch):
     assert agent.calls[-1] == "команда номер 10"
     assert spoken[0] == "Слушаю."
     assert len(spoken) == 11
+
+
+def test_live_loop_queues_commands_while_agent_is_busy(monkeypatch):
+    import threading
+    import agent.voice_loop as voice_loop_module
+
+    first_started = threading.Event()
+    release_first = threading.Event()
+    second_captured = threading.Event()
+    calls = []
+
+    class SlowAgent:
+        def handle(self, text):
+            calls.append(text)
+            if text == "команда 1":
+                first_started.set()
+                assert release_first.wait(3)
+            return SimpleNamespace(text=f"ответ на {text}")
+
+    loop = make_loop(SlowAgent())
+    utterances = iter(["Джарвис", "команда 1", "команда 2"])
+
+    def fake_listen(timeout=0.0):
+        try:
+            return next(utterances)
+        except StopIteration:
+            raise KeyboardInterrupt
+
+    def on_command(command):
+        if command == "команда 2":
+            second_captured.set()
+
+    loop.on_command = on_command
+    monkeypatch.setattr(voice_loop_module.voice, "available", lambda: True)
+    monkeypatch.setattr(voice_loop_module.tts, "current_engine", lambda: "off")
+    monkeypatch.setattr(loop, "_listen", fake_listen)
+
+    errors = []
+    def run_loop():
+        try:
+            loop.run()
+        except KeyboardInterrupt:
+            pass
+        except Exception as exc:
+            errors.append(exc)
+
+    runner = threading.Thread(target=run_loop)
+    runner.start()
+    assert first_started.wait(2)
+    assert second_captured.wait(2), "listener must capture the second command while the first is processing"
+    assert calls == ["команда 1"]
+    release_first.set()
+    runner.join(3)
+
+    assert not runner.is_alive()
+    assert not errors
+    assert calls == ["команда 1", "команда 2"]
