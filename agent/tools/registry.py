@@ -97,8 +97,26 @@ class ToolRegistry:
         if args and len(args) > 1 and len(entry.parameters) == 1 and not kwargs:
             args = (" ".join(map(str, args)),)
         try:
+            signature = inspect.signature(entry.fn)
+        except (TypeError, ValueError):
             return entry.fn(*args, **kwargs)
+
+        try:
+            signature.bind(*args, **kwargs)
         except TypeError:
-            if len(args) > 1 and not kwargs:
-                return entry.fn(" ".join(map(str, args)))
+            # Preserve the legacy "join positional fragments" adapter, but
+            # decide before invoking the callable. A TypeError raised inside
+            # the tool must never cause the tool to execute a second time.
+            positional = [
+                parameter for parameter in signature.parameters.values()
+                if parameter.kind in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                )
+            ]
+            if len(args) > 1 and not kwargs and len(positional) == 1:
+                joined = " ".join(map(str, args))
+                signature.bind(joined)
+                return entry.fn(joined)
             raise
+        return entry.fn(*args, **kwargs)
