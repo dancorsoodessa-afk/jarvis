@@ -44,13 +44,12 @@ class TestOsintUrlSafety(unittest.TestCase):
             parsed = osint._validate_public_http_url("https://example.com/path")
         self.assertEqual(parsed.hostname, "example.com")
 
-    def test_redirect_handler_rejects_private_destination(self):
-        handler = osint._PublicOnlyRedirectHandler()
+    def test_public_fetch_rejects_private_destination_before_connect(self):
         with mock.patch.object(socket, "getaddrinfo", return_value=[addr("192.168.1.1", 80)]):
-            with self.assertRaisesRegex(ValueError, "непубличный IP"):
-                handler.redirect_request(
-                    mock.Mock(), mock.Mock(), 302, "Found", {}, "http://192.168.1.1/"
-                )
+            with mock.patch.object(socket, "create_connection") as connect:
+                with self.assertRaisesRegex(ValueError, "непубличный IP"):
+                    osint._get_public_http_url("http://private.example/")
+        connect.assert_not_called()
 
 
 if __name__ == "__main__":
