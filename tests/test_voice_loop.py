@@ -151,3 +151,33 @@ def test_speech_onset_interrupts_current_tts(monkeypatch):
     assert loop._listen() == "перебиваю"
     assert calls == ["stop"]
     assert captured["interrupt_guard"] is voice_loop_module.tts.is_playing
+
+
+
+def test_live_run_processes_ten_commands_after_one_wake(monkeypatch):
+    import agent.voice_loop as voice_loop_module
+
+    agent = FakeAgent()
+    loop = make_loop(agent)
+    utterances = iter(["Джарвис"] + [f"команда номер {n}" for n in range(1, 11)])
+
+    def fake_listen(timeout=0.0):
+        try:
+            return next(utterances)
+        except StopIteration:
+            raise KeyboardInterrupt
+
+    spoken = []
+    monkeypatch.setattr(voice_loop_module.voice, "available", lambda: True)
+    monkeypatch.setattr(loop, "_listen", fake_listen)
+    monkeypatch.setattr(voice_loop_module.tts, "speak_and_play",
+                        lambda text, blocking=False: spoken.append(text))
+
+    with pytest.raises(KeyboardInterrupt):
+        loop.run()
+
+    assert len(agent.calls) == 10
+    assert agent.calls[0] == "команда номер 1"
+    assert agent.calls[-1] == "команда номер 10"
+    assert spoken[0] == "Слушаю."
+    assert len(spoken) == 11
