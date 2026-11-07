@@ -189,9 +189,11 @@ def domain_intel(value: str) -> str:
 def ip_intel(value: str) -> str:
     value = value.strip()
     try:
-        ipaddress.ip_address(value)
+        address = ipaddress.ip_address(value)
     except ValueError as exc:
         raise ValueError("Нужен IPv4 или IPv6 адрес") from exc
+    if not address.is_global:
+        raise ValueError("Внешний IP OSINT доступен только для публичных IP-адресов")
     try:
         data = _json(f"https://ipwho.is/{urllib.parse.quote(value)}")
     except Exception as exc:
