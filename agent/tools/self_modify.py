@@ -25,9 +25,10 @@ ALLOWED_SUFFIXES = {
 
 
 def _safe_path(path: str) -> Path:
-    candidate = (ROOT / path).resolve()
+    root = ROOT.resolve()
+    candidate = (root / path).resolve()
     try:
-        candidate.relative_to(ROOT)
+        candidate.relative_to(root)
     except ValueError as exc:
         raise ValueError("Путь выходит за пределы проекта Буся") from exc
     if candidate.suffix.lower() not in ALLOWED_SUFFIXES:
@@ -45,15 +46,17 @@ def read_source(path: str) -> str:
 
 def write_source(path: str, content: str) -> str:
     """Backup and replace a project source/config file."""
+    root = ROOT.resolve()
     target = _safe_path(path)
     if target.exists() and not target.is_file():
         raise ValueError("Можно изменять только файлы, не папки")
     if len(content) > 2_000_000:
         raise ValueError("Файл слишком большой для одной операции")
-    BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
+    backup_root = BACKUP_ROOT.resolve()
+    backup_root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    backup_dir = BACKUP_ROOT / stamp
-    backup = backup_dir / target.relative_to(ROOT)
+    backup_dir = backup_root / stamp
+    backup = backup_dir / target.relative_to(root)
     backup_dir.mkdir(parents=True, exist_ok=True)
     if target.exists():
         backup.parent.mkdir(parents=True, exist_ok=True)
@@ -62,12 +65,12 @@ def write_source(path: str, content: str) -> str:
     else:
         backup_reference = backup_dir / "__created__.json"
         backup_reference.write_text(
-            json.dumps({"path": target.relative_to(ROOT).as_posix()}, ensure_ascii=False),
+            json.dumps({"path": target.relative_to(root).as_posix()}, ensure_ascii=False),
             encoding="utf-8",
         )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    return f"Изменено: {target.relative_to(ROOT)}; резервная копия: {backup_reference.relative_to(ROOT)}"
+    return f"Изменено: {target.relative_to(root)}; резервная копия: {backup_reference.relative_to(root)}"
 
 
 def run_tests() -> str:
@@ -97,12 +100,14 @@ def git_status() -> str:
 
 def rollback_last_backup() -> str:
     """Restore the newest backup created by write_source."""
-    if not BACKUP_ROOT.exists():
+    root = ROOT.resolve()
+    backup_root = BACKUP_ROOT.resolve()
+    if not backup_root.exists():
         raise FileNotFoundError("Резервных копий нет")
 
     # New backups preserve the original relative path inside a timestamp folder.
     backup_dirs = sorted(
-        (path for path in BACKUP_ROOT.iterdir() if path.is_dir()),
+        (path for path in backup_root.iterdir() if path.is_dir()),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
@@ -128,11 +133,11 @@ def rollback_last_backup() -> str:
         target = _safe_path(relative)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(backup, target)
-        return f"Восстановлено: {target.relative_to(ROOT)} из {backup.relative_to(ROOT)}"
+        return f"Восстановлено: {target.relative_to(ROOT)} из {backup.relative_to(root)}"
 
     # Backward compatibility for backups created by the previous flat naming scheme.
     legacy = sorted(
-        (path for path in BACKUP_ROOT.iterdir() if path.is_file()),
+        (path for path in backup_root.iterdir() if path.is_file()),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
