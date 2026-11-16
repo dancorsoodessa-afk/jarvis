@@ -554,9 +554,9 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _paperCard() {
     final p = _paper.openPosition;
     final pnl = _paper.positionNetPnl;
-    final pnlPercent = p == null || p.plan.entry * p.quantity == 0
+    final pnlPercent = p == null || p.plan.entry * p.plan.quantity == 0
       ? 0.0
-      : pnl / (p.plan.entry * p.quantity) * 100;
+      : pnl / (p.plan.entry * p.plan.quantity) * 100;
     return _card(
       title: 'ОТКРЫТАЯ PAPER-ПОЗИЦИЯ',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -686,7 +686,7 @@ class _CandlePainter extends CustomPainter {
       (label: 'LONG TP1', price: last + unit * 1.5, color: _green),
       (label: 'LONG TP2', price: last + unit * 2.5, color: _green),
       (label: 'SHORT SL', price: last + unit, color: _red),
-      (label: 'SHORT TP1', price: last - unit * 1.5, color: _red),
+      (label: 'SHORT TP1', price: last - unit * 1.5, color: _green),
       (label: 'SHORT TP2', price: last - unit * 2.5, color: _green),
     ];
     final values = <double>[
