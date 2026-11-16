@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict, dataclass
 from typing import Callable
 
@@ -29,8 +30,8 @@ def _optional_positive(value, field: str) -> float | None:
     if value is None:
         return None
     number = float(value)
-    if number <= 0:
-        raise ValueError(f"{field} must be positive.")
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(f"{field} must be positive and finite.")
     return number
 
 
@@ -49,18 +50,24 @@ def validate_hypothesis(data: dict, source_channel: str,
     if market not in {"spot", "futures", "both"}:
         raise ValueError("Hypothesis market must be spot, futures, or both.")
     confidence = float(data.get("confidence", 0))
-    if not 0 <= confidence <= 1:
+    if not math.isfinite(confidence) or not 0 <= confidence <= 1:
         raise ValueError("Confidence must be between 0 and 1.")
     targets_raw = data.get("targets") or []
     if not isinstance(targets_raw, list):
         raise ValueError("Targets must be a list.")
     targets = tuple(_optional_positive(x, "target") for x in targets_raw)
+    if any(target is None for target in targets):
+        raise ValueError("Targets cannot contain null values.")
+    low = _optional_positive(data.get("entry_zone_low"), "entry_zone_low")
+    high = _optional_positive(data.get("entry_zone_high"), "entry_zone_high")
+    if low is not None and high is not None and low > high:
+        raise ValueError("Entry zone low cannot exceed entry zone high.")
     return TradingHypothesis(
         asset=asset,
         market=market,
         direction=direction,
-        entry_zone_low=_optional_positive(data.get("entry_zone_low"), "entry_zone_low"),
-        entry_zone_high=_optional_positive(data.get("entry_zone_high"), "entry_zone_high"),
+        entry_zone_low=low,
+        entry_zone_high=high,
         invalidation_level=_optional_positive(data.get("invalidation_level"), "invalidation_level"),
         targets=targets,
         timeframe=str(data.get("timeframe", "unspecified"))[:32],
@@ -96,6 +103,11 @@ def extract_hypothesis(
         f"ТРАНСКРИПТ:\\n{clean}"
     )
     raw = llm_generate(prompt)
+    raw = str(raw).strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[-1]
+        if raw.rstrip().endswith("```"):
+            raw = raw.rstrip()[:-3].strip()
     try:
         parsed = json.loads(raw)
     except (TypeError, json.JSONDecodeError) as exc:

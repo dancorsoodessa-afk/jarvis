@@ -35,14 +35,10 @@ def test_crypto_config_rejects_live_trading():
         CryptoConfig(allow_live_orders=True)
 
 
-def test_imbalance_is_positive_when_bid_depth_dominates():
+def test_imbalance_and_walls_use_visible_book_levels():
     assert bid_ask_imbalance(make_book(), depth=3) > 0
-
-
-def test_liquidity_wall_detects_large_visible_level():
     walls = liquidity_walls(make_book(), depth=3, multiple=Decimal("3"))
-    assert walls["bids"]
-    assert walls["bids"][0]["price"] == Decimal("100")
+    assert walls["bids"] and walls["bids"][0]["price"] == Decimal("100")
 
 
 def test_trade_delta_uses_aggressor_side():
@@ -60,62 +56,59 @@ def test_engine_blocks_stale_and_non_whitelisted_symbols():
     assert engine.evaluate(make_book(received=1_000), [], now_ms=10_000) is None
 
 
-def test_engine_requires_both_book_imbalance_and_trade_confirmation():
+def test_engine_requires_trade_confirmation():
     engine = ScalpingEngine(whitelist={"BTC-USDT-SWAP"})
-    sell_trades = [
-        MarketTrade("BTC-USDT-SWAP", "sell", Decimal("100"), Decimal("5"), 10_000)
-    ]
-    assert engine.evaluate(make_book(), sell_trades, now_ms=10_000) is None
+    sells = [MarketTrade("BTC-USDT-SWAP", "sell", Decimal("100"), Decimal("5"), 10_000)]
+    assert engine.evaluate(make_book(), sells, now_ms=10_000) is None
 
 
 def test_risk_manager_approves_valid_paper_signal():
     signal = TradingSignal(
-        "BTC-USDT-SWAP", "buy",
-        Decimal("100"), Decimal("99"), Decimal("102"),
-        Decimal("0.4"), Decimal("10"), Decimal("2"), 10_000, "test"
+        "BTC-USDT-SWAP", "buy", Decimal("100"), Decimal("99"), Decimal("102"),
+        Decimal("0.4"), Decimal("10"), Decimal("2"), 10_000, "test",
     )
-    decision = RiskManager().approve(
-        signal, Decimal("10000"), Decimal("0"), 0, 10_000, 10_000
-    )
-    assert decision.approved
-    assert decision.quantity > 0
+    decision = RiskManager().approve(signal, Decimal("10000"), Decimal("0"), 0, 10_000, 10_000)
+    assert decision.approved and decision.quantity > 0
 
 
 def test_risk_manager_blocks_daily_loss_and_stale_data():
     signal = TradingSignal(
-        "BTC-USDT-SWAP", "buy",
-        Decimal("100"), Decimal("99"), Decimal("102"),
-        Decimal("0.4"), Decimal("10"), Decimal("2"), 10_000, "test"
+        "BTC-USDT-SWAP", "buy", Decimal("100"), Decimal("99"), Decimal("102"),
+        Decimal("0.4"), Decimal("10"), Decimal("2"), 10_000, "test",
     )
     manager = RiskManager()
-    assert not manager.approve(
-        signal, Decimal("10000"), Decimal("-250"), 0, 10_000, 10_000
-    ).approved
-    assert not manager.approve(
-        signal, Decimal("10000"), Decimal("0"), 0, 20_000, 10_000
-    ).approved
+    assert not manager.approve(signal, Decimal("10000"), Decimal("-250"), 0, 10_000, 10_000).approved
+    assert not manager.approve(signal, Decimal("10000"), Decimal("0"), 0, 20_000, 10_000).approved
+
+
+def test_risk_manager_blocks_stop_too_close_to_estimated_liquidation():
+    signal = TradingSignal(
+        "BTC-USDT-SWAP", "buy", Decimal("100"), Decimal("50.2"), Decimal("200"),
+        Decimal("0.4"), Decimal("10"), Decimal("2"), 10_000, "test",
+    )
+    decision = RiskManager().approve(
+        signal, Decimal("10000"), Decimal("0"), 0, 10_000, 10_000,
+        leverage=Decimal("2"),
+    )
+    assert not decision.approved
+    assert "liquidation" in decision.reason.lower()
 
 
 def test_paper_broker_fills_only_from_public_trade_events():
     signal = TradingSignal(
-        "BTC-USDT-SWAP", "buy",
-        Decimal("100"), Decimal("99"), Decimal("102"),
-        Decimal("0.4"), Decimal("10"), Decimal("2"), 10_000, "test"
+        "BTC-USDT-SWAP", "buy", Decimal("100"), Decimal("99"), Decimal("102"),
+        Decimal("0.4"), Decimal("10"), Decimal("2"), 10_000, "test",
     )
     broker = PaperBroker(Decimal("1000"))
     order = broker.place_limit(signal, Decimal("2"))
     assert order.status == "open"
-
-    no_fill = broker.on_trade(
-        MarketTrade("BTC-USDT-SWAP", "buy", Decimal("100"), Decimal("5"), 10_001)
-    )
-    assert no_fill == []
-
-    fills = broker.on_trade(
-        MarketTrade("BTC-USDT-SWAP", "sell", Decimal("99.9"), Decimal("1"), 10_002)
-    )
-    assert len(fills) == 1
-    assert fills[0].quantity == Decimal("1")
+    assert broker.on_trade(MarketTrade(
+        "BTC-USDT-SWAP", "buy", Decimal("100"), Decimal("5"), 10_001
+    )) == []
+    fills = broker.on_trade(MarketTrade(
+        "BTC-USDT-SWAP", "sell", Decimal("99.9"), Decimal("1"), 10_002
+    ))
+    assert len(fills) == 1 and fills[0].quantity == Decimal("1")
     assert order.status == "partially_filled"
 
 

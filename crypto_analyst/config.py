@@ -12,7 +12,7 @@ class CryptoConfig:
     paper_trading: bool = True
     allow_live_orders: bool = False
     max_symbols: int = 500
-    orderbook_depth: int = 20
+    orderbook_depth: int = 5
     max_data_age_ms: int = 1_500
     reconnect_min_seconds: float = 1.0
     reconnect_max_seconds: float = 30.0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -9,6 +10,14 @@ import requests
 
 
 OKX_REST = "https://www.okx.com"
+
+
+@dataclass(frozen=True)
+class OKXInstrument:
+    symbol: str
+    market_type: str
+    contract_multiplier: Decimal
+    quote_volume_24h: Decimal
 
 
 class OKXInstrumentDiscovery:
@@ -55,17 +64,18 @@ class OKXInstrumentDiscovery:
             raise ValueError("market_type must be 'spot' or 'swap'.")
         return self._get_data("/api/v5/market/tickers", {"instType": inst_type})
 
-    def discover_liquid_symbols(
+    def discover_liquid_instruments(
         self,
         include_spot: bool = True,
         include_swaps: bool = True,
         max_symbols: int = 500,
         min_quote_volume_usdt: Decimal = Decimal("250000"),
-    ) -> list[str]:
-        """Return top USDT instruments by approximate 24h quote turnover.
+    ) -> list[OKXInstrument]:
+        """Rank live USDT instruments by approximate 24h quote turnover.
 
         OKX reports spot volCcy24h in quote currency and derivatives volCcy24h
         in base currency. Derivative turnover is approximated as base volume * last.
+        Linear USDT swaps are sized using ctVal * ctMult in base-currency units.
         """
         if not include_spot and not include_swaps:
             return []
@@ -74,7 +84,7 @@ class OKXInstrumentDiscovery:
         if min_quote_volume_usdt < 0:
             raise ValueError("min_quote_volume_usdt cannot be negative.")
 
-        ranked: list[tuple[Decimal, str]] = []
+        ranked: list[OKXInstrument] = []
         markets = []
         if include_spot:
             markets.append("spot")
@@ -83,24 +93,65 @@ class OKXInstrumentDiscovery:
 
         for market_type in markets:
             instruments = self.fetch_instruments(market_type)
-            allowed = {row.get("instId") for row in instruments}
+            allowed = {str(row.get("instId")): row for row in instruments if row.get("instId")}
             for ticker in self.fetch_tickers(market_type):
                 symbol = str(ticker.get("instId") or "")
-                if not symbol or symbol not in allowed:
+                instrument = allowed.get(symbol)
+                if not instrument:
                     continue
                 try:
                     volume = Decimal(str(ticker.get("volCcy24h", "0")))
                     last = Decimal(str(ticker.get("last", "0")))
                     if market_type == "swap":
                         volume *= last
+                        contract_value = Decimal(str(instrument.get("ctVal", "0")))
+                        contract_multiplier = Decimal(str(instrument.get("ctMult") or "1"))
+                        base_currency = str(instrument.get("baseCcy") or "")
+                        contract_currency = str(instrument.get("ctValCcy") or "")
+                        if (
+                            contract_value <= 0
+                            or contract_multiplier <= 0
+                            or not base_currency
+                            or contract_currency != base_currency
+                        ):
+                            # Do not size a derivative when its contract unit is unknown.
+                            continue
+                        unit_multiplier = contract_value * contract_multiplier
+                    else:
+                        unit_multiplier = Decimal("1")
                 except (InvalidOperation, TypeError, ValueError):
                     continue
-                if not volume.is_finite() or volume < min_quote_volume_usdt:
+                if (
+                    not volume.is_finite()
+                    or not last.is_finite()
+                    or volume < min_quote_volume_usdt
+                ):
                     continue
-                ranked.append((volume, symbol))
+                ranked.append(OKXInstrument(
+                    symbol=symbol,
+                    market_type=market_type,
+                    contract_multiplier=unit_multiplier,
+                    quote_volume_24h=volume,
+                ))
 
-        ranked.sort(key=lambda item: item[0], reverse=True)
-        return list(dict.fromkeys(symbol for _, symbol in ranked))[:max_symbols]
+        ranked.sort(key=lambda item: item.quote_volume_24h, reverse=True)
+        return ranked[:max_symbols]
+
+    def discover_liquid_symbols(
+        self,
+        include_spot: bool = True,
+        include_swaps: bool = True,
+        max_symbols: int = 500,
+        min_quote_volume_usdt: Decimal = Decimal("250000"),
+    ) -> list[str]:
+        return [
+            item.symbol for item in self.discover_liquid_instruments(
+                include_spot=include_spot,
+                include_swaps=include_swaps,
+                max_symbols=max_symbols,
+                min_quote_volume_usdt=min_quote_volume_usdt,
+            )
+        ]
 
     def discover_usdt_symbols(self, include_spot: bool = True,
                               include_swaps: bool = True) -> list[str]:

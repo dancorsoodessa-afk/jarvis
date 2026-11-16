@@ -1,0 +1,53 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - jarvis_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: jarvis
+      POSTGRES_USER: jarvis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - jarvis_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jarvis -d jarvis"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  crypto-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.crypto
+    environment:
+      JARVIS_REDIS_URL: redis://redis:6379/0
+      JARVIS_DATABASE_URL: postgresql://jarvis:${POSTGRES_PASSWORD}@postgres:5432/jarvis
+      JARVIS_CRYPTO_MAX_SYMBOLS: ${JARVIS_CRYPTO_MAX_SYMBOLS:-500}
+      JARVIS_CRYPTO_MIN_VOLUME_USDT: ${JARVIS_CRYPTO_MIN_VOLUME_USDT:-250000}
+      JARVIS_PAPER_BALANCE: ${JARVIS_PAPER_BALANCE:-10000}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      JARVIS_YOUTUBE_CHANNEL_IDS: ${JARVIS_YOUTUBE_CHANNEL_IDS:-}
+      JARVIS_STRATEGIC_MODEL: ${JARVIS_STRATEGIC_MODEL:-}
+      JARVIS_CHAT_MODEL: ${JARVIS_CHAT_MODEL:-}
+      JARVIS_YOUTUBE_POLL_SECONDS: ${JARVIS_YOUTUBE_POLL_SECONDS:-900}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  jarvis_redis_data:
+  jarvis_postgres_data:

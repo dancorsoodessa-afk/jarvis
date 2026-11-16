@@ -72,11 +72,36 @@ def trade_delta(trades) -> Decimal:
     return result
 
 
-def probable_iceberg(trades, minimum_repeated_volume: Decimal) -> bool:
-    """Heuristic only: repeated executions at one price; never claims hidden size is known."""
-    if minimum_repeated_volume <= 0:
-        raise ValueError("minimum_repeated_volume must be positive.")
-    by_price: dict[Decimal, Decimal] = {}
+def cumulative_volume_delta(trades) -> tuple[Decimal, ...]:
+    """Return cumulative aggressor-side volume delta in trade arrival order."""
+    running = ZERO
+    result = []
     for trade in trades:
-        by_price[trade.price] = by_price.get(trade.price, ZERO) + trade.amount
-    return any(volume >= minimum_repeated_volume for volume in by_price.values())
+        running += trade.amount if trade.side == "buy" else -trade.amount
+        result.append(running)
+    return tuple(result)
+
+
+def large_trades(trades, minimum_notional: Decimal):
+    """Return prints whose price * amount reaches the configured quote notional."""
+    if not minimum_notional.is_finite() or minimum_notional <= 0:
+        raise ValueError("minimum_notional must be positive and finite.")
+    return [
+        trade for trade in trades
+        if trade.price * trade.amount >= minimum_notional
+    ]
+
+
+def probable_iceberg(trades, minimum_repeated_volume: Decimal) -> bool:
+    """Weak hidden-liquidity heuristic: several smaller prints repeatedly execute at one price."""
+    if not minimum_repeated_volume.is_finite() or minimum_repeated_volume <= 0:
+        raise ValueError("minimum_repeated_volume must be positive and finite.")
+    by_price: dict[Decimal, list[Decimal]] = {}
+    for trade in trades:
+        by_price.setdefault(trade.price, []).append(trade.amount)
+    return any(
+        len(amounts) >= 3
+        and sum(amounts, ZERO) >= minimum_repeated_volume
+        and max(amounts) <= sum(amounts, ZERO) / Decimal("2")
+        for amounts in by_price.values()
+    )

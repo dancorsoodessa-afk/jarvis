@@ -28,12 +28,15 @@ class MarketState:
             lambda: deque(maxlen=trade_buffer_size)
         )
         self.tickers: dict[str, TickerSnapshot] = {}
+        self.open_interest: dict[str, dict[str, Any]] = {}
+        self.funding_rates: dict[str, dict[str, Any]] = {}
+        self.liquidations: deque[dict[str, Any]] = deque(maxlen=2_000)
 
     def on_okx_message(self, message: dict[str, Any], received_at_ms: int) -> None:
         arg = message.get("arg") or {}
-        channel = arg.get("channel")
+        channel = str(arg.get("channel") or "")
         symbol = str(arg.get("instId") or "")
-        if not symbol:
+        if not symbol and channel != "liquidation-orders":
             return
         rows = message.get("data") or []
         if not isinstance(rows, list):
@@ -46,7 +49,6 @@ class MarketState:
                         symbol, row, received_at_ms
                     )
                 except (KeyError, TypeError, ValueError):
-                    # An invalid snapshot must not overwrite the last valid book.
                     continue
         elif channel == "trades":
             for row in rows:
@@ -67,6 +69,26 @@ class MarketState:
                     )
                 except (KeyError, TypeError, ValueError):
                     continue
+        elif channel == "open-interest":
+            for row in rows:
+                if isinstance(row, dict):
+                    self.open_interest[symbol] = dict(row)
+        elif channel == "funding-rate":
+            for row in rows:
+                if isinstance(row, dict):
+                    self.funding_rates[symbol] = dict(row)
+        elif channel == "liquidation-orders":
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                instrument_id = str(row.get("instId") or symbol)
+                for detail in row.get("details") or []:
+                    if isinstance(detail, dict):
+                        self.liquidations.append({
+                            "symbol": instrument_id,
+                            "received_at_ms": received_at_ms,
+                            **detail,
+                        })
 
     def recent_trades(self, symbol: str, since_ms: int | None = None) -> list[MarketTrade]:
         rows = list(self.trades.get(symbol, ()))

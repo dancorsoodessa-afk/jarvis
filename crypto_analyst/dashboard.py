@@ -89,6 +89,9 @@ class CryptoDashboard(tk.Toplevel):
             ("orders", "PAPER-ОРДЕРА"),
             ("positions", "ОТКРЫТЫЕ ПОЗИЦИИ"),
             ("balance", "ВИРТУАЛЬНЫЙ БАЛАНС"),
+            ("oi", "OPEN INTEREST"),
+            ("funding", "FUNDING RATE"),
+            ("liquidations", "ЛИКВИДАЦИИ"),
         ):
             card = tk.Frame(metrics, bg=PANEL, highlightbackground="#1e465c", highlightthickness=1)
             card.pack(side="left", fill="both", expand=True, padx=(0, 7))
@@ -135,24 +138,37 @@ class CryptoDashboard(tk.Toplevel):
     def _worker(self):
         try:
             discovery = OKXInstrumentDiscovery()
-            symbols = discovery.discover_liquid_symbols(
+            instruments = discovery.discover_liquid_instruments(
                 include_spot=True,
                 include_swaps=True,
                 max_symbols=self.config_model.max_symbols,
                 min_quote_volume_usdt=Decimal("250000"),
             )
+            symbols = [item.symbol for item in instruments]
             if not symbols:
                 raise RuntimeError("OKX не вернул подходящие ликвидные USDT-инструменты.")
+            contract_multipliers = {
+                item.symbol: item.contract_multiplier for item in instruments
+            }
+            derivative_symbols = {
+                item.symbol for item in instruments if item.market_type == "swap"
+            }
             runtime = PaperScalpingRuntime(
                 engine=ScalpingEngine(whitelist=set(symbols)),
                 risk_manager=RiskManager(),
                 broker=PaperBroker(starting_balance=Decimal("10000")),
+                contract_multipliers=contract_multipliers,
+                derivative_symbols=derivative_symbols,
             )
             self._runtime = runtime
             self._events.put(("symbols", len(symbols)))
             self._events.put(("status", f"ПОДПИСКА OKX: {len(symbols)} ИНСТРУМЕНТОВ"))
             self._events.put(("log", f"Найдено ликвидных инструментов: {len(symbols)}. Запускаю публичные WebSocket-потоки."))
-            feed = OKXPublicFeed(symbols, self._handle_market_message)
+            feed = OKXPublicFeed(
+                symbols,
+                self._handle_market_message,
+                derivative_symbols=derivative_symbols,
+            )
             asyncio.run(self._run_feed(feed))
             self._events.put(("status", "ОСТАНОВЛЕНО"))
         except Exception as exc:
@@ -190,11 +206,17 @@ class CryptoDashboard(tk.Toplevel):
                 ))
         if time.monotonic() - self._last_ui_update >= 1.0:
             self._last_ui_update = time.monotonic()
+            sample_symbol = next(iter(runtime.derivative_symbols), None)
+            oi_row = runtime.state.open_interest.get(sample_symbol, {}) if sample_symbol else {}
+            funding_row = runtime.state.funding_rates.get(sample_symbol, {}) if sample_symbol else {}
             self._events.put(("metrics", {
                 "events": runtime.event_count,
                 "orders": len(runtime.broker.orders),
                 "positions": runtime.broker.open_position_count(),
                 "balance": runtime.broker.cash,
+                "oi": oi_row.get("oiUsd") or oi_row.get("oi") or "—",
+                "funding": funding_row.get("fundingRate") or "—",
+                "liquidations": len(runtime.state.liquidations),
             }))
             self._events.put(("activity", channel))
 
@@ -229,6 +251,9 @@ class CryptoDashboard(tk.Toplevel):
                     self.metric_vars["orders"].set(str(values["orders"]))
                     self.metric_vars["positions"].set(str(values["positions"]))
                     self.metric_vars["balance"].set(f'{values["balance"]:.2f} USDT')
+                    self.metric_vars["oi"].set(str(values["oi"]))
+                    self.metric_vars["funding"].set(str(values["funding"]))
+                    self.metric_vars["liquidations"].set(str(values["liquidations"]))
                 elif kind == "error":
                     self.status_var.set("ОШИБКА")
                     self._append("Ошибка: " + str(payload))

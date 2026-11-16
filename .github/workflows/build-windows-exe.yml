@@ -7,6 +7,7 @@ on:
       - 'agent/**'
       - 'crypto_analyst/**'
       - 'strategic/**'
+      - 'storage/**'
       - 'docs/**'
       - 'ui/**'
       - 'tests/**'
@@ -40,12 +41,12 @@ jobs:
       - name: Compile Python modules
         shell: pwsh
         run: |
-          python -m compileall -q agent crypto_analyst strategic jarvis_desktop.py
+          python -m compileall -q agent crypto_analyst strategic storage jarvis_desktop.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run tests and build packaged executable
         shell: pwsh
         run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_exe.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build_exe.ps1
           if ($LASTEXITCODE -ne 0) { throw "Build script failed with exit code $LASTEXITCODE" }
           if (!(Test-Path 'release/JARVIS.exe')) { throw 'release/JARVIS.exe was not created' }
           if ((Get-Item 'release/JARVIS.exe').Length -lt 1MB) { throw 'JARVIS.exe is unexpectedly small' }

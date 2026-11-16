@@ -1,4 +1,4 @@
-"""Public OKX WebSocket feed with sharded subscriptions and reconnect."""
+"""Sharded public OKX WebSocket feed with reconnect and text heartbeat."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 
-OKX_PUBLIC_WS = "wss://ws.okx.com:8443/ws/v5/public"
+OKX_PUBLIC_WS = "wss://ws.okx.com/ws/v5/public"
 EventHandler = Callable[[dict[str, Any]], Awaitable[None] | None]
 
 
@@ -24,6 +24,7 @@ class OKXPublicFeed:
         reconnect_max: float = 30.0,
         instruments_per_connection: int = 30,
         connection_start_delay: float = 0.4,
+        derivative_symbols: set[str] | None = None,
     ):
         if not symbols:
             raise ValueError("At least one OKX instrument ID is required.")
@@ -38,13 +39,24 @@ class OKXPublicFeed:
         self.reconnect_max = reconnect_max
         self.instruments_per_connection = instruments_per_connection
         self.connection_start_delay = max(0.0, connection_start_delay)
+        self.derivative_symbols = set(derivative_symbols or ()) & set(self.symbols)
 
     @staticmethod
-    def _subscriptions(symbols: tuple[str, ...]) -> dict[str, Any]:
+    def _subscriptions(
+        symbols: tuple[str, ...],
+        derivative_symbols: set[str] | None = None,
+        include_liquidations: bool = False,
+    ) -> dict[str, Any]:
+        derivative_symbols = derivative_symbols or set()
         args = []
         for symbol in symbols:
             for channel in ("books5", "trades", "tickers"):
                 args.append({"channel": channel, "instId": symbol})
+            if symbol in derivative_symbols:
+                for channel in ("open-interest", "funding-rate"):
+                    args.append({"channel": channel, "instId": symbol})
+        if include_liquidations:
+            args.append({"channel": "liquidation-orders", "instType": "SWAP"})
         return {"op": "subscribe", "args": args}
 
     async def _run_connection(
@@ -52,6 +64,7 @@ class OKXPublicFeed:
         symbols: tuple[str, ...],
         stop_event: asyncio.Event,
         startup_delay: float,
+        include_liquidations: bool = False,
     ) -> None:
         if startup_delay:
             try:
@@ -72,21 +85,36 @@ class OKXPublicFeed:
             try:
                 async with websockets.connect(
                     self.url,
-                    ping_interval=20,
-                    ping_timeout=20,
+                    ping_interval=None,
                     close_timeout=5,
                     max_size=2**20,
                 ) as socket:
-                    await socket.send(json.dumps(self._subscriptions(symbols)))
+                    await socket.send(json.dumps(self._subscriptions(
+                        symbols,
+                        self.derivative_symbols,
+                        include_liquidations,
+                    )))
                     delay = self.reconnect_min
+                    last_message_at = asyncio.get_running_loop().time()
                     while not stop_event.is_set():
                         try:
                             raw = await asyncio.wait_for(socket.recv(), timeout=1.0)
                         except asyncio.TimeoutError:
-                            continue
+                            if asyncio.get_running_loop().time() - last_message_at < 15:
+                                continue
+                            await socket.send("ping")
+                            try:
+                                raw = await asyncio.wait_for(socket.recv(), timeout=10.0)
+                            except asyncio.TimeoutError as exc:
+                                raise RuntimeError("OKX text heartbeat timed out.") from exc
+
+                        last_message_at = asyncio.get_running_loop().time()
                         if raw == "ping":
                             await socket.send("pong")
                             continue
+                        if raw == "pong":
+                            continue
+
                         message = json.loads(raw)
                         if not isinstance(message, dict):
                             continue
@@ -110,7 +138,7 @@ class OKXPublicFeed:
                 delay = min(self.reconnect_max, delay * 2)
 
     async def run(self, stop_event: asyncio.Event) -> None:
-        """Run sharded public feeds; each connection subscribes to at most 30 instruments."""
+        """Run independent connections; each subscribes to at most 30 instruments."""
         chunks = [
             self.symbols[index:index + self.instruments_per_connection]
             for index in range(0, len(self.symbols), self.instruments_per_connection)
@@ -121,6 +149,7 @@ class OKXPublicFeed:
                     chunk,
                     stop_event,
                     startup_delay=index * self.connection_start_delay,
+                    include_liquidations=(index == 0 and bool(self.derivative_symbols)),
                 )
             )
             for index, chunk in enumerate(chunks)

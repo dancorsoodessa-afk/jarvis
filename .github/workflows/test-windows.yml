@@ -7,24 +7,31 @@ on:
       - "agent/**"
       - "crypto_analyst/**"
       - "strategic/**"
+      - "storage/**"
       - "ui/**"
       - "scripts/prepare_3d_assets.ps1"
       - "tests/**"
       - "jarvis_desktop.py"
       - "pyproject.toml"
       - "poetry.lock"
+      - "Dockerfile.crypto"
+      - "docker-compose.crypto.yml"
       - ".github/workflows/test-windows.yml"
   pull_request:
     branches: [foundation]
     paths:
       - "agent/**"
       - "crypto_analyst/**"
+      - "strategic/**"
+      - "storage/**"
       - "ui/**"
       - "scripts/prepare_3d_assets.ps1"
       - "tests/**"
       - "jarvis_desktop.py"
       - "pyproject.toml"
       - "poetry.lock"
+      - "Dockerfile.crypto"
+      - "docker-compose.crypto.yml"
       - ".github/workflows/test-windows.yml"
 
 concurrency:
@@ -48,7 +55,7 @@ jobs:
           python -m pip install "pytest>=9,<10"
       - name: Prepare pinned local Three.js assets
         shell: pwsh
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prepare_3d_assets.ps1
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\prepare_3d_assets.ps1
       - name: Run tests
         shell: pwsh
         run: pytest tests/ -q
