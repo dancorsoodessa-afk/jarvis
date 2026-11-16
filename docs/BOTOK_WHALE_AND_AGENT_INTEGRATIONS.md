@@ -29,6 +29,16 @@ Required secret: NANSEN_API_KEY (obtain from https://app.nansen.ai/api).
 
 Nansen documents Smart Money labels, wallet profiling, token analytics, Smart Money DEX trades and flow endpoints. BOTok includes an optional Streamable-HTTP MCP client that discovers the live server tool schema. It does not hard-code unverified tool names. The UI must show the provider as disconnected until the key is configured and a live handshake succeeds.
 
+### CoinGlass: live large Hyperliquid positions
+API endpoint: https://open-api-v4.coinglass.com/api/hyperliquid/whale-position
+Required secret: COINGLASS_API_KEY (header CG-API-KEY).
+
+The documented endpoint returns current Hyperliquid positions larger than USD 1 million, including wallet, symbol, signed position size, entry/mark/liquidation prices, leverage, margin, unrealized PnL and update time. The adapter groups multiple positions by wallet and displays the 200 largest gross-position accounts. This is a snapshot endpoint, not a guaranteed sub-second push feed; the UI refreshes it on demand and then every 60 seconds while results are available. CoinGlass plan permissions and rate limits apply.
+
+### Bitquery: strongest candidate for best-trader ranking and trade stream
+Official Top Traders API: https://www.bitquery.io/products/trade-api
+Bitquery describes wallet leaderboards ranked by realized PnL, volume, trade count and win-rate, plus WebSocket/gRPC streaming of DEX trades. This is the better source for ranking consistently profitable traders and observing their actual DEX swaps, rather than using open-position size as a proxy for skill. A Bitquery API token and plan with streaming permissions are required. The Bitquery connector is not yet enabled in the BOTok runtime.
+
 ### Secondary sources to evaluate
 - Arkham Intelligence: entity attribution and investigation; useful for checking whether an address is an exchange, fund, market maker or other known entity.
 - Bitquery: programmable multi-chain transfer/DEX-trade data and streaming; useful for building a custom watchlist and event pipeline.
@@ -62,10 +72,12 @@ Wallet activity is an independent confirmation input, not a standalone entry tri
 
 ## Current integration status
 
-- The BOTok branch has a Nansen MCP client scaffold that requires NANSEN_API_KEY.
-- The client performs MCP initialization and tool discovery; provider-specific tool arguments must be selected from the returned schema.
-- No Nansen API key is stored in GitHub or committed to source.
-- No Arkham, Bitquery, Whale Alert or CoinGlass credentials are configured.
+- The BOTok branch has an optional Nansen MCP client that discovers the live tool schema and requires NANSEN_API_KEY.
+- The BOTok branch has a CoinGlass Hyperliquid whale-position client and aggregates the top 200 largest open-position wallets; it requires COINGLASS_API_KEY.
+- Windows UI key fields save Nansen and CoinGlass keys encrypted with the existing Windows DPAPI helper in the user's JARVIS settings file.
+- No API keys are stored in GitHub or committed to source.
+- Bitquery Top Traders is documented as the preferred realized-PnL/win-rate and DEX trade stream source, but its runtime adapter is not yet implemented.
+- No Arkham or Whale Alert credentials are configured.
 - The current OKX market feed remains public and read-only.
 - The trading engine remains Paper Trading only; there is no live exchange order placement.
 - The top-200 ranking helper ranks only rows actually returned by a configured provider. It does not fabricate wallet identities or events.
