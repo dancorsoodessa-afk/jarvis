@@ -109,10 +109,17 @@ class BOTokDashboard(CryptoDashboard):
         runtime = self._runtime
         if runtime is None or self._stop_flag.is_set():
             return
+        arg = message.get("arg") or {}
+        channel = arg.get("channel")
+        if channel not in {"tickers", "books5"}:
+            return
+        incoming_symbol = str(arg.get("instId") or "")
+        if self._chart_symbol not in runtime.state.tickers and runtime.state.tickers:
+            self._chart_symbol = next(iter(runtime.state.tickers))
         symbol = self._chart_symbol
+        if incoming_symbol != symbol:
+            return
         ticker = runtime.state.tickers.get(symbol)
-        if ticker is None and runtime.state.tickers:
-            symbol, ticker = next(iter(runtime.state.tickers.items()))
         if ticker is None:
             return
         book = runtime.state.orderbooks.get(symbol)
