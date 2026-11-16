@@ -13,6 +13,7 @@ class MarketCandle {
     required this.low,
     required this.close,
     required this.volume,
+    this.isClosed = true,
   });
   final DateTime timestamp;
   final double open;
@@ -20,6 +21,7 @@ class MarketCandle {
   final double low;
   final double close;
   final double volume;
+  final bool isClosed;
 
   factory MarketCandle.fromOkx(List<dynamic> row) => MarketCandle(
     timestamp: DateTime.fromMillisecondsSinceEpoch(int.parse(row[0].toString()), isUtc: true),
@@ -28,6 +30,7 @@ class MarketCandle {
     low: double.parse(row[3].toString()),
     close: double.parse(row[4].toString()),
     volume: double.tryParse(row[5].toString()) ?? 0,
+    isClosed: row.length <= 8 || row[8].toString() == '1',
   );
 }
 
@@ -89,10 +92,11 @@ class OkxMarket {
 
   Future<List<MarketCandle>> loadCandles(String instrumentId, {String bar = '1m', int limit = 100}) async {
     final client = _http ??= HttpClient();
+    final safeLimit = limit.clamp(1, 300);
     final uri = Uri.https('www.okx.com', '/api/v5/market/candles', {
       'instId': instrumentId,
       'bar': bar,
-      'limit': limit.toString(),
+      'limit': safeLimit.toString(),
     });
     final request = await client.getUrl(uri).timeout(const Duration(seconds: 15));
     final response = await request.close().timeout(const Duration(seconds: 15));
@@ -103,6 +107,57 @@ class OkxMarket {
     final rows = decoded['data'] as List<dynamic>;
     return rows.map((row) => MarketCandle.fromOkx(row as List<dynamic>)).toList()
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  }
+
+  Future<List<MarketCandle>> loadHistory(
+    String instrumentId, {
+    String bar = '1m',
+    int limit = 1200,
+  }) async {
+    final target = limit.clamp(1, 1500);
+    final collected = <int, MarketCandle>{};
+    String? after;
+    var pages = 0;
+    while (collected.length < target && pages < 5) {
+      final remaining = target - collected.length;
+      final pageLimit = remaining.clamp(1, 300);
+      final query = <String, String>{
+        'instId': instrumentId,
+        'bar': bar,
+        'limit': pageLimit.toString(),
+        if (after != null) 'after': after,
+      };
+      final client = _http ??= HttpClient();
+      final request = await client
+          .getUrl(Uri.https('www.okx.com', '/api/v5/market/history-candles', query))
+          .timeout(const Duration(seconds: 15));
+      final response = await request.close().timeout(const Duration(seconds: 15));
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode != 200) {
+        throw HttpException('OKX history candles HTTP ${response.statusCode}');
+      }
+      final decoded = jsonDecode(body) as Map<String, dynamic>;
+      if (decoded['code'] != '0') {
+        throw FormatException('OKX history candles: ${decoded['msg']}');
+      }
+      final rows = (decoded['data'] as List<dynamic>);
+      if (rows.isEmpty) break;
+      var oldest = 0;
+      for (final raw in rows) {
+        final row = raw as List<dynamic>;
+        final candle = MarketCandle.fromOkx(row);
+        collected[candle.timestamp.millisecondsSinceEpoch] = candle;
+        final timestamp = int.parse(row[0].toString());
+        if (oldest == 0 || timestamp < oldest) oldest = timestamp;
+      }
+      if (oldest == 0 || after == oldest.toString() || rows.length < pageLimit) break;
+      after = oldest.toString();
+      pages++;
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+    }
+    final result = collected.values.toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return result.length > target ? result.sublist(result.length - target) : result;
   }
 
   Future<void> watch(String instrumentId) async {
