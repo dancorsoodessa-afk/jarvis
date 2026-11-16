@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'okx_market.dart';
+import 'paper_trading.dart';
 import 'signal_engine.dart';
 
 void main() => runApp(const BotokApp());
@@ -46,8 +48,9 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   final _market = OkxMarket();
   final _prices = <double>[];
+  final _candles = <MarketCandle>[];
   final _search = TextEditingController();
-  final _capital = TextEditingController(text: '100');
+  final _capital = TextEditingController(text: '1000');
   StreamSubscription<Map<String, dynamic>>? _feed;
   List<MarketInstrument> _instruments = [];
   MarketInstrument? _selected;
@@ -60,7 +63,8 @@ class _DashboardPageState extends State<DashboardPage> {
   double _tradeDelta = 0;
   double _leverage = 1;
   double _riskPercent = 1;
-  TradePlan? _paperPosition;
+  late PaperTradingEngine _paper;
+  bool _paperReady = false;
   String _positionState = 'Нет открытой paper-позиции';
   bool _loading = false;
   bool _confirmMode = true;
@@ -80,8 +84,30 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+    _paper = PaperTradingEngine(initialBalance: 1000);
+    _restorePaper();
     _loadMarket();
     _search.addListener(() { if (mounted) setState(() {}); });
+  }
+
+  Future<void> _restorePaper() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('botok.paper.wallet.v1');
+      if (saved != null) _paper = PaperTradingEngine.decode(saved);
+    } catch (e) {
+      _positionState = 'Не удалось восстановить демо-кошелёк: $e';
+    }
+    if (mounted) setState(() => _paperReady = true);
+  }
+
+  Future<void> _persistPaper() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('botok.paper.wallet.v1', _paper.encode());
+    } catch (e) {
+      if (mounted) _toast('Ошибка сохранения демо-кошелька: $e');
+    }
   }
 
   Future<void> _loadMarket() async {
@@ -109,8 +135,19 @@ class _DashboardPageState extends State<DashboardPage> {
     final instrument = _selected;
     if (instrument == null) return;
     await _feed?.cancel();
+    try {
+      final history = await _market.loadCandles(instrument.id, bar: '1m', limit: 100);
+      _candles
+        ..clear()
+        ..addAll(history);
+      if (history.isNotEmpty) _price = history.last.close;
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Свечной архив OKX недоступен: $e');
+    }
     await _market.watch(instrument.id);
-    _prices.clear();
+    _prices
+      ..clear()
+      ..addAll(_candles.map((candle) => candle.close));
     _bookImbalance = 0;
     _tradeDelta = 0;
     _feed = _market.events.listen(_onMarketEvent);
@@ -130,6 +167,25 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
     if (rows is! List || rows.isEmpty) return;
+    if (type == 'candle1m') {
+      for (final raw in rows) {
+        try {
+          final candle = MarketCandle.fromOkx(raw as List<dynamic>);
+          final index = _candles.indexWhere((item) => item.timestamp == candle.timestamp);
+          if (index >= 0) {
+            _candles[index] = candle;
+          } else {
+            _candles.add(candle);
+            if (_candles.length > 120) _candles.removeAt(0);
+          }
+        } catch (_) {}
+      }
+      _prices
+        ..clear()
+        ..addAll(_candles.map((candle) => candle.close));
+      setState(() {});
+      return;
+    }
     final row = rows.first as Map<String, dynamic>;
     if (type == 'tickers') {
       final last = double.tryParse(row['last']?.toString() ?? '') ?? 0;
@@ -162,30 +218,25 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _managePaperPosition(double last) {
-    final position = _paperPosition;
-    if (position == null) return;
-    final isLong = position.direction == 'LONG';
-    if ((isLong && last <= position.stopLoss) || (!isLong && last >= position.stopLoss)) {
-      _paperPosition = null;
-      _positionState = 'PAPER закрыта по Stop Loss • ${_fmt(last)}';
-    } else if ((isLong && last >= position.takeProfit2) || (!isLong && last <= position.takeProfit2)) {
-      _paperPosition = null;
-      _positionState = 'PAPER закрыта по Take Profit 2 • ${_fmt(last)}';
-    } else if ((isLong && last >= position.takeProfit1) || (!isLong && last <= position.takeProfit1)) {
-      _positionState = 'PAPER: достигнут Take Profit 1 • контроль позиции';
+    final closed = _paper.markPrice(last);
+    if (closed != null) {
+      _positionState = 'PAPER закрыта: ${closed.reason} • PnL ${closed.realizedPnl.toStringAsFixed(2)} USDT';
     }
+    _persistPaper();
   }
 
   Future<void> _switchMarket(String type) async {
     if (_marketType == type) return;
-    setState(() { _marketType = type; _selected = null; _paperPosition = null; });
+    if (_paper.openPosition != null) { _toast('Сначала закройте PAPER-позицию на текущем инструменте.'); return; }
+    setState(() { _marketType = type; _selected = null; });
     await _market.disconnect();
     await _loadMarket();
   }
 
   Future<void> _selectInstrument(MarketInstrument instrument) async {
+    if (_paper.openPosition != null) { _toast('Сначала закройте PAPER-позицию на текущем инструменте.'); return; }
     Navigator.pop(context);
-    setState(() { _selected = instrument; _price = 0; _paperPosition = null; });
+    setState(() { _selected = instrument; _price = 0; _candles.clear(); });
     try {
       await _connectSelected();
     } catch (e) {
@@ -194,29 +245,25 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _openPaper() async {
-    if (_price <= 0) {
-      _toast('Нет актуальной цены OKX');
-      return;
-    }
+    if (!_paperReady) { _toast('Демо-кошелёк ещё загружается.'); return; }
+    if (_paper.openPosition != null) { _toast('Сначала закройте текущую PAPER-позицию.'); return; }
+    if (_price <= 0) { _toast('Нет актуальной цены OKX'); return; }
     final signal = _signal;
-    final direction = signal.direction;
-    final probability = signal.confidence;
-    if (probability < 58) {
-      _toast('Сигнал слабый: ${probability.toStringAsFixed(1)}%. Ожидание.');
+    if (signal.confidence < 58) {
+      _toast('Сигнал слабый: ${signal.confidence.toStringAsFixed(1)}%. Ожидание.');
       return;
     }
-    final capital = double.tryParse(_capital.text.replaceAll(',', '.')) ?? 0;
     late final TradePlan plan;
     try {
       plan = buildTradePlan(
-        direction: direction,
+        direction: signal.direction,
         entry: _price,
-        capital: capital,
+        capital: _paper.availableBalance,
         riskPercent: _riskPercent,
         leverage: _leverage,
       );
     } catch (e) {
-      _toast('Проверьте капитал: $e');
+      _toast('Не удалось рассчитать сделку: $e');
       return;
     }
     if (_confirmMode) {
@@ -225,7 +272,7 @@ class _DashboardPageState extends State<DashboardPage> {
         builder: (context) => AlertDialog(
           backgroundColor: _panel,
           title: const Text('Подтвердить PAPER-сделку?'),
-          content: Text('${plan.direction}\nВход: ${_fmt(plan.entry)}\nStop Loss: ${_fmt(plan.stopLoss)}\nTP1: ${_fmt(plan.takeProfit1)}\nTP2: ${_fmt(plan.takeProfit2)}\nРиск: ${plan.riskAmount.toStringAsFixed(2)} USDT'),
+          content: Text('${plan.direction}\\nВход: ${_fmt(plan.entry)}\\nЗалог: ${(plan.entry * plan.quantity / plan.leverage).toStringAsFixed(2)} USDT\\nStop Loss: ${_fmt(plan.stopLoss)}\\nTP1: ${_fmt(plan.takeProfit1)}\\nTP2: ${_fmt(plan.takeProfit2)}\\nРиск: ${plan.riskAmount.toStringAsFixed(2)} USDT'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
             FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Подтвердить')),
@@ -234,10 +281,13 @@ class _DashboardPageState extends State<DashboardPage> {
       );
       if (approved != true) return;
     }
-    setState(() {
-      _paperPosition = plan;
-      _positionState = 'PAPER ${plan.direction} • SL/TP установлены автоматически';
-    });
+    try {
+      _paper.open(plan);
+      setState(() => _positionState = 'PAPER ${plan.direction} • SL/TP активны');
+      await _persistPaper();
+    } catch (e) {
+      _toast('PAPER-сделка не открыта: $e');
+    }
   }
 
   void _toast(String message) {
