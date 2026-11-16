@@ -551,8 +551,8 @@ class _PricePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (values.length < 2) return;
-    final minV = values.reduce(math.min);
-    final maxV = values.reduce(math.max);
+    final minV = values.reduce((a, b) => math.min(a, b).toDouble());
+    final maxV = values.reduce((a, b) => math.max(a, b).toDouble());
     final range = math.max(maxV - minV, maxV.abs() * 0.00001);
     final path = Path();
     for (var i = 0; i < values.length; i++) {
