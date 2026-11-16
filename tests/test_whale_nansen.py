@@ -52,7 +52,12 @@ def test_nansen_leaderboard_uses_documented_request_and_maps_roi_fraction():
 
 def test_nansen_smart_money_trade_maps_wallet_symbol_and_notional():
     client = WhaleIntelClient(nansen_api_key="test-key")
-    client._post_nansen = lambda *args, **kwargs: {"data": [{
+    captured = {}
+
+    def fake_post(endpoint, payload):
+        captured["endpoint"] = endpoint
+        captured["payload"] = payload
+        return {"data": [{
         "trader_address": "0x" + "3" * 40,
         "token_symbol": "BTC",
         "side": "Long",
@@ -61,7 +66,11 @@ def test_nansen_smart_money_trade_maps_wallet_symbol_and_notional():
         "value_usd": 500000,
         "block_timestamp": "2026-11-16T20:00:00Z",
     }]}
+    client._post_nansen = fake_post
     rows = client.fetch_nansen_smart_money_trades()
+    assert captured["endpoint"] == "/api/v1/smart-money/perp-trades"
+    assert captured["payload"]["filters"]["value_usd"]["min"] == 250000
+    assert "lookback_hours" not in captured["payload"]
     assert rows[0].address.startswith("0x")
     assert rows[0].coin == "BTC"
     assert rows[0].size_usd == Decimal("500000")
