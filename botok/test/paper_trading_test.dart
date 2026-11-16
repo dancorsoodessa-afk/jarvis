@@ -90,6 +90,41 @@ void main() {
       expect(() => paper.open(plan(), instrumentId: 'BTC-USDT'), throwsStateError);
     });
 
+    test('a direct jump across TP1 and TP2 records TP1 before closing the remainder', () {
+      final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0);
+      paper.open(plan(), instrumentId: 'BTC-USDT');
+      final closed = paper.markPrice(plan().takeProfit2);
+      expect(closed, isNotNull);
+      expect(closed!.reason, 'TAKE_PROFIT_2');
+      final expected = (plan().takeProfit1 - plan().entry) * plan().quantity * 0.5 +
+          (plan().takeProfit2 - plan().entry) * plan().quantity * 0.5;
+      expect(closed.realizedPnl, closeTo(expected, 1e-6));
+      expect(paper.openPosition, isNull);
+    });
+
+    test('trailing stop follows favourable price and protects accumulated movement', () {
+      final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0);
+      paper.open(plan(), instrumentId: 'BTC-USDT');
+      paper.markPrice(101);
+      expect(paper.openPosition!.trailingStopPrice, greaterThan(plan().stopLoss));
+      final closed = paper.markPrice(99.9);
+      expect(closed, isNotNull);
+      expect(closed!.reason, 'TRAILING_STOP');
+      expect(paper.openPosition, isNull);
+    });
+
+    test('trailing stop state survives wallet persistence', () {
+      final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0);
+      paper.open(plan(), instrumentId: 'BTC-USDT');
+      paper.markPrice(101);
+      final restored = PaperTradingEngine.decode(paper.encode());
+      expect(
+        restored.openPosition!.trailingStopPrice,
+        closeTo(paper.openPosition!.trailingStopPrice!, 1e-8),
+      );
+      expect(restored.openPosition!.bestPrice, 101);
+    });
+
     test('wallet and trade history survive JSON round trip', () {
       final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0.001);
       paper.open(plan(), instrumentId: 'BTC-USDT');
