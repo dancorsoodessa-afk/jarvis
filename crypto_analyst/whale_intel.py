@@ -8,6 +8,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from datetime import datetime, timedelta, timezone
+import os
+import time
 
 import requests
 
@@ -27,6 +30,10 @@ def _rows(payload: Any) -> list[dict[str, Any]]:
         value = payload.get(key)
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
+        if isinstance(value, dict):
+            nested = _rows(value)
+            if nested:
+                return nested
     return []
 
 
@@ -65,10 +72,14 @@ class WhaleTrade:
 class WhaleIntelClient:
     """Read-only whale data client. It has no exchange order methods."""
 
-    def __init__(self, timeout: float = 12.0, session: requests.Session | None = None):
+    def __init__(self, timeout: float = 12.0, session: requests.Session | None = None, nansen_api_key: str | None = None):
         self.timeout = max(3.0, min(30.0, float(timeout)))
         self.session = session or requests.Session()
         self.session.headers.update({"User-Agent": "JARVIS-BOTok/1.0"})
+        self.nansen_api_key = (nansen_api_key if nansen_api_key is not None else os.getenv("NANSEN_API_KEY", "")).strip()
+        self.poll_interval_seconds = 300.0 if self.nansen_api_key else 60.0
+        self._leaderboard_cache_at = 0.0
+        self._leaderboard_cache: list[WhaleAccount] = []
 
     def _get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:
         response = self.session.get(url, params=params, timeout=self.timeout)
@@ -87,6 +98,9 @@ class WhaleIntelClient:
             raise ValueError("limit must be between 1 and 200")
         if window not in {"day", "week", "month", "allTime"}:
             raise ValueError("unsupported Hyperliquid leaderboard window")
+        now = time.monotonic()
+        if self._leaderboard_cache and now - self._leaderboard_cache_at < 900:
+            return self._leaderboard_cache[:limit]
         payload = self._get_json(HYPERLIQUID_LEADERBOARD_URL)
         source_rows = _rows(payload)
         ranked: list[WhaleAccount] = []
@@ -96,8 +110,8 @@ class WhaleIntelClient:
                 continue
             performances = row.get("windowPerformances") or {}
             metrics: Any = performances.get(window, {}) if isinstance(performances, dict) else {}
-            if isinstance(metrics, (list, tuple)) and len(metrics) > 1:
-                metrics = metrics[1]
+            if isinstance(performances, (list, tuple)):
+                metrics = next((entry[1] for entry in performances if isinstance(entry, (list, tuple)) and len(entry) > 1 and entry[0] == window), {})
             if not isinstance(metrics, dict):
                 metrics = {}
             ranked.append(WhaleAccount(
@@ -111,14 +125,16 @@ class WhaleIntelClient:
                 window=window,
             ))
         ranked.sort(key=lambda item: item.pnl_usd, reverse=True)
-        return [
+        self._leaderboard_cache = [
             WhaleAccount(
                 rank=index + 1, address=item.address, name=item.name,
                 pnl_usd=item.pnl_usd, roi=item.roi, volume_usd=item.volume_usd,
                 equity_usd=item.equity_usd, window=item.window,
             )
-            for index, item in enumerate(ranked[:limit])
+            for index, item in enumerate(ranked)
         ]
+        self._leaderboard_cache_at = now
+        return self._leaderboard_cache[:limit]
 
     def fetch_hyperliquid_whale_trades(self, limit: int = 200) -> list[WhaleTrade]:
         """Get wallet-attributed Hyperliquid whale fills from CoinLobster."""
@@ -142,15 +158,15 @@ class WhaleIntelClient:
         for row in rows:
             address = str(
                 row.get("wallet") or row.get("address") or row.get("user")
-                or row.get("account") or ""
+                or row.get("account") or row.get("trader_address") or ""
             )
-            coin = str(row.get("coin") or row.get("symbol") or row.get("token") or "—")
+            coin = str(row.get("coin") or row.get("symbol") or row.get("token") or row.get("token_symbol") or "—")
             side = str(row.get("side") or row.get("direction") or "—").upper()
             timestamp = str(
                 row.get("timestamp") or row.get("time") or row.get("ts")
-                or row.get("created_at") or "—"
+                or row.get("created_at") or row.get("block_timestamp") or "—"
             )
-            price = _number(row.get("price") or row.get("px"))
+            price = _number(row.get("price") or row.get("px") or row.get("price_usd"))
             size = _number(
                 row.get("size_usd") or row.get("notional_usd")
                 or row.get("usd_value") or row.get("value_usd")
@@ -165,17 +181,78 @@ class WhaleIntelClient:
             ))
         return result
 
+    def _post_nansen(self, endpoint: str, payload: dict[str, Any]) -> Any:
+        if not self.nansen_api_key:
+            raise RuntimeError("NANSEN_API_KEY is not configured")
+        response = self.session.post(
+            f"https://api.nansen.ai{endpoint}",
+            json=payload,
+            headers={"apikey": self.nansen_api_key},
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def fetch_nansen_top_traders(self, limit: int = 200) -> list[WhaleAccount]:
+        """Fetch the top Hyperliquid perp traders for the trailing 30-day window."""
+        if not 1 <= limit <= 200:
+            raise ValueError("limit must be between 1 and 200")
+        end = datetime.now(timezone.utc).date()
+        start = end - timedelta(days=30)
+        payload = self._post_nansen("/api/v1/perp-leaderboard", {
+            "date": {"from": start.isoformat(), "to": end.isoformat()},
+            "pagination": {"page": 1, "per_page": limit},
+            "order_by": [{"field": "total_pnl", "direction": "DESC"}],
+        })
+        rows = _rows(payload)
+        accounts = []
+        for row in rows:
+            address = str(row.get("trader_address") or row.get("address") or "")
+            if not address:
+                continue
+            accounts.append(WhaleAccount(
+                rank=len(accounts) + 1,
+                address=address,
+                name=str(row.get("trader_address_label") or ""),
+                pnl_usd=_number(row.get("total_pnl")),
+                roi=_number(row.get("roi")),
+                volume_usd=_number(row.get("volume_usd")),
+                equity_usd=_number(row.get("account_value")),
+                window="30d",
+            ))
+        return accounts[:limit]
+
+    def fetch_nansen_smart_money_trades(self, limit: int = 200) -> list[WhaleTrade]:
+        """Fetch the latest Smart HL Perps Trader fills (seven-day maximum window)."""
+        payload = self._post_nansen("/api/v1/smart-money/perp-trades", {
+            "lookback_hours": 24,
+            "pagination": {"page": 1, "per_page": max(1, min(1000, int(limit)))},
+            "order_by": [{"field": "block_timestamp", "direction": "DESC"}],
+        })
+        return self._normalize_trades(_rows(payload), venue="Nansen Smart Money / Hyperliquid")
+
     def fetch_snapshot(self, account_limit: int = 200) -> dict[str, Any]:
         """Return independent source results so one provider outage is non-fatal."""
-        snapshot: dict[str, Any] = {
-            "accounts": [], "hyperliquid_trades": [], "exchange_trades": [],
-            "errors": [], "source": "Hyperliquid public leaderboard + CoinLobster public API",
-        }
-        for key, operation in (
-            ("accounts", lambda: self.fetch_top_hyperliquid_accounts(account_limit)),
-            ("hyperliquid_trades", lambda: self.fetch_hyperliquid_whale_trades(200)),
-            ("exchange_trades", lambda: self.fetch_exchange_whale_trades(100)),
-        ):
+        if self.nansen_api_key:
+            snapshot: dict[str, Any] = {
+                "accounts": [], "hyperliquid_trades": [], "exchange_trades": [],
+                "errors": [], "source": "Nansen Hyperliquid leaderboard + Smart Money trades",
+            }
+            operations = (
+                ("accounts", lambda: self.fetch_nansen_top_traders(account_limit)),
+                ("hyperliquid_trades", lambda: self.fetch_nansen_smart_money_trades(200)),
+            )
+        else:
+            snapshot = {
+                "accounts": [], "hyperliquid_trades": [], "exchange_trades": [],
+                "errors": [], "source": "Hyperliquid public leaderboard + CoinLobster public API",
+            }
+            operations = (
+                ("accounts", lambda: self.fetch_top_hyperliquid_accounts(account_limit)),
+                ("hyperliquid_trades", lambda: self.fetch_hyperliquid_whale_trades(200)),
+                ("exchange_trades", lambda: self.fetch_exchange_whale_trades(100)),
+            )
+        for key, operation in operations:
             try:
                 snapshot[key] = operation()
             except Exception as exc:
