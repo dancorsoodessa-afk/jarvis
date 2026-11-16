@@ -2,6 +2,14 @@
 
 JARVIS is a Windows desktop assistant with a graphical interface, OS tools, voice services, and a cloud AI backend.
 
+## BOTok: charts and whale radar
+
+The BOTok branch adds a live OKX price chart to the Crypto Analyst workspace and a separate Whale Radar window. The radar ranks the top 200 opted-in Hyperliquid accounts by 30-day PnL and displays wallet-attributed Hyperliquid whale fills plus the public CoinLobster exchange whale feed.
+
+Public fallback works without exchange credentials. Hyperliquid's leaderboard is cached for 15 minutes; CoinLobster public endpoints are rate-limited and their update cadence is provider-controlled. Setting NANSEN_API_KEY enables Nansen's 30-day Hyperliquid perp leaderboard and Smart HL Perps Trader fill feed; the dashboard then polls every five minutes to limit API-credit use. See docs/BOTOK_WHALE_INTELLIGENCE.md for source coverage and limitations.
+
+The Whale Radar is currently read-only. Whale fills are not yet routed into the Paper Broker. No real exchange order placement is available.
+
 ## Crypto Analyst
 
 The Windows desktop sidebar opens a separate **CRYPTO ANALYST / PAPER** workspace. The headless Linux worker can run independently on a VPS or in Docker.
