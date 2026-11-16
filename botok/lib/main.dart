@@ -522,7 +522,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 12),
           Row(children: [
             Expanded(child: _miniMetric('РЕАЛИЗОВАНО', '${_paper.realizedPnl >= 0 ? '+' : ''}${_paper.realizedPnl.toStringAsFixed(2)}', _paper.realizedPnl >= 0 ? _green : _red)),
-            Expanded(child: _miniMetric('ПЛАВАЮЩИЙ PnL', '${_paper.unrealizedPnl >= 0 ? '+' : ''}${_paper.unrealizedPnl.toStringAsFixed(2)}', _paper.unrealizedPnl >= 0 ? _green : _red)),
+            Expanded(child: _miniMetric('ЧИСТЫЙ PnL', '${_paper.netUnrealizedPnl >= 0 ? '+' : ''}${_paper.netUnrealizedPnl.toStringAsFixed(2)}', _paper.netUnrealizedPnl >= 0 ? _green : _red)),
             Expanded(child: _miniMetric('КОМИССИИ', '${_paper.totalFees.toStringAsFixed(2)}', _muted)),
           ]),
           const SizedBox(height: 8),
@@ -532,7 +532,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _paperCard() {
     final p = _paper.openPosition;
-    final pnl = p?.unrealizedPnl ?? 0;
+    final pnl = _paper.netUnrealizedPnl;
     final pnlPercent = p == null || p.plan.entry * p.quantity == 0
       ? 0.0
       : pnl / (p.plan.entry * p.quantity) * 100;
@@ -717,7 +717,7 @@ class _CandlePainter extends CustomPainter {
         const dash = 4.0;
         var x = left;
         while (x < xEnd) {
-          canvas.drawLine(Offset(x, yy), Offset(math.min(x + dash, xEnd), yy), paint);
+          canvas.drawLine(Offset(x, yy), Offset(math.min(x + dash, xEnd).toDouble(), yy), paint);
           x += dash * 2;
         }
       }
@@ -729,7 +729,7 @@ class _CandlePainter extends CustomPainter {
         textDirection: TextDirection.ltr,
         maxLines: 1,
       )..layout(maxWidth: right - 4);
-      text.paint(canvas, Offset(size.width - right + 5, (yy - 5).clamp(0.0, size.height - 10)));
+      text.paint(canvas, Offset(size.width - right + 5, (yy - 5).clamp(0.0, size.height - 10).toDouble()));
     }
 
     for (final level in levels) {
