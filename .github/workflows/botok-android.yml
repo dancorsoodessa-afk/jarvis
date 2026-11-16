@@ -67,7 +67,9 @@ jobs:
           channel: stable
           cache: true
       - name: Generate standalone Android project
-        run: flutter create --platforms=android --org=com.botok --project-name=botok .
+        run: |
+          flutter create --platforms=android --org=com.botok --project-name=botok .
+          rm -f test/widget_test.dart
       - name: Configure BOTok Android manifest
         run: |
           python3 - <<'PY'
