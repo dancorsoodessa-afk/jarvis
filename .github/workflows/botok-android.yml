@@ -2,7 +2,7 @@ name: BOTok Android APK
 
 on:
   push:
-    branches: [BOTok, BOTok-fix-trading-ui]
+    branches: [BOTok, BOTok-fix-trading-ui, BOTok-forecast-backtest-risk]
     paths:
       - "botok/**"
       - ".github/workflows/botok-android.yml"
