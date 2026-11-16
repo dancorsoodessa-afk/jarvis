@@ -49,7 +49,6 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   final _market = OkxMarket();
-  final _prices = <double>[];
   final _candles = <MarketCandle>[];
   final Map<String, List<MarketCandle>> _candlesByTimeframe = {};
   String _selectedTimeframe = '1m';
@@ -77,11 +76,15 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _loading = false;
   bool _confirmMode = true;
 
-  TradeSignal get _signal => calculateSignal(
-    prices: _prices,
+  MultiTimeframeAnalysis get _analysis => calculateMultiTimeframeAnalysis(
+    pricesByTimeframe: _candlesByTimeframe.map(
+      (bar, candles) => MapEntry(bar, candles.map((candle) => candle.close).toList()),
+    ),
     bookImbalance: _bookImbalance,
     tradeDelta: _tradeDelta,
   );
+
+  TradeSignal get _signal => _analysis.signal;
 
   List<MarketInstrument> get _filtered {
     final q = _search.text.trim().toUpperCase();
@@ -167,9 +170,6 @@ class _DashboardPageState extends State<DashboardPage> {
       if (mounted) setState(() => _status = 'Свечной архив OKX недоступен: $e');
     }
     await _market.watch(instrument.id);
-    _prices
-      ..clear()
-      ..addAll((_candlesByTimeframe['1m'] ?? _candles).map((candle) => candle.close));
     _bookImbalance = 0;
     _tradeDelta = 0;
     _feed = _market.events.listen(_onMarketEvent);
@@ -199,7 +199,6 @@ class _DashboardPageState extends State<DashboardPage> {
           if (index >= 0) { series[index] = candle; } else { series.add(candle); if (series.length > 300) series.removeAt(0); }
         } catch (_) {}
       }
-      if (bar == '1m') { _prices..clear()..addAll(series.map((candle) => candle.close)); }
       if (bar == _selectedTimeframe) { _candles..clear()..addAll(series); }
       setState(() {});
       return;
@@ -209,8 +208,6 @@ class _DashboardPageState extends State<DashboardPage> {
       final last = double.tryParse(row['last']?.toString() ?? '') ?? 0;
       if (last > 0) {
         _price = last;
-        _prices.add(last);
-        if (_prices.length > 160) _prices.removeAt(0);
         _managePaperPosition(last);
       }
     } else if (type == 'books5') {
@@ -288,7 +285,12 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!_paperReady) { _toast('Демо-кошелёк ещё загружается.'); return; }
     if (_paper.openPosition != null) { _toast('Сначала закройте текущую PAPER-позицию.'); return; }
     if (_price <= 0) { _toast('Нет актуальной цены OKX'); return; }
-    final signal = _signal;
+    final analysis = _analysis;
+    final signal = analysis.signal;
+    if (!analysis.isAligned) {
+      _toast('Сделка заблокирована: нужно минимум 3 активных таймфрейма и согласие направлений не ниже 60%.');
+      return;
+    }
     if (signal.confidence < 58) {
       _toast('Сигнал слабый: ${signal.confidence.toStringAsFixed(1)}%. Ожидание.');
       return;
@@ -485,21 +487,34 @@ class _DashboardPageState extends State<DashboardPage> {
         ]));
   }
 
-  Widget _timeframeConfluenceCard() => _card(title: 'СВОДКА 7 ТАЙМФРЕЙМОВ • ЕДИНЫЙ АНАЛИЗ', child: Column(children: [
-    for (final tf in MarketTimeframe.all) _timeframeRow(tf),
-    const Text('Сводка основана на EMA/RSI. Это не семь независимых обученных AI-моделей.', style: TextStyle(color: _muted, fontSize: 9)),
-  ]));
+  Widget _timeframeConfluenceCard() {
+    final analysis = _analysis;
+    final signal = analysis.signal;
+    final aligned = analysis.isAligned;
+    final color = signal.direction == 'LONG' ? _green : _red;
+    return _card(title: 'СВОДКА 7 ТАЙМФРЕЙМОВ • ЕДИНЫЙ АНАЛИЗ', child: Column(children: [
+      Row(children: [
+        Expanded(child: _miniMetric('ОБЩЕЕ НАПРАВЛЕНИЕ', signal.direction, color)),
+        Expanded(child: _miniMetric('СОГЛАСИЕ', '${analysis.agreementPercent.toStringAsFixed(0)}%', aligned ? _green : Colors.orange)),
+        Expanded(child: _miniMetric('АКТИВНЫЕ TF', '${analysis.activeTimeframes}/7', _blue)),
+      ]),
+      const SizedBox(height: 8),
+      for (final tf in MarketTimeframe.all) _timeframeRow(tf),
+      Text(aligned ? 'Сигналы согласованы по нескольким горизонтам.' : 'Недостаточно согласованных таймфреймов: автоматическое открытие сделки заблокировано.', style: const TextStyle(color: _muted, fontSize: 9)),
+      const Text('Внутри: EMA, RSI, стакан и поток сделок. Проценты — модельный скоринг, не статистически подтверждённая вероятность.', style: TextStyle(color: _muted, fontSize: 9)),
+    ]));
+  }
 
   Widget _timeframeRow(MarketTimeframe tf) {
     final candles = _candlesByTimeframe[tf.bar] ?? const <MarketCandle>[];
     final ready = candles.length >= 25;
-    final signal = calculateSignal(prices: candles.map((c) => c.close).toList());
-    final direction = signal.direction;
+    final signal = _analysis.byTimeframe[tf.bar];
+    final direction = signal?.direction ?? '—';
     final color = direction == 'LONG' ? _green : _red;
     return Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [
       SizedBox(width: 58, child: Text(tf.label, style: const TextStyle(fontSize: 11))),
       Expanded(child: Text(ready ? direction : 'нет данных', style: TextStyle(fontSize: 11, color: ready ? color : _muted, fontWeight: FontWeight.bold))),
-      Text(ready ? '${signal.confidence.toStringAsFixed(0)}%' : '—', style: TextStyle(fontSize: 11, color: ready ? color : _muted)),
+      Text(ready && signal != null ? '${signal.confidence.toStringAsFixed(0)}%' : '—', style: TextStyle(fontSize: 11, color: ready ? color : _muted)),
       SizedBox(width: 76, child: Text('${candles.length} свечей', textAlign: TextAlign.end, style: const TextStyle(fontSize: 9, color: _muted))),
     ]));
   }
@@ -551,7 +566,7 @@ class _DashboardPageState extends State<DashboardPage> {
   ]);
 
   Widget _tradePlanCard(TradeSignal signal) {
-    final plan = _paperReady && _price > 0 && _paper.availableBalance > 0
+    final plan = _paperReady && _price > 0 && _paper.availableBalance > 0 && _analysis.isAligned
       ? _tryPlan(signal.direction)
       : null;
     return _card(
