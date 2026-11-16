@@ -117,9 +117,16 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _loadMarket() async {
     await _paperRestore;
     if (!mounted) return;
+    final savedPosition = _paper.openPosition;
+    if (savedPosition != null) {
+      _marketType = savedPosition.instrumentId.endsWith('-SWAP') ? 'SWAP' : 'SPOT';
+    }
     setState(() { _loading = true; _status = 'Получаем инструменты OKX…'; });
     try {
       final items = await _market.loadInstruments(_marketType);
+      if (savedPosition != null && !items.any((item) => item.id == savedPosition.instrumentId)) {
+        throw StateError('Открытая PAPER-позиция сохранена для ${savedPosition.instrumentId}, но инструмент не найден. Позиция оставлена без изменений.');
+      }
       if (!mounted) return;
       setState(() {
         _instruments = items;
