@@ -181,7 +181,8 @@ class BOTokDashboard(CryptoDashboard):
             if not address or address not in self._tracked_whale_wallets:
                 continue
             raw = getattr(event, "raw", {}) or {}
-            event_key = str(raw.get("tradeId") or raw.get("trade_id") or raw.get("transaction_hash") or raw.get("hash") or (address + ":" + str(event.timestamp) + ":" + str(event.coin) + ":" + str(event.side) + ":" + str(event.price) + ":" + str(event.size_usd)))
+            source_id = raw.get("tradeId") or raw.get("trade_id") or raw.get("transaction_hash") or raw.get("hash") or (str(event.timestamp) + ":" + str(event.coin) + ":" + str(event.side) + ":" + str(event.price) + ":" + str(event.size_usd))
+            event_key = address + ":" + str(source_id)
             if event_key in self._seen_whale_keys:
                 continue
             if len(self._seen_whale_order) == self._seen_whale_order.maxlen:
