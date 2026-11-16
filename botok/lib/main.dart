@@ -156,7 +156,7 @@ class _DashboardPageState extends State<DashboardPage> {
     } else if (type == 'trades') {
       final side = row['side']?.toString();
       final size = double.tryParse(row['sz']?.toString() ?? '') ?? 0;
-      _tradeDelta = (_tradeDelta * 0.85 + (side == 'buy' ? 1 : -1) * (size / (size + 1)) * 0.15).clamp(-1.0, 1.0);
+      _tradeDelta = (_tradeDelta * 0.85 + (side == 'buy' ? 1 : -1) * (size / (size + 1)) * 0.15).clamp(-1.0, 1.0).toDouble();
     }
     setState(() {});
   }
