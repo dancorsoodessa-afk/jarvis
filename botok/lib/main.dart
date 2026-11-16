@@ -66,6 +66,7 @@ class _DashboardPageState extends State<DashboardPage> {
   late PaperTradingEngine _paper;
   Future<void>? _paperRestore;
   bool _paperReady = false;
+  DateTime _lastPaperPersist = DateTime.fromMillisecondsSinceEpoch(0);
   String _positionState = 'Нет открытой paper-позиции';
   bool _loading = false;
   bool _confirmMode = true;
@@ -106,6 +107,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _persistPaper() async {
+    _lastPaperPersist = DateTime.now();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('botok.paper.wallet.v1', _paper.encode());
@@ -236,13 +238,15 @@ class _DashboardPageState extends State<DashboardPage> {
     if (closed != null) {
       _positionState = 'PAPER закрыта: ${closed.reason} • NET ${(closed.realizedPnl - closed.fees).toStringAsFixed(2)} USDT';
     }
-    _persistPaper();
+    if (closed != null || DateTime.now().difference(_lastPaperPersist).inSeconds >= 1) {
+      _persistPaper();
+    }
   }
 
   Future<void> _switchMarket(String type) async {
     if (_marketType == type) return;
     if (_paper.openPosition != null) { _toast('Сначала закройте PAPER-позицию на текущем инструменте.'); return; }
-    setState(() { _marketType = type; _selected = null; });
+    setState(() { _marketType = type; _selected = null; if (type == 'SPOT') _leverage = 1; });
     await _market.disconnect();
     await _loadMarket();
   }
@@ -476,7 +480,9 @@ class _DashboardPageState extends State<DashboardPage> {
         ]),
         Row(children: [
           Expanded(child: Slider(value: _riskPercent, min: 0.25, max: 3, divisions: 11, onChanged: (v) => setState(() => _riskPercent = v))),
-          Expanded(child: Slider(value: _leverage, min: 1, max: 20, divisions: 19, onChanged: (v) => setState(() => _leverage = v))),
+          _marketType == 'SWAP'
+            ? Expanded(child: Slider(value: _leverage, min: 1, max: 20, divisions: 19, onChanged: (v) => setState(() => _leverage = v)))
+            : const Expanded(child: Text('SPOT: без плеча', textAlign: TextAlign.center, style: TextStyle(color: _muted, fontSize: 11))),
         ]),
         if (plan != null) ...[
           _planLine('Направление', plan.direction, plan.direction == 'LONG' ? _green : _red),
