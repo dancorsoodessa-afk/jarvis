@@ -1,0 +1,94 @@
+name: BOTok Android APK
+
+on:
+  push:
+    branches: [BOTok]
+    paths:
+      - "botok/**"
+      - ".github/workflows/botok-android.yml"
+  pull_request:
+    branches: [BOTok]
+    paths:
+      - "botok/**"
+      - ".github/workflows/botok-android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botok-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Analyze and test BOTok
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: botok
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate standalone Android project
+        run: flutter create --platforms=android --org=com.botok --project-name=botok .
+      - name: Set Android app label and internet permission
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          s = s.replace('android:label="botok"', 'android:label="BOTok"')
+          if 'android.permission.INTERNET' not in s:
+              s = s.replace('<application', '    <uses-permission android:name="android.permission.INTERNET" />\n    <application', 1)
+          p.write_text(s)
+          PY
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze --no-pub
+      - run: flutter test
+
+  build:
+    name: Build BOTok release APK
+    needs: validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: botok
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate standalone Android project
+        run: flutter create --platforms=android --org=com.botok --project-name=botok .
+      - name: Configure BOTok Android manifest
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          s = s.replace('android:label="botok"', 'android:label="BOTok"')
+          if 'android.permission.INTERNET' not in s:
+              s = s.replace('<application', '    <uses-permission android:name="android.permission.INTERNET" />\n    <application', 1)
+          p.write_text(s)
+          PY
+      - run: flutter pub get
+      - run: flutter build apk --release
+      - name: Verify APK
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          test -s "$APK"
+          file "$APK"
+          sha256sum "$APK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BOTok-android-apk
+          path: botok/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
