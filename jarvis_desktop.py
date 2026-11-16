@@ -391,8 +391,8 @@ class JarvisDesktop(tk.Tk):
         except Exception:
             self._crypto_window = None
         try:
-            from crypto_analyst.dashboard import CryptoDashboard
-            self._crypto_window = CryptoDashboard(self)
+            from crypto_analyst.botok_dashboard import BOTokDashboard
+            self._crypto_window = BOTokDashboard(self)
         except Exception as exc:
             messagebox.showerror(
                 "JARVIS Crypto Analyst",
