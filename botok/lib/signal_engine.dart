@@ -152,7 +152,6 @@ MultiTimeframeAnalysis calculateMultiTimeframeAnalysis({
   var weighted = 0.0;
   var totalWeight = 0.0;
   var longWeight = 0.0;
-  var shortWeight = 0.0;
   var rsiWeighted = 0.0;
   var rsiWeight = 0.0;
 
