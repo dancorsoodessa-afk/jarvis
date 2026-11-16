@@ -32,6 +32,7 @@ class TradePlan {
     required this.quantity,
     required this.riskAmount,
     required this.direction,
+    required this.leverage,
   });
 
   final double entry;
@@ -41,6 +42,7 @@ class TradePlan {
   final double quantity;
   final double riskAmount;
   final String direction;
+  final double leverage;
 }
 
 double _ema(List<double> values, int period) {
@@ -139,5 +141,6 @@ TradePlan buildTradePlan({
     quantity: quantity,
     riskAmount: risk,
     direction: direction,
+    leverage: leverage,
   );
 }
