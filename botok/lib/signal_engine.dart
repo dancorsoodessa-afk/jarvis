@@ -20,7 +20,7 @@ class TradeSignal {
   final double tradeDelta;
 
   String get direction => longProbability >= shortProbability ? 'LONG' : 'SHORT';
-  double get confidence => math.max(longProbability, shortProbability);
+  double get confidence => math.max(longProbability, shortProbability).toDouble();
 }
 
 class TradePlan {
@@ -57,7 +57,7 @@ double _rsi(List<double> values) {
   if (values.length < 2) return 50;
   var gains = 0.0;
   var losses = 0.0;
-  final start = math.max(1, values.length - 14);
+  final start = math.max(1, values.length - 14).toInt();
   for (var i = start; i < values.length; i++) {
     final change = values[i] - values[i - 1];
     if (change >= 0) {
@@ -87,8 +87,8 @@ TradeSignal calculateSignal({
       tradeDelta: 0,
     );
   }
-  final fast = _ema(prices, math.min(9, prices.length));
-  final slow = _ema(prices, math.min(21, prices.length));
+  final fast = _ema(prices, math.min(9, prices.length).toInt());
+  final slow = _ema(prices, math.min(21, prices.length).toInt());
   final rsi = _rsi(prices);
   final trend = fast == 0 ? 0.0 : ((fast - slow) / fast * 100).clamp(-1.0, 1.0).toDouble();
   final momentum = ((50 - rsi) / 50).clamp(-1.0, 1.0).toDouble();
