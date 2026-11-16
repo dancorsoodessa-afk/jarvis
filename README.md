@@ -28,7 +28,7 @@ The public feed uses the lightweight `websockets` client directly against OKX be
 
 The `strategic/` package adds channel RSS monitoring, optional transcript retrieval through `youtube-transcript-api`, and an injected-LLM extractor that validates hypotheses and preserves source video metadata. Transcript availability depends on YouTube caption access. The extractor treats transcript text as untrusted input and is deliberately separate from the scalping loop.
 
-The package is a backend foundation and is not yet represented as a completed desktop trading screen. UI wiring, persistent storage, replay/backtesting, and end-to-end Windows release verification remain subsequent implementation work.
+The Windows desktop sidebar now opens a dedicated Crypto Analyst workspace. It discovers up to 500 liquid USDT spot/swap instruments, shards public WebSocket subscriptions, displays feed activity and paper positions, and never submits real exchange orders. Persistent storage, replay/backtesting, VPS deployment, and end-to-end packaged EXE verification remain subsequent implementation work.
 
 ## Get the free Gemini API key
 

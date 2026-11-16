@@ -15,7 +15,7 @@
 ## Explicitly not complete yet
 
 - Desktop Crypto Analyst screen and navigation wiring.
-- Full-market scanning policy, subscription batching, liquidity ranking, and instrument refresh scheduler.
+- Liquidity-ranked USDT instrument discovery and sharded WebSocket subscription batching (up to 500 instruments per scan).
 - Redis cache/stream and PostgreSQL persistence.
 - Historical market replay, realistic queue-position simulation, and walk-forward backtesting.
 - Production monitoring, latency SLOs, and VPS deployment automation.

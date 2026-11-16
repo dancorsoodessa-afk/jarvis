@@ -30,24 +30,30 @@ class PaperScalpingRuntime:
         self.risk_manager = risk_manager
         self.broker = broker
         self.state = market_state or MarketState()
-        self.equity = equity or broker.initial_balance
+        self.fixed_equity = equity
         self.signal_cooldown_ms = signal_cooldown_ms
         self.last_signal_at: dict[str, int] = {}
         self.signals: list[TradingSignal] = []
         self.orders: list[PaperOrder] = []
+        self.event_count = 0
 
     def _active_exposure_count(self) -> int:
-        active_orders = sum(
-            order.status in {"open", "partially_filled"}
-            for order in self.broker.orders.values()
+        exposed_symbols = {
+            position.symbol for position in self.broker.positions.values()
+            if position.status == "open"
+        }
+        exposed_symbols.update(
+            order.symbol for order in self.broker.orders.values()
+            if order.status in {"open", "partially_filled"}
         )
-        return self.broker.open_position_count() + active_orders
+        return len(exposed_symbols)
 
     def on_market_message(
         self,
         message: dict[str, Any],
         received_at_ms: int,
     ) -> list[TradingSignal]:
+        self.event_count += 1
         self.state.on_okx_message(message, received_at_ms)
         arg = message.get("arg") or {}
         symbol = str(arg.get("instId") or "")
@@ -80,7 +86,7 @@ class PaperScalpingRuntime:
 
         decision = self.risk_manager.approve(
             signal=signal,
-            equity=self.equity,
+            equity=self.fixed_equity or self.broker.cash,
             daily_pnl=self.broker.realized_pnl,
             open_positions=self._active_exposure_count(),
             now_ms=received_at_ms,

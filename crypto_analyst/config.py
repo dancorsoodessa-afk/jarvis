@@ -11,7 +11,7 @@ class CryptoConfig:
     market_types: tuple[str, ...] = ("spot", "swap")
     paper_trading: bool = True
     allow_live_orders: bool = False
-    max_symbols: int = 100
+    max_symbols: int = 500
     orderbook_depth: int = 20
     max_data_age_ms: int = 1_500
     reconnect_min_seconds: float = 1.0

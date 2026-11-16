@@ -131,6 +131,7 @@ class JarvisDesktop(tk.Tk):
         self.minsize(1180, 740)
         self.configure(bg=BG)
         self.agent = None
+        self._crypto_window = None
         self._agent_generation = 0
         self._agent_start_pending = False
         self.busy = False
@@ -359,6 +360,7 @@ class JarvisDesktop(tk.Tk):
             return b
 
         self.tools_button = nav("⌁  МОДУЛИ И ИНСТРУМЕНТЫ", self.show_tools, True)
+        nav("₿  CRYPTO ANALYST / PAPER", self.show_crypto_analyst, True)
         nav("⚙  НАСТРОЙКИ И AI-ПРОВАЙДЕРЫ", self.show_settings)
         nav("◉  ЗАПУСК ПРИЛОЖЕНИЙ", lambda: self._open_module_details("launch","Все установленные приложения","Полный список приложений Windows",True))
         nav("▣  ПРОЦЕССЫ ПК", lambda: self._open_module_details("ps","Все процессы Windows","Список активных процессов",True))
@@ -378,6 +380,26 @@ class JarvisDesktop(tk.Tk):
         tk.Label(side, text="Кнопки открывают реальные модули. Выключенные инструменты не передаются агенту.",
                  bg="#070d16", fg="#617786", wraplength=205, justify="left",
                  font=("Segoe UI", 8)).pack(side="bottom", anchor="w", padx=14, pady=14)
+    def show_crypto_analyst(self):
+        """Open the independent OKX public-data / paper-trading workspace."""
+        try:
+            if self._crypto_window is not None and self._crypto_window.winfo_exists():
+                self._crypto_window.deiconify()
+                self._crypto_window.lift()
+                self._crypto_window.focus_force()
+                return
+        except Exception:
+            self._crypto_window = None
+        try:
+            from crypto_analyst.dashboard import CryptoDashboard
+            self._crypto_window = CryptoDashboard(self)
+        except Exception as exc:
+            messagebox.showerror(
+                "JARVIS Crypto Analyst",
+                f"Не удалось открыть криптоаналитический модуль: {exc}",
+                parent=self,
+            )
+
     def _command_from_hud(self, command):
         self.input.delete(0, "end")
         self.input.insert(0, command)
@@ -1374,6 +1396,12 @@ class JarvisDesktop(tk.Tk):
 
     def _close(self):
         self._voice_loop_running = False
+        if self._crypto_window is not None:
+            try:
+                self._crypto_window.close()
+            except Exception:
+                pass
+            self._crypto_window = None
         tts.stop()
         try:
             self._visual_server.shutdown()
