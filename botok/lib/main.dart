@@ -234,6 +234,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _managePaperPosition(double last) {
+    if (_paper.openPosition == null) return;
     final closed = _paper.markPrice(last);
     if (closed != null) {
       _positionState = 'PAPER закрыта: ${closed.reason} • NET ${(closed.realizedPnl - closed.fees).toStringAsFixed(2)} USDT';
