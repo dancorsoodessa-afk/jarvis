@@ -162,8 +162,14 @@ class _DashboardPageState extends State<DashboardPage> {
     if (mounted) setState(() => _paperReady = true);
     if (_paper.openPosition != null) {
       _guardStatus = 'восстановление мониторинга';
-      await startPaperGuardService();
-      _guardRunning = await FlutterBackgroundService().isRunning();
+      try {
+        await startPaperGuardService();
+        _guardRunning = await FlutterBackgroundService().isRunning();
+        if (!_guardRunning) _guardStatus = 'фоновая защита не подтверждена';
+      } catch (error) {
+        _guardRunning = false;
+        _guardStatus = 'ошибка восстановления: $error';
+      }
     }
   }
 
