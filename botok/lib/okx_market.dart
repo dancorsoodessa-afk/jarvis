@@ -114,13 +114,13 @@ class OkxMarket {
     String bar = '1m',
     int limit = 1200,
   }) async {
-    final target = limit.clamp(1, 1500);
+    final target = limit.clamp(1, 1500).toInt();
     final collected = <int, MarketCandle>{};
     String? after;
     var pages = 0;
     while (collected.length < target && pages < 5) {
       final remaining = target - collected.length;
-      final pageLimit = remaining.clamp(1, 300);
+      final pageLimit = remaining.clamp(1, 300).toInt();
       final query = <String, String>{
         'instId': instrumentId,
         'bar': bar,
