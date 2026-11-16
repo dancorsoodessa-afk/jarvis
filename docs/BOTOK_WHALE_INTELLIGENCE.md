@@ -22,6 +22,16 @@ The Crypto Analyst workspace now includes:
    - https://coinlobster.com/api/public/whale-radar
    - Public endpoints are rate-limited. The provider controls update cadence and field availability. Exchange trades are often anonymous; wallet identity is available for Hyperliquid/on-chain fills where supplied by the provider.
 
+### Optional paid API: CoinGlass
+
+Set COINGLASS_API_KEY in the Whale Radar key field to enable:
+- GET /api/hyperliquid/whale-position: current Hyperliquid positions larger than USD 1 million, including wallet, symbol, signed position size, entry/mark/liquidation prices, leverage, unrealized PnL and funding fee.
+- GET /api/hyperliquid/whale-alert: recent position-open/close tracking alerts above USD 1 million. These are position tracking events, not individual buy/sell fills; create_time is not guaranteed to be the actual exchange open/close time.
+- CoinGlass documents these Hyperliquid whale endpoints as real-time and requires Startup or higher API plan. The API key is sent in the CG-API-KEY header. The Whale Radar displays the top 200 largest current positions and recent alerts in separate tabs.
+- Keys entered in the Windows BOTok panel are encrypted with the existing Windows DPAPI helper and saved in the user's JARVIS settings file. They are not committed to Git.
+
+CoinGlass is the strongest complementary source for large Hyperliquid positions and liquidation context. It does not by itself rank the 200 most profitable traders; use Nansen or the Hyperliquid leaderboard for performance ranking.
+
 ### Optional paid API: Nansen
 Set NANSEN_API_KEY in the process environment to enable:
 - POST https://api.nansen.ai/api/v1/perp-leaderboard: top 200 Hyperliquid perp traders by total PnL for a rolling 30-day window.
