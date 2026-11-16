@@ -30,6 +30,7 @@ class WhaleRadarWindow(tk.Toplevel):
         self.configure(bg=BG)
         self._events: queue.Queue = queue.Queue()
         self._stop = threading.Event()
+        self._client: WhaleIntelClient | None = None
         self._thread: threading.Thread | None = None
         self._closed = False
         self._build()
@@ -123,10 +124,11 @@ class WhaleRadarWindow(tk.Toplevel):
 
     def _poll_loop(self):
         client = WhaleIntelClient()
+        self._client = client
         while not self._stop.is_set():
             snapshot = client.fetch_snapshot(account_limit=200)
             self._events.put(("snapshot", snapshot))
-            self._stop.wait(30.0)
+            self._stop.wait(client.poll_interval_seconds)
 
     def pause(self):
         self._stop.set()
@@ -145,7 +147,7 @@ class WhaleRadarWindow(tk.Toplevel):
                 for item in payload.get("accounts", []):
                     self.accounts.insert("", "end", values=(
                         item.rank, item.address, item.name,
-                        f"{item.pnl_usd:,.2f}", f"{item.roi:.2f}%",
+                        f"{item.pnl_usd:,.2f}", f"{item.roi * 100:.2f}%",
                         f"{item.volume_usd:,.2f}", f"{item.equity_usd:,.2f}",
                     ))
                 combined = payload.get("hyperliquid_trades", []) + payload.get("exchange_trades", [])
@@ -160,8 +162,11 @@ class WhaleRadarWindow(tk.Toplevel):
                     f"Обновлено {time.strftime('%H:%M:%S')} · {count}/200 аккаунтов · "
                     f"{len(combined)} сделок" + (f" · {len(errors)} ошибок источника" if errors else "")
                 )
+                source = str(payload.get("source") or "Whale data providers")
                 if errors:
-                    self.note.configure(text="Ошибки источников: " + " | ".join(errors)[:900])
+                    self.note.configure(text=source + " · Ошибки источников: " + " | ".join(errors)[:750])
+                else:
+                    self.note.configure(text=source + " · Рейтинг Hyperliquid кэшируется на 15 минут; частота сделок зависит от провайдера. NANSEN_API_KEY включает Nansen API и более редкий опрос, чтобы контролировать расход кредитов.")
         except queue.Empty:
             pass
         if not self._closed:
