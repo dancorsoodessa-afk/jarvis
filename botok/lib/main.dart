@@ -64,6 +64,7 @@ class _DashboardPageState extends State<DashboardPage> {
   double _leverage = 1;
   double _riskPercent = 1;
   late PaperTradingEngine _paper;
+  Future<void>? _paperRestore;
   bool _paperReady = false;
   String _positionState = 'Нет открытой paper-позиции';
   bool _loading = false;
@@ -85,7 +86,7 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     _paper = PaperTradingEngine(initialBalance: 1000);
-    _restorePaper();
+    _paperRestore = _restorePaper();
     _loadMarket();
     _search.addListener(() { if (mounted) setState(() {}); });
   }
@@ -114,14 +115,17 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _loadMarket() async {
+    await _paperRestore;
+    if (!mounted) return;
     setState(() { _loading = true; _status = 'Получаем инструменты OKX…'; });
     try {
       final items = await _market.loadInstruments(_marketType);
       if (!mounted) return;
       setState(() {
         _instruments = items;
+        final wantedInstrument = _paper.openPosition?.instrumentId ?? (_marketType == 'SPOT' ? 'BTC-USDT' : 'BTC-USDT-SWAP');
         _selected = items.firstWhere(
-          (i) => i.id == (_marketType == 'SPOT' ? 'BTC-USDT' : 'BTC-USDT-SWAP'),
+          (i) => i.id == wantedInstrument,
           orElse: () => items.isNotEmpty ? items.first : throw StateError('OKX returned no instruments'),
         );
         _status = 'OKX: ${items.length} инструментов загружено';
@@ -285,7 +289,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (approved != true) return;
     }
     try {
-      _paper.open(plan);
+      _paper.open(plan, instrumentId: _selected!.id);
       setState(() => _positionState = 'PAPER ${plan.direction} • SL/TP активны');
       await _persistPaper();
     } catch (e) {
@@ -545,7 +549,7 @@ class _DashboardPageState extends State<DashboardPage> {
         Text(_positionState, style: const TextStyle(fontSize: 12, color: _muted)),
         if (p != null) ...[
           const SizedBox(height: 10),
-          _planLine('Направление', p.plan.direction, p.isLong ? _green : _red),
+          _planLine('Инструмент / направление', '${p.instrumentId} • ${p.plan.direction}', p.isLong ? _green : _red),
           _planLine('Вход / текущая', '${_fmt(p.plan.entry)} / ${_fmt(p.currentPrice)}'),
           _planLine('Объём остатка', p.quantity.toStringAsFixed(6)),
           _planLine('Залог', '${p.margin.toStringAsFixed(2)} USDT'),
@@ -569,7 +573,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const Divider(height: 22),
           const Text('ПОСЛЕДНИЕ ЗАКРЫТЫЕ СДЕЛКИ', style: TextStyle(color: _muted, fontSize: 10, fontWeight: FontWeight.bold)),
           for (final trade in _paper.closedTrades.reversed.take(5))
-            _planLine('${trade.direction} • ${trade.reason}', '${trade.realizedPnl >= 0 ? '+' : ''}${(trade.realizedPnl - trade.fees).toStringAsFixed(2)} USDT net', trade.realizedPnl - trade.fees >= 0 ? _green : _red),
+            _planLine('${trade.instrumentId} • ${trade.direction} • ${trade.reason}', '${trade.realizedPnl >= 0 ? '+' : ''}${(trade.realizedPnl - trade.fees).toStringAsFixed(2)} USDT net', trade.realizedPnl - trade.fees >= 0 ? _green : _red),
         ],
       ]),
     );
