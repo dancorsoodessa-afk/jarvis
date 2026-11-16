@@ -98,28 +98,6 @@ class BOTokDashboard(CryptoDashboard):
         asks = float(sum(level.amount for level in book.asks)) if book else 0.0
         self._chart_queue.put((symbol, float(ticker.last), bids, asks))
 
-    def _drain_chart_queue(self):
-        if self._closed:
-            return
-        latest = None
-        try:
-            while True:
-                latest = self._chart_queue.get_nowait()
-        except queue.Empty:
-            pass
-        if latest is not None:
-            symbol, price, bids, asks = latest
-            self._chart_symbol = symbol
-            self._price_history.append(price)
-            self._last_price = price
-            self._bid_volume, self._ask_volume = bids, asks
-            self.live_symbol_var.set(symbol)
-            self.live_price_var.set(f"{price:.8g}")
-            self.depth_text_var.set(f"BID {bids:,.3f}  |  ASK {asks:,.3f}")
-            self._draw_price_chart()
-            self._draw_depth_chart()
-        self.after(250, self._drain_chart_queue)
-
     def _draw_price_chart(self):
         canvas = getattr(self, "price_canvas", None)
         if canvas is None:
