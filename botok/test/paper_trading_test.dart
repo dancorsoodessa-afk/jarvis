@@ -55,7 +55,7 @@ void main() {
 
     test('cannot open a second position or exceed available margin', () {
       final paper = PaperTradingEngine(initialBalance: 1, feeRate: 0);
-      expect(() => paper.open(plan()), throwsStateError);
+      expect(() => paper.open(plan(), instrumentId: 'BTC-USDT'), throwsStateError);
     });
 
     test('wallet and trade history survive JSON round trip', () {
