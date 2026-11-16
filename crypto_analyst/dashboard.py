@@ -6,9 +6,11 @@ import asyncio
 import queue
 import threading
 import time
+from collections import deque
+from tkinter import ttk
 import tkinter as tk
 from decimal import Decimal
-from tkinter import ttk
+from .whale_dashboard import WhaleRadarWindow
 
 from .config import CryptoConfig
 from .engine import ScalpingEngine
@@ -43,6 +45,9 @@ class CryptoDashboard(tk.Toplevel):
         self._runtime: PaperScalpingRuntime | None = None
         self._last_ui_update = 0.0
         self._closed = False
+        self._price_history = deque(maxlen=180)
+        self._chart_symbol = None
+        self._whale_window = None
         self.config_model = CryptoConfig()
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self.close)
@@ -74,6 +79,8 @@ class CryptoDashboard(tk.Toplevel):
         self.start_button.pack(side="left", padx=12, pady=12)
         self.stop_button = ttk.Button(controls, text="ОСТАНОВИТЬ", command=self.stop, state="disabled")
         self.stop_button.pack(side="left", padx=(0, 12), pady=12)
+        self.whale_button = ttk.Button(controls, text="WHALE RADAR · TOP 200", command=self.open_whales)
+        self.whale_button.pack(side="left", padx=(0, 12), pady=12)
         self.status_var = tk.StringVar(value="ОСТАНОВЛЕНО")
         tk.Label(
             controls, textvariable=self.status_var, bg=PANEL, fg=CYAN,
@@ -107,17 +114,77 @@ class CryptoDashboard(tk.Toplevel):
         body = tk.Frame(self, bg=BG)
         body.pack(fill="both", expand=True, padx=18, pady=(0, 18))
         body.grid_columnconfigure(0, weight=1)
-        body.grid_rowconfigure(0, weight=1)
+        body.grid_rowconfigure(1, weight=1)
+        self.chart = tk.Canvas(body, height=190, bg="#081522", highlightthickness=1, highlightbackground="#1e465c")
+        self.chart.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        self.chart.bind("<Configure>", lambda _event: self._draw_chart())
+        self._draw_chart()
         self.log = tk.Text(
             body, bg="#081522", fg=TEXT, insertbackground=CYAN,
             relief="flat", wrap="word", font=("Consolas", 9), padx=12, pady=10,
             state="disabled",
         )
-        self.log.grid(row=0, column=0, sticky="nsew")
+        self.log.grid(row=1, column=0, sticky="nsew")
         scroll = ttk.Scrollbar(body, command=self.log.yview)
-        scroll.grid(row=0, column=1, sticky="ns")
+        scroll.grid(row=1, column=1, sticky="ns")
         self.log.configure(yscrollcommand=scroll.set)
         self._append("Система готова. Для старта используются публичные данные OKX без API-ключей.")
+
+    def open_whales(self):
+        if self._whale_window is not None and self._whale_window.winfo_exists():
+            self._whale_window.lift()
+            return
+        self._whale_window = WhaleRadarWindow(self)
+
+    def _draw_chart(self):
+        if not hasattr(self, "chart"):
+            return
+        canvas = self.chart
+        canvas.delete("all")
+        width = max(200, canvas.winfo_width())
+        height = max(120, canvas.winfo_height())
+        left, right, top, bottom = 62, width - 18, 18, height - 30
+        canvas.create_text(14, 10, anchor="nw", fill=CYAN,
+                           text=f"LIVE PRICE · {self._chart_symbol or 'WAITING FOR OKX TICKER'}",
+                           font=("Consolas", 9, "bold"))
+        for index in range(5):
+            y = top + (bottom - top) * index / 4
+            canvas.create_line(left, y, right, y, fill="#18364a")
+        values = [price for _stamp, _symbol, price in self._price_history]
+        if len(values) < 2:
+            canvas.create_text(width / 2, height / 2, fill=MUTED,
+                               text="Ожидание потока котировок OKX…",
+                               font=("Segoe UI", 10))
+            return
+        low, high = min(values), max(values)
+        spread = high - low
+        if spread <= 0:
+            spread = max(abs(high) * 0.0001, 0.00000001)
+        points = []
+        for index, value in enumerate(values):
+            x = left + (right - left) * index / max(1, len(values) - 1)
+            y = bottom - (value - low) / spread * (bottom - top)
+            points.extend((x, y))
+        canvas.create_line(*points, fill=CYAN, width=2, smooth=True)
+        canvas.create_text(8, top, anchor="w", fill=MUTED,
+                           text=f"{high:.6g}", font=("Consolas", 8))
+        canvas.create_text(8, bottom, anchor="w", fill=MUTED,
+                           text=f"{low:.6g}", font=("Consolas", 8))
+        canvas.create_text(right, top, anchor="ne", fill=GREEN,
+                           text=f"{values[-1]:.8g}", font=("Consolas", 9, "bold"))
+
+    def _record_price(self, payload):
+        try:
+            symbol = str(payload["symbol"])
+            price = float(payload["price"])
+            if price <= 0:
+                return
+        except (KeyError, TypeError, ValueError):
+            return
+        if self._chart_symbol is None or symbol == "BTC-USDT-SWAP":
+            self._chart_symbol = symbol
+            self._price_history.append((payload.get("timestamp"), symbol, price))
+            self._draw_chart()
 
     def _append(self, message: str):
         self.log.configure(state="normal")
@@ -196,6 +263,14 @@ class CryptoDashboard(tk.Toplevel):
         now_ms = int(time.time() * 1000)
         signals = runtime.on_market_message(message, now_ms)
         channel = (message.get("arg") or {}).get("channel", "unknown")
+        if channel == "tickers":
+            for row in message.get("data") or []:
+                if isinstance(row, dict) and row.get("last"):
+                    self._events.put(("price", {
+                        "symbol": str((message.get("arg") or {}).get("instId") or ""),
+                        "price": row.get("last"),
+                        "timestamp": row.get("ts"),
+                    }))
         if signals:
             for signal in signals:
                 self._events.put((
@@ -242,6 +317,8 @@ class CryptoDashboard(tk.Toplevel):
                     self._append(payload)
                 elif kind == "signal":
                     self._append("PAPER SIGNAL: " + payload)
+                elif kind == "price":
+                    self._record_price(payload)
                 elif kind == "activity":
                     self.status_var.set(f"LIVE • OKX {str(payload).upper()}")
                 elif kind == "metrics":
