@@ -34,9 +34,9 @@ MarketForecast? buildMarketForecast(List<MarketCandle> candles,{int horizonBars=
   if(closes.length<25) return null;
   final returns=<double>[];
   for(var i=1;i<closes.length;i++) returns.add(math.log(closes[i]/closes[i-1]));
-  final sample=returns.skip(math.max(0,returns.length-60)).toList();
+  final sample=returns.skip(math.max(0,returns.length-60).toInt()).toList();
   final mean=sample.reduce((a,b)=>a+b)/sample.length;
-  final variance=sample.fold<double>(0,(s,v)=>s+math.pow(v-mean,2))/(sample.length-1);
+  final variance=sample.fold<double>(0,(s,v)=>s+math.pow(v-mean,2).toDouble())/(sample.length-1);
   final sigma=math.sqrt(variance), current=closes.last;
   final z=sigma<1e-12?0.0:mean/sigma*math.sqrt(sample.length.toDouble());
   final bull=(100/(1+math.exp(-z*0.55))).clamp(5.0,95.0).toDouble();
