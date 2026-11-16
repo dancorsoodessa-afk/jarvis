@@ -203,7 +203,7 @@ class WhaleRadarWindow(tk.Toplevel):
                 if errors:
                     self.note.configure(text=source + " · Ошибки источников: " + " | ".join(errors)[:750])
                 else:
-                    self.note.configure(text=source + " · Рейтинг Hyperliquid кэшируется на 15 минут; частота сделок зависит от провайдера. NANSEN_API_KEY включает Nansen API; COINGLASS_API_KEY добавляет позиции/алерты > $1M (план Startup+).")
+                    self.note.configure(text=source + " · Рейтинг Hyperliquid кэшируется на 15 минут; частота сделок зависит от провайдера. NANSEN_API_KEY включает Nansen API (лента Smart Money опрашивается раз в минуту, рейтинг кэшируется на 5 минут); COINGLASS_API_KEY добавляет позиции/алерты > $1M (план Startup+).")
         except queue.Empty:
             pass
         if not self._closed:
