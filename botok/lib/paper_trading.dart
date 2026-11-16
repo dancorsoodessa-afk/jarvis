@@ -171,7 +171,7 @@ class PaperTradingEngine {
       throw ArgumentError('Direction must be LONG or SHORT.');
     }
     final notional = plan.entry * plan.quantity;
-    final margin = notional / _inferLeverage(plan);
+    final margin = notional / plan.leverage;
     final entryFee = notional * feeRate;
     if (margin + entryFee > availableBalance) {
       throw StateError('Insufficient demo balance for margin and fees.');
@@ -191,10 +191,6 @@ class PaperTradingEngine {
     );
     return _position!;
   }
-
-  // Leverage is encoded in the plan's margin sizing by the caller. The plan
-  // currently carries no leverage field, so paper margin defaults to 1x.
-  double _inferLeverage(TradePlan plan) => 1;
 
   PaperClosedTrade? markPrice(double price) {
     if (!price.isFinite || price <= 0) return null;
@@ -313,6 +309,7 @@ Map<String, dynamic> _planToJson(TradePlan plan) => {
   'quantity': plan.quantity,
   'riskAmount': plan.riskAmount,
   'direction': plan.direction,
+  'leverage': plan.leverage,
 };
 
 TradePlan _planFromJson(Map<String, dynamic> json) => TradePlan(
@@ -323,4 +320,5 @@ TradePlan _planFromJson(Map<String, dynamic> json) => TradePlan(
   quantity: (json['quantity'] as num).toDouble(),
   riskAmount: (json['riskAmount'] as num).toDouble(),
   direction: json['direction'] as String,
+  leverage: (json['leverage'] as num).toDouble(),
 );
