@@ -7,5 +7,5 @@ void main(){
  test('seven OKX timeframes exist',()=>expect(MarketTimeframe.all.map((e)=>e.bar).toList(),['1m','3m','5m','15m','1H','1D','1W']));
  test('forecast returns future price cone',(){final f=buildMarketForecast(data());expect(f,isNotNull);expect(f!.points,hasLength(12));expect(f.projectedLower,lessThanOrEqualTo(f.projectedMedian));expect(f.projectedUpper,greaterThanOrEqualTo(f.projectedMedian));});
  test('backtest produces fees and drawdown metrics',(){final r=const BacktestEngine().run(data(),const BacktestConfig());expect(r.finalBalance.isFinite,isTrue);expect(r.fees,greaterThanOrEqualTo(0));expect(r.maxDrawdownPercent,greaterThanOrEqualTo(0));});
- test('walk-forward separates train and test',(){final r=const BacktestEngine().walkForward(data(n:800),candidates:[const BacktestConfig(),const BacktestConfig(stopPercent:1)]);expect(r.folds,isNotEmpty);for(final f in r.folds){expect(f.trainEnd,lessThan(f.testEnd));expect(f.testStart,f.equals(f.trainEnd));}});
+ test('walk-forward separates train and test',(){final r=const BacktestEngine().walkForward(data(n:800),candidates:[const BacktestConfig(),const BacktestConfig(stopPercent:1)]);expect(r.folds,isNotEmpty);for(final f in r.folds){expect(f.trainEnd,lessThan(f.testEnd));expect(f.testStart,f.trainEnd);}});
 }
