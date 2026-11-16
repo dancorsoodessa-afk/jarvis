@@ -62,8 +62,12 @@ class WhaleRadarWindow(tk.Toplevel):
         body.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         accounts_tab = tk.Frame(body, bg=BG)
         trades_tab = tk.Frame(body, bg=BG)
+        positions_tab = tk.Frame(body, bg=BG)
+        alerts_tab = tk.Frame(body, bg=BG)
         body.add(accounts_tab, text="ТОП-200 ТРЕЙДЕРОВ")
         body.add(trades_tab, text="СДЕЛКИ КИТОВ")
+        body.add(positions_tab, text="ПОЗИЦИИ > $1M")
+        body.add(alerts_tab, text="АЛЕРТЫ > $1M")
 
         self.accounts = self._tree(
             accounts_tab,
@@ -77,10 +81,21 @@ class WhaleRadarWindow(tk.Toplevel):
             ("Время", "Биржа", "Актив", "Сторона", "Цена", "Объём USD", "Кошелёк"),
             (145, 115, 90, 80, 110, 120, 330),
         )
+        self.positions = self._tree(
+            positions_tab,
+            ("wallet", "coin", "side", "value", "size", "entry", "mark", "liq", "lev", "upnl", "funding", "updated"),
+            ("Кошелёк", "Актив", "Сторона", "Позиция USD", "Размер", "Вход", "Mark", "Ликвидация", "Плечо", "uPnL", "Funding", "Обновлено"),
+            (310, 70, 70, 120, 95, 95, 95, 95, 60, 100, 100, 150),
+        )
+        self.alerts = self._tree(
+            alerts_tab,
+            ("time", "wallet", "coin", "side", "action", "value", "entry", "liq"),
+            ("Время", "Кошелёк", "Актив", "Сторона", "Событие", "Позиция USD", "Вход", "Ликвидация"),
+            (150, 310, 80, 80, 100, 120, 100, 100),
+        )
         self.note = tk.Label(
             self, bg=BG, fg=MUTED, justify="left", anchor="w",
-            text="Источник рейтинга: публичный Hyperliquid leaderboard (окно 30 дней). "
-                 "Сделки: публичный CoinLobster whale feed. Частота обновления зависит от API и ограничений источников.",
+            text="Рейтинг: Hyperliquid leaderboard / Nansen. Сделки: CoinLobster. Позиции и алерты > $1M: CoinGlass (нужен COINGLASS_API_KEY и план Startup или выше). Частота обновления зависит от API и ограничений источников.",
             font=("Segoe UI", 8), wraplength=1100,
         )
         self.note.pack(fill="x", padx=18, pady=(0, 10))
@@ -142,7 +157,7 @@ class WhaleRadarWindow(tk.Toplevel):
                 kind, payload = self._events.get_nowait()
                 if kind != "snapshot":
                     continue
-                for tree in (self.accounts, self.trades):
+                for tree in (self.accounts, self.trades, self.positions, self.alerts):
                     tree.delete(*tree.get_children())
                 for item in payload.get("accounts", []):
                     self.accounts.insert("", "end", values=(
@@ -156,6 +171,21 @@ class WhaleRadarWindow(tk.Toplevel):
                         item.timestamp, item.venue, item.coin, item.side,
                         f"{item.price:g}", f"{item.size_usd:,.2f}", item.address,
                     ))
+                for item in payload.get("positions", []):
+                    self.positions.insert("", "end", values=(
+                        item.address, item.coin, item.side, f"{item.position_value_usd:,.2f}",
+                        f"{item.position_size:g}", f"{item.entry_price:g}", f"{item.mark_price:g}",
+                        f"{item.liquidation_price:g}", f"{item.leverage:g}",
+                        f"{item.unrealized_pnl_usd:,.2f}", f"{item.funding_fee_usd:,.2f}", item.update_time,
+                    ))
+                for item in payload.get("alerts", []):
+                    raw = item.raw
+                    action_code = int(raw.get("position_action") or 0)
+                    action = "ОТКРЫТА" if action_code == 1 else "ЗАКРЫТА" if action_code == 2 else "—"
+                    self.alerts.insert("", "end", values=(
+                        item.timestamp, item.address, item.coin, item.side, action,
+                        f"{item.size_usd:,.2f}", f"{item.price:g}", str(raw.get("liq_price") or "—"),
+                    ))
                 errors = payload.get("errors") or []
                 count = len(payload.get("accounts", []))
                 self.status.set(
@@ -166,7 +196,7 @@ class WhaleRadarWindow(tk.Toplevel):
                 if errors:
                     self.note.configure(text=source + " · Ошибки источников: " + " | ".join(errors)[:750])
                 else:
-                    self.note.configure(text=source + " · Рейтинг Hyperliquid кэшируется на 15 минут; частота сделок зависит от провайдера. NANSEN_API_KEY включает Nansen API и более редкий опрос, чтобы контролировать расход кредитов.")
+                    self.note.configure(text=source + " · Рейтинг Hyperliquid кэшируется на 15 минут; частота сделок зависит от провайдера. NANSEN_API_KEY включает Nansen API; COINGLASS_API_KEY добавляет позиции/алерты > $1M (план Startup+).")
         except queue.Empty:
             pass
         if not self._closed:
