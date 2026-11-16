@@ -14,7 +14,7 @@ void main() {
   group('PaperTradingEngine', () {
     test('opening a position locks margin and charges entry fee', () {
       final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0.001);
-      final position = paper.open(plan());
+      final position = paper.open(plan(), instrumentId: 'BTC-USDT');
       expect(position.margin, greaterThan(0));
       expect(paper.marginUsed, closeTo(position.margin, 1e-8));
       expect(paper.availableBalance, lessThan(1000));
@@ -24,7 +24,7 @@ void main() {
 
     test('mark price updates unrealized PnL and equity', () {
       final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0);
-      paper.open(plan());
+      paper.open(plan(), instrumentId: 'BTC-USDT');
       paper.markPrice(101);
       expect(paper.unrealizedPnl, greaterThan(0));
       expect(paper.equity, greaterThan(1000));
@@ -32,7 +32,7 @@ void main() {
 
     test('stop loss closes position, releases margin and realizes loss', () {
       final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0);
-      paper.open(plan());
+      paper.open(plan(), instrumentId: 'BTC-USDT');
       final closed = paper.markPrice(plan().stopLoss - 0.01);
       expect(closed, isNotNull);
       expect(paper.openPosition, isNull);
@@ -43,7 +43,7 @@ void main() {
 
     test('take profit one partially realizes and take profit two closes remainder', () {
       final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0);
-      paper.open(plan());
+      paper.open(plan(), instrumentId: 'BTC-USDT');
       paper.markPrice(plan().takeProfit1);
       expect(paper.openPosition, isNotNull);
       expect(paper.openPosition!.quantity, closeTo(plan().quantity * 0.5, 1e-8));
@@ -60,12 +60,13 @@ void main() {
 
     test('wallet and trade history survive JSON round trip', () {
       final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0.001);
-      paper.open(plan());
+      paper.open(plan(), instrumentId: 'BTC-USDT');
       paper.markPrice(101);
       final restored = PaperTradingEngine.fromJson(paper.toJson());
       expect(restored.availableBalance, closeTo(paper.availableBalance, 1e-8));
       expect(restored.equity, closeTo(paper.equity, 1e-8));
-      expect(restored.openPosition!.entry, 100);
+      expect(restored.openPosition!.plan.entry, 100);
+      expect(restored.openPosition!.instrumentId, 'BTC-USDT');
     });
   });
 }
