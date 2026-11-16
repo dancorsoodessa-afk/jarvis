@@ -6,6 +6,7 @@ import json
 import os
 import queue
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk
 from collections import deque
@@ -22,6 +23,10 @@ class BOTokDashboard(CryptoDashboard):
         self.geometry("1320x850")
         self.minsize(1000, 700)
         self._chart_queue = queue.Queue()
+        self._whale_copy_queue = queue.Queue()
+        self._tracked_whale_wallets: set[str] = set()
+        self._seen_whale_keys: set[str] = set()
+        self._seen_whale_order = deque(maxlen=5000)
         self._nansen_api_key = self._load_nansen_key()
         self._coinglass_api_key = self._load_coinglass_key()
         if self._nansen_api_key:
@@ -88,6 +93,15 @@ class BOTokDashboard(CryptoDashboard):
             activeforeground=TEXT, relief="flat", padx=8, pady=7,
         ).pack(anchor="w", padx=10, pady=(0, 8))
         self.whale_status_var = tk.StringVar(value="CoinGlass + Nansen: API-ключи не настроены")
+        self.whale_copy_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            side, text="КОПИРОВАТЬ TOP-200 → PAPER", variable=self.whale_copy_var,
+            command=self._toggle_whale_copy, bg=PANEL, fg=GREEN, selectcolor="#081522",
+            activebackground=PANEL, activeforeground=GREEN, font=("Consolas", 8, "bold"),
+        ).pack(anchor="w", padx=10, pady=(0, 3))
+        tk.Label(side, text="Только сделки от 250 000 USD и свежий OKX flow. Реальные ордера отключены.",
+                 bg=PANEL, fg=MUTED, wraplength=210, justify="left",
+                 font=("Segoe UI", 8)).pack(anchor="w", padx=10, pady=(0, 8))
         tk.Label(side, textvariable=self.whale_status_var, bg=PANEL, fg=MUTED,
                  wraplength=210, justify="left", font=("Segoe UI", 9)).pack(
                      anchor="w", padx=10, pady=(0, 8)
@@ -146,6 +160,33 @@ class BOTokDashboard(CryptoDashboard):
         self.after(250, self._drain_chart_queue)
         self._check_nansen()
 
+    def _toggle_whale_copy(self):
+        if self.whale_copy_var.get():
+            self.whale_status_var.set("PAPER COPY ON · отслеживается " + str(len(self._tracked_whale_wallets)) + " кошельков; только свежие сделки с подтверждением OKX")
+        else:
+            self.whale_status_var.set("PAPER COPY OFF · мониторинг китов без создания ордеров")
+
+    def enqueue_whale_snapshot(self, snapshot):
+        """Called on the Tk thread; enqueue only deduplicated fills from ranked wallets."""
+        self._tracked_whale_wallets = {
+            str(account.address).lower()
+            for account in snapshot.get("accounts", [])
+            if getattr(account, "address", "")
+        }
+        events = list(snapshot.get("hyperliquid_trades", [])) + list(snapshot.get("exchange_trades", []))
+        for event in events:
+            address = str(getattr(event, "address", "")).lower()
+            if not address or address not in self._tracked_whale_wallets:
+                continue
+            raw = getattr(event, "raw", {}) or {}
+            event_key = str(raw.get("tradeId") or raw.get("trade_id") or raw.get("transaction_hash") or raw.get("hash") or (address + ":" + str(event.timestamp) + ":" + str(event.coin) + ":" + str(event.side) + ":" + str(event.price) + ":" + str(event.size_usd)))
+            if event_key in self._seen_whale_keys:
+                continue
+            if len(self._seen_whale_order) == self._seen_whale_order.maxlen:
+                self._seen_whale_keys.discard(self._seen_whale_order[0])
+            self._seen_whale_order.append(event_key)
+            self._seen_whale_keys.add(event_key)
+            self._whale_copy_queue.put(event)
     def _record_price(self, _payload):
         # BOTok renders ticker events through its thread-safe chart queue.
         return
@@ -155,6 +196,17 @@ class BOTokDashboard(CryptoDashboard):
         runtime = self._runtime
         if runtime is None or self._stop_flag.is_set():
             return
+        while True:
+            try:
+                whale_event = self._whale_copy_queue.get_nowait()
+            except queue.Empty:
+                break
+            if self.whale_copy_var.get():
+                whale_signals = runtime.on_whale_trade(
+                    whale_event, self._tracked_whale_wallets, int(time.time() * 1000)
+                )
+                for signal in whale_signals:
+                    self._events.put(("signal", "TOP-200 WHALE PAPER ORDER: " + signal.symbol + " " + signal.side.upper() + " · " + signal.reason))
         arg = message.get("arg") or {}
         channel = arg.get("channel")
         if channel not in {"tickers", "books5"}:
