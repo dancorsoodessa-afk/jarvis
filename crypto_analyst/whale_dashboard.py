@@ -22,7 +22,7 @@ RED = "#ff7185"
 class WhaleRadarWindow(tk.Toplevel):
     """Shows top 200 Hyperliquid leaderboard accounts and wallet-attributed whale fills."""
 
-    def __init__(self, master):
+    def __init__(self, master, nansen_api_key: str = "", coinglass_api_key: str = ""):
         super().__init__(master)
         self.title("BOTok — WHALE RADAR / TOP 200")
         self.geometry("1180x760")
@@ -30,7 +30,10 @@ class WhaleRadarWindow(tk.Toplevel):
         self.configure(bg=BG)
         self._events: queue.Queue = queue.Queue()
         self._stop = threading.Event()
-        self._client: WhaleIntelClient | None = None
+        self._client: WhaleIntelClient | None = WhaleIntelClient(
+            nansen_api_key=nansen_api_key,
+            coinglass_api_key=coinglass_api_key,
+        )
         self._thread: threading.Thread | None = None
         self._closed = False
         self._build()
@@ -134,11 +137,12 @@ class WhaleRadarWindow(tk.Toplevel):
         self._thread.start()
 
     def _poll(self):
-        snapshot = WhaleIntelClient().fetch_snapshot(account_limit=200)
+        client = self._client or WhaleIntelClient()
+        snapshot = client.fetch_snapshot(account_limit=200)
         self._events.put(("snapshot", snapshot))
 
     def _poll_loop(self):
-        client = WhaleIntelClient()
+        client = self._client or WhaleIntelClient()
         self._client = client
         while not self._stop.is_set():
             snapshot = client.fetch_snapshot(account_limit=200)
