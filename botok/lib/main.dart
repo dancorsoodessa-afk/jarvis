@@ -553,9 +553,13 @@ class _DashboardPageState extends State<DashboardPage> {
   );
 
   Widget _forecastCard() {
-    final forecast = buildMarketForecast(_candles.where((candle) => candle.isClosed).toList());
-    final validation = validateMarketForecast(_candles.where((candle) => candle.isClosed).toList(), maxSamples: 120);
-    return _card(title: 'БУДУЩИЙ РЫНОК • ПРОГНОЗ НА 12 СВЕЧЕЙ', child: forecast == null
+    final closedCandles = _candles.where((candle) => candle.isClosed).toList();
+    final forecast = buildMarketForecast(closedCandles);
+    final validation = validateMarketForecast(closedCandles, maxSamples: 120);
+    final timeframeLabel = MarketTimeframe.all
+        .firstWhere((timeframe) => timeframe.bar == _selectedTimeframe, orElse: () => MarketTimeframe.all.first)
+        .label;
+    return _card(title: 'БУДУЩИЙ РЫНОК • $timeframeLabel • +12 БАРОВ', child: forecast == null
       ? const Text('Для прогноза нужно минимум 25 закрытий выбранного таймфрейма.', style: TextStyle(color: _muted, fontSize: 11))
       : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(height: 170, child: CustomPaint(painter: _ForecastPainter(forecast), child: const SizedBox.expand())),
@@ -563,6 +567,7 @@ class _DashboardPageState extends State<DashboardPage> {
             Expanded(child: _miniMetric('LONG / рост', '${forecast.bullishProbability.toStringAsFixed(1)}%', _green)),
             Expanded(child: _miniMetric('SHORT / снижение', '${forecast.bearishProbability.toStringAsFixed(1)}%', _red)),
           ]),
+          _planLine('Горизонт прогноза', '$timeframeLabel × 12 свечей'),
           _planLine('Медианный ориентир', _fmt(forecast.projectedMedian), _blue),
           _planLine('Прогнозный диапазон (95% модельный)', '${_fmt(forecast.projectedLower)} — ${_fmt(forecast.projectedUpper)}'),
           _planLine('Волатильность на горизонт', '${forecast.volatilityPercent.toStringAsFixed(2)}%'),
@@ -898,7 +903,10 @@ class _CandlePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (candles.length < 2) return;
-    final last = forecastPrice > 0 ? forecastPrice : candles.last.close;
+    final visibleCandles = candles.length > 160
+        ? candles.sublist(candles.length - 160)
+        : candles;
+    final last = forecastPrice > 0 ? forecastPrice : visibleCandles.last.close;
     final unit = last * 0.008;
     final levels = <({String label, double price, Color color})>[
       (label: 'LONG SL', price: last - unit, color: _red),
@@ -909,10 +917,10 @@ class _CandlePainter extends CustomPainter {
       (label: 'SHORT TP2', price: last - unit * 2.5, color: _green),
     ];
     final values = <double>[
-      ...candles.expand((c) => [c.high, c.low]),
+      ...visibleCandles.expand((c) => [c.high, c.low]),
       ...levels.map((l) => l.price),
       if (position != null) ...[
-        position!.plan.entry, position!.plan.stopLoss,
+        position!.plan.entry, position!.effectiveStopLoss,
         position!.plan.takeProfit1, position!.plan.takeProfit2,
       ],
     ];
@@ -927,10 +935,10 @@ class _CandlePainter extends CustomPainter {
     final plotHeight = size.height - top - bottom;
     double y(double price) => top + (maxV - price) / range * plotHeight;
 
-    final candleStep = plotWidth / candles.length;
+    final candleStep = plotWidth / visibleCandles.length;
     final bodyWidth = math.max(2.0, candleStep * 0.58).toDouble();
-    for (var i = 0; i < candles.length; i++) {
-      final candle = candles[i];
+    for (var i = 0; i < visibleCandles.length; i++) {
+      final candle = visibleCandles[i];
       final x = left + candleStep * (i + 0.5);
       final rising = candle.close >= candle.open;
       final color = rising ? _green : _red;
@@ -977,7 +985,10 @@ class _CandlePainter extends CustomPainter {
     }
     if (position != null) {
       drawLevel(position!.plan.entry, _blue, 'ENTRY', solid: true);
-      drawLevel(position!.plan.stopLoss, _red, 'ACTIVE SL', solid: true);
+      drawLevel(position!.effectiveStopLoss, _red, 'ACTIVE SL', solid: true);
+      if (position!.trailingStopPrice != null) {
+        drawLevel(position!.trailingStopPrice!, _blue, 'TRAILING SL', solid: true);
+      }
       drawLevel(position!.plan.takeProfit1, _green, 'ACTIVE TP1', solid: true);
       drawLevel(position!.plan.takeProfit2, _green, 'ACTIVE TP2', solid: true);
     }
