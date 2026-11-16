@@ -95,6 +95,9 @@ class _DashboardPageState extends State<DashboardPage> {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getString('botok.paper.wallet.v1');
       if (saved != null) _paper = PaperTradingEngine.decode(saved);
+      if (_paper.openPosition != null) {
+        _positionState = 'PAPER ${_paper.openPosition!.plan.direction} восстановлена • SL/TP активны';
+      }
     } catch (e) {
       _positionState = 'Не удалось восстановить демо-кошелёк: $e';
     }
@@ -566,7 +569,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const Divider(height: 22),
           const Text('ПОСЛЕДНИЕ ЗАКРЫТЫЕ СДЕЛКИ', style: TextStyle(color: _muted, fontSize: 10, fontWeight: FontWeight.bold)),
           for (final trade in _paper.closedTrades.reversed.take(5))
-            _planLine('${trade.direction} • ${trade.reason}', '${trade.realizedPnl >= 0 ? '+' : ''}${trade.realizedPnl.toStringAsFixed(2)} USDT', trade.realizedPnl >= 0 ? _green : _red),
+            _planLine('${trade.direction} • ${trade.reason}', '${trade.realizedPnl >= 0 ? '+' : ''}${(trade.realizedPnl - trade.fees).toStringAsFixed(2)} USDT net', trade.realizedPnl - trade.fees >= 0 ? _green : _red),
         ],
       ]),
     );
