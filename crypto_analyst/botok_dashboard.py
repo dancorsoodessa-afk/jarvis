@@ -24,6 +24,7 @@ class BOTokDashboard(CryptoDashboard):
         self.minsize(1000, 700)
         self._chart_queue = queue.Queue()
         self._whale_copy_queue = queue.Queue()
+        self._whale_copy_enabled = False
         self._tracked_whale_wallets: set[str] = set()
         self._seen_whale_keys: set[str] = set()
         self._seen_whale_order = deque(maxlen=5000)
@@ -161,7 +162,8 @@ class BOTokDashboard(CryptoDashboard):
         self._check_nansen()
 
     def _toggle_whale_copy(self):
-        if self.whale_copy_var.get():
+        self._whale_copy_enabled = bool(self.whale_copy_var.get())
+        if self._whale_copy_enabled:
             self.whale_status_var.set("PAPER COPY ON · отслеживается " + str(len(self._tracked_whale_wallets)) + " кошельков; только свежие сделки с подтверждением OKX")
         else:
             self.whale_status_var.set("PAPER COPY OFF · мониторинг китов без создания ордеров")
@@ -201,7 +203,7 @@ class BOTokDashboard(CryptoDashboard):
                 whale_event = self._whale_copy_queue.get_nowait()
             except queue.Empty:
                 break
-            if self.whale_copy_var.get():
+            if self._whale_copy_enabled:
                 whale_signals = runtime.on_whale_trade(
                     whale_event, self._tracked_whale_wallets, int(time.time() * 1000)
                 )
