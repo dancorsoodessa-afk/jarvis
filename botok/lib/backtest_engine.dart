@@ -198,14 +198,12 @@ class BacktestEngine {
             final fee = fill * quantity * cfg.feeRate;
             balance += gross - fee;
             fees += fee;
-            position = position.copyWith(
-              quantity: position.quantity - quantity,
-              partialPnl: position.partialPnl + gross,
-              partialFees: position.partialFees + fee,
-              takeProfit1Hit: true,
-            );
+            position.quantity -= quantity;
+            position.partialPnl += gross;
+            position.partialFees += fee;
+            position.takeProfit1Hit = true;
           }
-          if (position != null && tp2Hit) {
+          if (tp2Hit) {
             final fill = position.takeProfit2 *
                 (position.isLong ? 1 - slippage : 1 + slippage);
             final closed = _close(
@@ -224,7 +222,7 @@ class BacktestEngine {
               losingPnl -= closed.net;
             }
             position = null;
-          } else if (position != null) {
+          } else {
             position.updateTrailing(candle.high, candle.low, cfg.trailingStopPercent);
           }
         }
