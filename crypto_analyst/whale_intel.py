@@ -314,7 +314,8 @@ class WhaleIntelClient:
     def fetch_nansen_smart_money_trades(self, limit: int = 200) -> list[WhaleTrade]:
         """Fetch the latest Smart HL Perps Trader fills (seven-day maximum window)."""
         payload = self._post_nansen("/api/v1/smart-money/perp-trades", {
-            "lookback_hours": 24,
+            "filters": {"value_usd": {"min": 250000}},
+            "only_new_positions": False,
             "pagination": {"page": 1, "per_page": max(1, min(1000, int(limit)))},
             "order_by": [{"field": "block_timestamp", "direction": "DESC"}],
         })
