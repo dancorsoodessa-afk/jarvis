@@ -25,7 +25,7 @@ class BacktestEngine {
      final level=stop?p.stop:p.tp2, slip=cfg.slippageBps/10000;
      final exit=level*(p.long?1-slip:1+slip);
      final r=_close(p,exit,i,stop?'STOP_LOSS':'TAKE_PROFIT_2',cfg);
-     balance+=r.net;fees+=r.fees;trades.add(r.trade);if(r.net>=0)winning+=r.net;else losing-=r.net;p=null;
+     balance+=r.cashDelta;fees+=r.fees;trades.add(r.trade);if(r.net>=0)winning+=r.net;else losing-=r.net;p=null;
     }else if(tp1&&!p.tp1Hit){
      final qty=p.qty/2,raw=(p.tp1-p.entry)*qty*(p.long?1:-1),fee=p.tp1*qty*cfg.feeRate;
      balance+=raw-fee;fees+=fee;p=p.copy(qty:p.qty-qty,partial:p.partial+raw,partialFees:p.partialFees+fee,tp1Hit:true);
@@ -41,10 +41,10 @@ class BacktestEngine {
    }
    final marked=balance+(p==null?0:(c.close-p.entry)*p.qty*(p.long?1:-1));
    peak=math.max(peak,marked).toDouble();final dd=peak<=0?0:(peak-marked)/peak*100;maxDd=math.max(maxDd,dd).toDouble();
-   if(maxDd>=cfg.maxDrawdownPercent){halted=true;if(p!=null){final r=_close(p,c.close,i,'MAX_DRAWDOWN',cfg);balance+=r.net;fees+=r.fees;trades.add(r.trade);if(r.net>=0)winning+=r.net;else losing-=r.net;p=null;}}
+   if(maxDd>=cfg.maxDrawdownPercent){halted=true;if(p!=null){final r=_close(p,c.close,i,'MAX_DRAWDOWN',cfg);balance+=r.cashDelta;fees+=r.fees;trades.add(r.trade);if(r.net>=0)winning+=r.net;else losing-=r.net;p=null;}}
    curve.add(balance+(p==null?0:(c.close-p.entry)*p.qty*(p.long?1:-1)));
   }
-  if(p!=null&&data.isNotEmpty){final r=_close(p,data.last.close,data.length-1,'END_OF_DATA',cfg);balance+=r.net;fees+=r.fees;trades.add(r.trade);if(r.net>=0)winning+=r.net;else losing-=r.net;curve.add(balance);}
+  if(p!=null&&data.isNotEmpty){final r=_close(p,data.last.close,data.length-1,'END_OF_DATA',cfg);balance+=r.cashDelta;fees+=r.fees;trades.add(r.trade);if(r.net>=0)winning+=r.net;else losing-=r.net;curve.add(balance);}
   final net=balance-cfg.startingBalance;
   return BacktestResult(trades:List.unmodifiable(trades),finalBalance:balance,netPnl:net,returnPercent:net/cfg.startingBalance*100,winRate:trades.isEmpty?0:trades.where((t)=>t.netPnl>0).length/trades.length*100,profitFactor:losing==0?(winning>0?double.infinity:0):winning/losing,maxDrawdownPercent:maxDd,equityCurve:List.unmodifiable(curve),fees:fees);
  }
@@ -59,7 +59,7 @@ class BacktestEngine {
   return WalkForwardResult(List.unmodifiable(out));
  }
  List<BacktestConfig> defaultCandidates(){final out=<BacktestConfig>[];for(final s in [0.5,0.8,1.0])for(final t in [55.0,60.0,65.0])for(final a in [1.0,1.5])for(final b in [2.0,2.5,3.0])out.add(BacktestConfig(stopPercent:s,signalThreshold:t,firstTargetR:a,secondTargetR:b));return out;}
- _Closed _close(_Sim p,double exit,int index,String reason,BacktestConfig cfg){final raw=(exit-p.entry)*p.qty*(p.long?1:-1),fee=exit*p.qty*cfg.feeRate,net=p.partial+raw-p.entryFee-p.partialFees-fee;return _Closed(BacktestTrade(p.long?'LONG':'SHORT',p.entry,exit,net,reason,p.entryIndex,index),net,fee);}
+ _Closed _close(_Sim p,double exit,int index,String reason,BacktestConfig cfg){final raw=(exit-p.entry)*p.qty*(p.long?1:-1),fee=exit*p.qty*cfg.feeRate,net=p.partial+raw-p.entryFee-p.partialFees-fee;return _Closed(BacktestTrade(p.long?'LONG':'SHORT',p.entry,exit,net,reason,p.entryIndex,index),net,fee,raw-fee);}
 }
 class _Sim{const _Sim(this.long,this.entry,this.qty,this.stop,this.tp1,this.tp2,this.entryFee,this.partial,this.partialFees,this.tp1Hit,this.entryIndex);final bool long,tp1Hit;final double entry,qty,stop,tp1,tp2,entryFee,partial,partialFees;final int entryIndex;_Sim copy({double? qty,double? partial,double? partialFees,bool? tp1Hit})=>_Sim(long,entry,qty??this.qty,stop,tp1,tp2,entryFee,partial??this.partial,partialFees??this.partialFees,tp1Hit??this.tp1Hit,entryIndex);}
-class _Closed{const _Closed(this.trade,this.net,this.fees);final BacktestTrade trade;final double net,fees;}
+class _Closed{const _Closed(this.trade,this.net,this.fees,this.cashDelta);final BacktestTrade trade;final double net,fees,cashDelta;}
