@@ -23,6 +23,24 @@ class TradeSignal {
   double get confidence => math.max(longProbability, shortProbability).toDouble();
 }
 
+class MultiTimeframeAnalysis {
+  const MultiTimeframeAnalysis({
+    required this.signal,
+    required this.byTimeframe,
+    required this.activeTimeframes,
+    required this.agreementPercent,
+    required this.weightedScore,
+  });
+
+  final TradeSignal signal;
+  final Map<String, TradeSignal> byTimeframe;
+  final int activeTimeframes;
+  final double agreementPercent;
+  final double weightedScore;
+
+  bool get isAligned => activeTimeframes >= 3 && agreementPercent >= 60;
+}
+
 class TradePlan {
   const TradePlan({
     required this.entry,
@@ -92,11 +110,16 @@ TradeSignal calculateSignal({
   final fast = _ema(prices, math.min(9, prices.length).toInt());
   final slow = _ema(prices, math.min(21, prices.length).toInt());
   final rsi = _rsi(prices);
-  final trend = fast == 0 ? 0.0 : ((fast - slow) / fast * 100).clamp(-1.0, 1.0).toDouble();
-  final momentum = ((50 - rsi) / 50).clamp(-1.0, 1.0).toDouble();
-  final raw = (trend * 0.35 + bookImbalance.clamp(-1.0, 1.0) * 0.35 +
-      tradeDelta.clamp(-1.0, 1.0) * 0.20 + momentum * 0.10)
-      .clamp(-1.0, 1.0).toDouble();
+  final trend = fast == 0
+      ? 0.0
+      : ((fast - slow) / fast * 100).clamp(-1.0, 1.0).toDouble();
+  final momentum = ((rsi - 50) / 50).clamp(-1.0, 1.0).toDouble();
+  final raw = (trend * 0.35 +
+          momentum * 0.10 +
+          bookImbalance.clamp(-1.0, 1.0) * 0.30 +
+          tradeDelta.clamp(-1.0, 1.0) * 0.25)
+      .clamp(-1.0, 1.0)
+      .toDouble();
   final long = (50 + raw * 45).clamp(5.0, 95.0).toDouble();
   return TradeSignal(
     longProbability: long,
@@ -106,6 +129,77 @@ TradeSignal calculateSignal({
     emaSlow: slow,
     bookImbalance: bookImbalance,
     tradeDelta: tradeDelta,
+  );
+}
+
+MultiTimeframeAnalysis calculateMultiTimeframeAnalysis({
+  required Map<String, List<double>> pricesByTimeframe,
+  double bookImbalance = 0,
+  double tradeDelta = 0,
+}) {
+  const weights = <String, double>{
+    '1m': 0.5,
+    '3m': 0.75,
+    '5m': 1.0,
+    '15m': 1.25,
+    '1H': 1.5,
+    '1D': 1.75,
+    '1W': 2.0,
+  };
+  final byTimeframe = <String, TradeSignal>{};
+  var weighted = 0.0;
+  var totalWeight = 0.0;
+  var longWeight = 0.0;
+  var shortWeight = 0.0;
+  var rsiWeighted = 0.0;
+  var rsiWeight = 0.0;
+
+  for (final entry in weights.entries) {
+    final prices = pricesByTimeframe[entry.key];
+    if (prices == null || prices.length < 25) continue;
+    final shortTerm = entry.key == '1m';
+    final signal = calculateSignal(
+      prices: prices,
+      bookImbalance: shortTerm ? bookImbalance : 0,
+      tradeDelta: shortTerm ? tradeDelta : 0,
+    );
+    byTimeframe[entry.key] = signal;
+    final weight = entry.value;
+    final score = (signal.longProbability - 50) / 45;
+    weighted += score * weight;
+    totalWeight += weight;
+    rsiWeighted += signal.rsi * weight;
+    rsiWeight += weight;
+  }
+
+  final score = totalWeight == 0
+      ? 0.0
+      : (weighted / totalWeight).clamp(-1.0, 1.0).toDouble();
+  final long = (50 + score * 45).clamp(5.0, 95.0).toDouble();
+  final direction = score >= 0 ? 'LONG' : 'SHORT';
+  for (final entry in byTimeframe.entries) {
+    final aligned = direction == 'LONG'
+        ? entry.value.longProbability >= 50
+        : entry.value.shortProbability > 50;
+    if (aligned) longWeight += weights[entry.key]!;
+  }
+  final agreement = totalWeight == 0 ? 0.0 : longWeight / totalWeight * 100;
+  final oneMinute = byTimeframe['1m'];
+  final signal = TradeSignal(
+    longProbability: long,
+    shortProbability: 100 - long,
+    rsi: rsiWeight == 0 ? 50 : rsiWeighted / rsiWeight,
+    emaFast: oneMinute?.emaFast ?? 0,
+    emaSlow: oneMinute?.emaSlow ?? 0,
+    bookImbalance: bookImbalance,
+    tradeDelta: tradeDelta,
+  );
+  return MultiTimeframeAnalysis(
+    signal: signal,
+    byTimeframe: Map.unmodifiable(byTimeframe),
+    activeTimeframes: byTimeframe.length,
+    agreementPercent: agreement,
+    weightedScore: score,
   );
 }
 
@@ -119,8 +213,13 @@ TradePlan buildTradePlan({
   double firstTargetR = 1.5,
   double secondTargetR = 2.5,
 }) {
-  if (entry <= 0 || capital <= 0 || riskPercent <= 0 || leverage <= 0) {
-    throw ArgumentError('Entry, capital, risk and leverage must be positive.');
+  if (entry <= 0 ||
+      capital <= 0 ||
+      riskPercent <= 0 ||
+      leverage <= 0 ||
+      stopPercent <= 0 ||
+      (direction != 'LONG' && direction != 'SHORT')) {
+    throw ArgumentError('Entry, capital, risk, stop, direction and leverage must be valid.');
   }
   final isLong = direction == 'LONG';
   final stopDistance = entry * stopPercent / 100;
