@@ -5,6 +5,7 @@ on:
     branches: [foundation]
     paths:
       - 'agent/**'
+      - 'crypto_analyst/**'
       - 'docs/**'
       - 'ui/**'
       - 'tests/**'
@@ -38,7 +39,7 @@ jobs:
       - name: Compile Python modules
         shell: pwsh
         run: |
-          python -m compileall -q agent jarvis_desktop.py
+          python -m compileall -q agent crypto_analyst jarvis_desktop.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run tests and build packaged executable
         shell: pwsh

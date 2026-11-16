@@ -5,6 +5,7 @@ on:
     branches: [foundation]
     paths:
       - "agent/**"
+      - "crypto_analyst/**"
       - "ui/**"
       - "scripts/prepare_3d_assets.ps1"
       - "tests/**"
@@ -16,6 +17,7 @@ on:
     branches: [foundation]
     paths:
       - "agent/**"
+      - "crypto_analyst/**"
       - "ui/**"
       - "scripts/prepare_3d_assets.ps1"
       - "tests/**"

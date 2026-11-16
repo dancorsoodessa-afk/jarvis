@@ -11,6 +11,23 @@ JARVIS is a Windows desktop assistant with a graphical interface, memory, OS too
 - **3D interface:** real Three.js/WebGL neural reactor served locally and opened in the browser. The scene reacts to live microphone level and the assistant's listening, thinking, speaking, and error states.
 - **Camera:** not implemented; JARVIS does not request camera access.
 
+## Crypto Analyst — paper-only development module
+
+The `crypto_analyst/` package contains the first backend layer for an OKX-only market-data and paper-scalping workflow:
+
+- Public OKX WebSocket subscriptions for `books5`, `trades`, and `tickers`.
+- In-memory normalized order-book, trade, and ticker state.
+- Weighted Bid/Ask imbalance, visible liquidity-wall heuristics, and aggressor trade delta.
+- Deterministic signal generation with whitelist, freshness, and spread filters.
+- A separate risk gate for position sizing, daily loss, leverage, and reward/risk checks.
+- A paper broker driven by public trade prints.
+
+**Safety boundary:** the module is paper-only. It has no authenticated OKX account connection, API-key handling, or live order-placement method. Public order-book walls and repeated executions are heuristics, not proof of hidden liquidity or iceberg orders. The initial paper fill model is a simplified simulation and must not be treated as exchange-grade queue simulation.
+
+The public feed uses the lightweight `websockets` client directly against OKX because this repository targets OKX only. CCXT Pro can be added as an optional adapter if a licensed CCXT Pro deployment is selected; it is not required for the current OKX-only feed.
+
+The package is a backend foundation and is not yet represented as a completed desktop trading screen. UI wiring, broad instrument discovery, YouTube strategy ingestion, persistent storage, replay/backtesting, and end-to-end Windows release verification remain subsequent implementation work.
+
 ## Get the free Gemini API key
 
 1. Open [Google AI Studio](https://aistudio.google.com/app/apikey).
