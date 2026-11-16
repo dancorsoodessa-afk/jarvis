@@ -163,6 +163,8 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final loaded = await Future.wait(MarketTimeframe.all.map((tf) => _market.loadCandles(instrument.id, bar: tf.bar, limit: 300).then((items) => MapEntry(tf.bar, items))));
       _candlesByTimeframe..clear()..addEntries(loaded.map((entry) => MapEntry(entry.key, entry.value)));
+      final selectedHistory = await _market.loadHistory(instrument.id, bar: _selectedTimeframe, limit: 1200);
+      if (selectedHistory.isNotEmpty) _candlesByTimeframe[_selectedTimeframe] = selectedHistory;
       _candles..clear()..addAll(_candlesByTimeframe[_selectedTimeframe] ?? const []);
       final oneMinute = _candlesByTimeframe['1m'] ?? const <MarketCandle>[];
       if (oneMinute.isNotEmpty) _price = oneMinute.last.close;
@@ -196,7 +198,7 @@ class _DashboardPageState extends State<DashboardPage> {
         try {
           final candle = MarketCandle.fromOkx(raw as List<dynamic>);
           final index = series.indexWhere((item) => item.timestamp == candle.timestamp);
-          if (index >= 0) { series[index] = candle; } else { series.add(candle); if (series.length > 300) series.removeAt(0); }
+          if (index >= 0) { series[index] = candle; } else { series.add(candle); if (series.length > 1500) series.removeAt(0); }
         } catch (_) {}
       }
       if (bar == _selectedTimeframe) { _candles..clear()..addAll(series); }
@@ -235,9 +237,14 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _setTimeframe(String bar) async {
     if (bar == _selectedTimeframe) return;
     setState(() { _selectedTimeframe = bar; _candles..clear()..addAll(_candlesByTimeframe[bar] ?? const []); _backtestResult = null; _walkForwardResult = null; });
-    if ((_candlesByTimeframe[bar] ?? const []).isEmpty && _selected != null) {
-      try { final history = await _market.loadCandles(_selected!.id, bar: bar, limit: 300); _candlesByTimeframe[bar] = history; if (mounted) setState(() => _candles..clear()..addAll(history)); }
-      catch (e) { if (mounted) _toast('Не удалось загрузить $bar: $e'); }
+    if (_selected != null) {
+      try {
+        final history = await _market.loadHistory(_selected!.id, bar: bar, limit: 1200);
+        if (history.isNotEmpty) _candlesByTimeframe[bar] = history;
+        if (mounted) setState(() => _candles..clear()..addAll(_candlesByTimeframe[bar] ?? const []));
+      } catch (e) {
+        if (mounted) _toast('Не удалось загрузить архив $bar: $e');
+      }
     }
   }
 
@@ -472,7 +479,8 @@ class _DashboardPageState extends State<DashboardPage> {
   );
 
   Widget _forecastCard() {
-    final forecast = buildMarketForecast(_candles);
+    final forecast = buildMarketForecast(_candles.where((candle) => candle.isClosed).toList());
+    final validation = validateMarketForecast(_candles.where((candle) => candle.isClosed).toList(), maxSamples: 120);
     return _card(title: 'БУДУЩИЙ РЫНОК • ПРОГНОЗ НА 12 СВЕЧЕЙ', child: forecast == null
       ? const Text('Для прогноза нужно минимум 25 закрытий выбранного таймфрейма.', style: TextStyle(color: _muted, fontSize: 11))
       : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -482,8 +490,16 @@ class _DashboardPageState extends State<DashboardPage> {
             Expanded(child: _miniMetric('SHORT / снижение', '${forecast.bearishProbability.toStringAsFixed(1)}%', _red)),
           ]),
           _planLine('Медианный ориентир', _fmt(forecast.projectedMedian), _blue),
-          _planLine('Прогнозный диапазон', '${_fmt(forecast.projectedLower)} — ${_fmt(forecast.projectedUpper)}'),
-          const Text('Статистическая экстраполяция дрейфа и волатильности. Вероятности не откалиброваны и не являются гарантией.', style: TextStyle(color: _muted, fontSize: 9)),
+          _planLine('Прогнозный диапазон (95% модельный)', '${_fmt(forecast.projectedLower)} — ${_fmt(forecast.projectedUpper)}'),
+          _planLine('Волатильность на горизонт', '${forecast.volatilityPercent.toStringAsFixed(2)}%'),
+          if (validation != null) ...[
+            const Divider(),
+            _planLine('Проверка на прошлых окнах', '${validation.samples} out-of-sample прогнозов'),
+            _planLine('Точность направления', '${validation.directionalAccuracyPercent.toStringAsFixed(1)}%'),
+            _planLine('Покрытие 95% диапазона', '${validation.intervalCoveragePercent.toStringAsFixed(1)}%'),
+            _planLine('Средняя ошибка медианы', '${validation.meanAbsoluteErrorPercent.toStringAsFixed(2)}%'),
+          ],
+          const Text('Вероятности основаны на нормальном приближении доходностей; ниже показывается скользящая проверка на более поздних свечах. Это не гарантия будущего результата.', style: TextStyle(color: _muted, fontSize: 9)),
         ]));
   }
 
@@ -538,7 +554,7 @@ class _DashboardPageState extends State<DashboardPage> {
   ]));
 
   Widget _signalCard(TradeSignal signal) => _card(
-    title: 'AI SIGNAL • LONG / SHORT',
+    title: 'СОВМЕЩЁННЫЙ СИГНАЛ • LONG / SHORT',
     child: Column(children: [
       Row(children: [
         Expanded(child: _probability('LONG', signal.longProbability, _green)),
@@ -552,7 +568,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _miniMetric('EMA 21', signal.emaSlow == 0 ? '—' : _fmt(signal.emaSlow), _blue),
       ]),
       const SizedBox(height: 8),
-      const Text('Вероятности — расчётная оценка модели, не гарантия исхода.', style: TextStyle(color: _muted, fontSize: 10)),
+      const Text('Проценты — эвристический скоринг нескольких индикаторов и потоков данных, а не обученная и откалиброванная вероятность.', style: TextStyle(color: _muted, fontSize: 10)),
     ]),
   );
 
