@@ -90,12 +90,12 @@ TradeSignal calculateSignal({
   final fast = _ema(prices, math.min(9, prices.length));
   final slow = _ema(prices, math.min(21, prices.length));
   final rsi = _rsi(prices);
-  final trend = fast == 0 ? 0 : ((fast - slow) / fast * 100).clamp(-1.0, 1.0);
-  final momentum = ((50 - rsi) / 50).clamp(-1.0, 1.0);
+  final trend = fast == 0 ? 0.0 : ((fast - slow) / fast * 100).clamp(-1.0, 1.0).toDouble();
+  final momentum = ((50 - rsi) / 50).clamp(-1.0, 1.0).toDouble();
   final raw = (trend * 0.35 + bookImbalance.clamp(-1.0, 1.0) * 0.35 +
       tradeDelta.clamp(-1.0, 1.0) * 0.20 + momentum * 0.10)
-      .clamp(-1.0, 1.0);
-  final long = (50 + raw * 45).clamp(5.0, 95.0);
+      .clamp(-1.0, 1.0).toDouble();
+  final long = (50 + raw * 45).clamp(5.0, 95.0).toDouble();
   return TradeSignal(
     longProbability: long,
     shortProbability: 100 - long,
