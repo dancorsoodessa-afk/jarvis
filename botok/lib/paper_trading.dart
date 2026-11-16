@@ -240,7 +240,7 @@ class PaperTradingEngine {
       final pnl = (price - updated.plan.entry) * partialQty *
           (updated.isLong ? 1 : -1);
       final fee = price * partialQty * feeRate;
-      _cashBalance += partialMargin + pnl - fee;
+      _cashBalance += pnl - fee;
       _marginUsed -= partialMargin;
       _realizedPnl += pnl;
       _totalFees += fee;
@@ -269,7 +269,7 @@ class PaperTradingEngine {
     final exitFee = price * position.quantity * feeRate;
     final totalPnl = position.partialRealizedPnl + pnl;
     final fees = position.entryFee + position.partialFees + exitFee;
-    _cashBalance += position.margin + pnl - exitFee;
+    _cashBalance += pnl - exitFee;
     _marginUsed = math.max(0, _marginUsed - position.margin).toDouble();
     _realizedPnl += pnl;
     _totalFees += exitFee;
