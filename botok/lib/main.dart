@@ -365,6 +365,10 @@ class _DashboardPageState extends State<DashboardPage> {
       _toast('Сделка заблокирована: нужно минимум 3 активных таймфрейма и согласие направлений не ниже 60%.');
       return;
     }
+    if (_marketType == 'SPOT' && signal.direction == 'SHORT') {
+      _toast('SHORT нельзя открыть на спотовом рынке. Переключите рынок на SWAP.');
+      return;
+    }
     if (signal.confidence < 58) {
       _toast('Сигнал слабый: ${signal.confidence.toStringAsFixed(1)}%. Ожидание.');
       return;
@@ -401,11 +405,19 @@ class _DashboardPageState extends State<DashboardPage> {
       _paper.open(plan, instrumentId: _selected!.id);
       setState(() => _positionState = 'PAPER ${plan.direction} • SL/TP активны');
       await _persistPaper();
+    } catch (e) {
+      _toast('PAPER-сделка не открыта: $e');
+      return;
+    }
+    try {
       _guardStatus = 'запуск фонового контроля';
       await startPaperGuardService();
       _guardRunning = await FlutterBackgroundService().isRunning();
+      _guardStatus = _guardRunning ? 'фоновый контроль запущен' : 'фоновый контроль не подтвердил запуск';
     } catch (e) {
-      _toast('PAPER-сделка не открыта: $e');
+      _guardRunning = false;
+      _guardStatus = 'ошибка запуска фонового контроля';
+      _toast('Сделка открыта в Paper Trading, но фоновая защита не запущена: $e');
     }
   }
 
