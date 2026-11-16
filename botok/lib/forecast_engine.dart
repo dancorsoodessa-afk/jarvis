@@ -96,7 +96,7 @@ MarketForecast? buildMarketForecast(
   for (var i = 1; i < closes.length; i++) {
     returns.add(math.log(closes[i] / closes[i - 1]));
   }
-  final sample = returns.skip(math.max(0, returns.length - 60)).toList();
+  final sample = returns.skip(math.max(0, returns.length - 60).toInt()).toList();
   if (sample.length < 20) return null;
 
   final rawMean = sample.reduce((a, b) => a + b) / sample.length;
@@ -145,7 +145,7 @@ ForecastValidation? validateMarketForecast(
     ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   if (data.length < 25 + horizonBars + 1) return null;
 
-  final firstOrigin = math.max(25, data.length - maxSamples - horizonBars);
+  final firstOrigin = math.max(25, data.length - maxSamples - horizonBars).toInt();
   var correct = 0;
   var covered = 0;
   var absoluteError = 0.0;
