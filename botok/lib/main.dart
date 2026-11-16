@@ -3,14 +3,20 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 
 import 'okx_market.dart';
 import 'paper_trading.dart';
 import 'forecast_engine.dart';
 import 'backtest_engine.dart';
 import 'signal_engine.dart';
+import 'paper_guard_service.dart';
 
-void main() => runApp(const BotokApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializePaperGuardService();
+  runApp(const BotokApp());
+}
 
 const _bg = Color(0xFF080D18);
 const _panel = Color(0xFF111B2C);
@@ -57,6 +63,8 @@ class _DashboardPageState extends State<DashboardPage> {
   final _search = TextEditingController();
   final _capital = TextEditingController(text: '1000');
   StreamSubscription<Map<String, dynamic>>? _feed;
+  StreamSubscription<Map<String, dynamic>?>? _guardFeed;
+  String _guardStatus = 'не запущен';
   List<MarketInstrument> _instruments = [];
   MarketInstrument? _selected;
   String _marketType = 'SPOT';
@@ -97,6 +105,38 @@ class _DashboardPageState extends State<DashboardPage> {
     super.initState();
     _paper = PaperTradingEngine(initialBalance: 1000);
     _paperRestore = _restorePaper();
+    _guardFeed = FlutterBackgroundService().on('paperUpdate').listen((event) {
+      if (!mounted || event == null) return;
+      final wallet = event['wallet'];
+      if (wallet is! String) return;
+      try {
+        _paper = PaperTradingEngine.decode(wallet);
+        final price = double.tryParse(event['price']?.toString() ?? '') ?? 0;
+        if (price > 0) _price = price;
+        final reason = event['closedReason'];
+        if (reason is String && reason.isNotEmpty) {
+          _positionState = 'PAPER закрыта фоновым контроллером: $reason';
+          _guardStatus = 'позиция закрыта';
+          stopPaperGuardService();
+        }
+        setState(() {});
+      } catch (error) {
+        _guardStatus = 'ошибка синхронизации';
+        _positionState = 'Ошибка синхронизации фонового PAPER: $error';
+        setState(() {});
+      }
+    });
+    FlutterBackgroundService().on('guardStatus').listen((event) {
+      if (!mounted || event == null) return;
+      setState(() => _guardStatus = event['status']?.toString() ?? _guardStatus);
+    });
+    FlutterBackgroundService().on('guardError').listen((event) {
+      if (!mounted || event == null) return;
+      setState(() => _guardStatus = event['message']?.toString() ?? 'ошибка');
+    });
+    FlutterBackgroundService().on('guardStopped').listen((_) {
+      if (mounted) setState(() => _guardStatus = 'не активен');
+    });
     _loadMarket();
     _search.addListener(() { if (mounted) setState(() {}); });
   }
@@ -104,7 +144,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _restorePaper() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getString('botok.paper.wallet.v1');
+      final saved = prefs.getString(paperWalletPreferenceKey);
       if (saved != null) _paper = PaperTradingEngine.decode(saved);
       if (_paper.openPosition != null) {
         _positionState = 'PAPER ${_paper.openPosition!.plan.direction} восстановлена • SL/TP активны';
@@ -113,13 +153,17 @@ class _DashboardPageState extends State<DashboardPage> {
       _positionState = 'Не удалось восстановить демо-кошелёк: $e';
     }
     if (mounted) setState(() => _paperReady = true);
+    if (_paper.openPosition != null) {
+      _guardStatus = 'восстановление мониторинга';
+      await startPaperGuardService();
+    }
   }
 
   Future<void> _persistPaper() async {
     _lastPaperPersist = DateTime.now();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('botok.paper.wallet.v1', _paper.encode());
+      await prefs.setString(paperWalletPreferenceKey, _paper.encode());
     } catch (e) {
       if (mounted) _toast('Ошибка сохранения демо-кошелька: $e');
     }
@@ -263,6 +307,8 @@ class _DashboardPageState extends State<DashboardPage> {
     final closed = _paper.markPrice(last);
     if (closed != null) {
       _positionState = 'PAPER закрыта: ${closed.reason} • NET ${(closed.realizedPnl - closed.fees).toStringAsFixed(2)} USDT';
+      _guardStatus = 'позиция закрыта';
+      stopPaperGuardService();
     }
     if (closed != null || DateTime.now().difference(_lastPaperPersist).inSeconds >= 1) {
       _persistPaper();
@@ -334,6 +380,8 @@ class _DashboardPageState extends State<DashboardPage> {
       _paper.open(plan, instrumentId: _selected!.id);
       setState(() => _positionState = 'PAPER ${plan.direction} • SL/TP активны');
       await _persistPaper();
+      _guardStatus = 'запуск фонового контроля';
+      await startPaperGuardService();
     } catch (e) {
       _toast('PAPER-сделка не открыта: $e');
     }
@@ -348,6 +396,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void dispose() {
     _feed?.cancel();
+    _guardFeed?.cancel();
     _market.dispose();
     _search.dispose();
     _capital.dispose();
@@ -682,16 +731,20 @@ class _DashboardPageState extends State<DashboardPage> {
           _planLine('Вход / текущая', '${_fmt(p.plan.entry)} / ${_fmt(p.currentPrice)}'),
           _planLine('Объём остатка', p.quantity.toStringAsFixed(6)),
           _planLine('Залог', '${p.margin.toStringAsFixed(2)} USDT'),
-          _planLine('Stop Loss', _fmt(p.plan.stopLoss), _red),
+          _planLine('Активный Stop Loss', _fmt(p.effectiveStopLoss), _red),
+          _planLine('Trailing Stop', p.trailingStopPrice == null ? 'ожидание движения' : _fmt(p.trailingStopPrice!), _blue),
           _planLine('Take Profit 1 / 2', '${_fmt(p.plan.takeProfit1)} / ${_fmt(p.plan.takeProfit2)}', _green),
           _planLine('Текущий PnL', '${pnl >= 0 ? '+' : ''}${pnl.toStringAsFixed(2)} USDT  (${pnlPercent.toStringAsFixed(2)}%)', pnl >= 0 ? _green : _red),
           _planLine('TP1', p.takeProfit1Hit ? '50% зафиксировано' : 'ожидание'),
+          _planLine('Фоновый контроль SL/TP', _guardStatus, _guardStatus.contains('ошибка') ? _red : _green),
           SizedBox(width: double.infinity, child: OutlinedButton(
             onPressed: () async {
               final trade = _paper.closeManually();
               if (trade != null) {
                 setState(() => _positionState = 'Закрыта вручную • NET ${(trade.realizedPnl - trade.fees).toStringAsFixed(2)} USDT');
                 await _persistPaper();
+                _guardStatus = 'позиция закрыта вручную';
+                stopPaperGuardService();
               }
             },
             child: const Text('ЗАКРЫТЬ PAPER-ПОЗИЦИЮ'),
