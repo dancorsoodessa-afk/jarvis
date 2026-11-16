@@ -161,6 +161,9 @@ class WhaleRadarWindow(tk.Toplevel):
                 kind, payload = self._events.get_nowait()
                 if kind != "snapshot":
                     continue
+                callback = getattr(self.master, "enqueue_whale_snapshot", None)
+                if callable(callback):
+                    callback(payload)
                 for tree in (self.accounts, self.trades, self.positions, self.alerts):
                     tree.delete(*tree.get_children())
                 for item in payload.get("accounts", []):
