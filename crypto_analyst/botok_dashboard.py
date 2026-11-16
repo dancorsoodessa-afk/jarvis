@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import queue
 import threading
 import tkinter as tk
@@ -19,6 +21,7 @@ class BOTokDashboard(CryptoDashboard):
         self.geometry("1320x850")
         self.minsize(1000, 700)
         self._chart_queue = queue.Queue()
+        self._nansen_api_key = self._load_nansen_key()
         self._price_history = deque(maxlen=240)
         self._chart_symbol = "BTC-USDT-SWAP"
         self._last_price = None
@@ -77,6 +80,18 @@ class BOTokDashboard(CryptoDashboard):
             bg="#153b52", fg=TEXT, activebackground="#205a78",
             activeforeground=TEXT, relief="flat", padx=8, pady=6,
         )
+        self.nansen_key_entry = tk.Entry(
+            side, show="*", bg="#081522", fg=TEXT, insertbackground=CYAN,
+            relief="flat", width=27,
+        )
+        if self._nansen_api_key:
+            self.nansen_key_entry.insert(0, self._nansen_api_key)
+        self.nansen_key_entry.pack(fill="x", padx=10, pady=(0, 5))
+        tk.Button(
+            side, text="СОХРАНИТЬ КЛЮЧ", command=self._save_nansen_key,
+            bg="#153b52", fg=TEXT, activebackground="#205a78",
+            activeforeground=TEXT, relief="flat", padx=8, pady=5,
+        ).pack(anchor="w", padx=10, pady=(0, 10))
         ttk_button.pack(anchor="w", padx=10, pady=(0, 10))
         tk.Label(side, text="РЕЖИМ: PAPER ONLY", bg="#183328", fg=GREEN,
                  font=("Consolas", 9, "bold"), padx=8, pady=6).pack(
@@ -153,11 +168,47 @@ class BOTokDashboard(CryptoDashboard):
         canvas.create_text(width * 0.75, height / 2, text="ASKS", fill="white",
                            font=("Consolas", 8))
 
+    def _settings_path(self):
+        root = os.environ.get("APPDATA", os.path.expanduser("~"))
+        return os.path.join(root, "JARVIS", "settings.json")
+
+    def _load_nansen_key(self):
+        try:
+            from agent.secrets import unprotect_secret
+            with open(self._settings_path(), "r", encoding="utf-8") as handle:
+                settings = json.load(handle)
+            return unprotect_secret(settings.get("nansen_api_key", ""))
+        except (OSError, ValueError, TypeError):
+            return ""
+
+    def _save_nansen_key(self):
+        value = self.nansen_key_entry.get().strip()
+        if not value:
+            self.whale_status_var.set("Ключ пустой. Введите Nansen API key.")
+            return
+        try:
+            from agent.secrets import protect_secret
+            path = self._settings_path()
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            try:
+                with open(path, "r", encoding="utf-8") as handle:
+                    settings = json.load(handle)
+            except (OSError, ValueError):
+                settings = {}
+            settings["nansen_api_key"] = protect_secret(value)
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(settings, handle, ensure_ascii=False, indent=2)
+            self._nansen_api_key = value
+            self.whale_status_var.set("Ключ сохранён в Windows DPAPI. Проверяю Nansen MCP…")
+            self._check_nansen()
+        except Exception as exc:
+            self.whale_status_var.set(f"Не удалось сохранить Nansen key: {exc}")
+
     def _check_nansen(self):
         def check():
             try:
                 from .whale_sources import NansenMCPClient
-                client = NansenMCPClient()
+                client = NansenMCPClient(api_key=self._nansen_api_key)
                 if not client.configured:
                     status = "Nansen не подключён. Нужен NANSEN_API_KEY; реальные кошельки не подменяются демо-данными."
                 else:
