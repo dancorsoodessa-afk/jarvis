@@ -73,7 +73,7 @@ class BOTokDashboard(CryptoDashboard):
                  font=("Consolas", 9)).pack(anchor="w", padx=10, pady=6)
         tk.Label(side, text="SMART MONEY / TOP 200", bg=PANEL, fg=CYAN,
                  font=("Consolas", 9, "bold")).pack(anchor="w", padx=10, pady=(14, 4))
-        self.whale_status_var = tk.StringVar(value="Nansen: требуется API-ключ")
+        self.whale_status_var = tk.StringVar(value="CoinGlass + Nansen: API-ключи не настроены")
         tk.Label(side, textvariable=self.whale_status_var, bg=PANEL, fg=MUTED,
                  wraplength=210, justify="left", font=("Segoe UI", 9)).pack(
                      anchor="w", padx=10, pady=(0, 8)
@@ -83,6 +83,8 @@ class BOTokDashboard(CryptoDashboard):
             bg="#153b52", fg=TEXT, activebackground="#205a78",
             activeforeground=TEXT, relief="flat", padx=8, pady=6,
         )
+        tk.Label(side, text="NANSEN API KEY", bg=PANEL, fg=MUTED,
+                 font=("Consolas", 7, "bold")).pack(anchor="w", padx=10, pady=(4, 2))
         self.nansen_key_entry = tk.Entry(
             side, show="*", bg="#081522", fg=TEXT, insertbackground=CYAN,
             relief="flat", width=27,
@@ -95,6 +97,8 @@ class BOTokDashboard(CryptoDashboard):
             bg="#153b52", fg=TEXT, activebackground="#205a78",
             activeforeground=TEXT, relief="flat", padx=8, pady=5,
         ).pack(anchor="w", padx=10, pady=(0, 10))
+        tk.Label(side, text="COINGLASS API KEY", bg=PANEL, fg=MUTED,
+                 font=("Consolas", 7, "bold")).pack(anchor="w", padx=10, pady=(4, 2))
         self.coinglass_key_entry = tk.Entry(
             side, show="*", bg="#081522", fg=TEXT, insertbackground=CYAN,
             relief="flat", width=27,
@@ -116,7 +120,10 @@ class BOTokDashboard(CryptoDashboard):
         self.whale_tree.column("#0", width=90)
         self.whale_tree.column("notional", width=80, anchor="e")
         self.whale_tree.column("pnl", width=65, anchor="e")
-        self.whale_tree.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        whale_scroll = ttk.Scrollbar(side, orient="vertical", command=self.whale_tree.yview)
+        self.whale_tree.configure(yscrollcommand=whale_scroll.set)
+        self.whale_tree.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=(0, 8))
+        whale_scroll.pack(side="right", fill="y", padx=(0, 8), pady=(0, 8))
         ttk_button.pack(anchor="w", padx=10, pady=(0, 10))
         tk.Label(side, text="РЕЖИМ: PAPER ONLY", bg="#183328", fg=GREEN,
                  font=("Consolas", 9, "bold"), padx=8, pady=6).pack(
