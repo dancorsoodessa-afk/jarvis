@@ -649,35 +649,103 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 }
 
-class _PricePainter extends CustomPainter {
-  _PricePainter(this.values);
-  final List<double> values;
+class _CandlePainter extends CustomPainter {
+  _CandlePainter(this.candles, {required this.forecastPrice, required this.position});
+  final List<MarketCandle> candles;
+  final double forecastPrice;
+  final PaperPosition? position;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (values.length < 2) return;
+    if (candles.length < 2) return;
+    final last = forecastPrice > 0 ? forecastPrice : candles.last.close;
+    final unit = last * 0.008;
+    final levels = <({String label, double price, Color color})>[
+      (label: 'LONG SL', price: last - unit, color: _red),
+      (label: 'LONG TP1', price: last + unit * 1.5, color: _green),
+      (label: 'LONG TP2', price: last + unit * 2.5, color: _green),
+      (label: 'SHORT SL', price: last + unit, color: _red),
+      (label: 'SHORT TP1', price: last - unit * 1.5, color: _red),
+      (label: 'SHORT TP2', price: last - unit * 2.5, color: _green),
+    ];
+    final values = <double>[
+      ...candles.expand((c) => [c.high, c.low]),
+      ...levels.map((l) => l.price),
+      if (position != null) ...[
+        position!.plan.entry, position!.plan.stopLoss,
+        position!.plan.takeProfit1, position!.plan.takeProfit2,
+      ],
+    ];
     final minV = values.reduce((a, b) => math.min(a, b).toDouble());
     final maxV = values.reduce((a, b) => math.max(a, b).toDouble());
-    final range = math.max(maxV - minV, maxV.abs() * 0.00001);
-    final path = Path();
-    for (var i = 0; i < values.length; i++) {
-      final x = size.width * i / (values.length - 1);
-      final y = size.height - ((values[i] - minV) / range * (size.height - 18)) - 9;
-      if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
+    final range = math.max(maxV - minV, maxV.abs() * 0.00001).toDouble();
+    const left = 5.0;
+    const right = 72.0;
+    const top = 8.0;
+    const bottom = 8.0;
+    final plotWidth = size.width - left - right;
+    final plotHeight = size.height - top - bottom;
+    double y(double price) => top + (maxV - price) / range * plotHeight;
+
+    final candleStep = plotWidth / candles.length;
+    final bodyWidth = math.max(2.0, candleStep * 0.58).toDouble();
+    for (var i = 0; i < candles.length; i++) {
+      final candle = candles[i];
+      final x = left + candleStep * (i + 0.5);
+      final rising = candle.close >= candle.open;
+      final color = rising ? _green : _red;
+      final wick = Paint()..color = color..strokeWidth = 1.2;
+      canvas.drawLine(Offset(x, y(candle.high)), Offset(x, y(candle.low)), wick);
+      final bodyTop = y(math.max(candle.open, candle.close).toDouble());
+      final bodyBottom = y(math.min(candle.open, candle.close).toDouble());
+      final rect = Rect.fromLTRB(
+        x - bodyWidth / 2, bodyTop, x + bodyWidth / 2,
+        math.max(bodyTop + 1.5, bodyBottom).toDouble(),
+      );
+      canvas.drawRect(rect, Paint()..color = color);
     }
-    final fill = Path.from(path)..lineTo(size.width, size.height)..lineTo(0, size.height)..close();
-    canvas.drawPath(fill, Paint()..shader = LinearGradient(
-      colors: [_blue.withValues(alpha: 0.28), _blue.withValues(alpha: 0.01)],
-      begin: Alignment.topCenter, end: Alignment.bottomCenter,
-    ).createShader(Offset.zero & size));
-    canvas.drawPath(path, Paint()
-      ..color = _blue
-      ..strokeWidth = 2.2
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round);
+
+    void drawLevel(double price, Color color, String label, {bool solid = false}) {
+      final yy = y(price);
+      final paint = Paint()
+        ..color = color.withValues(alpha: 0.85)
+        ..strokeWidth = solid ? 1.7 : 1;
+      final xEnd = size.width - right + 2;
+      if (solid) {
+        canvas.drawLine(Offset(left, yy), Offset(xEnd, yy), paint);
+      } else {
+        const dash = 4.0;
+        var x = left;
+        while (x < xEnd) {
+          canvas.drawLine(Offset(x, yy), Offset(math.min(x + dash, xEnd), yy), paint);
+          x += dash * 2;
+        }
+      }
+      final text = TextPainter(
+        text: TextSpan(
+          text: '$label ${price.toStringAsFixed(price >= 100 ? 1 : 4)}',
+          style: TextStyle(color: color, fontSize: 7, fontWeight: FontWeight.w600),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout(maxWidth: right - 4);
+      text.paint(canvas, Offset(size.width - right + 5, (yy - 5).clamp(0.0, size.height - 10)));
+    }
+
+    for (final level in levels) {
+      drawLevel(level.price, level.color, level.label);
+    }
+    if (position != null) {
+      drawLevel(position!.plan.entry, _blue, 'ENTRY', solid: true);
+      drawLevel(position!.plan.stopLoss, _red, 'ACTIVE SL', solid: true);
+      drawLevel(position!.plan.takeProfit1, _green, 'ACTIVE TP1', solid: true);
+      drawLevel(position!.plan.takeProfit2, _green, 'ACTIVE TP2', solid: true);
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _PricePainter oldDelegate) => oldDelegate.values != values;
+  bool shouldRepaint(covariant _CandlePainter oldDelegate) =>
+      oldDelegate.candles != candles ||
+      oldDelegate.forecastPrice != forecastPrice ||
+      oldDelegate.position != position;
 }
