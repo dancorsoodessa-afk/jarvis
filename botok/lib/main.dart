@@ -54,7 +54,6 @@ class _DashboardPageState extends State<DashboardPage> {
   String _marketType = 'SPOT';
   String _status = 'Загрузка рынка OKX…';
   double _price = 0;
-  double _change24 = 0;
   double _bid = 0;
   double _ask = 0;
   double _bookImbalance = 0;
@@ -65,7 +64,6 @@ class _DashboardPageState extends State<DashboardPage> {
   String _positionState = 'Нет открытой paper-позиции';
   bool _loading = false;
   bool _confirmMode = true;
-  bool _disposed = false;
 
   TradeSignal get _signal => calculateSignal(
     prices: _prices,
@@ -137,8 +135,6 @@ class _DashboardPageState extends State<DashboardPage> {
       final last = double.tryParse(row['last']?.toString() ?? '') ?? 0;
       if (last > 0) {
         _price = last;
-        _change24 = double.tryParse(row['sodUtc8']?.toString() ?? '') == null
-            ? _change24 : _change24;
         _prices.add(last);
         if (_prices.length > 160) _prices.removeAt(0);
         _managePaperPosition(last);
@@ -252,7 +248,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   void dispose() {
-    _disposed = true;
     _feed?.cancel();
     _market.dispose();
     _search.dispose();
@@ -485,7 +480,6 @@ class _DashboardPageState extends State<DashboardPage> {
     ]),
   );
 
-  String _fmtQty(double v) => v.toStringAsFixed(2);
 
   Widget _planLine(String label, String value, [Color color = Colors.white]) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),
