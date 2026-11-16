@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'signal_engine.dart';
 
 class PaperPosition {
-  const PaperPosition({
+  PaperPosition({
     required this.plan,
     required this.instrumentId,
     required this.quantity,
