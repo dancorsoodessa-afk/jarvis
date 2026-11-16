@@ -36,7 +36,7 @@ CoinGlass is the strongest complementary source for large Hyperliquid positions 
 Set NANSEN_API_KEY in the process environment to enable:
 - POST https://api.nansen.ai/api/v1/perp-leaderboard: top 200 Hyperliquid perp traders by total PnL for a rolling 30-day window.
 - POST https://api.nansen.ai/api/v1/smart-money/perp-trades: recent Smart HL Perps Trader fills (24-hour lookback; endpoint supports up to seven days).
-- Nansen uses API credits and subscription tiers. Premium Smart Money/Fund labels cost more and are not requested by the default implementation. The dashboard increases its polling interval to five minutes when this key is configured to avoid unnecessary credit consumption.
+- Nansen uses API credits and subscription tiers. Premium Smart Money/Fund labels cost more and are not requested by the default implementation. Smart Money fills are polled once per minute; the top-200 performance leaderboard is cached for five minutes to limit API-credit use.
 - Do not commit the key to Git. Use a local environment variable or a secret manager.
 
 Nansen is the better option for ranked Hyperliquid perp traders plus labeled smart-money fills. CoinLobster is the lower-friction option for multi-exchange whale trades. Neither provides a universal, complete identity map of the top 200 traders across every centralized exchange.
