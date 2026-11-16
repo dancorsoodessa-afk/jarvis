@@ -2,7 +2,7 @@ name: JARVIS Windows tests
 
 on:
   push:
-    branches: [foundation]
+    branches: [foundation, BOTok]
     paths:
       - "agent/**"
       - "crypto_analyst/**"
