@@ -53,6 +53,38 @@ void main() {
       expect(paper.realizedPnl, greaterThan(0));
     });
 
+    test('stop loss does not create phantom balance by returning unspent margin', () {
+      final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0.001);
+      final p = paper.open(plan(), instrumentId: 'BTC-USDT');
+      final before = paper.cashBalance;
+      final closed = paper.markPrice(plan().stopLoss);
+      expect(closed, isNotNull);
+      expect(paper.cashBalance, lessThan(1000));
+      expect(paper.cashBalance, closeTo(before + (plan().stopLoss - plan().entry) * p.quantity - plan().stopLoss * p.quantity * 0.001, 1e-6));
+      expect(paper.equity, closeTo(paper.cashBalance, 1e-8));
+      expect(paper.marginUsed, 0);
+    });
+
+    test('TP1 partial close does not credit reserved margin twice', () {
+      final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0.001);
+      final p = paper.open(plan(), instrumentId: 'BTC-USDT');
+      final before = paper.cashBalance;
+      final price = plan().takeProfit1;
+      paper.markPrice(price);
+      final partialQty = p.quantity * 0.5;
+      final expectedCash = before + (price - plan().entry) * partialQty - price * partialQty * 0.001;
+      expect(paper.cashBalance, closeTo(expectedCash, 1e-6));
+      expect(paper.marginUsed, closeTo(p.margin * 0.5, 1e-8));
+    });
+
+    test('closed trade net result matches account equity change', () {
+      final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0.001);
+      paper.open(plan(), instrumentId: 'BTC-USDT');
+      final closed = paper.markPrice(plan().stopLoss);
+      expect(closed, isNotNull);
+      expect(paper.netAccountPnl, closeTo(closed!.realizedPnl - closed.fees, 1e-6));
+    });
+
     test('cannot open a second position or exceed available margin', () {
       final paper = PaperTradingEngine(initialBalance: 1, feeRate: 0);
       expect(() => paper.open(plan(), instrumentId: 'BTC-USDT'), throwsStateError);
