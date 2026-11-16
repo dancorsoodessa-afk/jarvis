@@ -131,6 +131,11 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
         (message) async {
           try {
             if (message is! String) return;
+            if (message == 'ping') {
+              socket.add('pong');
+              return;
+            }
+            if (message == 'pong') return;
             final decoded = jsonDecode(message) as Map<String, dynamic>;
             final rows = decoded['data'];
             if (rows is! List || rows.isEmpty) return;
