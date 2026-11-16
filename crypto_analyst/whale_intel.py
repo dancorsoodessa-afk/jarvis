@@ -97,7 +97,7 @@ class WhaleIntelClient:
             session_headers.update({"User-Agent": "JARVIS-BOTok/1.0"})
         self.nansen_api_key = (nansen_api_key if nansen_api_key is not None else os.getenv("NANSEN_API_KEY", "")).strip()
         self.coinglass_api_key = (coinglass_api_key if coinglass_api_key is not None else os.getenv("COINGLASS_API_KEY", "")).strip()
-        self.poll_interval_seconds = 60.0 if self.coinglass_api_key else 300.0 if self.nansen_api_key else 60.0
+        self.poll_interval_seconds = 60.0
         self._nansen_accounts_cache_at = 0.0
         self._nansen_trades_cache_at = 0.0
         self._nansen_accounts_cache: list[WhaleAccount] = []
@@ -329,7 +329,7 @@ class WhaleIntelClient:
 
     def _cached_nansen_trades(self, limit: int) -> list[WhaleTrade]:
         now = time.monotonic()
-        if not self._nansen_trades_cache or now - self._nansen_trades_cache_at >= 300:
+        if not self._nansen_trades_cache or now - self._nansen_trades_cache_at >= 60:
             self._nansen_trades_cache = self.fetch_nansen_smart_money_trades(limit)
             self._nansen_trades_cache_at = now
         return self._nansen_trades_cache[:limit]
