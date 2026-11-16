@@ -335,6 +335,8 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 12),
               _instrumentCard(selected),
               const SizedBox(height: 12),
+              _walletCard(),
+              const SizedBox(height: 12),
               _chartCard(),
               const SizedBox(height: 12),
               _signalCard(signal),
@@ -404,10 +406,17 @@ class _DashboardPageState extends State<DashboardPage> {
   );
 
   Widget _chartCard() => _card(
-    title: 'График цены • live',
-    child: SizedBox(height: 170, child: _prices.length < 2
-      ? const Center(child: Text('Ожидание рыночных данных…', style: TextStyle(color: _muted, fontSize: 12)))
-      : CustomPaint(painter: _PricePainter(List<double>.from(_prices)), child: const SizedBox.expand())),
+    title: 'OKX • СВЕЧИ 1m • LONG / SHORT ЗОНЫ',
+    child: SizedBox(height: 230, child: _candles.length < 2
+      ? const Center(child: Text('Загрузка OHLC-свечей OKX…', style: TextStyle(color: _muted, fontSize: 12)))
+      : CustomPaint(
+          painter: _CandlePainter(
+            List<MarketCandle>.from(_candles),
+            forecastPrice: _price,
+            position: _paper.openPosition,
+          ),
+          child: const SizedBox.expand(),
+        )),
   );
 
   Widget _signalCard(TradeSignal signal) => _card(
@@ -439,18 +448,13 @@ class _DashboardPageState extends State<DashboardPage> {
   ]);
 
   Widget _tradePlanCard(TradeSignal signal) {
-    final plan = _price > 0 && _capital.text.isNotEmpty
+    final plan = _paperReady && _price > 0 && _paper.availableBalance > 0
       ? _tryPlan(signal.direction)
       : null;
     return _card(
       title: 'ПЛАН СДЕЛКИ • АВТОРАСЧЁТ',
       child: Column(children: [
-        TextField(
-          controller: _capital,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Капитал (USDT)', prefixIcon: Icon(Icons.account_balance_wallet_outlined)),
-          onChanged: (_) => setState(() {}),
-        ),
+        _planLine('Доступный капитал', '${_paper.availableBalance.toStringAsFixed(2)} USDT', _green),
         const SizedBox(height: 12),
         Row(children: [
           Expanded(child: Text('Риск на сделку: ${_riskPercent.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 12))),
@@ -479,7 +483,7 @@ class _DashboardPageState extends State<DashboardPage> {
           onChanged: (v) => setState(() => _confirmMode = v),
         ),
         SizedBox(width: double.infinity, child: FilledButton.icon(
-          onPressed: _paperPosition == null ? _openPaper : null,
+          onPressed: _paperReady && _paper.openPosition == null ? _openPaper : null,
           icon: const Icon(Icons.play_arrow),
           label: const Text('ПОДТВЕРДИТЬ И ОТКРЫТЬ PAPER-СДЕЛКУ'),
         )),
@@ -492,7 +496,7 @@ class _DashboardPageState extends State<DashboardPage> {
       return buildTradePlan(
         direction: direction,
         entry: _price,
-        capital: double.parse(_capital.text.replaceAll(',', '.')),
+        capital: _paper.availableBalance,
         riskPercent: _riskPercent,
         leverage: _leverage,
       );
@@ -501,21 +505,72 @@ class _DashboardPageState extends State<DashboardPage> {
 
   String selectedBase() => _selected?.base ?? 'coin';
 
-  Widget _paperCard() => _card(
-    title: 'PAPER TRADING',
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(_positionState, style: const TextStyle(fontSize: 12, color: _muted)),
-      if (_paperPosition case final p?) ...[
-        const SizedBox(height: 8),
-        _planLine('Направление', p.direction, p.direction == 'LONG' ? _green : _red),
-        _planLine('SL / TP2', '${_fmt(p.stopLoss)} / ${_fmt(p.takeProfit2)}'),
-        SizedBox(width: double.infinity, child: OutlinedButton(
-          onPressed: () => setState(() { _paperPosition = null; _positionState = 'PAPER позиция закрыта вручную'; }),
-          child: const Text('ЗАКРЫТЬ PAPER-ПОЗИЦИЮ'),
-        )),
-      ],
-    ]),
+  Widget _walletCard() => _card(
+    title: 'ДЕМО-КОШЕЛЁК • PAPER USDT',
+    child: !_paperReady
+      ? const Center(child: CircularProgressIndicator())
+      : Column(children: [
+          Row(children: [
+            Expanded(child: _miniMetric('EQUITY', '${_paper.equity.toStringAsFixed(2)} USDT', _blue)),
+            Expanded(child: _miniMetric('ДОСТУПНО', '${_paper.availableBalance.toStringAsFixed(2)} USDT', _green)),
+          ]),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: _miniMetric('ЗАЛОГ', '${_paper.marginUsed.toStringAsFixed(2)} USDT', Colors.orange)),
+            Expanded(child: _miniMetric('CASH', '${_paper.cashBalance.toStringAsFixed(2)} USDT', Colors.white)),
+          ]),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: _miniMetric('РЕАЛИЗОВАНО', '${_paper.realizedPnl >= 0 ? '+' : ''}${_paper.realizedPnl.toStringAsFixed(2)}', _paper.realizedPnl >= 0 ? _green : _red)),
+            Expanded(child: _miniMetric('ПЛАВАЮЩИЙ PnL', '${_paper.unrealizedPnl >= 0 ? '+' : ''}${_paper.unrealizedPnl.toStringAsFixed(2)}', _paper.unrealizedPnl >= 0 ? _green : _red)),
+            Expanded(child: _miniMetric('КОМИССИИ', '${_paper.totalFees.toStringAsFixed(2)}', _muted)),
+          ]),
+          const SizedBox(height: 8),
+          Text('Стартовый баланс: ${_paper.initialBalance.toStringAsFixed(2)} USDT • сохраняется на устройстве', style: const TextStyle(color: _muted, fontSize: 10)),
+        ]),
   );
+
+  Widget _paperCard() {
+    final p = _paper.openPosition;
+    final pnl = p?.unrealizedPnl ?? 0;
+    final pnlPercent = p == null || p.plan.entry * p.quantity == 0
+      ? 0.0
+      : pnl / (p.plan.entry * p.quantity) * 100;
+    return _card(
+      title: 'ОТКРЫТАЯ PAPER-ПОЗИЦИЯ',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(_positionState, style: const TextStyle(fontSize: 12, color: _muted)),
+        if (p != null) ...[
+          const SizedBox(height: 10),
+          _planLine('Направление', p.plan.direction, p.isLong ? _green : _red),
+          _planLine('Вход / текущая', '${_fmt(p.plan.entry)} / ${_fmt(p.currentPrice)}'),
+          _planLine('Объём остатка', p.quantity.toStringAsFixed(6)),
+          _planLine('Залог', '${p.margin.toStringAsFixed(2)} USDT'),
+          _planLine('Stop Loss', _fmt(p.plan.stopLoss), _red),
+          _planLine('Take Profit 1 / 2', '${_fmt(p.plan.takeProfit1)} / ${_fmt(p.plan.takeProfit2)}', _green),
+          _planLine('Текущий PnL', '${pnl >= 0 ? '+' : ''}${pnl.toStringAsFixed(2)} USDT  (${pnlPercent.toStringAsFixed(2)}%)', pnl >= 0 ? _green : _red),
+          _planLine('TP1', p.takeProfit1Hit ? '50% зафиксировано' : 'ожидание'),
+          SizedBox(width: double.infinity, child: OutlinedButton(
+            onPressed: () async {
+              final trade = _paper.closeManually();
+              if (trade != null) {
+                setState(() => _positionState = 'Закрыта вручную • PnL ${trade.realizedPnl.toStringAsFixed(2)} USDT');
+                await _persistPaper();
+              }
+            },
+            child: const Text('ЗАКРЫТЬ PAPER-ПОЗИЦИЮ'),
+          )),
+        ] else
+          const Text('Открытых сделок нет. После подтверждения бот откроет демо-позицию и начнёт учитывать PnL.', style: TextStyle(color: _muted, fontSize: 11)),
+        if (_paper.closedTrades.isNotEmpty) ...[
+          const Divider(height: 22),
+          const Text('ПОСЛЕДНИЕ ЗАКРЫТЫЕ СДЕЛКИ', style: TextStyle(color: _muted, fontSize: 10, fontWeight: FontWeight.bold)),
+          for (final trade in _paper.closedTrades.reversed.take(5))
+            _planLine('${trade.direction} • ${trade.reason}', '${trade.realizedPnl >= 0 ? '+' : ''}${trade.realizedPnl.toStringAsFixed(2)} USDT', trade.realizedPnl >= 0 ? _green : _red),
+        ],
+      ]),
+    );
+  }
 
   Widget _universeCard() => _card(
     title: 'СКАНЕР РЫНКА • ВСЕ ДОСТУПНЫЕ ИНСТРУМЕНТЫ',
