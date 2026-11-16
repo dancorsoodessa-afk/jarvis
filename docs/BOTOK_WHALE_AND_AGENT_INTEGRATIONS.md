@@ -2,7 +2,7 @@
 
 ## Branch
 
-The working branch is BOTok. The branch currently points at the paper-only OKX Crypto Analyst baseline. It is not yet the repository default branch; GitHub repository administration is required to change the default branch from foundation to BOTok.
+The working branch is BOTok. The branch currently contains the paper-only OKX Crypto Analyst baseline, BOTok price/order-book visualization, and a Whale Radar window. It is not yet the repository default branch; GitHub repository administration is required to change the default branch from foundation to BOTok.
 
 ## Research components evaluated
 
@@ -28,6 +28,12 @@ Official MCP endpoint: https://mcp.nansen.ai/ra/mcp/
 Required secret: NANSEN_API_KEY (obtain from https://app.nansen.ai/api).
 
 Nansen documents Smart Money labels, wallet profiling, token analytics, Smart Money DEX trades and flow endpoints. BOTok includes an optional Streamable-HTTP MCP client that discovers the live server tool schema. It does not hard-code unverified tool names. The UI must show the provider as disconnected until the key is configured and a live handshake succeeds.
+
+### CoinLobster: whale trade tape and Hyperliquid wallet activity
+Public MCP endpoint: https://coinlobster.com/mcp
+Official MCP server: com.coinlobster/whale-data (registry entry 1.3.0).
+
+The BOTok public adapter uses CoinLobster's public Hyperliquid whale-fill and cross-exchange whale-trade endpoints. These records provide wallet attribution for Hyperliquid fills and exchange-level direction/size for large trades. The free public feed is rate-limited and may be delayed; CoinLobster documents live access for signed-in accounts and paid full-depth features. Treat its timestamps and provider freshness as mandatory fields, not as guaranteed exchange-native latency.
 
 ### CoinGlass: live large Hyperliquid positions
 API endpoint: https://open-api-v4.coinglass.com/api/hyperliquid/whale-position
@@ -73,6 +79,7 @@ Wallet activity is an independent confirmation input, not a standalone entry tri
 ## Current integration status
 
 - The BOTok branch has an optional Nansen MCP client that discovers the live tool schema and requires NANSEN_API_KEY.
+- The Whale Radar window is wired into the BOTok visual dashboard and displays the Hyperliquid top-200 PnL leaderboard, CoinLobster whale trades, CoinGlass positions and large-position alerts.
 - The BOTok branch has a CoinGlass Hyperliquid whale-position client and aggregates the top 200 largest open-position wallets; it requires COINGLASS_API_KEY.
 - Windows UI key fields save Nansen and CoinGlass keys encrypted with the existing Windows DPAPI helper in the user's JARVIS settings file.
 - No API keys are stored in GitHub or committed to source.
