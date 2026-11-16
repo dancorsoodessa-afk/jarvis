@@ -4,6 +4,33 @@ import 'dart:io';
 
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+
+class MarketCandle {
+  const MarketCandle({
+    required this.timestamp,
+    required this.open,
+    required this.high,
+    required this.low,
+    required this.close,
+    required this.volume,
+  });
+  final DateTime timestamp;
+  final double open;
+  final double high;
+  final double low;
+  final double close;
+  final double volume;
+
+  factory MarketCandle.fromOkx(List<dynamic> row) => MarketCandle(
+    timestamp: DateTime.fromMillisecondsSinceEpoch(int.parse(row[0].toString()), isUtc: true),
+    open: double.parse(row[1].toString()),
+    high: double.parse(row[2].toString()),
+    low: double.parse(row[3].toString()),
+    close: double.parse(row[4].toString()),
+    volume: double.tryParse(row[5].toString()) ?? 0,
+  );
+}
+
 class MarketInstrument {
   const MarketInstrument({
     required this.id,
@@ -59,6 +86,25 @@ class OkxMarket {
       ..sort((a, b) => b.turnover.compareTo(a.turnover));
   }
 
+
+  Future<List<MarketCandle>> loadCandles(String instrumentId, {String bar = '1m', int limit = 100}) async {
+    final client = _http ??= HttpClient();
+    final uri = Uri.https('www.okx.com', '/api/v5/market/candles', {
+      'instId': instrumentId,
+      'bar': bar,
+      'limit': limit.toString(),
+    });
+    final request = await client.getUrl(uri).timeout(const Duration(seconds: 15));
+    final response = await request.close().timeout(const Duration(seconds: 15));
+    final body = await response.transform(utf8.decoder).join();
+    if (response.statusCode != 200) throw HttpException('OKX candles HTTP ${response.statusCode}');
+    final decoded = jsonDecode(body) as Map<String, dynamic>;
+    if (decoded['code'] != '0') throw FormatException('OKX candles: ${decoded['msg']}');
+    final rows = decoded['data'] as List<dynamic>;
+    return rows.map((row) => MarketCandle.fromOkx(row as List<dynamic>)).toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  }
+
   Future<void> watch(String instrumentId) async {
     await disconnect();
     final socket = WebSocketChannel.connect(
@@ -70,6 +116,7 @@ class OkxMarket {
       'op': 'subscribe',
       'args': [
         {'channel': 'tickers', 'instId': instrumentId},
+        {'channel': 'candle1m', 'instId': instrumentId},
         {'channel': 'books5', 'instId': instrumentId},
         {'channel': 'trades', 'instId': instrumentId},
       ],

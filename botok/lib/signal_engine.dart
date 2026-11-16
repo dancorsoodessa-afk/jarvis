@@ -32,6 +32,7 @@ class TradePlan {
     required this.quantity,
     required this.riskAmount,
     required this.direction,
+    required this.leverage,
   });
 
   final double entry;
@@ -41,6 +42,7 @@ class TradePlan {
   final double quantity;
   final double riskAmount;
   final String direction;
+  final double leverage;
 }
 
 double _ema(List<double> values, int period) {
@@ -123,8 +125,11 @@ TradePlan buildTradePlan({
   final isLong = direction == 'LONG';
   final stopDistance = entry * stopPercent / 100;
   final stop = isLong ? entry - stopDistance : entry + stopDistance;
-  final risk = capital * riskPercent / 100;
-  final quantity = risk / stopDistance;
+  final requestedRisk = capital * riskPercent / 100;
+  final riskLimitedQuantity = requestedRisk / stopDistance;
+  final marginLimitedQuantity = capital * leverage * 0.998 / entry;
+  final quantity = math.min(riskLimitedQuantity, marginLimitedQuantity).toDouble();
+  final risk = quantity * stopDistance;
   final tp1 = isLong
       ? entry + stopDistance * firstTargetR
       : entry - stopDistance * firstTargetR;
@@ -139,5 +144,6 @@ TradePlan buildTradePlan({
     quantity: quantity,
     riskAmount: risk,
     direction: direction,
+    leverage: leverage,
   );
 }
