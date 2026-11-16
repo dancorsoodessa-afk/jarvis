@@ -25,6 +25,9 @@ class BOTokDashboard(CryptoDashboard):
         self._bid_volume = 0.0
         self._ask_volume = 0.0
         body = self.log.master
+        # The base dashboard keeps a lightweight fallback chart for standalone use;
+        # BOTok replaces it with the richer price/depth visualization below.
+        self.chart.grid_forget()
         self.log.grid_forget()
         scrollbars = body.grid_slaves(row=0, column=1)
         chart_panel = tk.Frame(body, bg=BG)
@@ -81,6 +84,10 @@ class BOTokDashboard(CryptoDashboard):
                  )
         self.after(250, self._drain_chart_queue)
         self._check_nansen()
+
+    def _record_price(self, _payload):
+        # BOTok renders ticker events through its thread-safe chart queue.
+        return
 
     def _handle_market_message(self, message: dict):
         super()._handle_market_message(message)
