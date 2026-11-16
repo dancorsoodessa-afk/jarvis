@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'okx_market.dart';
 import 'paper_trading.dart';
+import 'forecast_engine.dart';
+import 'backtest_engine.dart';
 import 'signal_engine.dart';
 
 void main() => runApp(const BotokApp());
@@ -49,6 +51,10 @@ class _DashboardPageState extends State<DashboardPage> {
   final _market = OkxMarket();
   final _prices = <double>[];
   final _candles = <MarketCandle>[];
+  final Map<String, List<MarketCandle>> _candlesByTimeframe = {};
+  String _selectedTimeframe = '1m';
+  BacktestResult? _backtestResult;
+  WalkForwardResult? _walkForwardResult;
   final _search = TextEditingController();
   final _capital = TextEditingController(text: '1000');
   StreamSubscription<Map<String, dynamic>>? _feed;
@@ -152,18 +158,18 @@ class _DashboardPageState extends State<DashboardPage> {
     if (instrument == null) return;
     await _feed?.cancel();
     try {
-      final history = await _market.loadCandles(instrument.id, bar: '1m', limit: 100);
-      _candles
-        ..clear()
-        ..addAll(history);
-      if (history.isNotEmpty) _price = history.last.close;
+      final loaded = await Future.wait(MarketTimeframe.all.map((tf) => _market.loadCandles(instrument.id, bar: tf.bar, limit: 300).then((items) => MapEntry(tf.bar, items))));
+      _candlesByTimeframe..clear()..addEntries(loaded.map((entry) => MapEntry(entry.key, entry.value)));
+      _candles..clear()..addAll(_candlesByTimeframe[_selectedTimeframe] ?? const []);
+      final oneMinute = _candlesByTimeframe['1m'] ?? const <MarketCandle>[];
+      if (oneMinute.isNotEmpty) _price = oneMinute.last.close;
     } catch (e) {
       if (mounted) setState(() => _status = 'Свечной архив OKX недоступен: $e');
     }
     await _market.watch(instrument.id);
     _prices
       ..clear()
-      ..addAll(_candles.map((candle) => candle.close));
+      ..addAll((_candlesByTimeframe['1m'] ?? _candles).map((candle) => candle.close));
     _bookImbalance = 0;
     _tradeDelta = 0;
     _feed = _market.events.listen(_onMarketEvent);
@@ -183,22 +189,18 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
     if (rows is! List || rows.isEmpty) return;
-    if (type == 'candle1m') {
+    if (type is String && type.startsWith('candle')) {
+      final bar = type.substring(6);
+      final series = _candlesByTimeframe.putIfAbsent(bar, () => <MarketCandle>[]);
       for (final raw in rows) {
         try {
           final candle = MarketCandle.fromOkx(raw as List<dynamic>);
-          final index = _candles.indexWhere((item) => item.timestamp == candle.timestamp);
-          if (index >= 0) {
-            _candles[index] = candle;
-          } else {
-            _candles.add(candle);
-            if (_candles.length > 120) _candles.removeAt(0);
-          }
+          final index = series.indexWhere((item) => item.timestamp == candle.timestamp);
+          if (index >= 0) { series[index] = candle; } else { series.add(candle); if (series.length > 300) series.removeAt(0); }
         } catch (_) {}
       }
-      _prices
-        ..clear()
-        ..addAll(_candles.map((candle) => candle.close));
+      if (bar == '1m') { _prices..clear()..addAll(series.map((candle) => candle.close)); }
+      if (bar == _selectedTimeframe) { _candles..clear()..addAll(series); }
       setState(() {});
       return;
     }
@@ -231,6 +233,25 @@ class _DashboardPageState extends State<DashboardPage> {
       _tradeDelta = (_tradeDelta * 0.85 + (side == 'buy' ? 1 : -1) * (size / (size + 1)) * 0.15).clamp(-1.0, 1.0).toDouble();
     }
     setState(() {});
+  }
+
+  Future<void> _setTimeframe(String bar) async {
+    if (bar == _selectedTimeframe) return;
+    setState(() { _selectedTimeframe = bar; _candles..clear()..addAll(_candlesByTimeframe[bar] ?? const []); _backtestResult = null; _walkForwardResult = null; });
+    if ((_candlesByTimeframe[bar] ?? const []).isEmpty && _selected != null) {
+      try { final history = await _market.loadCandles(_selected!.id, bar: bar, limit: 300); _candlesByTimeframe[bar] = history; if (mounted) setState(() => _candles..clear()..addAll(history)); }
+      catch (e) { if (mounted) _toast('Не удалось загрузить $bar: $e'); }
+    }
+  }
+
+  void _runBacktest() {
+    if (_candles.length < 100) { _toast('Для бэктеста нужно минимум 100 свечей выбранного периода.'); return; }
+    try {
+      final engine = const BacktestEngine();
+      final result = engine.run(_candles, const BacktestConfig());
+      final walk = engine.walkForward(_candles, folds: 3);
+      setState(() { _backtestResult = result; _walkForwardResult = walk; });
+    } catch (e) { _toast('Ошибка бэктеста: $e'); }
   }
 
   void _managePaperPosition(double last) {
@@ -358,6 +379,12 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 12),
               _chartCard(),
               const SizedBox(height: 12),
+              _forecastCard(),
+              const SizedBox(height: 12),
+              _timeframeConfluenceCard(),
+              const SizedBox(height: 12),
+              _backtestCard(),
+              const SizedBox(height: 12),
               _signalCard(signal),
               const SizedBox(height: 12),
               _tradePlanCard(signal),
@@ -425,18 +452,75 @@ class _DashboardPageState extends State<DashboardPage> {
   );
 
   Widget _chartCard() => _card(
-    title: 'OKX • СВЕЧИ 1m • LONG / SHORT ЗОНЫ',
-    child: SizedBox(height: 230, child: _candles.length < 2
-      ? const Center(child: Text('Загрузка OHLC-свечей OKX…', style: TextStyle(color: _muted, fontSize: 12)))
-      : CustomPaint(
-          painter: _CandlePainter(
-            List<MarketCandle>.from(_candles),
-            forecastPrice: _price,
-            position: _paper.openPosition,
-          ),
-          child: const SizedBox.expand(),
-        )),
+    title: 'OKX • СВЕЧИ $_selectedTimeframe • LONG / SHORT ЗОНЫ',
+    child: Column(children: [
+      Align(alignment: Alignment.centerRight, child: DropdownButton<String>(
+        value: _selectedTimeframe,
+        dropdownColor: _panel,
+        items: MarketTimeframe.all.map((tf) => DropdownMenuItem(value: tf.bar, child: Text(tf.label))).toList(),
+        onChanged: (value) { if (value != null) _setTimeframe(value); },
+      )),
+      SizedBox(height: 230, child: _candles.length < 2
+        ? const Center(child: Text('Загрузка OHLC-свечей OKX…', style: TextStyle(color: _muted, fontSize: 12)))
+        : CustomPaint(
+            painter: _CandlePainter(List<MarketCandle>.from(_candles), forecastPrice: _price, position: _paper.openPosition),
+            child: const SizedBox.expand(),
+          )),
+    ]),
   );
+
+  Widget _forecastCard() {
+    final forecast = buildMarketForecast(_candles);
+    return _card(title: 'БУДУЩИЙ РЫНОК • ПРОГНОЗ НА 12 СВЕЧЕЙ', child: forecast == null
+      ? const Text('Для прогноза нужно минимум 25 закрытий выбранного таймфрейма.', style: TextStyle(color: _muted, fontSize: 11))
+      : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(height: 170, child: CustomPaint(painter: _ForecastPainter(forecast), child: const SizedBox.expand())),
+          Row(children: [
+            Expanded(child: _miniMetric('LONG / рост', '${forecast.bullishProbability.toStringAsFixed(1)}%', _green)),
+            Expanded(child: _miniMetric('SHORT / снижение', '${forecast.bearishProbability.toStringAsFixed(1)}%', _red)),
+          ]),
+          _planLine('Медианный ориентир', _fmt(forecast.projectedMedian), _blue),
+          _planLine('Прогнозный диапазон', '${_fmt(forecast.projectedLower)} — ${_fmt(forecast.projectedUpper)}'),
+          const Text('Статистическая экстраполяция дрейфа и волатильности. Вероятности не откалиброваны и не являются гарантией.', style: TextStyle(color: _muted, fontSize: 9)),
+        ]));
+  }
+
+  Widget _timeframeConfluenceCard() => _card(title: 'СВОДКА 7 ТАЙМФРЕЙМОВ • ЕДИНЫЙ АНАЛИЗ', child: Column(children: [
+    for (final tf in MarketTimeframe.all) _timeframeRow(tf),
+    const Text('Сводка основана на EMA/RSI. Это не семь независимых обученных AI-моделей.', style: TextStyle(color: _muted, fontSize: 9)),
+  ]));
+
+  Widget _timeframeRow(MarketTimeframe tf) {
+    final candles = _candlesByTimeframe[tf.bar] ?? const <MarketCandle>[];
+    final ready = candles.length >= 25;
+    final signal = calculateSignal(prices: candles.map((c) => c.close).toList());
+    final direction = signal.direction;
+    final color = direction == 'LONG' ? _green : _red;
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [
+      SizedBox(width: 58, child: Text(tf.label, style: const TextStyle(fontSize: 11))),
+      Expanded(child: Text(ready ? direction : 'нет данных', style: TextStyle(fontSize: 11, color: ready ? color : _muted, fontWeight: FontWeight.bold))),
+      Text(ready ? '${signal.confidence.toStringAsFixed(0)}%' : '—', style: TextStyle(fontSize: 11, color: ready ? color : _muted)),
+      SizedBox(width: 76, child: Text('${candles.length} свечей', textAlign: TextAlign.end, style: const TextStyle(fontSize: 9, color: _muted))),
+    ]));
+  }
+
+  Widget _backtestCard() => _card(title: 'ИСТОРИЧЕСКИЙ БЭКТЕСТ • $_selectedTimeframe', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Text('${_candles.length} свечей • комиссия 0,1% • проскальзывание 3 bps • старт 1 000 USDT', style: const TextStyle(color: _muted, fontSize: 10)),
+    const SizedBox(height: 8),
+    SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _runBacktest, icon: const Icon(Icons.science), label: const Text('ЗАПУСТИТЬ БЭКТЕСТ + WALK-FORWARD'))),
+    if (_backtestResult != null) ...[
+      const Divider(),
+      _planLine('Сделок', '${_backtestResult!.tradeCount}'),
+      _planLine('Итоговый баланс', '${_backtestResult!.finalBalance.toStringAsFixed(2)} USDT'),
+      _planLine('Чистый PnL', '${_backtestResult!.netPnl >= 0 ? '+' : ''}${_backtestResult!.netPnl.toStringAsFixed(2)} USDT', _backtestResult!.netPnl >= 0 ? _green : _red),
+      _planLine('Доходность / win rate', '${_backtestResult!.returnPercent.toStringAsFixed(2)}% / ${_backtestResult!.winRate.toStringAsFixed(1)}%'),
+      _planLine('Profit factor / max DD', '${_backtestResult!.profitFactor.toStringAsFixed(2)} / ${_backtestResult!.maxDrawdownPercent.toStringAsFixed(2)}%'),
+      _planLine('Комиссии', '${_backtestResult!.fees.toStringAsFixed(2)} USDT'),
+      _planLine('Walk-forward folds', '${_walkForwardResult?.folds.length ?? 0}'),
+      _planLine('PnL тестовых окон', '${_walkForwardResult?.totalNetPnl.toStringAsFixed(2) ?? '—'} USDT'),
+      const Text('Бэктест использует только загруженные свечи и упрощённую spot-модель. Результат не гарантирует будущую доходность.', style: TextStyle(color: _muted, fontSize: 9)),
+    ],
+  ]));
 
   Widget _signalCard(TradeSignal signal) => _card(
     title: 'AI SIGNAL • LONG / SHORT',
@@ -668,6 +752,31 @@ class _DashboardPageState extends State<DashboardPage> {
       )),
     ).whenComplete(() => _search.clear());
   }
+}
+
+class _ForecastPainter extends CustomPainter {
+  _ForecastPainter(this.forecast);
+  final MarketForecast forecast;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final pts=forecast.points; if(pts.isEmpty)return;
+    const pad=12.0; final left=pad,right=size.width-pad,top=pad,bottom=size.height-pad;
+    final values=<double>[forecast.currentPrice,...pts.expand((p)=>[p.lower,p.upper])];
+    final lo=values.reduce((a,b)=>math.min(a,b).toDouble()),hi=values.reduce((a,b)=>math.max(a,b).toDouble()),range=math.max(hi-lo,hi.abs()*0.000001).toDouble();
+    double y(double v)=>bottom-(v-lo)/range*(bottom-top); final dx=(right-left)/pts.length;
+    final band=Path()..moveTo(left,y(pts.first.upper));
+    for(var i=0;i<pts.length;i++)band.lineTo(left+dx*(i+1),y(pts[i].upper));
+    for(var i=pts.length-1;i>=0;i--)band.lineTo(left+dx*(i+1),y(pts[i].lower));
+    band.close();canvas.drawPath(band,Paint()..color=_blue.withValues(alpha:0.14));
+    final median=Path()..moveTo(left,y(forecast.currentPrice));
+    for(var i=0;i<pts.length;i++)median.lineTo(left+dx*(i+1),y(pts[i].median));
+    canvas.drawPath(median,Paint()..color=_blue..style=PaintingStyle.stroke..strokeWidth=2.2);
+    canvas.drawLine(Offset(left,y(forecast.currentPrice)),Offset(right,y(forecast.currentPrice)),Paint()..color=_muted.withValues(alpha:0.4));
+    final label=TextPainter(text:TextSpan(text:'NOW ${forecast.currentPrice.toStringAsFixed(2)} → +${pts.length} bars',style:const TextStyle(color:_muted,fontSize:9)),textDirection:TextDirection.ltr)..layout();
+    label.paint(canvas,Offset(left,0));
+  }
+  @override
+  bool shouldRepaint(covariant _ForecastPainter oldDelegate)=>oldDelegate.forecast!=forecast;
 }
 
 class _CandlePainter extends CustomPainter {
