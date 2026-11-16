@@ -163,7 +163,7 @@ class PaperTradingEngine {
   double _realizedPnl = 0;
   double _totalFees = 0;
   PaperPosition? _position;
-  final List<PaperClosedTrade> _closedTrades = [];
+  List<PaperClosedTrade> _closedTrades = [];
 
   double get initialBalance => _initialBalance;
   double get cashBalance => _cashBalance;
