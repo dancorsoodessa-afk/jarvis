@@ -11,6 +11,7 @@ class PaperPosition {
     required this.entryFee,
     required this.currentPrice,
     required this.partialRealizedPnl,
+    required this.partialFees,
     required this.takeProfit1Hit,
     required this.openedAt,
   });
@@ -21,6 +22,7 @@ class PaperPosition {
   final double entryFee;
   final double currentPrice;
   final double partialRealizedPnl;
+  final double partialFees;
   final bool takeProfit1Hit;
   final DateTime openedAt;
 
@@ -34,6 +36,7 @@ class PaperPosition {
     double? currentPrice,
     double? partialRealizedPnl,
     bool? takeProfit1Hit,
+    double? partialFees,
   }) => PaperPosition(
     plan: plan,
     quantity: quantity ?? this.quantity,
@@ -41,6 +44,7 @@ class PaperPosition {
     entryFee: entryFee,
     currentPrice: currentPrice ?? this.currentPrice,
     partialRealizedPnl: partialRealizedPnl ?? this.partialRealizedPnl,
+    partialFees: partialFees ?? this.partialFees,
     takeProfit1Hit: takeProfit1Hit ?? this.takeProfit1Hit,
     openedAt: openedAt,
   );
@@ -52,6 +56,7 @@ class PaperPosition {
     'entryFee': entryFee,
     'currentPrice': currentPrice,
     'partialRealizedPnl': partialRealizedPnl,
+    'partialFees': partialFees,
     'takeProfit1Hit': takeProfit1Hit,
     'openedAt': openedAt.toIso8601String(),
   };
@@ -63,6 +68,7 @@ class PaperPosition {
     entryFee: (json['entryFee'] as num).toDouble(),
     currentPrice: (json['currentPrice'] as num).toDouble(),
     partialRealizedPnl: (json['partialRealizedPnl'] as num).toDouble(),
+    partialFees: (json['partialFees'] as num).toDouble(),
     takeProfit1Hit: json['takeProfit1Hit'] as bool,
     openedAt: DateTime.parse(json['openedAt'] as String),
   );
@@ -157,6 +163,7 @@ class PaperTradingEngine {
   double get realizedPnl => _realizedPnl;
   double get totalFees => _totalFees;
   double get unrealizedPnl => _position?.unrealizedPnl ?? 0;
+  double get netUnrealizedPnl => _position == null ? 0 : _position!.unrealizedPnl - _position!.entryFee - (_position!.currentPrice * _position!.quantity * feeRate);
   double get equity => _cashBalance + unrealizedPnl;
   PaperPosition? get openPosition => _position;
   List<PaperClosedTrade> get closedTrades => List.unmodifiable(_closedTrades);
@@ -186,6 +193,7 @@ class PaperTradingEngine {
       entryFee: entryFee,
       currentPrice: plan.entry,
       partialRealizedPnl: 0,
+      partialFees: 0,
       takeProfit1Hit: false,
       openedAt: DateTime.now().toUtc(),
     );
@@ -228,6 +236,7 @@ class PaperTradingEngine {
         quantity: updated.quantity - partialQty,
         margin: updated.margin - partialMargin,
         partialRealizedPnl: updated.partialRealizedPnl + pnl,
+        partialFees: updated.partialFees + fee,
         takeProfit1Hit: true,
       );
     }
@@ -247,7 +256,7 @@ class PaperTradingEngine {
         position.quantity * directionFactor;
     final exitFee = price * position.quantity * feeRate;
     final totalPnl = position.partialRealizedPnl + pnl;
-    final fees = position.entryFee + exitFee;
+    final fees = position.entryFee + position.partialFees + exitFee;
     _cashBalance += position.margin + pnl - exitFee;
     _marginUsed = math.max(0, _marginUsed - position.margin).toDouble();
     _realizedPnl += pnl;
