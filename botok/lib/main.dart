@@ -64,7 +64,12 @@ class _DashboardPageState extends State<DashboardPage> {
   final _capital = TextEditingController(text: '1000');
   StreamSubscription<Map<String, dynamic>>? _feed;
   StreamSubscription<Map<String, dynamic>?>? _guardFeed;
+  StreamSubscription<Map<String, dynamic>?>? _guardStatusFeed;
+  StreamSubscription<Map<String, dynamic>?>? _guardErrorFeed;
+  StreamSubscription<Map<String, dynamic>?>? _guardStoppedFeed;
   String _guardStatus = 'не запущен';
+  bool _guardRunning = false;
+  DateTime _lastGuardCheck = DateTime.fromMillisecondsSinceEpoch(0);
   List<MarketInstrument> _instruments = [];
   MarketInstrument? _selected;
   String _marketType = 'SPOT';
@@ -114,6 +119,7 @@ class _DashboardPageState extends State<DashboardPage> {
         final price = double.tryParse(event['price']?.toString() ?? '') ?? 0;
         if (price > 0) _price = price;
         final reason = event['closedReason'];
+        _guardRunning = reason is! String || reason.isEmpty;
         if (reason is String && reason.isNotEmpty) {
           _positionState = 'PAPER закрыта фоновым контроллером: $reason';
           _guardStatus = 'позиция закрыта';
@@ -126,15 +132,16 @@ class _DashboardPageState extends State<DashboardPage> {
         setState(() {});
       }
     });
-    FlutterBackgroundService().on('guardStatus').listen((event) {
+    _guardStatusFeed = FlutterBackgroundService().on('guardStatus').listen((event) {
       if (!mounted || event == null) return;
       setState(() => _guardStatus = event['status']?.toString() ?? _guardStatus);
     });
-    FlutterBackgroundService().on('guardError').listen((event) {
+    _guardErrorFeed = FlutterBackgroundService().on('guardError').listen((event) {
       if (!mounted || event == null) return;
       setState(() => _guardStatus = event['message']?.toString() ?? 'ошибка');
     });
-    FlutterBackgroundService().on('guardStopped').listen((_) {
+    _guardStoppedFeed = FlutterBackgroundService().on('guardStopped').listen((_) {
+      _guardRunning = false;
       if (mounted) setState(() => _guardStatus = 'не активен');
     });
     _loadMarket();
@@ -156,6 +163,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (_paper.openPosition != null) {
       _guardStatus = 'восстановление мониторинга';
       await startPaperGuardService();
+      _guardRunning = await FlutterBackgroundService().isRunning();
     }
   }
 
@@ -254,7 +262,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final last = double.tryParse(row['last']?.toString() ?? '') ?? 0;
       if (last > 0) {
         _price = last;
-        _managePaperPosition(last);
+        if (_paper.openPosition != null) _checkPaperGuard(last);
       }
     } else if (type == 'books5') {
       final bids = (row['bids'] as List<dynamic>? ?? []);
@@ -302,12 +310,25 @@ class _DashboardPageState extends State<DashboardPage> {
     } catch (e) { _toast('Ошибка бэктеста: $e'); }
   }
 
+  Future<void> _checkPaperGuard(double last) async {
+    final now = DateTime.now();
+    if (now.difference(_lastGuardCheck).inSeconds < 2) return;
+    _lastGuardCheck = now;
+    try {
+      _guardRunning = await FlutterBackgroundService().isRunning();
+    } catch (_) {
+      _guardRunning = false;
+    }
+    if (!_guardRunning) _managePaperPosition(last);
+  }
+
   void _managePaperPosition(double last) {
     if (_paper.openPosition == null) return;
     final closed = _paper.markPrice(last);
     if (closed != null) {
       _positionState = 'PAPER закрыта: ${closed.reason} • NET ${(closed.realizedPnl - closed.fees).toStringAsFixed(2)} USDT';
       _guardStatus = 'позиция закрыта';
+      _guardRunning = false;
       stopPaperGuardService();
     }
     if (closed != null || DateTime.now().difference(_lastPaperPersist).inSeconds >= 1) {
@@ -382,6 +403,7 @@ class _DashboardPageState extends State<DashboardPage> {
       await _persistPaper();
       _guardStatus = 'запуск фонового контроля';
       await startPaperGuardService();
+      _guardRunning = await FlutterBackgroundService().isRunning();
     } catch (e) {
       _toast('PAPER-сделка не открыта: $e');
     }
@@ -397,6 +419,9 @@ class _DashboardPageState extends State<DashboardPage> {
   void dispose() {
     _feed?.cancel();
     _guardFeed?.cancel();
+    _guardStatusFeed?.cancel();
+    _guardErrorFeed?.cancel();
+    _guardStoppedFeed?.cancel();
     _market.dispose();
     _search.dispose();
     _capital.dispose();
@@ -744,6 +769,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 setState(() => _positionState = 'Закрыта вручную • NET ${(trade.realizedPnl - trade.fees).toStringAsFixed(2)} USDT');
                 await _persistPaper();
                 _guardStatus = 'позиция закрыта вручную';
+                _guardRunning = false;
                 stopPaperGuardService();
               }
             },
