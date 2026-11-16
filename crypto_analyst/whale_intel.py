@@ -92,7 +92,9 @@ class WhaleIntelClient:
     def __init__(self, timeout: float = 12.0, session: requests.Session | None = None, nansen_api_key: str | None = None, coinglass_api_key: str | None = None):
         self.timeout = max(3.0, min(30.0, float(timeout)))
         self.session = session or requests.Session()
-        self.session.headers.update({"User-Agent": "JARVIS-BOTok/1.0"})
+        session_headers = getattr(self.session, "headers", None)
+        if hasattr(session_headers, "update"):
+            session_headers.update({"User-Agent": "JARVIS-BOTok/1.0"})
         self.nansen_api_key = (nansen_api_key if nansen_api_key is not None else os.getenv("NANSEN_API_KEY", "")).strip()
         self.coinglass_api_key = (coinglass_api_key if coinglass_api_key is not None else os.getenv("COINGLASS_API_KEY", "")).strip()
         self.poll_interval_seconds = 60.0 if self.coinglass_api_key else 300.0 if self.nansen_api_key else 60.0
