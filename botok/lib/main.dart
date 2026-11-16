@@ -536,7 +536,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 12),
           Row(children: [
             Expanded(child: _miniMetric('РЕАЛИЗОВАНО', '${_paper.realizedPnl >= 0 ? '+' : ''}${_paper.realizedPnl.toStringAsFixed(2)}', _paper.realizedPnl >= 0 ? _green : _red)),
-            Expanded(child: _miniMetric('NET PnL СЧЁТА', '${_paper.positionNetPnl >= 0 ? '+' : ''}${_paper.netUnrealizedPnl.toStringAsFixed(2)}', _paper.netUnrealizedPnl >= 0 ? _green : _red)),
+            Expanded(child: _miniMetric('NET PnL СЧЁТА', '${_paper.netAccountPnl >= 0 ? '+' : ''}${_paper.netAccountPnl.toStringAsFixed(2)}', _paper.netAccountPnl >= 0 ? _green : _red)),
             Expanded(child: _miniMetric('КОМИССИИ', '${_paper.totalFees.toStringAsFixed(2)}', _muted)),
           ]),
           const SizedBox(height: 8),
