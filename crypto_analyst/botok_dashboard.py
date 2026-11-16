@@ -24,6 +24,10 @@ class BOTokDashboard(CryptoDashboard):
         self._chart_queue = queue.Queue()
         self._nansen_api_key = self._load_nansen_key()
         self._coinglass_api_key = self._load_coinglass_key()
+        if self._nansen_api_key:
+            os.environ["NANSEN_API_KEY"] = self._nansen_api_key
+        if self._coinglass_api_key:
+            os.environ["COINGLASS_API_KEY"] = self._coinglass_api_key
         self._whale_refresh_scheduled = False
         self._price_history = deque(maxlen=240)
         self._chart_symbol = "BTC-USDT-SWAP"
@@ -252,6 +256,7 @@ class BOTokDashboard(CryptoDashboard):
         try:
             self._save_secret("nansen_api_key", value)
             self._nansen_api_key = value
+            os.environ["NANSEN_API_KEY"] = value
             self.whale_status_var.set("Nansen key сохранён через Windows DPAPI.")
             self._check_nansen()
         except Exception as exc:
@@ -265,6 +270,7 @@ class BOTokDashboard(CryptoDashboard):
         try:
             self._save_secret("coinglass_api_key", value)
             self._coinglass_api_key = value
+            os.environ["COINGLASS_API_KEY"] = value
             self.whale_status_var.set("CoinGlass key сохранён через Windows DPAPI.")
             self._check_nansen()
         except Exception as exc:
