@@ -257,6 +257,24 @@ class WhaleIntelClient:
                 snapshot[key] = operation()
             except Exception as exc:
                 snapshot["errors"].append(f"{key}: {type(exc).__name__}: {exc}")
+        # If the optional paid provider is unavailable or out of credits, retain
+        # the no-key public fallback rather than leaving the whole panel empty.
+        if self.nansen_api_key and (
+            not snapshot["accounts"] or not snapshot["hyperliquid_trades"]
+        ):
+            fallback = (
+                ("accounts", lambda: self.fetch_top_hyperliquid_accounts(account_limit)),
+                ("hyperliquid_trades", lambda: self.fetch_hyperliquid_whale_trades(200)),
+                ("exchange_trades", lambda: self.fetch_exchange_whale_trades(100)),
+            )
+            for key, operation in fallback:
+                if snapshot.get(key):
+                    continue
+                try:
+                    snapshot[key] = operation()
+                except Exception as exc:
+                    snapshot["errors"].append(f"public_{key}: {type(exc).__name__}: {exc}")
+            snapshot["source"] += " · public fallback where Nansen was unavailable"
         return snapshot
 
     def fetch_account_state(self, address: str) -> dict[str, Any]:
