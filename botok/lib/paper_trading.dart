@@ -6,6 +6,7 @@ import 'signal_engine.dart';
 class PaperPosition {
   const PaperPosition({
     required this.plan,
+    required this.instrumentId,
     required this.quantity,
     required this.margin,
     required this.entryFee,
@@ -17,6 +18,7 @@ class PaperPosition {
   });
 
   final TradePlan plan;
+  final String instrumentId;
   final double quantity;
   final double margin;
   final double entryFee;
@@ -39,6 +41,7 @@ class PaperPosition {
     double? partialFees,
   }) => PaperPosition(
     plan: plan,
+    instrumentId: instrumentId,
     quantity: quantity ?? this.quantity,
     margin: margin ?? this.margin,
     entryFee: entryFee,
@@ -51,6 +54,7 @@ class PaperPosition {
 
   Map<String, dynamic> toJson() => {
     'plan': _planToJson(plan),
+    'instrumentId': instrumentId,
     'quantity': quantity,
     'margin': margin,
     'entryFee': entryFee,
@@ -63,6 +67,7 @@ class PaperPosition {
 
   factory PaperPosition.fromJson(Map<String, dynamic> json) => PaperPosition(
     plan: _planFromJson((json['plan'] as Map).cast<String, dynamic>()),
+    instrumentId: json['instrumentId'] as String,
     quantity: (json['quantity'] as num).toDouble(),
     margin: (json['margin'] as num).toDouble(),
     entryFee: (json['entryFee'] as num).toDouble(),
@@ -76,6 +81,7 @@ class PaperPosition {
 
 class PaperClosedTrade {
   const PaperClosedTrade({
+    required this.instrumentId,
     required this.direction,
     required this.entry,
     required this.exit,
@@ -86,6 +92,7 @@ class PaperClosedTrade {
     required this.reason,
   });
 
+  final String instrumentId;
   final String direction;
   final double entry;
   final double exit;
@@ -96,6 +103,7 @@ class PaperClosedTrade {
   final String reason;
 
   Map<String, dynamic> toJson() => {
+    'instrumentId': instrumentId,
     'direction': direction,
     'entry': entry,
     'exit': exit,
@@ -107,6 +115,7 @@ class PaperClosedTrade {
   };
 
   factory PaperClosedTrade.fromJson(Map<String, dynamic> json) => PaperClosedTrade(
+    instrumentId: json['instrumentId'] as String,
     direction: json['direction'] as String,
     entry: (json['entry'] as num).toDouble(),
     exit: (json['exit'] as num).toDouble(),
@@ -169,8 +178,9 @@ class PaperTradingEngine {
   PaperPosition? get openPosition => _position;
   List<PaperClosedTrade> get closedTrades => List.unmodifiable(_closedTrades);
 
-  PaperPosition open(TradePlan plan) {
+  PaperPosition open(TradePlan plan, {required String instrumentId}) {
     if (_position != null) throw StateError('A paper position is already open.');
+    if (instrumentId.trim().isEmpty) throw ArgumentError('Instrument id is required.');
     if (plan.entry <= 0 || plan.quantity <= 0 ||
         !plan.quantity.isFinite || !plan.entry.isFinite) {
       throw ArgumentError('Trade plan contains invalid size or entry.');
@@ -189,6 +199,7 @@ class PaperTradingEngine {
     _totalFees += entryFee;
     _position = PaperPosition(
       plan: plan,
+      instrumentId: instrumentId,
       quantity: plan.quantity,
       margin: margin,
       entryFee: entryFee,
@@ -263,6 +274,7 @@ class PaperTradingEngine {
     _realizedPnl += pnl;
     _totalFees += exitFee;
     final trade = PaperClosedTrade(
+      instrumentId: position.instrumentId,
       direction: position.plan.direction,
       entry: position.plan.entry,
       exit: price,
