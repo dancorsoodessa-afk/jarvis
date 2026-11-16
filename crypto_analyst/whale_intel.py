@@ -69,20 +69,39 @@ class WhaleTrade:
     raw: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class WhalePosition:
+    address: str
+    coin: str
+    side: str
+    position_value_usd: Decimal
+    position_size: Decimal
+    entry_price: Decimal
+    mark_price: Decimal
+    liquidation_price: Decimal
+    leverage: Decimal
+    unrealized_pnl_usd: Decimal
+    funding_fee_usd: Decimal
+    update_time: str
+    raw: dict[str, Any]
+
+
 class WhaleIntelClient:
     """Read-only whale data client. It has no exchange order methods."""
 
-    def __init__(self, timeout: float = 12.0, session: requests.Session | None = None, nansen_api_key: str | None = None):
+    def __init__(self, timeout: float = 12.0, session: requests.Session | None = None, nansen_api_key: str | None = None, coinglass_api_key: str | None = None):
         self.timeout = max(3.0, min(30.0, float(timeout)))
         self.session = session or requests.Session()
         self.session.headers.update({"User-Agent": "JARVIS-BOTok/1.0"})
         self.nansen_api_key = (nansen_api_key if nansen_api_key is not None else os.getenv("NANSEN_API_KEY", "")).strip()
+        self.coinglass_api_key = (coinglass_api_key if coinglass_api_key is not None else os.getenv("COINGLASS_API_KEY", "")).strip()
         self.poll_interval_seconds = 300.0 if self.nansen_api_key else 60.0
         self._leaderboard_cache_at = 0.0
         self._leaderboard_cache: list[WhaleAccount] = []
 
     def _get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:
-        response = self.session.get(url, params=params, timeout=self.timeout)
+        request_timeout = max(self.timeout, 60.0) if url == HYPERLIQUID_LEADERBOARD_URL else self.timeout
+        response = self.session.get(url, params=params, timeout=request_timeout)
         response.raise_for_status()
         return response.json()
 
@@ -181,6 +200,70 @@ class WhaleIntelClient:
             ))
         return result
 
+    def _get_coinglass(self, path: str) -> list[dict[str, Any]]:
+        if not self.coinglass_api_key:
+            raise RuntimeError("COINGLASS_API_KEY is not configured")
+        response = self.session.get(
+            f"https://open-api-v4.coinglass.com{path}",
+            headers={"CG-API-KEY": self.coinglass_api_key},
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or str(payload.get("code")) != "0":
+            message = payload.get("msg", "unknown CoinGlass API error") if isinstance(payload, dict) else "invalid response"
+            raise RuntimeError(f"CoinGlass API error: {message}")
+        return _rows(payload)
+
+    def fetch_coinglass_whale_positions(self, limit: int = 200) -> list[WhalePosition]:
+        """Fetch current Hyperliquid positions above the provider's $1M threshold."""
+        if not 1 <= limit <= 200:
+            raise ValueError("limit must be between 1 and 200")
+        rows = self._get_coinglass("/api/hyperliquid/whale-position")
+        positions = []
+        for row in rows:
+            size = _number(row.get("position_size"))
+            positions.append(WhalePosition(
+                address=str(row.get("user") or ""),
+                coin=str(row.get("symbol") or "—"),
+                side="LONG" if size > 0 else "SHORT" if size < 0 else "—",
+                position_value_usd=_number(row.get("position_value_usd")),
+                position_size=size,
+                entry_price=_number(row.get("entry_price")),
+                mark_price=_number(row.get("mark_price")),
+                liquidation_price=_number(row.get("liq_price")),
+                leverage=_number(row.get("leverage")),
+                unrealized_pnl_usd=_number(row.get("unrealized_pnl")),
+                funding_fee_usd=_number(row.get("funding_fee")),
+                update_time=str(row.get("update_time") or "—"),
+                raw=dict(row),
+            ))
+        positions.sort(key=lambda item: item.position_value_usd, reverse=True)
+        return positions[:limit]
+
+    def fetch_coinglass_whale_alerts(self, limit: int = 200) -> list[WhaleTrade]:
+        """Fetch recent >$1M Hyperliquid position-open/close alerts.
+
+        These are position tracking events, not individual buy/sell fills.
+        """
+        if not 1 <= limit <= 200:
+            raise ValueError("limit must be between 1 and 200")
+        rows = self._get_coinglass("/api/hyperliquid/whale-alert")
+        result = []
+        for row in rows[:limit]:
+            size = _number(row.get("position_size"))
+            result.append(WhaleTrade(
+                timestamp=str(row.get("create_time") or "—"),
+                address=str(row.get("user") or ""),
+                coin=str(row.get("symbol") or "—"),
+                side="LONG" if size > 0 else "SHORT" if size < 0 else "—",
+                price=_number(row.get("entry_price")),
+                size_usd=_number(row.get("position_value_usd")),
+                venue="CoinGlass Hyperliquid position alert",
+                raw=dict(row),
+            ))
+        return result
+
     def _post_nansen(self, endpoint: str, payload: dict[str, Any]) -> Any:
         if not self.nansen_api_key:
             raise RuntimeError("NANSEN_API_KEY is not configured")
@@ -233,32 +316,35 @@ class WhaleIntelClient:
 
     def fetch_snapshot(self, account_limit: int = 200) -> dict[str, Any]:
         """Return independent source results so one provider outage is non-fatal."""
+        snapshot: dict[str, Any] = {
+            "accounts": [], "hyperliquid_trades": [], "exchange_trades": [],
+            "positions": [], "alerts": [], "errors": [],
+            "source": "Hyperliquid public leaderboard + CoinLobster public API",
+        }
+        operations = []
         if self.nansen_api_key:
-            snapshot: dict[str, Any] = {
-                "accounts": [], "hyperliquid_trades": [], "exchange_trades": [],
-                "errors": [], "source": "Nansen Hyperliquid leaderboard + Smart Money trades",
-            }
-            operations = (
+            snapshot["source"] = "Nansen Hyperliquid leaderboard + Smart Money trades"
+            operations.extend((
                 ("accounts", lambda: self.fetch_nansen_top_traders(account_limit)),
                 ("hyperliquid_trades", lambda: self.fetch_nansen_smart_money_trades(200)),
-            )
+            ))
         else:
-            snapshot = {
-                "accounts": [], "hyperliquid_trades": [], "exchange_trades": [],
-                "errors": [], "source": "Hyperliquid public leaderboard + CoinLobster public API",
-            }
-            operations = (
+            operations.extend((
                 ("accounts", lambda: self.fetch_top_hyperliquid_accounts(account_limit)),
                 ("hyperliquid_trades", lambda: self.fetch_hyperliquid_whale_trades(200)),
                 ("exchange_trades", lambda: self.fetch_exchange_whale_trades(100)),
-            )
+            ))
+        if self.coinglass_api_key:
+            snapshot["source"] += " + CoinGlass live Hyperliquid whale positions/alerts"
+            operations.extend((
+                ("positions", lambda: self.fetch_coinglass_whale_positions(200)),
+                ("alerts", lambda: self.fetch_coinglass_whale_alerts(200)),
+            ))
         for key, operation in operations:
             try:
                 snapshot[key] = operation()
             except Exception as exc:
                 snapshot["errors"].append(f"{key}: {type(exc).__name__}: {exc}")
-        # If the optional paid provider is unavailable or out of credits, retain
-        # the no-key public fallback rather than leaving the whole panel empty.
         if self.nansen_api_key and (
             not snapshot["accounts"] or not snapshot["hyperliquid_trades"]
         ):
