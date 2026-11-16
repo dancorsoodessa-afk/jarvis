@@ -116,7 +116,7 @@ class OkxMarket {
       'op': 'subscribe',
       'args': [
         {'channel': 'tickers', 'instId': instrumentId},
-        {'channel': 'candle1m', 'instId': instrumentId},
+        ...['1m', '3m', '5m', '15m', '1H', '1D', '1W'].map((bar) => {'channel': 'candle$bar', 'instId': instrumentId}),
         {'channel': 'books5', 'instId': instrumentId},
         {'channel': 'trades', 'instId': instrumentId},
       ],
