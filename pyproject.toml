@@ -1,15 +1,24 @@
 [tool.poetry]
 name = "jarvis-agent"
 version = "1.0.0"
-description = "Cloud-first personal AI desktop assistant with Gemini, Groq fallback, cloud speech, and Three.js reactor"
+description = "JARVIS desktop assistant with Gemini, voice services, Three.js interface, and paper-only OKX Crypto Analyst"
 authors = ["Jarvis Developer"]
 license = "MIT"
 readme = "README.md"
-packages = [{ include = "agent" }]
+packages = [
+    { include = "agent" },
+    { include = "crypto_analyst" },
+    { include = "strategic" },
+    { include = "storage" },
+]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 requests = ">=2.31.0"
+websockets = ">=12,<16"
+youtube-transcript-api = ">=1.2,<2"
+redis = { version = ">=5,<7", optional = true }
+asyncpg = { version = ">=0.29,<1", optional = true }
 Pillow = { version = ">=10.0", optional = true }
 pycaw = { version = ">=20240210", optional = true, markers = "sys_platform == 'win32'" }
 sounddevice = { version = ">=0.5.0", optional = true }
@@ -24,6 +33,7 @@ windows-audio = ["pycaw"]
 voice = ["sounddevice", "numpy"]
 documents = ["pypdf", "python-docx", "openpyxl"]
 all = ["Pillow", "pycaw", "sounddevice", "numpy", "pypdf", "python-docx", "openpyxl"]
+crypto-infra = ["redis", "asyncpg"]
 
 [tool.poetry.scripts]
 jarvis = "agent.__main__:main"
