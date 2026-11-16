@@ -40,6 +40,9 @@ class BOTokDashboard(CryptoDashboard):
         self.chart.grid_forget()
         self.log.grid_forget()
         scrollbars = body.grid_slaves(row=0, column=1)
+        base_chart = getattr(self, "chart", None)
+        if base_chart is not None:
+            base_chart.destroy()
         chart_panel = tk.Frame(body, bg=BG)
         chart_panel.grid(row=0, column=0, sticky="nsew", pady=(0, 8))
         body.grid_rowconfigure(0, weight=4)
