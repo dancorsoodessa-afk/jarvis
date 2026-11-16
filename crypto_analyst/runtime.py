@@ -11,6 +11,7 @@ from .models import MarketTrade, TradingSignal
 from .paper import PaperBroker, PaperOrder
 from .risk import RiskManager
 from .slippage_guard import estimate_book_slippage_bps
+from .whale_copy import WhaleCopyEngine
 
 
 class PaperScalpingRuntime:
@@ -41,6 +42,8 @@ class PaperScalpingRuntime:
         self.signals: list[TradingSignal] = []
         self.orders: list[PaperOrder] = []
         self.event_count = 0
+        self.whale_copy_engine = WhaleCopyEngine(whitelist=self.engine.whitelist)
+        self.last_whale_signal_at: dict[str, int] = {}
 
     def _active_exposure_count(self) -> int:
         exposed_symbols = {
@@ -138,4 +141,80 @@ class PaperScalpingRuntime:
         latest_order_id = next(reversed(self.broker.orders))
         self.orders.append(self.broker.orders[latest_order_id])
         self.last_signal_at[symbol] = received_at_ms
+        return [signal]
+
+
+    def on_whale_trade(
+        self,
+        whale_trade: Any,
+        tracked_wallets: set[str],
+        received_at_ms: int,
+    ) -> list[TradingSignal]:
+        """Convert a fresh top-200 wallet fill into a guarded Paper Broker order."""
+        self.event_count += 1
+        symbol = f"{str(getattr(whale_trade, 'coin', '')).upper()}-USDT-SWAP"
+        book = self.state.orderbooks.get(symbol)
+        if book is None:
+            return []
+        recent = self.state.recent_trades(
+            symbol,
+            since_ms=max(0, received_at_ms - self.engine.max_data_age_ms),
+        )
+        signal = self.whale_copy_engine.evaluate(
+            whale_trade=whale_trade,
+            tracked_wallets=tracked_wallets,
+            book=book,
+            recent_trades=recent,
+            now_ms=received_at_ms,
+        )
+        if signal is None:
+            return []
+        last = self.last_whale_signal_at.get(symbol, 0)
+        if received_at_ms - last < self.signal_cooldown_ms:
+            return []
+        if self.broker.has_active_order_or_position(symbol):
+            return []
+
+        contract_multiplier = self.contract_multipliers.get(symbol, Decimal("1"))
+        leverage = (
+            self.risk_manager.config.max_leverage
+            if symbol in self.derivative_symbols else None
+        )
+        decision = self.risk_manager.approve(
+            signal=signal,
+            equity=self.fixed_equity or self.broker.cash,
+            daily_pnl=self.broker.realized_pnl,
+            open_positions=self._active_exposure_count(),
+            now_ms=received_at_ms,
+            data_timestamp_ms=book.received_at_ms,
+            unit_multiplier=contract_multiplier,
+            leverage=leverage,
+        )
+        if not decision.approved:
+            return []
+        exit_side = "sell" if signal.side == "buy" else "buy"
+        estimated_slippage = estimate_book_slippage_bps(
+            book, exit_side, decision.quantity
+        )
+        if estimated_slippage is None:
+            return []
+        decision = self.risk_manager.approve(
+            signal=signal,
+            equity=self.fixed_equity or self.broker.cash,
+            daily_pnl=self.broker.realized_pnl,
+            open_positions=self._active_exposure_count(),
+            now_ms=received_at_ms,
+            data_timestamp_ms=book.received_at_ms,
+            unit_multiplier=contract_multiplier,
+            leverage=leverage,
+            estimated_slippage_bps=estimated_slippage,
+        )
+        if not decision.approved:
+            return []
+
+        self.broker.place_limit(signal, decision.quantity, contract_multiplier)
+        self.signals.append(signal)
+        latest_order_id = next(reversed(self.broker.orders))
+        self.orders.append(self.broker.orders[latest_order_id])
+        self.last_whale_signal_at[symbol] = received_at_ms
         return [signal]
