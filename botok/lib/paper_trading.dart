@@ -15,7 +15,9 @@ class PaperPosition {
     required this.partialFees,
     required this.takeProfit1Hit,
     required this.openedAt,
-  });
+    double? bestPrice,
+    this.trailingStopPrice,
+  }) : bestPrice = bestPrice ?? plan.entry;
 
   final TradePlan plan;
   final String instrumentId;
@@ -27,10 +29,17 @@ class PaperPosition {
   final double partialFees;
   final bool takeProfit1Hit;
   final DateTime openedAt;
+  final double bestPrice;
+  final double? trailingStopPrice;
 
   bool get isLong => plan.direction == 'LONG';
   double get unrealizedPnl =>
       (currentPrice - plan.entry) * quantity * (isLong ? 1 : -1);
+  double get effectiveStopLoss {
+    final trailing = trailingStopPrice;
+    if (trailing == null) return plan.stopLoss;
+    return isLong ? math.max(plan.stopLoss, trailing).toDouble() : math.min(plan.stopLoss, trailing).toDouble();
+  }
 
   PaperPosition copyWith({
     double? quantity,
@@ -39,6 +48,8 @@ class PaperPosition {
     double? partialRealizedPnl,
     bool? takeProfit1Hit,
     double? partialFees,
+    double? bestPrice,
+    double? trailingStopPrice,
   }) => PaperPosition(
     plan: plan,
     instrumentId: instrumentId,
@@ -50,6 +61,8 @@ class PaperPosition {
     partialFees: partialFees ?? this.partialFees,
     takeProfit1Hit: takeProfit1Hit ?? this.takeProfit1Hit,
     openedAt: openedAt,
+    bestPrice: bestPrice ?? this.bestPrice,
+    trailingStopPrice: trailingStopPrice ?? this.trailingStopPrice,
   );
 
   Map<String, dynamic> toJson() => {
@@ -63,6 +76,8 @@ class PaperPosition {
     'partialFees': partialFees,
     'takeProfit1Hit': takeProfit1Hit,
     'openedAt': openedAt.toIso8601String(),
+    'bestPrice': bestPrice,
+    'trailingStopPrice': trailingStopPrice,
   };
 
   factory PaperPosition.fromJson(Map<String, dynamic> json) => PaperPosition(
@@ -76,6 +91,8 @@ class PaperPosition {
     partialFees: (json['partialFees'] as num).toDouble(),
     takeProfit1Hit: json['takeProfit1Hit'] as bool,
     openedAt: DateTime.parse(json['openedAt'] as String),
+    bestPrice: (json['bestPrice'] as num?)?.toDouble() ?? ((json['plan'] as Map)['entry'] as num).toDouble(),
+    trailingStopPrice: (json['trailingStopPrice'] as num?)?.toDouble(),
   );
 }
 
@@ -216,20 +233,37 @@ class PaperTradingEngine {
     if (!price.isFinite || price <= 0) return null;
     final position = _position;
     if (position == null) return null;
-    final updated = position.copyWith(currentPrice: price);
+    final bestPrice = position.isLong
+        ? math.max(position.bestPrice, price).toDouble()
+        : math.min(position.bestPrice, price).toDouble();
+    final trailPercent = position.plan.trailingStopPercent;
+    final candidateTrail = position.isLong
+        ? bestPrice * (1 - trailPercent / 100)
+        : bestPrice * (1 + trailPercent / 100);
+    final previousTrail = position.trailingStopPrice;
+    final trailingStop = trailPercent <= 0
+        ? previousTrail
+        : previousTrail == null
+            ? candidateTrail
+            : position.isLong
+                ? math.max(previousTrail, candidateTrail).toDouble()
+                : math.min(previousTrail, candidateTrail).toDouble();
+    final updated = position.copyWith(
+      currentPrice: price,
+      bestPrice: bestPrice,
+      trailingStopPrice: trailingStop,
+    );
     _position = updated;
 
-    if (updated.isLong && price <= updated.plan.stopLoss) {
-      return _close(price, 'STOP_LOSS');
-    }
-    if (!updated.isLong && price >= updated.plan.stopLoss) {
-      return _close(price, 'STOP_LOSS');
-    }
-    if (updated.isLong && price >= updated.plan.takeProfit2) {
-      return _close(price, 'TAKE_PROFIT_2');
-    }
-    if (!updated.isLong && price <= updated.plan.takeProfit2) {
-      return _close(price, 'TAKE_PROFIT_2');
+    final stopHit = updated.isLong
+        ? price <= updated.effectiveStopLoss
+        : price >= updated.effectiveStopLoss;
+    if (stopHit) {
+      final trailingIsActive = updated.trailingStopPrice != null &&
+          (updated.isLong
+              ? updated.trailingStopPrice! > updated.plan.stopLoss
+              : updated.trailingStopPrice! < updated.plan.stopLoss);
+      return _close(price, trailingIsActive ? 'TRAILING_STOP' : 'STOP_LOSS');
     }
     final reachedTp1 = updated.isLong
         ? price >= updated.plan.takeProfit1
@@ -237,9 +271,10 @@ class PaperTradingEngine {
     if (reachedTp1 && !updated.takeProfit1Hit) {
       final partialQty = updated.quantity * 0.5;
       final partialMargin = updated.margin * 0.5;
-      final pnl = (price - updated.plan.entry) * partialQty *
+      final partialPrice = updated.plan.takeProfit1;
+      final pnl = (partialPrice - updated.plan.entry) * partialQty *
           (updated.isLong ? 1 : -1);
-      final fee = price * partialQty * feeRate;
+      final fee = partialPrice * partialQty * feeRate;
       _cashBalance += pnl - fee;
       _marginUsed -= partialMargin;
       _realizedPnl += pnl;
@@ -251,6 +286,13 @@ class PaperTradingEngine {
         partialFees: updated.partialFees + fee,
         takeProfit1Hit: true,
       );
+    }
+    final current = _position;
+    if (current != null) {
+      final reachedTp2 = current.isLong
+          ? price >= current.plan.takeProfit2
+          : price <= current.plan.takeProfit2;
+      if (reachedTp2) return _close(current.plan.takeProfit2, 'TAKE_PROFIT_2');
     }
     return null;
   }
@@ -332,6 +374,7 @@ Map<String, dynamic> _planToJson(TradePlan plan) => {
   'riskAmount': plan.riskAmount,
   'direction': plan.direction,
   'leverage': plan.leverage,
+  'trailingStopPercent': plan.trailingStopPercent,
 };
 
 TradePlan _planFromJson(Map<String, dynamic> json) => TradePlan(
@@ -343,4 +386,5 @@ TradePlan _planFromJson(Map<String, dynamic> json) => TradePlan(
   riskAmount: (json['riskAmount'] as num).toDouble(),
   direction: json['direction'] as String,
   leverage: (json['leverage'] as num).toDouble(),
+  trailingStopPercent: (json['trailingStopPercent'] as num?)?.toDouble() ?? 1.0,
 );
