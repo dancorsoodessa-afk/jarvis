@@ -234,7 +234,7 @@ class _DashboardPageState extends State<DashboardPage> {
   void _managePaperPosition(double last) {
     final closed = _paper.markPrice(last);
     if (closed != null) {
-      _positionState = 'PAPER закрыта: ${closed.reason} • PnL ${closed.realizedPnl.toStringAsFixed(2)} USDT';
+      _positionState = 'PAPER закрыта: ${closed.reason} • NET ${(closed.realizedPnl - closed.fees).toStringAsFixed(2)} USDT';
     }
     _persistPaper();
   }
@@ -536,7 +536,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 12),
           Row(children: [
             Expanded(child: _miniMetric('РЕАЛИЗОВАНО', '${_paper.realizedPnl >= 0 ? '+' : ''}${_paper.realizedPnl.toStringAsFixed(2)}', _paper.realizedPnl >= 0 ? _green : _red)),
-            Expanded(child: _miniMetric('ЧИСТЫЙ PnL', '${_paper.positionNetPnl >= 0 ? '+' : ''}${_paper.netUnrealizedPnl.toStringAsFixed(2)}', _paper.netUnrealizedPnl >= 0 ? _green : _red)),
+            Expanded(child: _miniMetric('NET PnL СЧЁТА', '${_paper.positionNetPnl >= 0 ? '+' : ''}${_paper.netUnrealizedPnl.toStringAsFixed(2)}', _paper.netUnrealizedPnl >= 0 ? _green : _red)),
             Expanded(child: _miniMetric('КОМИССИИ', '${_paper.totalFees.toStringAsFixed(2)}', _muted)),
           ]),
           const SizedBox(height: 8),
@@ -546,7 +546,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _paperCard() {
     final p = _paper.openPosition;
-    final pnl = _paper.netUnrealizedPnl;
+    final pnl = _paper.positionNetPnl;
     final pnlPercent = p == null || p.plan.entry * p.quantity == 0
       ? 0.0
       : pnl / (p.plan.entry * p.quantity) * 100;
@@ -568,7 +568,7 @@ class _DashboardPageState extends State<DashboardPage> {
             onPressed: () async {
               final trade = _paper.closeManually();
               if (trade != null) {
-                setState(() => _positionState = 'Закрыта вручную • PnL ${trade.realizedPnl.toStringAsFixed(2)} USDT');
+                setState(() => _positionState = 'Закрыта вручную • NET ${(trade.realizedPnl - trade.fees).toStringAsFixed(2)} USDT');
                 await _persistPaper();
               }
             },
