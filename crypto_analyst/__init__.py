@@ -5,6 +5,7 @@ from .engine import ScalpingEngine
 from .models import Level, MarketTrade, OrderBookSnapshot, TradingSignal
 from .paper import PaperBroker
 from .risk import RiskConfig, RiskManager
+from .runtime import PaperScalpingRuntime
 
 __all__ = [
     "CryptoConfig",
@@ -12,6 +13,7 @@ __all__ = [
     "MarketTrade",
     "OrderBookSnapshot",
     "PaperBroker",
+    "PaperScalpingRuntime",
     "RiskConfig",
     "RiskManager",
     "ScalpingEngine",
