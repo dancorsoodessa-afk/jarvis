@@ -77,6 +77,13 @@ class BOTokDashboard(CryptoDashboard):
                  font=("Consolas", 9)).pack(anchor="w", padx=10, pady=6)
         tk.Label(side, text="SMART MONEY / TOP 200", bg=PANEL, fg=CYAN,
                  font=("Consolas", 9, "bold")).pack(anchor="w", padx=10, pady=(14, 4))
+        self._whale_window = None
+        tk.Button(
+            side, text="ОТКРЫТЬ WHALE RADAR / TOP 200",
+            command=self._open_whale_radar,
+            bg="#1b4b65", fg=TEXT, activebackground="#286d8e",
+            activeforeground=TEXT, relief="flat", padx=8, pady=7,
+        ).pack(anchor="w", padx=10, pady=(0, 8))
         self.whale_status_var = tk.StringVar(value="CoinGlass + Nansen: API-ключи не настроены")
         tk.Label(side, textvariable=self.whale_status_var, bg=PANEL, fg=MUTED,
                  wraplength=210, justify="left", font=("Segoe UI", 9)).pack(
@@ -215,6 +222,20 @@ class BOTokDashboard(CryptoDashboard):
                            font=("Consolas", 8))
         canvas.create_text(width * 0.75, height / 2, text="ASKS", fill="white",
                            font=("Consolas", 8))
+
+    def _open_whale_radar(self):
+        try:
+            if self._whale_window is not None and self._whale_window.winfo_exists():
+                self._whale_window.lift()
+                return
+        except tk.TclError:
+            self._whale_window = None
+        from .whale_dashboard import WhaleRadarWindow
+        self._whale_window = WhaleRadarWindow(
+            self,
+            nansen_api_key=self._nansen_api_key,
+            coinglass_api_key=self._coinglass_api_key,
+        )
 
     def _settings_path(self):
         root = os.environ.get("APPDATA", os.path.expanduser("~"))
