@@ -21,6 +21,10 @@ Repository: https://github.com/virattt/ai-hedge-fund
 
 This is explicitly an educational proof of concept and its README states that it does not actually place trades. Treat it as a reference for specialist investor-agent roles and human-readable reasoning only; do not import its execution assumptions or present it as a production crypto bot.
 
+### TapeSkills trader-skills: Backtest Sanity Checker
+
+The MIT-licensed Backtest Sanity Checker skill is vendored under skills/trader-skills/backtest-sanity-checker with its original attribution and LICENSE. It includes the SKILL.md workflow, standard-library Python checker, manual checklist and report template. BOTok can use it to audit its own paper/backtest results for look-ahead bias, impossible fills, fees/slippage, too few trades, outlier dependence, unstable sub-periods and overfitting. It is a methodology checker, not a trading signal or execution tool. The equity-specific SEC Filing Finder skill is intentionally not included in the crypto runtime.
+
 ## Whale-data sources
 
 ### Primary candidate: Nansen MCP
