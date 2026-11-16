@@ -26,7 +26,9 @@ The `crypto_analyst/` package contains the first backend layer for an OKX-only m
 
 The public feed uses the lightweight `websockets` client directly against OKX because this repository targets OKX only. CCXT Pro can be added as an optional adapter if a licensed CCXT Pro deployment is selected; it is not required for the current OKX-only feed.
 
-The package is a backend foundation and is not yet represented as a completed desktop trading screen. UI wiring, broad instrument discovery, YouTube strategy ingestion, persistent storage, replay/backtesting, and end-to-end Windows release verification remain subsequent implementation work.
+The `strategic/` package adds channel RSS monitoring, optional transcript retrieval through `youtube-transcript-api`, and an injected-LLM extractor that validates hypotheses and preserves source video metadata. Transcript availability depends on YouTube caption access. The extractor treats transcript text as untrusted input and is deliberately separate from the scalping loop.
+
+The package is a backend foundation and is not yet represented as a completed desktop trading screen. UI wiring, persistent storage, replay/backtesting, and end-to-end Windows release verification remain subsequent implementation work.
 
 ## Get the free Gemini API key
 

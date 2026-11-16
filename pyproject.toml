@@ -5,12 +5,13 @@ description = "JARVIS desktop assistant with Gemini, voice services, Three.js in
 authors = ["Jarvis Developer"]
 license = "MIT"
 readme = "README.md"
-packages = [{ include = "agent" }, { include = "crypto_analyst" }]
+packages = [{ include = "agent" }, { include = "crypto_analyst" }, { include = "strategic" }]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 requests = ">=2.31.0"
 websockets = ">=12,<16"
+youtube-transcript-api = ">=1.2,<2"
 Pillow = { version = ">=10.0", optional = true }
 pycaw = { version = ">=20240210", optional = true, markers = "sys_platform == 'win32'" }
 sounddevice = { version = ">=0.5.0", optional = true }

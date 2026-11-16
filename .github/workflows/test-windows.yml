@@ -6,6 +6,7 @@ on:
     paths:
       - "agent/**"
       - "crypto_analyst/**"
+      - "strategic/**"
       - "ui/**"
       - "scripts/prepare_3d_assets.ps1"
       - "tests/**"

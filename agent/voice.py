@@ -157,11 +157,11 @@ def listen_for_phrase(
                                 except Exception:
                                     pass
                             onset_frames.clear()
+                    elif timeout_blocks and idle_blocks >= timeout_blocks:
+                        return ""
                     else:
                         onset_blocks = 0
                         onset_frames.clear()
-                        if timeout_blocks and idle_blocks >= timeout_blocks:
-                            return ""
                     continue
                 chunks.append(block)
                 spoken_blocks += 1

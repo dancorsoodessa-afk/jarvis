@@ -290,7 +290,7 @@ class OpenAIChatProvider:
         result_content = ""
         for step_index in range(max_steps):
             try:
-                body = self._request_stream(payload) if self.on_delta is not None and "tools" in payload else self._request(payload)
+                body = self._request_stream(dict(payload)) if self.on_delta is not None and "tools" in payload else self._request(dict(payload))
             except RuntimeError as exc:
                 message = str(exc).lower()
                 capacity_error = any(f"http {code}" in message for code in (429, 500, 502, 503, 504)) or "temporarily overloaded" in message
@@ -304,7 +304,7 @@ class OpenAIChatProvider:
                     attempted_models.add(fallback_model)
                     payload["model"] = fallback_model
                     try:
-                        body = self._request_stream(payload) if self.on_delta is not None and "tools" in payload else self._request(payload)
+                        body = self._request_stream(dict(payload)) if self.on_delta is not None and "tools" in payload else self._request(dict(payload))
                         model = fallback_model
                         break
                     except RuntimeError as fallback_exc:
