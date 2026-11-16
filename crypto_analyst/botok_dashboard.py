@@ -7,6 +7,7 @@ import os
 import queue
 import threading
 import tkinter as tk
+from tkinter import ttk
 from collections import deque
 
 from .dashboard import BG, CYAN, GREEN, MUTED, PANEL, RED, TEXT, CryptoDashboard
@@ -22,6 +23,8 @@ class BOTokDashboard(CryptoDashboard):
         self.minsize(1000, 700)
         self._chart_queue = queue.Queue()
         self._nansen_api_key = self._load_nansen_key()
+        self._coinglass_api_key = self._load_coinglass_key()
+        self._whale_refresh_scheduled = False
         self._price_history = deque(maxlen=240)
         self._chart_symbol = "BTC-USDT-SWAP"
         self._last_price = None
@@ -76,7 +79,7 @@ class BOTokDashboard(CryptoDashboard):
                      anchor="w", padx=10, pady=(0, 8)
                  )
         ttk_button = tk.Button(
-            side, text="ПРОВЕРИТЬ NANSEN", command=self._check_nansen,
+            side, text="ОБНОВИТЬ WHALE DATA", command=self._check_nansen,
             bg="#153b52", fg=TEXT, activebackground="#205a78",
             activeforeground=TEXT, relief="flat", padx=8, pady=6,
         )
@@ -92,6 +95,28 @@ class BOTokDashboard(CryptoDashboard):
             bg="#153b52", fg=TEXT, activebackground="#205a78",
             activeforeground=TEXT, relief="flat", padx=8, pady=5,
         ).pack(anchor="w", padx=10, pady=(0, 10))
+        self.coinglass_key_entry = tk.Entry(
+            side, show="*", bg="#081522", fg=TEXT, insertbackground=CYAN,
+            relief="flat", width=27,
+        )
+        if self._coinglass_api_key:
+            self.coinglass_key_entry.insert(0, self._coinglass_api_key)
+        self.coinglass_key_entry.pack(fill="x", padx=10, pady=(0, 5))
+        tk.Button(
+            side, text="СОХРАНИТЬ COINGLASS KEY", command=self._save_coinglass_key,
+            bg="#153b52", fg=TEXT, activebackground="#205a78",
+            activeforeground=TEXT, relief="flat", padx=8, pady=5,
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+        self.whale_tree = ttk.Treeview(
+            side, columns=("notional", "pnl"), show="tree headings", height=8
+        )
+        self.whale_tree.heading("#0", text="WALLET")
+        self.whale_tree.heading("notional", text="SIZE USD")
+        self.whale_tree.heading("pnl", text="U.PNL")
+        self.whale_tree.column("#0", width=90)
+        self.whale_tree.column("notional", width=80, anchor="e")
+        self.whale_tree.column("pnl", width=65, anchor="e")
+        self.whale_tree.pack(fill="both", expand=True, padx=8, pady=(0, 8))
         ttk_button.pack(anchor="w", padx=10, pady=(0, 10))
         tk.Label(side, text="РЕЖИМ: PAPER ONLY", bg="#183328", fg=GREEN,
                  font=("Consolas", 9, "bold"), padx=8, pady=6).pack(
@@ -126,6 +151,11 @@ class BOTokDashboard(CryptoDashboard):
         bids = float(sum(level.amount for level in book.bids)) if book else 0.0
         asks = float(sum(level.amount for level in book.asks)) if book else 0.0
         self._chart_queue.put((symbol, float(ticker.last), bids, asks))
+
+    def _scheduled_whale_refresh(self):
+        self._whale_refresh_scheduled = False
+        if not self._closed and self._coinglass_api_key:
+            self._check_nansen()
 
     def _draw_price_chart(self):
         canvas = getattr(self, "price_canvas", None)
@@ -179,52 +209,87 @@ class BOTokDashboard(CryptoDashboard):
         root = os.environ.get("APPDATA", os.path.expanduser("~"))
         return os.path.join(root, "JARVIS", "settings.json")
 
-    def _load_nansen_key(self):
+    def _load_secret(self, name):
         try:
             from agent.secrets import unprotect_secret
             with open(self._settings_path(), "r", encoding="utf-8") as handle:
                 settings = json.load(handle)
-            return unprotect_secret(settings.get("nansen_api_key", ""))
+            return unprotect_secret(settings.get(name, ""))
         except (OSError, ValueError, TypeError):
             return ""
+
+    def _load_nansen_key(self):
+        return self._load_secret("nansen_api_key")
+
+    def _load_coinglass_key(self):
+        return self._load_secret("coinglass_api_key")
+
+    def _save_secret(self, name, value):
+        from agent.secrets import protect_secret
+        path = self._settings_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                settings = json.load(handle)
+        except (OSError, ValueError):
+            settings = {}
+        settings[name] = protect_secret(value)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(settings, handle, ensure_ascii=False, indent=2)
 
     def _save_nansen_key(self):
         value = self.nansen_key_entry.get().strip()
         if not value:
-            self.whale_status_var.set("Ключ пустой. Введите Nansen API key.")
+            self.whale_status_var.set("Nansen key пустой.")
             return
         try:
-            from agent.secrets import protect_secret
-            path = self._settings_path()
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            try:
-                with open(path, "r", encoding="utf-8") as handle:
-                    settings = json.load(handle)
-            except (OSError, ValueError):
-                settings = {}
-            settings["nansen_api_key"] = protect_secret(value)
-            with open(path, "w", encoding="utf-8") as handle:
-                json.dump(settings, handle, ensure_ascii=False, indent=2)
+            self._save_secret("nansen_api_key", value)
             self._nansen_api_key = value
-            self.whale_status_var.set("Ключ сохранён в Windows DPAPI. Проверяю Nansen MCP…")
+            self.whale_status_var.set("Nansen key сохранён через Windows DPAPI.")
             self._check_nansen()
         except Exception as exc:
-            self.whale_status_var.set(f"Не удалось сохранить Nansen key: {exc}")
+            self.whale_status_var.set(f"Ошибка сохранения Nansen key: {exc}")
+
+    def _save_coinglass_key(self):
+        value = self.coinglass_key_entry.get().strip()
+        if not value:
+            self.whale_status_var.set("CoinGlass key пустой.")
+            return
+        try:
+            self._save_secret("coinglass_api_key", value)
+            self._coinglass_api_key = value
+            self.whale_status_var.set("CoinGlass key сохранён через Windows DPAPI.")
+            self._check_nansen()
+        except Exception as exc:
+            self.whale_status_var.set(f"Ошибка сохранения CoinGlass key: {exc}")
 
     def _check_nansen(self):
         def check():
+            messages = []
+            wallets = []
+            try:
+                from .coinglass_whales import CoinGlassWhaleClient
+                client = CoinGlassWhaleClient(api_key=self._coinglass_api_key)
+                if client.configured:
+                    wallets = client.top_wallets(limit=200)
+                    messages.append(f"CoinGlass: {len(wallets)} кошельков с крупными открытыми позициями")
+                else:
+                    messages.append("CoinGlass: нужен API key")
+            except Exception as exc:
+                messages.append(f"CoinGlass: {exc}")
             try:
                 from .whale_sources import NansenMCPClient
                 client = NansenMCPClient(api_key=self._nansen_api_key)
-                if not client.configured:
-                    status = "Nansen не подключён. Нужен NANSEN_API_KEY; реальные кошельки не подменяются демо-данными."
-                else:
+                if client.configured:
                     tools = client.relevant_tools()
-                    status = f"Nansen MCP: соединение успешно, доступно аналитических tools: {len(tools)}. Рейтинг кошельков появится после выбора API-схемы."
+                    messages.append(f"Nansen MCP: подключён, аналитических tools {len(tools)}")
+                else:
+                    messages.append("Nansen: нужен API key для smart-money labels/trades")
             except Exception as exc:
-                status = f"Nansen MCP недоступен: {exc}"
-            self._chart_queue.put(("__nansen_status__", status, 0.0, 0.0))
-        threading.Thread(target=check, name="botok-nansen-check", daemon=True).start()
+                messages.append(f"Nansen MCP: {exc}")
+            self._chart_queue.put(("__whale_rows__", wallets, 0.0, 0.0))
+            self._chart_queue.put(("__nansen_status__", " | ".join(messages), 0.0, 0.0))
+        threading.Thread(target=check, name="botok-whale-refresh", daemon=True).start()
 
     def _drain_chart_queue(self):
         if self._closed:
@@ -232,10 +297,24 @@ class BOTokDashboard(CryptoDashboard):
         latest = None
         try:
             while True:
-                latest = self._chart_queue.get_nowait()
-                if latest[0] == "__nansen_status__":
-                    self.whale_status_var.set(latest[1])
-                    latest = None
+                item = self._chart_queue.get_nowait()
+                if item[0] == "__nansen_status__":
+                    self.whale_status_var.set(item[1])
+                elif item[0] == "__whale_rows__":
+                    self.whale_tree.delete(*self.whale_tree.get_children())
+                    for wallet in item[1]:
+                        address = wallet.address
+                        short_address = address if len(address) <= 15 else f"{address[:7]}…{address[-5:]}"
+                        self.whale_tree.insert(
+                            "", "end", text=short_address,
+                            values=(f"{wallet.gross_position_usd:,.0f}",
+                                    f"{wallet.unrealized_pnl_usd:,.0f}"),
+                        )
+                    if item[1] and not self._whale_refresh_scheduled:
+                        self._whale_refresh_scheduled = True
+                        self.after(60000, self._scheduled_whale_refresh)
+                else:
+                    latest = item
         except queue.Empty:
             pass
         if latest is not None:
