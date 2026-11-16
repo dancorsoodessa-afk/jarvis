@@ -225,7 +225,7 @@ class _DashboardPageState extends State<DashboardPage> {
         builder: (context) => AlertDialog(
           backgroundColor: _panel,
           title: const Text('Подтвердить PAPER-сделку?'),
-          content: Text('${plan.direction}\nВход: ${_fmt(plan.entry)}\nStop Loss: ${_fmt(plan.stopLoss)}\nTP1: ${_fmt(plan.takeProfit1)}\nTP2: ${_fmt(plan.takeProfit2)}\nРиск: $${plan.riskAmount.toStringAsFixed(2)}'),
+          content: Text('${plan.direction}\nВход: ${_fmt(plan.entry)}\nStop Loss: ${_fmt(plan.stopLoss)}\nTP1: ${_fmt(plan.takeProfit1)}\nTP2: ${_fmt(plan.takeProfit2)}\nРиск: ${plan.riskAmount.toStringAsFixed(2)} USDT'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
             FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Подтвердить')),
@@ -417,7 +417,7 @@ class _DashboardPageState extends State<DashboardPage> {
           _planLine('Take Profit 1', _fmt(plan.takeProfit1), _green),
           _planLine('Take Profit 2', _fmt(plan.takeProfit2), _green),
           _planLine('Размер позиции', '${plan.quantity.toStringAsFixed(6)} ${selectedBase()}'),
-          _planLine('Макс. риск', '$${plan.riskAmount.toStringAsFixed(2)}'),
+          _planLine('Макс. риск', '${plan.riskAmount.toStringAsFixed(2)} USDT'),
         ] else
           const Text('План появится после получения live-цены и ввода капитала.', style: TextStyle(color: _muted, fontSize: 11)),
         const SizedBox(height: 8),
