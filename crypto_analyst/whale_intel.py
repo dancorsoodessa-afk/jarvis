@@ -95,7 +95,11 @@ class WhaleIntelClient:
         self.session.headers.update({"User-Agent": "JARVIS-BOTok/1.0"})
         self.nansen_api_key = (nansen_api_key if nansen_api_key is not None else os.getenv("NANSEN_API_KEY", "")).strip()
         self.coinglass_api_key = (coinglass_api_key if coinglass_api_key is not None else os.getenv("COINGLASS_API_KEY", "")).strip()
-        self.poll_interval_seconds = 300.0 if self.nansen_api_key else 60.0
+        self.poll_interval_seconds = 60.0 if self.coinglass_api_key else 300.0 if self.nansen_api_key else 60.0
+        self._nansen_accounts_cache_at = 0.0
+        self._nansen_trades_cache_at = 0.0
+        self._nansen_accounts_cache: list[WhaleAccount] = []
+        self._nansen_trades_cache: list[WhaleTrade] = []
         self._leaderboard_cache_at = 0.0
         self._leaderboard_cache: list[WhaleAccount] = []
 
@@ -314,6 +318,20 @@ class WhaleIntelClient:
         })
         return self._normalize_trades(_rows(payload), venue="Nansen Smart Money / Hyperliquid")
 
+    def _cached_nansen_accounts(self, limit: int) -> list[WhaleAccount]:
+        now = time.monotonic()
+        if not self._nansen_accounts_cache or now - self._nansen_accounts_cache_at >= 300:
+            self._nansen_accounts_cache = self.fetch_nansen_top_traders(limit)
+            self._nansen_accounts_cache_at = now
+        return self._nansen_accounts_cache[:limit]
+
+    def _cached_nansen_trades(self, limit: int) -> list[WhaleTrade]:
+        now = time.monotonic()
+        if not self._nansen_trades_cache or now - self._nansen_trades_cache_at >= 300:
+            self._nansen_trades_cache = self.fetch_nansen_smart_money_trades(limit)
+            self._nansen_trades_cache_at = now
+        return self._nansen_trades_cache[:limit]
+
     def fetch_snapshot(self, account_limit: int = 200) -> dict[str, Any]:
         """Return independent source results so one provider outage is non-fatal."""
         snapshot: dict[str, Any] = {
@@ -325,8 +343,8 @@ class WhaleIntelClient:
         if self.nansen_api_key:
             snapshot["source"] = "Nansen Hyperliquid leaderboard + Smart Money trades"
             operations.extend((
-                ("accounts", lambda: self.fetch_nansen_top_traders(account_limit)),
-                ("hyperliquid_trades", lambda: self.fetch_nansen_smart_money_trades(200)),
+                ("accounts", lambda: self._cached_nansen_accounts(account_limit)),
+                ("hyperliquid_trades", lambda: self._cached_nansen_trades(200)),
             ))
         else:
             operations.extend((
