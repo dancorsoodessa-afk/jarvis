@@ -88,10 +88,12 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
   });
 
   while (!stopping) {
+    await prefs.reload();
     final saved = prefs.getString(paperWalletPreferenceKey);
     if (saved == null) {
-      await Future<void>.delayed(const Duration(seconds: 2));
-      continue;
+      service.invoke('guardStopped');
+      service.stopSelf();
+      return;
     }
 
     late PaperTradingEngine engine;
@@ -114,6 +116,7 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
       final socket = await WebSocket.connect(
         'wss://ws.okx.com:8443/ws/v5/public',
       ).timeout(const Duration(seconds: 12));
+      service.invoke('guardStatus', {'status': 'OKX подключён • SL/TP контролируются'});
       activeSocket = socket;
       socket.pingInterval = const Duration(seconds: 15);
       socket.add(jsonEncode({
@@ -171,6 +174,7 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
       await subscription.cancel();
       await socket.close();
     } catch (error) {
+      service.invoke('guardStatus', {'status': 'переподключение к OKX'});
       service.invoke('guardError', {'message': 'OKX Paper Guard переподключается: $error'});
     } finally {
       activeSocket = null;
