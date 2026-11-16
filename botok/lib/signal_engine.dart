@@ -127,7 +127,7 @@ TradePlan buildTradePlan({
   final stop = isLong ? entry - stopDistance : entry + stopDistance;
   final requestedRisk = capital * riskPercent / 100;
   final riskLimitedQuantity = requestedRisk / stopDistance;
-  final marginLimitedQuantity = capital * leverage / entry;
+  final marginLimitedQuantity = capital * leverage * 0.998 / entry;
   final quantity = math.min(riskLimitedQuantity, marginLimitedQuantity).toDouble();
   final risk = quantity * stopDistance;
   final tp1 = isLong
