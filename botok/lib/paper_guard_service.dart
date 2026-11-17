@@ -52,7 +52,6 @@ Future<void> startPaperGuardService() async {
   } else {
     service.invoke('refreshPosition');
   }
-  textHeartbeat?.cancel();
 }
 
 void refreshPaperGuardService() {
