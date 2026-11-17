@@ -820,7 +820,7 @@ class _DashboardPageState extends State<DashboardPage> {
       SizedBox(height: 230, child: _candles.length < 2
         ? const Center(child: Text('Загрузка OHLC-свечей OKX…', style: TextStyle(color: _muted, fontSize: 12)))
         : CustomPaint(
-            painter: _CandlePainter(List<MarketCandle>.from(_candles), forecastPrice: _price, position: _paper.openPosition),
+            painter: _CandlePainter(List<MarketCandle>.from(_candles), forecast: buildMarketForecast(_candles.where((c) => c.isClosed).toList()), position: _paper.openPosition),
             child: const SizedBox.expand(),
           )),
     ]),
