@@ -218,7 +218,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (_price <= 0) { _toast('Нет актуальной цены OKX'); return; }
     final signal = _signal;
     if (signal.confidence < 58) {
-      _toast('Сигнал слабый: \${signal.confidence.toStringAsFixed(1)}%. Ожидание.');
+      _toast('Сигнал слабый: ${signal.confidence.toStringAsFixed(1)}%. Ожидание.');
       return;
     }
     final plan = _tryAllocationPlan(signal.direction);
@@ -229,7 +229,7 @@ class _DashboardPageState extends State<DashboardPage> {
         builder: (context) => AlertDialog(
           backgroundColor: _panel,
           title: const Text('Подтвердить PAPER-сделку?'),
-          content: Text('\${plan.direction} • \${_selected?.id}\nВход: \${_fmt(plan.entry)}\nОбъём: \${plan.notional.toStringAsFixed(2)} USDT\nSL: \${_fmt(plan.stopLoss)}\nВыход для чистой цели: \${_fmt(plan.takeProfit)}\nЧистая прибыль: \${plan.netTarget.toStringAsFixed(4)} USDT'),
+          content: Text('${plan.direction} • ${_selected?.id}\nВход: ${_fmt(plan.entry)}\nОбъём: ${plan.notional.toStringAsFixed(2)} USDT\nSL: ${_fmt(plan.stopLoss)}\nВыход для чистой цели: ${_fmt(plan.takeProfit)}\nЧистая прибыль: ${plan.netTarget.toStringAsFixed(4)} USDT'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
             FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Подтвердить')),
@@ -240,7 +240,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
     setState(() {
       _paperPosition = plan;
-      _positionState = 'PAPER \${plan.direction} • цель рассчитана после комиссий';
+      _positionState = 'PAPER ${plan.direction} • цель рассчитана после комиссий';
     });
   }
 
@@ -257,8 +257,6 @@ class _DashboardPageState extends State<DashboardPage> {
     _market.dispose();
     _search.dispose();
     _capital.dispose();
-    _allocation.dispose();
-    _targetNet.dispose();
     _allocation.dispose();
     _targetNet.dispose();
     super.dispose();
@@ -462,13 +460,13 @@ class _DashboardPageState extends State<DashboardPage> {
         if (plan != null) ...[
           _planLine('Направление', plan.direction, plan.direction == 'LONG' ? _green : _red),
           _planLine('Вход', _fmt(plan.entry)),
-          _planLine('Объём позиции', '\${plan.notional.toStringAsFixed(2)} USDT'),
-          _planLine('Задействовано', '\${plan.marginUsed.toStringAsFixed(2)} USDT'),
+          _planLine('Объём позиции', '${plan.notional.toStringAsFixed(2)} USDT'),
+          _planLine('Задействовано', '${plan.marginUsed.toStringAsFixed(2)} USDT'),
           _planLine('Количество', plan.quantity.toStringAsFixed(6)),
           _planLine('Stop Loss', _fmt(plan.stopLoss), _red),
           _planLine('Цена выхода для чистой цели', _fmt(plan.takeProfit), _green),
-          _planLine('Комиссии вход + выход', '\${plan.feesEstimate.toStringAsFixed(4)} USDT'),
-          _planLine('Чистая прибыль', '\${plan.netTarget.toStringAsFixed(4)} USDT', _green),
+          _planLine('Комиссии вход + выход', '${plan.feesEstimate.toStringAsFixed(4)} USDT'),
+          _planLine('Чистая прибыль', '${plan.netTarget.toStringAsFixed(4)} USDT', _green),
         ] else
           const Text('Введите баланс, процент капитала и чистую целевую прибыль.', style: TextStyle(color: _muted, fontSize: 11)),
         SwitchListTile(contentPadding: EdgeInsets.zero,
