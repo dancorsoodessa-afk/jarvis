@@ -104,6 +104,7 @@ class _DashboardPageState extends State<DashboardPage> {
   String _autoScanStatus = 'Ожидание запуска';
   final _scanner = const MarketOpportunityScanner();
   Timer? _autoScanTimer;
+  Future<void>? _autoSettingsRestore;
   DateTime _lastAutoEntryAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _reconnectTimer;
 
@@ -129,7 +130,7 @@ class _DashboardPageState extends State<DashboardPage> {
     super.initState();
     _paper = PaperTradingEngine(initialBalance: 1000);
     _paperRestore = _restorePaper();
-    _restoreAutoSettings();
+    _autoSettingsRestore = _restoreAutoSettings();
     _guardFeed = FlutterBackgroundService().on('paperUpdate').listen((event) {
       if (!mounted || event == null) return;
       final wallet = event['wallet'];
@@ -208,6 +209,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _loadMarket() async {
     await _paperRestore;
+    await _autoSettingsRestore;
     if (!mounted) return;
     final savedPosition = _paper.openPosition;
     if (savedPosition != null) {
@@ -448,7 +450,31 @@ class _DashboardPageState extends State<DashboardPage> {
       _perTradeMargin.text = prefs.getString('botok.auto.margin') ?? '10';
       _autoProfitTarget.text = prefs.getString('botok.auto.target') ?? '5';
       _leverage = prefs.getDouble('botok.auto.leverage') ?? 1;
-      if (mounted) setState(() {});
+      final savedMarketType = prefs.getString('botok.auto.marketType');
+      if (savedMarketType == 'SPOT' || savedMarketType == 'SWAP') {
+        _marketType = savedMarketType!;
+      }
+      final enabled = prefs.getBool('botok.auto.enabled') ?? false;
+      if (mounted) {
+        setState(() {
+          _autoProfitEnabled = enabled;
+          if (enabled) _autoScanStatus = 'Восстановление фонового автосканера…';
+        });
+      }
+      if (enabled) {
+        await _paperRestore;
+        if (!mounted) return;
+        _autoScanTimer?.cancel();
+        _autoScanTimer = Timer.periodic(const Duration(seconds: 60), (_) => _maybeAutoOpen());
+        try {
+          await startPaperGuardService();
+          _guardRunning = await FlutterBackgroundService().isRunning();
+          _guardStatus = _guardRunning ? 'автосканер восстановлен' : 'фоновый сервис не подтвердил запуск';
+        } catch (error) {
+          _guardRunning = false;
+          _guardStatus = 'ошибка восстановления автосканера: $error';
+        }
+      }
     } catch (_) {}
   }
 
@@ -702,8 +728,12 @@ class _DashboardPageState extends State<DashboardPage> {
     setState(() => _positionState = 'Закрыта вручную • NET ${(trade.realizedPnl - trade.fees).toStringAsFixed(2)} USDT');
     await _persistPaper();
     _guardStatus = 'позиция закрыта вручную';
-    _guardRunning = false;
-    stopPaperGuardService();
+    _guardRunning = _autoProfitEnabled;
+    if (_autoProfitEnabled) {
+      refreshPaperGuardService();
+    } else {
+      stopPaperGuardService();
+    }
   }
 
   void _toast(String message) {
