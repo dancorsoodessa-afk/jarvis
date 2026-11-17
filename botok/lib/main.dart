@@ -398,14 +398,22 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
   Future<void> _switchMarket(String type) async {
     if (_marketType == type) return;
-    setState(() { _marketType = type; _selected = null; _paperPosition = null; _candles = []; });
+    if (_paperPosition != null) {
+      _toast('Сначала закрой открытую PAPER-сделку. Переключение рынка заблокировано, чтобы не потерять контроль над позицией.');
+      return;
+    }
+    setState(() { _marketType = type; _selected = null; _candles = []; });
     await _market.disconnect();
     await _loadMarket();
   }
 
   Future<void> _selectInstrument(MarketInstrument instrument) async {
+    if (_paperPosition != null) {
+      _toast('Сначала закрой открытую PAPER-сделку. Смена инструмента заблокирована.');
+      return;
+    }
     Navigator.pop(context);
-    setState(() { _selected = instrument; _price = 0; _paperPosition = null; });
+    setState(() { _selected = instrument; _price = 0; });
     try {
       await _connectSelected();
     } catch (e) {
