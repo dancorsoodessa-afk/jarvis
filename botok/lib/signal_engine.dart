@@ -112,6 +112,48 @@ double _rsi(List<double> values) {
 }
 
 
+
+double? calculateReturnCorrelation(
+  List<MarketCandle> instrument,
+  List<MarketCandle> benchmark, {
+  int minSamples = 30,
+}) {
+  Map<int, double> returns(List<MarketCandle> candles) {
+    final sorted = candles.where((c) => c.isClosed && c.close > 0).toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final output = <int, double>{};
+    for (var i = 1; i < sorted.length; i++) {
+      final current = sorted[i];
+      final previous = sorted[i - 1];
+      if (current.timestamp.difference(previous.timestamp).inSeconds > 180) continue;
+      output[current.timestamp.millisecondsSinceEpoch] = math.log(current.close / previous.close);
+    }
+    return output;
+  }
+
+  final left = returns(instrument);
+  final right = returns(benchmark);
+  final keys = left.keys.where(right.containsKey).toList()..sort();
+  if (keys.length < minSamples) return null;
+  final x = keys.map((key) => left[key]!).toList();
+  final y = keys.map((key) => right[key]!).toList();
+  final meanX = x.reduce((a, b) => a + b) / x.length;
+  final meanY = y.reduce((a, b) => a + b) / y.length;
+  var covariance = 0.0;
+  var varianceX = 0.0;
+  var varianceY = 0.0;
+  for (var i = 0; i < x.length; i++) {
+    final dx = x[i] - meanX;
+    final dy = y[i] - meanY;
+    covariance += dx * dy;
+    varianceX += dx * dx;
+    varianceY += dy * dy;
+  }
+  if (varianceX <= 0 || varianceY <= 0) return null;
+  return (covariance / math.sqrt(varianceX * varianceY))
+      .clamp(-1.0, 1.0).toDouble();
+}
+
 class TechnicalIndicators {
   const TechnicalIndicators({
     required this.macdHistogram,
