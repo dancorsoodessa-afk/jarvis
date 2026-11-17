@@ -55,6 +55,22 @@ void main() {
       expect(restored.openPosition!.plan.autoProfitTargetPercent, 4.5);
     });
 
+    test('live equity and account PnL include estimated exit fee', () {
+      final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0.001);
+      final opened = paper.open(plan(), instrumentId: 'BTC-USDT-SWAP');
+      paper.markPrice(101);
+      final position = paper.openPosition!;
+      final expectedNet = position.partialRealizedPnl + position.unrealizedPnl -
+          position.entryFee - position.partialFees -
+          position.currentPrice * position.quantity * paper.feeRate;
+      expect(paper.positionNetPnl, closeTo(expectedNet, 1e-8));
+      expect(paper.equity, closeTo(paper.cashBalance + paper.unrealizedPnl -
+          position.currentPrice * position.quantity * paper.feeRate, 1e-8));
+      expect(paper.netAccountPnl, closeTo(paper.equity - paper.initialBalance, 1e-8));
+      expect(paper.equity, lessThan(paper.cashBalance + paper.unrealizedPnl));
+      expect(opened.entryFee, greaterThan(0));
+    });
+
     test('mark price updates unrealized PnL and equity', () {
       final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0);
       paper.open(plan(), instrumentId: 'BTC-USDT');
