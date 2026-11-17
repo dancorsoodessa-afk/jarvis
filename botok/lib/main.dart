@@ -622,7 +622,7 @@ class _DashboardPageState extends State<DashboardPage> {
           items: MarketTimeframe.all.map((tf) => DropdownMenuItem(value: tf.bar, child: Text(tf.label, style: const TextStyle(fontSize: 10)))).toList(),
           onChanged: (v) { if (v != null) _setTimeframe(v); }),
       ]),
-      SizedBox(height: 340, child: _candles.length < 2 ? const Center(child: Text('Загрузка свечей…', style: TextStyle(color: _muted, fontSize: 10)))
+      SizedBox(height: 390, child: _candles.length < 2 ? const Center(child: Text('Загрузка свечей…', style: TextStyle(color: _muted, fontSize: 10)))
         : CustomPaint(painter: _CandlePainter(List<MarketCandle>.from(_candles), forecast: buildMarketForecast(_candles.where((c) => c.isClosed).toList()), position: _paper.openPosition), child: const SizedBox.expand())),
     ]));
 
@@ -714,7 +714,9 @@ class _DashboardPageState extends State<DashboardPage> {
     return Container(padding: const EdgeInsets.all(11), decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(13)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('PAPER ${p.plan.direction} • ${p.instrumentId}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-        Text('PnL ${_paper.positionNetPnl.toStringAsFixed(2)} USDT • SL ${_fmt(p.effectiveStopLoss)} • TP ${_fmt(p.plan.takeProfit1)}', style: const TextStyle(color: _muted, fontSize: 10)),
+        Text('ЧИСТЫЙ PnL: ${_paper.positionNetPnl >= 0 ? '+' : ''}${_paper.positionNetPnl.toStringAsFixed(2)} USDT', style: TextStyle(color: _paper.positionNetPnl >= 0 ? _green : _red, fontSize: 13, fontWeight: FontWeight.bold)),
+        Text('Комиссия входа ${p.entryFee.toStringAsFixed(3)} • TP1 комиссии ${p.partialFees.toStringAsFixed(3)} • выход сейчас ≈ ${_paper.estimatedExitFee.toStringAsFixed(3)} USDT', style: const TextStyle(color: _muted, fontSize: 9)),
+        Text('SL ${_fmt(p.effectiveStopLoss)} • TP1 ${_fmt(p.plan.takeProfit1)} • TP2 ${_fmt(p.plan.takeProfit2)}', style: const TextStyle(color: _muted, fontSize: 10)),
         if (p.plan.autoProfitTargetPercent > 0)
           Text('Автозакрытие: +${p.plan.autoProfitTargetPercent.toStringAsFixed(1)}% от начального залога', style: const TextStyle(color: _green, fontSize: 10)),
         Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _closePaper, child: const Text('ЗАКРЫТЬ'))),
@@ -1198,11 +1200,11 @@ class _CandlePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (candles.length < 2) return;
     // Fewer, larger candles improve readability on a phone screen.
-    final visible = candles.length > 64 ? candles.sublist(candles.length - 64) : candles;
+    final visible = candles.length > 48 ? candles.sublist(candles.length - 48) : candles;
     final projected = forecast?.points ?? const <ForecastPoint>[];
     final values = <double>[
       ...visible.expand((c) => [c.high, c.low]),
-      if (projected.isNotEmpty) ...projected.expand((p) => [p.lower, p.upper, p.median]),
+      if (projected.isNotEmpty) ...projected.map((p) => p.median),
       if (position != null) ...[position!.plan.entry, position!.effectiveStopLoss, position!.plan.takeProfit2],
     ];
     final minV = values.reduce((a, b) => math.min(a, b).toDouble());
