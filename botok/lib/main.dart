@@ -11,6 +11,7 @@ import 'forecast_engine.dart';
 import 'backtest_engine.dart';
 import 'signal_engine.dart';
 import 'paper_guard_service.dart';
+import 'market_scanner.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,7 +64,7 @@ class _DashboardPageState extends State<DashboardPage> {
   BacktestResult? _backtestResult;
   WalkForwardResult? _walkForwardResult;
   final _search = TextEditingController();
-  final _capital = TextEditingController(text: '1000');
+  final _perTradeMargin = TextEditingController(text: '10');
   final _autoProfitTarget = TextEditingController(text: '5');
   StreamSubscription<Map<String, dynamic>>? _feed;
   StreamSubscription<Map<String, dynamic>?>? _guardFeed;
@@ -99,6 +100,10 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _confirmMode = true;
   bool _autoProfitEnabled = false;
   bool _autoEntryInProgress = false;
+  bool _autoScanBusy = false;
+  String _autoScanStatus = 'Ожидание запуска';
+  final _scanner = const MarketOpportunityScanner();
+  Timer? _autoScanTimer;
   DateTime _lastAutoEntryAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _reconnectTimer;
 
@@ -124,6 +129,7 @@ class _DashboardPageState extends State<DashboardPage> {
     super.initState();
     _paper = PaperTradingEngine(initialBalance: 1000);
     _paperRestore = _restorePaper();
+    _restoreAutoSettings();
     _guardFeed = FlutterBackgroundService().on('paperUpdate').listen((event) {
       if (!mounted || event == null) return;
       final wallet = event['wallet'];
@@ -307,7 +313,6 @@ class _DashboardPageState extends State<DashboardPage> {
       if (last > 0) {
         _price = last;
         if (_paper.openPosition != null) _checkPaperGuard(last);
-        else if (_autoProfitEnabled) _maybeAutoOpen();
       }
     } else if (type == 'books5') {
       final bids = (row['bids'] as List<dynamic>? ?? []);
@@ -434,15 +439,164 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  Future<void> _maybeAutoOpen() async {
-    if (!_autoProfitEnabled || _autoEntryInProgress || _paper.openPosition != null || !_paperReady || _price <= 0) return;
-    if (DateTime.now().difference(_lastAutoEntryAt) < const Duration(minutes: 3)) return;
+  Future<void> _restoreAutoSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _perTradeMargin.text = prefs.getString('botok.auto.margin') ?? '10';
+      _autoProfitTarget.text = prefs.getString('botok.auto.target') ?? '5';
+      _leverage = prefs.getDouble('botok.auto.leverage') ?? 1;
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  Future<void> _saveAutoSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('botok.auto.margin', _perTradeMargin.text.trim());
+    await prefs.setString('botok.auto.target', _autoProfitTarget.text.trim());
+    await prefs.setDouble('botok.auto.leverage', _leverage);
+  }
+
+  Future<void> _setAutoProfit(bool enabled) async {
+    if (!enabled) {
+      _autoScanTimer?.cancel();
+      _autoScanTimer = null;
+      setState(() {
+        _autoProfitEnabled = false;
+        _autoScanStatus = 'Пауза';
+      });
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('botok.auto.enabled', false);
+      } catch (_) {}
+      return;
+    }
+    final margin = double.tryParse(_perTradeMargin.text.replaceAll(',', '.')) ?? 0;
     final target = double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0;
-    if (target <= 0 || target > 100) return;
-    final recommendation = _analysis.recommendation;
-    if (recommendation == 'ЖДАТЬ' || (_marketType == 'SPOT' && recommendation == 'SHORT')) return;
+    if (!margin.isFinite || margin <= 0 || !target.isFinite || target <= 0 || target > 100) {
+      _toast('Проверьте сумму залога и чистую цель прибыли.');
+      return;
+    }
+    if (_paper.availableBalance < margin) {
+      _toast('Свободного PAPER-баланса меньше заданного залога на сделку.');
+      return;
+    }
+    if (_marketType == 'SPOT') _leverage = 1;
+    await _saveAutoSettings();
+    setState(() {
+      _autoProfitEnabled = true;
+      _autoScanStatus = 'Сканирование рынка…';
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('botok.auto.enabled', true);
+    } catch (_) {}
+    _autoScanTimer?.cancel();
+    _autoScanTimer = Timer.periodic(const Duration(seconds: 60), (_) => _maybeAutoOpen());
+    await _maybeAutoOpen();
+  }
+
+  Future<void> _maybeAutoOpen() async {
+    if (!_autoProfitEnabled || _autoScanBusy || _autoEntryInProgress ||
+        _paper.openPosition != null || !_paperReady || _instruments.isEmpty) return;
+    if (DateTime.now().difference(_lastAutoEntryAt) < const Duration(minutes: 3)) return;
+    final margin = double.tryParse(_perTradeMargin.text.replaceAll(',', '.')) ?? 0;
+    final target = double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0;
+    if (!margin.isFinite || margin <= 0 || !target.isFinite || target <= 0 || target > 100) return;
+    if (_paper.availableBalance < margin) {
+      if (mounted) setState(() => _autoScanStatus = 'Недостаточно свободного баланса для следующей сделки');
+      return;
+    }
+    _autoScanBusy = true;
     _autoEntryInProgress = true;
-    try { await _openPaper(automatic: true); } finally { _autoEntryInProgress = false; }
+    try {
+      if (mounted) setState(() => _autoScanStatus = 'Сканирование ${_instruments.length} инструментов…');
+      final opportunity = await _scanner.scan(
+        instruments: _instruments,
+        marketType: _marketType,
+        loadCandles: (instrumentId, timeframe, limit) =>
+            _market.loadCandles(instrumentId, bar: timeframe, limit: limit),
+      );
+      if (!_autoProfitEnabled || _paper.openPosition != null || opportunity == null) {
+        if (mounted) setState(() => _autoScanStatus = 'Подходящего сигнала нет • продолжаю поиск');
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _selected = opportunity.instrument;
+          _price = opportunity.price;
+          _autoScanStatus = 'Кандидат: ${opportunity.instrument.id} • ${opportunity.analysis.signal.direction}';
+        });
+      }
+      await _connectSelected();
+      if (!_autoProfitEnabled || _paper.openPosition != null || !_analysis.isAligned ||
+          _analysis.recommendation == 'ЖДАТЬ' ||
+          (_marketType == 'SPOT' && _analysis.signal.direction == 'SHORT')) {
+        if (mounted) setState(() => _autoScanStatus = 'Сигнал ослаб при перепроверке • жду следующий');
+        return;
+      }
+      await _openPaper(automatic: true);
+      if (_paper.openPosition != null && mounted) {
+        setState(() => _autoScanStatus = 'PAPER ${_paper.openPosition!.instrumentId} • ${_paper.openPosition!.plan.direction}');
+      } else if (mounted) {
+        setState(() => _autoScanStatus = 'Сделка не открыта • повторный поиск');
+      }
+    } catch (error) {
+      if (mounted) setState(() => _autoScanStatus = 'Ошибка сканирования: $error');
+    } finally {
+      _autoScanBusy = false;
+      _autoEntryInProgress = false;
+    }
+  }
+
+  Future<void> _showAutoSettings() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, dialogSetState) => AlertDialog(
+          backgroundColor: _panel,
+          title: const Text('НАСТРОЙКИ АВТОАГЕНТА'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Залог на одну сделку (USDT)', style: TextStyle(color: _muted, fontSize: 11)),
+                TextField(controller: _perTradeMargin, enabled: !_autoProfitEnabled, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(suffixText: 'USDT')),
+                const SizedBox(height: 12),
+                const Text('Чистая прибыль после комиссий', style: TextStyle(color: _muted, fontSize: 11)),
+                TextField(controller: _autoProfitTarget, enabled: !_autoProfitEnabled, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(suffixText: '%')),
+                const SizedBox(height: 12),
+                Text('Плечо: ${_marketType == 'SPOT' ? '1' : _leverage.toStringAsFixed(1)}x', style: const TextStyle(color: _muted, fontSize: 11)),
+                Slider(
+                  value: _marketType == 'SPOT' ? 1 : _leverage.clamp(1, 20).toDouble(),
+                  min: 1,
+                  max: 20,
+                  divisions: 19,
+                  onChanged: _autoProfitEnabled || _marketType == 'SPOT'
+                      ? null
+                      : (value) => dialogSetState(() => _leverage = value),
+                ),
+                const Text('Для Spot плечо фиксировано 1x. Для SWAP размер позиции округляется по контрактным параметрам OKX.', style: TextStyle(color: _muted, fontSize: 10)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('ЗАКРЫТЬ')),
+            FilledButton(onPressed: _autoProfitEnabled ? null : () async {
+              final margin = double.tryParse(_perTradeMargin.text.replaceAll(',', '.')) ?? 0;
+              final target = double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0;
+              if (margin <= 0 || target <= 0 || target > 100) {
+                _toast('Сумма должна быть больше 0, цель — от 0 до 100%.');
+                return;
+              }
+              await _saveAutoSettings();
+              if (mounted) Navigator.pop(dialogContext);
+            }, child: const Text('СОХРАНИТЬ')),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _openPaper({bool automatic = false}) async {
@@ -451,8 +605,8 @@ class _DashboardPageState extends State<DashboardPage> {
     if (_price <= 0) { _toast('Нет актуальной цены OKX'); return; }
     final analysis = _analysis;
     final signal = analysis.signal;
-    if (analysis.recommendation == 'ЖДАТЬ') {
-      _toast('Сейчас рекомендация: ЖДАТЬ. Сигнал недостаточно устойчивый.');
+    if (automatic ? !analysis.isAligned : analysis.recommendation == 'ЖДАТЬ') {
+      _toast('Сейчас рекомендация: ЖДАТЬ. Нужны минимум три согласованных таймфрейма и сила сигнала от 60%.');
       return;
     }
     if (_marketType == 'SPOT' && signal.direction == 'SHORT') {
@@ -465,12 +619,23 @@ class _DashboardPageState extends State<DashboardPage> {
     }
     late final TradePlan plan;
     try {
+      final requestedMargin = automatic
+          ? (double.tryParse(_perTradeMargin.text.replaceAll(',', '.')) ?? 0)
+          : _paper.availableBalance;
+      if (automatic && requestedMargin > _paper.availableBalance) {
+        _toast('Недостаточно свободного баланса для заданного залога.');
+        return;
+      }
       plan = buildTradePlan(
         direction: signal.direction,
         entry: _price,
-        capital: _paper.availableBalance,
+        capital: requestedMargin,
         riskPercent: _riskPercent,
-        leverage: _leverage,
+        leverage: _marketType == 'SPOT' ? 1 : _leverage,
+        useFullCollateral: automatic,
+        contractSize: _selected!.contractSize,
+        lotSize: _selected!.lotSize,
+        minSize: _selected!.minSize,
         autoProfitTargetPercent: automatic ? (double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0) : 0,
       );
     } catch (e) {
@@ -542,7 +707,8 @@ class _DashboardPageState extends State<DashboardPage> {
     _guardStoppedFeed?.cancel();
     _market.dispose();
     _search.dispose();
-    _capital.dispose();
+    _perTradeMargin.dispose();
+    _autoScanTimer?.cancel();
     _autoProfitTarget.dispose();
     super.dispose();
   }
@@ -650,32 +816,19 @@ class _DashboardPageState extends State<DashboardPage> {
     decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(13), border: Border.all(color: _autoProfitEnabled ? _blue.withValues(alpha: .6) : Colors.transparent)),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        const Expanded(child: Text('АВТОПРИБЫЛЬ АГЕНТА', style: TextStyle(fontSize: 10, color: _muted, fontWeight: FontWeight.bold))),
+        const Expanded(child: Text('АВТОАГЕНТ • ОДНА СДЕЛКА ЗА РАЗ', style: TextStyle(fontSize: 10, color: _muted, fontWeight: FontWeight.bold))),
+        IconButton(onPressed: _autoProfitEnabled ? null : _showAutoSettings, icon: const Icon(Icons.settings, size: 18)),
         FilledButton.icon(
-          onPressed: () {
-            final next = !_autoProfitEnabled;
-            final target = double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0;
-            if (next && (target <= 0 || target > 100)) { _toast('Укажите цель от 0,1% до 100%.'); return; }
-            setState(() => _autoProfitEnabled = next);
-            if (next) _maybeAutoOpen();
-          },
+          onPressed: () => _setAutoProfit(!_autoProfitEnabled),
           icon: Icon(_autoProfitEnabled ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 16),
-          label: Text(_autoProfitEnabled ? 'ОСТАНОВИТЬ' : 'ЗАПУСТИТЬ'),
+          label: Text(_autoProfitEnabled ? 'ПАУЗА' : 'ЗАПУСТИТЬ'),
           style: FilledButton.styleFrom(backgroundColor: _autoProfitEnabled ? Colors.orange.withValues(alpha: .18) : _blue.withValues(alpha: .2), foregroundColor: _autoProfitEnabled ? Colors.orange : _blue, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
         ),
       ]),
-      Row(children: [
-        const Text('Цель прибыли', style: TextStyle(color: _muted, fontSize: 10)),
-        const SizedBox(width: 9),
-        SizedBox(width: 82, child: TextField(controller: _autoProfitTarget, enabled: !_autoProfitEnabled && _paper.openPosition == null, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: const TextStyle(fontSize: 13), decoration: const InputDecoration(isDense: true, suffixText: '%', contentPadding: EdgeInsets.symmetric(horizontal: 9, vertical: 8)))),
-        const Spacer(),
-        Text(_autoProfitEnabled ? 'АГЕНТ АКТИВЕН' : 'ВЫКЛЮЧЕН', style: TextStyle(color: _autoProfitEnabled ? _green : _muted, fontSize: 9, fontWeight: FontWeight.bold)),
-      ]),
+      Text('${_perTradeMargin.text} USDT на сделку • чистая цель ${_autoProfitTarget.text}% • плечо ${_marketType == 'SPOT' ? '1' : _leverage.toStringAsFixed(1)}x', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
       const SizedBox(height: 5),
-      Text(_autoProfitEnabled
-        ? 'Агент ждёт сигнал LONG/SHORT, открывает PAPER и закрывает при достижении чистой цели от залога. Входы работают, пока приложение открыто; защита открытой позиции продолжает работать через фоновый сервис.'
-        : 'Введите, например, 5%. Агент сам выберет LONG или SHORT по сигналу. Только виртуальные сделки.',
-        style: const TextStyle(color: _muted, fontSize: 9)),
+      Text(_autoProfitEnabled ? _autoScanStatus : 'Запуск: поиск лучшей пары OKX → LONG/SHORT → PAPER → закрытие по чистой цели. Только виртуальные сделки.', style: const TextStyle(color: _muted, fontSize: 9)),
+      const Text('Поиск новых входов выполняется, пока приложение активно. Открытая PAPER-позиция отдельно контролируется сервисом.', style: TextStyle(color: _muted, fontSize: 9)),
     ]),
   );
 
