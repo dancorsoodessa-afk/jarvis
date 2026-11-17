@@ -48,6 +48,9 @@ class _DashboardPageState extends State<DashboardPage> {
   final _prices = <double>[];
   final _search = TextEditingController();
   final _capital = TextEditingController(text: '100');
+  List<MarketCandle> _candles = [];
+  String _bar = '5m';
+  Timer? _candleRefresh;
   StreamSubscription<Map<String, dynamic>>? _feed;
   List<MarketInstrument> _instruments = [];
   MarketInstrument? _selected;
@@ -110,11 +113,25 @@ class _DashboardPageState extends State<DashboardPage> {
     if (instrument == null) return;
     await _feed?.cancel();
     await _market.watch(instrument.id);
+    await _refreshCandles();
+    _candleRefresh?.cancel();
+    _candleRefresh = Timer.periodic(const Duration(seconds: 20), (_) => _refreshCandles());
     _prices.clear();
     _bookImbalance = 0;
     _tradeDelta = 0;
     _feed = _market.events.listen(_onMarketEvent);
     if (mounted) setState(() => _status = 'LIVE • ${instrument.id}');
+  }
+
+  Future<void> _refreshCandles() async {
+    final instrument = _selected;
+    if (instrument == null) return;
+    try {
+      final data = await _market.loadCandles(instrument.id, bar: _bar, limit: 100);
+      if (mounted) setState(() => _candles = data);
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Свечи: $e');
+    }
   }
 
   void _onMarketEvent(Map<String, dynamic> event) {
@@ -178,7 +195,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _switchMarket(String type) async {
     if (_marketType == type) return;
-    setState(() { _marketType = type; _selected = null; _paperPosition = null; });
+    setState(() { _marketType = type; _selected = null; _paperPosition = null; _candles = []; });
     await _market.disconnect();
     await _loadMarket();
   }
@@ -249,6 +266,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void dispose() {
     _feed?.cancel();
+    _candleRefresh?.cancel();
     _market.dispose();
     _search.dispose();
     _capital.dispose();
@@ -354,11 +372,58 @@ class _DashboardPageState extends State<DashboardPage> {
   );
 
   Widget _chartCard() => _card(
-    title: 'График цены • live',
-    child: SizedBox(height: 170, child: _prices.length < 2
-      ? const Center(child: Text('Ожидание рыночных данных…', style: TextStyle(color: _muted, fontSize: 12)))
-      : CustomPaint(painter: _PricePainter(List<double>.from(_prices)), child: const SizedBox.expand())),
+    title: 'СВЕЧНОЙ ГРАФИК • OHLCV + EMA 9/21',
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(spacing: 5, children: [
+        for (final tf in ['1m', '5m', '15m', '1H', '4H', '1D'])
+          ChoiceChip(
+            label: Text(tf, style: const TextStyle(fontSize: 10)),
+            selected: _bar == tf.toLowerCase(),
+            onSelected: (_) {
+              setState(() => _bar = tf.toLowerCase());
+              _refreshCandles();
+            },
+            visualDensity: VisualDensity.compact,
+          ),
+      ]),
+      const SizedBox(height: 8),
+      SizedBox(
+        height: 260,
+        child: _candles.length < 5
+          ? const Center(child: Text('Загрузка свечей OKX…', style: TextStyle(color: _muted)))
+          : CustomPaint(painter: _CandlePainter(List<MarketCandle>.from(_candles)), child: const SizedBox.expand()),
+      ),
+      const SizedBox(height: 7),
+      Row(children: [
+        _miniMetric('EMA 9', _candles.length >= 9 ? _fmt(_chartEma(9)) : '—', _blue),
+        const SizedBox(width: 18),
+        _miniMetric('EMA 21', _candles.length >= 21 ? _fmt(_chartEma(21)) : '—', Colors.orange),
+        const SizedBox(width: 18),
+        _miniMetric('RSI 14', _candles.length >= 15 ? _chartRsi().toStringAsFixed(1) : '—', Colors.white),
+      ]),
+      const SizedBox(height: 5),
+      const Text('Зелёная свеча — рост • красная — падение • линии — EMA 9/21', style: TextStyle(color: _muted, fontSize: 10)),
+    ]),
   );
+
+  double _chartEma(int period) {
+    final closes = _candles.map((c) => c.close).toList();
+    final k = 2 / (period + 1);
+    var value = closes.first;
+    for (final close in closes.skip(1)) { value = close * k + value * (1 - k); }
+    return value;
+  }
+
+  double _chartRsi() {
+    final closes = _candles.map((c) => c.close).toList();
+    var gains = 0.0, losses = 0.0;
+    for (var i = math.max(1, closes.length - 14); i < closes.length; i++) {
+      final d = closes[i] - closes[i - 1];
+      if (d >= 0) { gains += d; } else { losses -= d; }
+    }
+    if (losses == 0) return gains == 0 ? 50 : 100;
+    return 100 - 100 / (1 + gains / losses);
+  }
 
   Widget _signalCard(TradeSignal signal) => _card(
     title: 'AI SIGNAL • LONG / SHORT',
@@ -544,35 +609,64 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 }
 
-class _PricePainter extends CustomPainter {
-  _PricePainter(this.values);
-  final List<double> values;
+class _CandlePainter extends CustomPainter {
+  _CandlePainter(this.candles);
+  final List<MarketCandle> candles;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (values.length < 2) return;
-    final minV = values.reduce((a, b) => math.min(a, b).toDouble());
-    final maxV = values.reduce((a, b) => math.max(a, b).toDouble());
-    final range = math.max(maxV - minV, maxV.abs() * 0.00001);
-    final path = Path();
-    for (var i = 0; i < values.length; i++) {
-      final x = size.width * i / (values.length - 1);
-      final y = size.height - ((values[i] - minV) / range * (size.height - 18)) - 9;
-      if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
+    if (candles.isEmpty) return;
+    const left = 8.0, right = 58.0, top = 10.0, bottom = 18.0;
+    final plot = Rect.fromLTRB(left, top, size.width - right, size.height - bottom);
+    final minPrice = candles.map((c) => c.low).reduce(math.min);
+    final maxPrice = candles.map((c) => c.high).reduce(math.max);
+    final range = math.max(maxPrice - minPrice, maxPrice.abs() * 0.0001);
+    double y(double p) => plot.bottom - ((p - minPrice) / range) * plot.height;
+    final grid = Paint()..color = Colors.white.withValues(alpha: .10)..strokeWidth = 1;
+    const textStyle = TextStyle(color: Color(0xFF9AA9BD), fontSize: 9);
+    for (var i = 0; i <= 4; i++) {
+      final gy = plot.top + plot.height * i / 4;
+      canvas.drawLine(Offset(plot.left, gy), Offset(plot.right, gy), grid);
+      final value = maxPrice - range * i / 4;
+      final tp = TextPainter(text: TextSpan(text: value.toStringAsFixed(value >= 100 ? 2 : 5), style: textStyle), textDirection: TextDirection.ltr)..layout(maxWidth: right - 4);
+      tp.paint(canvas, Offset(plot.right + 5, gy - 6));
     }
-    final fill = Path.from(path)..lineTo(size.width, size.height)..lineTo(0, size.height)..close();
-    canvas.drawPath(fill, Paint()..shader = LinearGradient(
-      colors: [_blue.withValues(alpha: 0.28), _blue.withValues(alpha: 0.01)],
-      begin: Alignment.topCenter, end: Alignment.bottomCenter,
-    ).createShader(Offset.zero & size));
-    canvas.drawPath(path, Paint()
-      ..color = _blue
-      ..strokeWidth = 2.2
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round);
+    final slot = plot.width / candles.length;
+    final bodyWidth = math.max(2.0, slot * .62);
+    final wick = Paint()..strokeWidth = 1.2;
+    for (var i = 0; i < candles.length; i++) {
+      final c = candles[i];
+      final x = plot.left + slot * (i + .5);
+      final rising = c.close >= c.open;
+      final color = rising ? const Color(0xFF20D6A0) : const Color(0xFFFF647C);
+      wick.color = color;
+      canvas.drawLine(Offset(x, y(c.high)), Offset(x, y(c.low)), wick);
+      final topY = math.min(y(c.open), y(c.close));
+      final bottomY = math.max(y(c.open), y(c.close));
+      final rect = Rect.fromLTRB(x - bodyWidth / 2, topY, x + bodyWidth / 2, math.max(topY + 1.5, bottomY));
+      canvas.drawRect(rect, Paint()..color = color);
+    }
+    void drawEma(int period, Color color) {
+      if (candles.length < period) return;
+      final k = 2 / (period + 1);
+      var ema = candles.first.close;
+      final path = Path();
+      for (var i = 0; i < candles.length; i++) {
+        ema = i == 0 ? candles[i].close : candles[i].close * k + ema * (1 - k);
+        final x = plot.left + slot * (i + .5);
+        if (i == 0) { path.moveTo(x, y(ema)); } else { path.lineTo(x, y(ema)); }
+      }
+      canvas.drawPath(path, Paint()..color = color..strokeWidth = 1.7..style = PaintingStyle.stroke);
+    }
+    drawEma(9, const Color(0xFF65A7FF));
+    drawEma(21, const Color(0xFFFFC857));
+    final last = candles.last.close;
+    final ly = y(last);
+    canvas.drawLine(Offset(plot.left, ly), Offset(plot.right, ly), Paint()..color = Colors.white54..strokeWidth = .8);
+    final label = TextPainter(text: TextSpan(text: last.toStringAsFixed(last >= 100 ? 2 : 5), style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
+    label.paint(canvas, Offset(plot.right + 4, ly - 14));
   }
 
   @override
-  bool shouldRepaint(covariant _PricePainter oldDelegate) => oldDelegate.values != values;
+  bool shouldRepaint(covariant _CandlePainter oldDelegate) => oldDelegate.candles != candles;
 }
