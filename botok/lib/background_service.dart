@@ -377,6 +377,8 @@ class BotokMarketTaskHandler extends TaskHandler {
       'autoCycle': _autoCycle,
       'paperBalance': _paperBalance,
       'realizedPnl': _realizedPnl,
+      'unrealizedPnl': _position?.netPnlAt(_lastPrice) ?? 0,
+      'equity': _paperBalance + (_position?.netPnlAt(_lastPrice) ?? 0),
       'position': _position?.toJson(),
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
