@@ -141,3 +141,96 @@ TradePlan buildTradePlan({
     direction: direction,
   );
 }
+
+
+class AllocationPlan {
+  const AllocationPlan({
+    required this.direction,
+    required this.entry,
+    required this.quantity,
+    required this.notional,
+    required this.marginUsed,
+    required this.stopLoss,
+    required this.takeProfit,
+    required this.grossTarget,
+    required this.feesEstimate,
+    required this.netTarget,
+    required this.allocationPercent,
+    required this.targetNetPercent,
+  });
+
+  final String direction;
+  final double entry;
+  final double quantity;
+  final double notional;
+  final double marginUsed;
+  final double stopLoss;
+  final double takeProfit;
+  final double grossTarget;
+  final double feesEstimate;
+  final double netTarget;
+  final double allocationPercent;
+  final double targetNetPercent;
+}
+
+/// Spot sizing: allocate a percentage of quote balance, then solve the exit
+/// price so the target is NET of estimated entry + exit trading fees.
+/// leverage must remain 1 for spot.
+AllocationPlan buildAllocationPlan({
+  required String direction,
+  required double entry,
+  required double quoteBalance,
+  required double allocationPercent,
+  required double targetNetPercent,
+  double stopPercent = 1.0,
+  double feeRate = 0.001,
+  double leverage = 1.0,
+}) {
+  if (entry <= 0 || quoteBalance <= 0 ||
+      allocationPercent <= 0 || allocationPercent > 100 ||
+      targetNetPercent <= 0 || targetNetPercent > 100 ||
+      stopPercent <= 0 || feeRate < 0 || feeRate >= 0.1 ||
+      leverage < 1) {
+    throw ArgumentError('Invalid allocation, target, price, fee or leverage.');
+  }
+  final isLong = direction == 'LONG';
+  final margin = quoteBalance * allocationPercent / 100;
+  final notional = margin * leverage;
+  final quantity = notional / entry;
+  final entryFee = notional * feeRate;
+  final stopDistance = entry * stopPercent / 100;
+  final stopLoss = isLong ? entry - stopDistance : entry + stopDistance;
+
+  // Solve net PnL after both fees. For a long:
+  // q*(exit-entry) - q*entry*f - q*exit*f = targetNet.
+  // For a short, quote notional is treated as the position sizing basis and
+  // the exit price is solved with the corresponding short PnL equation.
+  final targetCash = margin * targetNetPercent / 100;
+  final takeProfit = isLong
+      ? (targetCash + quantity * entry * (1 + feeRate)) / (quantity * (1 - feeRate))
+      : (quantity * entry * (1 - feeRate) - targetCash) / (quantity * (1 + feeRate));
+  if (takeProfit <= 0 || (isLong && takeProfit <= entry) ||
+      (!isLong && takeProfit >= entry)) {
+    throw ArgumentError('Target is not achievable with the selected parameters.');
+  }
+  final exitNotional = quantity * takeProfit;
+  final exitFee = exitNotional * feeRate;
+  final grossTarget = isLong
+      ? quantity * (takeProfit - entry)
+      : quantity * (entry - takeProfit);
+  final netTarget = grossTarget - entryFee - exitFee;
+  return AllocationPlan(
+    direction: direction,
+    entry: entry,
+    quantity: quantity,
+    notional: notional,
+    marginUsed: margin,
+    stopLoss: stopLoss,
+    takeProfit: takeProfit,
+    grossTarget: grossTarget,
+    feesEstimate: entryFee + exitFee,
+    netTarget: netTarget,
+    allocationPercent: allocationPercent,
+    targetNetPercent: targetNetPercent,
+  );
+}
