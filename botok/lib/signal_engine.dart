@@ -17,6 +17,8 @@ class TradeSignal {
     this.vwapDistancePercent = 0,
     this.obvTrend = 0,
     this.stochasticRsi = 50,
+    this.fundingRate = 0,
+    this.openInterestChangePercent = 0,
   });
 
   final double longProbability;
@@ -32,6 +34,8 @@ class TradeSignal {
   final double vwapDistancePercent;
   final double obvTrend;
   final double stochasticRsi;
+  final double fundingRate;
+  final double openInterestChangePercent;
 
   String get direction => longProbability >= shortProbability ? 'LONG' : 'SHORT';
   double get confidence => math.max(longProbability, shortProbability).toDouble();
@@ -204,6 +208,8 @@ TradeSignal calculateSignal({
   double bookImbalance = 0,
   double tradeDelta = 0,
   List<MarketCandle>? candles,
+  double fundingRate = 0,
+  double openInterestChangePercent = 0,
 }) {
   if (prices.length < 2) {
     return const TradeSignal(
@@ -228,13 +234,15 @@ TradeSignal calculateSignal({
       ? (trend * 0.35 + momentum * 0.10 +
           bookImbalance.clamp(-1.0, 1.0) * 0.30 +
           tradeDelta.clamp(-1.0, 1.0) * 0.25)
-      : (trend * 0.22 + momentum * 0.08 +
-          bookImbalance.clamp(-1.0, 1.0) * 0.20 +
-          tradeDelta.clamp(-1.0, 1.0) * 0.18 +
-          technical.macdHistogram * 0.12 +
-          technical.bollingerPosition * 0.08 +
-          (technical.vwapDistancePercent / 2).clamp(-1.0, 1.0) * 0.07 +
-          technical.obvTrend * 0.05)
+      : (trend * 0.20 + momentum * 0.07 +
+          bookImbalance.clamp(-1.0, 1.0) * 0.18 +
+          tradeDelta.clamp(-1.0, 1.0) * 0.16 +
+          technical.macdHistogram * 0.11 +
+          technical.bollingerPosition * 0.07 +
+          (technical.vwapDistancePercent / 2).clamp(-1.0, 1.0) * 0.06 +
+          technical.obvTrend * 0.05 +
+          (-fundingRate / 0.0005).clamp(-1.0, 1.0) * 0.06 +
+          (openInterestChangePercent / 2).clamp(-1.0, 1.0) * 0.04)
       .clamp(-1.0, 1.0)
       .toDouble();
   final long = (50 + raw * 45).clamp(5.0, 95.0).toDouble();
@@ -252,6 +260,8 @@ TradeSignal calculateSignal({
     vwapDistancePercent: technical?.vwapDistancePercent ?? 0,
     obvTrend: technical?.obvTrend ?? 0,
     stochasticRsi: technical?.stochasticRsi ?? 50,
+    fundingRate: fundingRate,
+    openInterestChangePercent: openInterestChangePercent,
   );
 }
 
@@ -260,6 +270,8 @@ MultiTimeframeAnalysis calculateMultiTimeframeAnalysis({
   Map<String, List<MarketCandle>>? candlesByTimeframe,
   double bookImbalance = 0,
   double tradeDelta = 0,
+  double fundingRate = 0,
+  double openInterestChangePercent = 0,
 }) {
   const weights = <String, double>{
     '1m': 0.5,
@@ -286,6 +298,8 @@ MultiTimeframeAnalysis calculateMultiTimeframeAnalysis({
       candles: candlesByTimeframe?[entry.key],
       bookImbalance: shortTerm ? bookImbalance : 0,
       tradeDelta: shortTerm ? tradeDelta : 0,
+      fundingRate: fundingRate,
+      openInterestChangePercent: openInterestChangePercent,
     );
     byTimeframe[entry.key] = signal;
     final weight = entry.value;
@@ -323,6 +337,8 @@ MultiTimeframeAnalysis calculateMultiTimeframeAnalysis({
     vwapDistancePercent: oneMinute?.vwapDistancePercent ?? 0,
     obvTrend: oneMinute?.obvTrend ?? 0,
     stochasticRsi: oneMinute?.stochasticRsi ?? 50,
+    fundingRate: fundingRate,
+    openInterestChangePercent: openInterestChangePercent,
   );
   return MultiTimeframeAnalysis(
     signal: signal,
