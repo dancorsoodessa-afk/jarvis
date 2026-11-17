@@ -199,10 +199,8 @@ class _DashboardPageState extends State<DashboardPage> {
       if (_autoCycleEnabled) Future.microtask(_scanNextOpportunity);
     } else if ((isLong && last >= position.takeProfit) || (!isLong && last <= position.takeProfit)) {
       _paperPosition = null;
-      _positionState = 'PAPER закрыта по Take Profit 2 • ${_fmt(last)}';
-    } else if ((isLong && last >= position.takeProfit1) || (!isLong && last <= position.takeProfit1)) {
-      _positionState = 'PAPER: достигнут Take Profit 1 • контроль позиции';
-    }
+      _positionState = 'PAPER закрыта по чистой целевой прибыли • ${_fmt(last)}';
+      if (_autoCycleEnabled) Future.microtask(_scanNextOpportunity);
   }
 
   Future<void> _switchMarket(String type) async {
@@ -566,7 +564,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _planLine('Направление', p.direction, p.direction == 'LONG' ? _green : _red),
         _planLine('SL / чистая цель', '${_fmt(p.stopLoss)} / ${_fmt(p.takeProfit)}'),
         SizedBox(width: double.infinity, child: OutlinedButton(
-          onPressed: () => setState(() { _paperPosition = null; _positionState = 'PAPER позиция закрыта вручную'; }),
+          onPressed: () { setState(() { _paperPosition = null; _positionState = 'PAPER позиция закрыта вручную'; }); if (_autoCycleEnabled) _scanNextOpportunity(); },
           child: const Text('ЗАКРЫТЬ PAPER-ПОЗИЦИЮ'),
         )),
       ],
