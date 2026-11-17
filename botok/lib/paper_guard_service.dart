@@ -212,7 +212,7 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
       socket.add(jsonEncode({
         'op': 'subscribe',
         'args': [
-          {'channel': 'tickers', 'instId': position!.instrumentId}
+          {'channel': 'tickers', 'instId': position.instrumentId}
         ],
       }));
 
