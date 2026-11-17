@@ -140,6 +140,19 @@ void main() {
       expect(plan.takeProfit2, lessThan(plan.takeProfit1));
     });
 
+    test('automatic plan uses the requested collateral as margin, not as risk budget', () {
+      final plan = buildTradePlan(
+        direction: 'LONG',
+        entry: 100,
+        capital: 10,
+        riskPercent: 1,
+        leverage: 5,
+        useFullCollateral: true,
+      );
+      expect(plan.entry * plan.quantity / plan.leverage, closeTo(10, 1e-8));
+      expect(plan.entry * plan.quantity, closeTo(50, 1e-8));
+    });
+
     test('invalid capital is rejected', () {
       expect(() => buildTradePlan(
         direction: 'LONG',
