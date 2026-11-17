@@ -593,7 +593,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final plan = _paperReady && _price > 0 && _paper.availableBalance > 0 && rec != 'ЖДАТЬ' ? _tryPlan(rec) : null;
     return Container(padding: const EdgeInsets.all(11), decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(13)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [const Expanded(child: Text('ПАРАМЕТРЫ СДЕЛКИ', style: TextStyle(color: _muted, fontSize: 10, fontWeight: FontWeight.bold)), Text('Риск ${_riskPercent.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 10))]),
+        Row(children: [const Expanded(child: Text('ПАРАМЕТРЫ СДЕЛКИ', style: TextStyle(color: _muted, fontSize: 10, fontWeight: FontWeight.bold))), Text('Риск ${_riskPercent.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 10))]),
         Slider(value: _riskPercent, min: .25, max: 3, divisions: 11, onChanged: (v) => setState(() => _riskPercent = v)),
         Row(children: [
           const Text('Плечо', style: TextStyle(color: _muted, fontSize: 10)),
