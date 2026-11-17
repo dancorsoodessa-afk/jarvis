@@ -100,11 +100,12 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     'feeRate': 0.001,
   };
 
-  Future<void> _syncBackgroundConfig() async {
-    if (!await FlutterForegroundTask.isRunningService) return;
+  Future<bool> _syncBackgroundConfig() async {
+    if (!await FlutterForegroundTask.isRunningService) return false;
     final config = _backgroundConfig();
     await FlutterForegroundTask.saveData(key: 'botok_config', value: config);
     FlutterForegroundTask.sendDataToTask(config);
+    return true;
   }
 
   TradeSignal get _signal => calculateSignal(
@@ -741,11 +742,9 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           onChanged: (v) {
             setState(() { _autoCycleEnabled = v; if (v) _confirmMode = false; });
             _cycleRetry?.cancel();
-            if (FlutterForegroundTask.isRunningService) {
-              _syncBackgroundConfig();
-            } else if (v) {
-              _scanNextOpportunity();
-            }
+            _syncBackgroundConfig().then((running) {
+              if (!running && v) _scanNextOpportunity();
+            });
           }),
         SwitchListTile(contentPadding: EdgeInsets.zero,
           title: const Text('Подтверждение каждой сделки', style: TextStyle(fontSize: 12)),
