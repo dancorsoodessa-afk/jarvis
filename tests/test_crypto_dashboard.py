@@ -12,4 +12,4 @@ def test_desktop_has_crypto_analyst_navigation_and_workspace_action():
     source = (root / "jarvis_desktop.py").read_text(encoding="utf-8")
     assert "CRYPTO ANALYST / PAPER" in source
     assert "def show_crypto_analyst(self):" in source
-    assert "from crypto_analyst.dashboard import CryptoDashboard" in source
+    assert "from crypto_analyst.botok_dashboard import BOTokDashboard" in source
