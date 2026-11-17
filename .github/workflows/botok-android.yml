@@ -56,7 +56,7 @@ jobs:
               if marker not in s:
                   s = s.replace(
                       "<application",
-                      f'    <uses-permission android:name="{permission}" />\\n    <application',
+                      f'    <uses-permission android:name="{permission}" />\n    <application',
                       1,
                   )
           service = """    <service
@@ -65,7 +65,7 @@ jobs:
                   android:exported="false" />
           """
           if "com.pravera.flutter_foreground_task.service.ForegroundService" not in s:
-              s = s.replace("</application>", service + "\\n</application>")
+              s = s.replace("</application>", service + "\n</application>")
           p.write_text(s)
           PY
       - run: flutter pub get
@@ -109,7 +109,7 @@ jobs:
               if marker not in s:
                   s = s.replace(
                       "<application",
-                      f'    <uses-permission android:name="{permission}" />\\n    <application',
+                      f'    <uses-permission android:name="{permission}" />\n    <application',
                       1,
                   )
           service = """    <service
@@ -118,7 +118,7 @@ jobs:
                   android:exported="false" />
           """
           if "com.pravera.flutter_foreground_task.service.ForegroundService" not in s:
-              s = s.replace("</application>", service + "\\n</application>")
+              s = s.replace("</application>", service + "\n</application>")
           p.write_text(s)
           PY
       - run: flutter pub get
