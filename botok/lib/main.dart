@@ -100,6 +100,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _autoProfitEnabled = false;
   bool _autoEntryInProgress = false;
   DateTime _lastAutoEntryAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _reconnectTimer;
 
   MultiTimeframeAnalysis get _analysis => calculateMultiTimeframeAnalysis(
     pricesByTimeframe: _candlesByTimeframe.map(
@@ -269,7 +270,8 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
     if (type == 'disconnected') {
-      setState(() => _status = 'Соединение закрыто — переподключите инструмент');
+      setState(() => _status = 'Поток OKX отключён — переподключение…');
+      _scheduleReconnect();
       return;
     }
     if (rows is! List || rows.isEmpty) return;
@@ -356,6 +358,13 @@ class _DashboardPageState extends State<DashboardPage> {
     setState(() {});
   }
 
+  void _scheduleReconnect() {
+    if (_reconnectTimer?.isActive == true || _selected == null || !mounted) return;
+    _reconnectTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && !_loading && _selected != null) _connectSelected();
+    });
+  }
+
   Future<void> _setTimeframe(String bar) async {
     if (bar == _selectedTimeframe) return;
     setState(() { _selectedTimeframe = bar; _candles..clear()..addAll(_candlesByTimeframe[bar] ?? const []); _backtestResult = null; _walkForwardResult = null; });
@@ -430,7 +439,8 @@ class _DashboardPageState extends State<DashboardPage> {
     if (DateTime.now().difference(_lastAutoEntryAt) < const Duration(minutes: 3)) return;
     final target = double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0;
     if (target <= 0 || target > 100) return;
-    if (_analysis.recommendation == 'ЖДАТЬ') return;
+    final recommendation = _analysis.recommendation;
+    if (recommendation == 'ЖДАТЬ' || (_marketType == 'SPOT' && recommendation == 'SHORT')) return;
     _autoEntryInProgress = true;
     try { await _openPaper(automatic: true); } finally { _autoEntryInProgress = false; }
   }
@@ -524,6 +534,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   void dispose() {
+    _reconnectTimer?.cancel();
     _feed?.cancel();
     _guardFeed?.cancel();
     _guardStatusFeed?.cancel();
