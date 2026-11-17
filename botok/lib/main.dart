@@ -492,7 +492,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(content: Text(message, maxLines: 2, overflow: TextOverflow.ellipsis), duration: const Duration(seconds: 3), behavior: SnackBarBehavior.floating, width: 420));
+    messenger.showSnackBar(SnackBar(content: Text(message, maxLines: 2, overflow: TextOverflow.ellipsis), duration: const Duration(seconds: 3), behavior: SnackBarBehavior.floating));
   }
 
   String _fmt(double value) => value >= 100 ? value.toStringAsFixed(2) : value.toStringAsFixed(5);
