@@ -48,6 +48,8 @@ class _DashboardPageState extends State<DashboardPage> {
   final _prices = <double>[];
   final _search = TextEditingController();
   final _capital = TextEditingController(text: '100');
+  final _allocation = TextEditingController(text: '10');
+  final _targetNet = TextEditingController(text: '1.0');
   List<MarketCandle> _candles = [];
   String _bar = '5m';
   Timer? _candleRefresh;
@@ -63,7 +65,7 @@ class _DashboardPageState extends State<DashboardPage> {
   double _tradeDelta = 0;
   double _leverage = 1;
   double _riskPercent = 1;
-  TradePlan? _paperPosition;
+  AllocationPlan? _paperPosition;
   String _positionState = 'Нет открытой paper-позиции';
   bool _loading = false;
   bool _confirmMode = true;
@@ -185,7 +187,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if ((isLong && last <= position.stopLoss) || (!isLong && last >= position.stopLoss)) {
       _paperPosition = null;
       _positionState = 'PAPER закрыта по Stop Loss • ${_fmt(last)}';
-    } else if ((isLong && last >= position.takeProfit2) || (!isLong && last <= position.takeProfit2)) {
+    } else if ((isLong && last >= position.takeProfit) || (!isLong && last <= position.takeProfit2)) {
       _paperPosition = null;
       _positionState = 'PAPER закрыта по Take Profit 2 • ${_fmt(last)}';
     } else if ((isLong && last >= position.takeProfit1) || (!isLong && last <= position.takeProfit1)) {
@@ -211,38 +213,21 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _openPaper() async {
-    if (_price <= 0) {
-      _toast('Нет актуальной цены OKX');
-      return;
-    }
+    if (_price <= 0) { _toast('Нет актуальной цены OKX'); return; }
     final signal = _signal;
-    final direction = signal.direction;
-    final probability = signal.confidence;
-    if (probability < 58) {
-      _toast('Сигнал слабый: ${probability.toStringAsFixed(1)}%. Ожидание.');
+    if (signal.confidence < 58) {
+      _toast('Сигнал слабый: \${signal.confidence.toStringAsFixed(1)}%. Ждём.');
       return;
     }
-    final capital = double.tryParse(_capital.text.replaceAll(',', '.')) ?? 0;
-    late final TradePlan plan;
-    try {
-      plan = buildTradePlan(
-        direction: direction,
-        entry: _price,
-        capital: capital,
-        riskPercent: _riskPercent,
-        leverage: _leverage,
-      );
-    } catch (e) {
-      _toast('Проверьте капитал: $e');
-      return;
-    }
+    final plan = _tryAllocationPlan(signal.direction);
+    if (plan == null) { _toast('Проверь баланс, процент и чистую цель.'); return; }
     if (_confirmMode) {
       final approved = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: _panel,
           title: const Text('Подтвердить PAPER-сделку?'),
-          content: Text('${plan.direction}\nВход: ${_fmt(plan.entry)}\nStop Loss: ${_fmt(plan.stopLoss)}\nTP1: ${_fmt(plan.takeProfit1)}\nTP2: ${_fmt(plan.takeProfit2)}\nРиск: ${plan.riskAmount.toStringAsFixed(2)} USDT'),
+          content: Text('\${plan.direction} • \${_selected?.id}\nВход: \${_fmt(plan.entry)}\nОбъём: \${plan.notional.toStringAsFixed(2)} USDT\nSL: \${_fmt(plan.stopLoss)}\nВыход с чистой целью: \${_fmt(plan.takeProfit)}\nЧистая прибыль после комиссий: \${plan.netTarget.toStringAsFixed(4)} USDT'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
             FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Подтвердить')),
@@ -253,7 +238,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
     setState(() {
       _paperPosition = plan;
-      _positionState = 'PAPER ${plan.direction} • SL/TP установлены автоматически';
+      _positionState = 'PAPER \${plan.direction} • цель рассчитана после комиссий';
     });
   }
 
@@ -270,6 +255,8 @@ class _DashboardPageState extends State<DashboardPage> {
     _market.dispose();
     _search.dispose();
     _capital.dispose();
+    _allocation.dispose();
+    _targetNet.dispose();
     super.dispose();
   }
 
@@ -454,67 +441,56 @@ class _DashboardPageState extends State<DashboardPage> {
   ]);
 
   Widget _tradePlanCard(TradeSignal signal) {
-    final plan = _price > 0 && _capital.text.isNotEmpty
-      ? _tryPlan(signal.direction)
-      : null;
+    final plan = _price > 0 ? _tryAllocationPlan(signal.direction) : null;
     return _card(
-      title: 'ПЛАН СДЕЛКИ • АВТОРАСЧЁТ',
+      title: 'АВТОНОМНЫЙ РАСЧЁТ СДЕЛКИ',
       child: Column(children: [
-        TextField(
-          controller: _capital,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Капитал (USDT)', prefixIcon: Icon(Icons.account_balance_wallet_outlined)),
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 12),
+        TextField(controller: _capital, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Баланс USDT', prefixIcon: Icon(Icons.account_balance_wallet_outlined)),
+          onChanged: (_) => setState(() {})),
+        const SizedBox(height: 9),
         Row(children: [
-          Expanded(child: Text('Риск на сделку: ${_riskPercent.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 12))),
-          Expanded(child: Text('Плечо: ${_leverage.toStringAsFixed(0)}x', textAlign: TextAlign.end, style: const TextStyle(fontSize: 12))),
+          Expanded(child: TextField(controller: _allocation, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Объём сделки, % баланса'), onChanged: (_) => setState(() {}))),
+          const SizedBox(width: 10),
+          Expanded(child: TextField(controller: _targetNet, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Чистая цель, %'), onChanged: (_) => setState(() {}))),
         ]),
-        Row(children: [
-          Expanded(child: Slider(value: _riskPercent, min: 0.25, max: 3, divisions: 11, onChanged: (v) => setState(() => _riskPercent = v))),
-          Expanded(child: Slider(value: _leverage, min: 1, max: 20, divisions: 19, onChanged: (v) => setState(() => _leverage = v))),
-        ]),
+        const SizedBox(height: 10),
         if (plan != null) ...[
           _planLine('Направление', plan.direction, plan.direction == 'LONG' ? _green : _red),
           _planLine('Вход', _fmt(plan.entry)),
+          _planLine('Объём позиции', '\${plan.notional.toStringAsFixed(2)} USDT'),
+          _planLine('Средства в сделке', '\${plan.marginUsed.toStringAsFixed(2)} USDT'),
+          _planLine('Количество', plan.quantity.toStringAsFixed(6)),
           _planLine('Stop Loss', _fmt(plan.stopLoss), _red),
-          _planLine('Take Profit 1', _fmt(plan.takeProfit1), _green),
-          _planLine('Take Profit 2', _fmt(plan.takeProfit2), _green),
-          _planLine('Размер позиции', '${plan.quantity.toStringAsFixed(6)} ${selectedBase()}'),
-          _planLine('Макс. риск', '${plan.riskAmount.toStringAsFixed(2)} USDT'),
+          _planLine('Цена выхода для чистой цели', _fmt(plan.takeProfit), _green),
+          _planLine('Комиссии round-trip', '\${plan.feesEstimate.toStringAsFixed(4)} USDT'),
+          _planLine('Чистая прибыль после комиссий', '\${plan.netTarget.toStringAsFixed(4)} USDT', _green),
         ] else
-          const Text('План появится после получения live-цены и ввода капитала.', style: TextStyle(color: _muted, fontSize: 11)),
-        const SizedBox(height: 8),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Режим подтверждения', style: TextStyle(fontSize: 12)),
-          subtitle: const Text('Перед каждой paper-сделкой спросить подтверждение', style: TextStyle(fontSize: 10, color: _muted)),
-          value: _confirmMode,
-          onChanged: (v) => setState(() => _confirmMode = v),
-        ),
+          const Text('Введите баланс, процент капитала и целевую чистую прибыль.', style: TextStyle(color: _muted, fontSize: 11)),
+        SwitchListTile(contentPadding: EdgeInsets.zero,
+          title: const Text('Подтверждение каждой сделки', style: TextStyle(fontSize: 12)),
+          value: _confirmMode, onChanged: (v) => setState(() => _confirmMode = v)),
         SizedBox(width: double.infinity, child: FilledButton.icon(
           onPressed: _paperPosition == null ? _openPaper : null,
-          icon: const Icon(Icons.play_arrow),
-          label: const Text('ПОДТВЕРДИТЬ И ОТКРЫТЬ PAPER-СДЕЛКУ'),
-        )),
+          icon: const Icon(Icons.play_arrow), label: const Text('ОТКРЫТЬ PAPER-СДЕЛКУ'))),
       ]),
     );
   }
 
-  TradePlan? _tryPlan(String direction) {
+  AllocationPlan? _tryAllocationPlan(String direction) {
     try {
-      return buildTradePlan(
+      return buildAllocationPlan(
         direction: direction,
         entry: _price,
-        capital: double.parse(_capital.text.replaceAll(',', '.')),
-        riskPercent: _riskPercent,
-        leverage: _leverage,
+        quoteBalance: double.parse(_capital.text.replaceAll(',', '.')),
+        allocationPercent: double.parse(_allocation.text.replaceAll(',', '.')),
+        targetNetPercent: double.parse(_targetNet.text.replaceAll(',', '.')),
+        leverage: _marketType == 'SPOT' ? 1 : _leverage,
       );
     } catch (_) { return null; }
   }
-
-  String selectedBase() => _selected?.base ?? 'coin';
 
   Widget _paperCard() => _card(
     title: 'PAPER TRADING',
@@ -523,7 +499,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (_paperPosition case final p?) ...[
         const SizedBox(height: 8),
         _planLine('Направление', p.direction, p.direction == 'LONG' ? _green : _red),
-        _planLine('SL / TP2', '${_fmt(p.stopLoss)} / ${_fmt(p.takeProfit2)}'),
+        _planLine('SL / чистая цель', '${_fmt(p.stopLoss)} / ${_fmt(p.takeProfit)}'),
         SizedBox(width: double.infinity, child: OutlinedButton(
           onPressed: () => setState(() { _paperPosition = null; _positionState = 'PAPER позиция закрыта вручную'; }),
           child: const Text('ЗАКРЫТЬ PAPER-ПОЗИЦИЮ'),
