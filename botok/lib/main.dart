@@ -334,7 +334,7 @@ class _DashboardPageState extends State<DashboardPage> {
       var longContracts = 0.0;
       var shortContracts = 0.0;
       for (final item in rows) {
-        if (item is! Map<String, dynamic>) continue;
+        if (item is! Map<String, dynamic> || item['instId'] != _selected?.id) continue;
         final details = item['details'];
         if (details is! List) continue;
         for (final detail in details) {
