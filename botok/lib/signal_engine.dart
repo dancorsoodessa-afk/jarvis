@@ -420,6 +420,7 @@ TradePlan buildTradePlan({
   double contractSize = 0,
   double lotSize = 0,
   double minSize = 0,
+  double tickSize = 0,
 }) {
   if (!entry.isFinite || entry <= 0 ||
       !capital.isFinite || capital <= 0 ||
@@ -430,15 +431,24 @@ TradePlan buildTradePlan({
       !contractSize.isFinite || contractSize < 0 ||
       !lotSize.isFinite || lotSize < 0 ||
       !minSize.isFinite || minSize < 0 ||
+      !tickSize.isFinite || tickSize < 0 ||
       (direction != 'LONG' && direction != 'SHORT')) {
     throw ArgumentError('Entry, collateral, risk, stop, direction, leverage and instrument sizes must be valid.');
   }
   final isLong = direction == 'LONG';
-  final stopDistance = entry * stopPercent / 100;
-  final stop = isLong ? entry - stopDistance : entry + stopDistance;
+  final normalizedEntry = tickSize > 0
+      ? (entry / tickSize).roundToDouble() * tickSize
+      : entry;
+  final stopDistance = normalizedEntry * stopPercent / 100;
+  final rawStop = isLong ? normalizedEntry - stopDistance : normalizedEntry + stopDistance;
+  final stop = tickSize > 0
+      ? (isLong
+          ? (rawStop / tickSize).floorToDouble()
+          : (rawStop / tickSize).ceilToDouble()) * tickSize
+      : rawStop;
   final requestedRisk = capital * riskPercent / 100;
   final riskLimitedQuantity = requestedRisk / stopDistance;
-  final marginLimitedQuantity = capital * leverage / entry;
+  final marginLimitedQuantity = capital * leverage / normalizedEntry;
   var quantity = useFullCollateral
       ? marginLimitedQuantity
       : math.min(riskLimitedQuantity, marginLimitedQuantity * 0.998).toDouble();
@@ -463,14 +473,24 @@ TradePlan buildTradePlan({
     throw ArgumentError('Calculated order quantity is below the instrument minimum.');
   }
   final risk = quantity * stopDistance;
-  final tp1 = isLong
-      ? entry + stopDistance * firstTargetR
-      : entry - stopDistance * firstTargetR;
-  final tp2 = isLong
-      ? entry + stopDistance * secondTargetR
-      : entry - stopDistance * secondTargetR;
+  final rawTp1 = isLong
+      ? normalizedEntry + stopDistance * firstTargetR
+      : normalizedEntry - stopDistance * firstTargetR;
+  final rawTp2 = isLong
+      ? normalizedEntry + stopDistance * secondTargetR
+      : normalizedEntry - stopDistance * secondTargetR;
+  final tp1 = tickSize > 0
+      ? (isLong
+          ? (rawTp1 / tickSize).ceilToDouble()
+          : (rawTp1 / tickSize).floorToDouble()) * tickSize
+      : rawTp1;
+  final tp2 = tickSize > 0
+      ? (isLong
+          ? (rawTp2 / tickSize).ceilToDouble()
+          : (rawTp2 / tickSize).floorToDouble()) * tickSize
+      : rawTp2;
   return TradePlan(
-    entry: entry,
+    entry: normalizedEntry,
     stopLoss: stop,
     takeProfit1: tp1,
     takeProfit2: tp2,
