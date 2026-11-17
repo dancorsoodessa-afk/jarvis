@@ -406,7 +406,7 @@ class _DashboardPageState extends State<DashboardPage> {
   double _chartRsi() {
     final closes = _candles.map((c) => c.close).toList();
     var gains = 0.0, losses = 0.0;
-    for (var i = math.max(1, closes.length - 14); i < closes.length; i++) {
+    for (var i = math.max(1, closes.length - 14).toInt(); i < closes.length; i++) {
       final d = closes[i] - closes[i - 1];
       if (d >= 0) { gains += d; } else { losses -= d; }
     }
@@ -596,7 +596,7 @@ class _CandlePainter extends CustomPainter {
     final plot = Rect.fromLTRB(left, top, size.width - right, size.height - bottom);
     final minPrice = candles.map((c) => c.low).reduce((a, b) => math.min(a, b).toDouble());
     final maxPrice = candles.map((c) => c.high).reduce((a, b) => math.max(a, b).toDouble());
-    final range = math.max(maxPrice - minPrice, maxPrice.abs() * 0.0001);
+    final range = math.max(maxPrice - minPrice, maxPrice.abs() * 0.0001).toDouble();
     double y(double p) => plot.bottom - ((p - minPrice) / range) * plot.height;
     final grid = Paint()..color = Colors.white.withValues(alpha: .10)..strokeWidth = 1;
     const textStyle = TextStyle(color: Color(0xFF9AA9BD), fontSize: 9);
@@ -608,7 +608,7 @@ class _CandlePainter extends CustomPainter {
       tp.paint(canvas, Offset(plot.right + 5, gy - 6));
     }
     final slot = plot.width / candles.length;
-    final bodyWidth = math.max(2.0, slot * .62);
+    final bodyWidth = math.max(2.0, slot * .62).toDouble();
     final wick = Paint()..strokeWidth = 1.2;
     for (var i = 0; i < candles.length; i++) {
       final c = candles[i];
@@ -619,7 +619,7 @@ class _CandlePainter extends CustomPainter {
       canvas.drawLine(Offset(x, y(c.high)), Offset(x, y(c.low)), wick);
       final topY = math.min(y(c.open), y(c.close));
       final bottomY = math.max(y(c.open), y(c.close));
-      final rect = Rect.fromLTRB(x - bodyWidth / 2, topY, x + bodyWidth / 2, math.max(topY + 1.5, bottomY));
+      final rect = Rect.fromLTRB(x - bodyWidth / 2, topY, x + bodyWidth / 2, math.max(topY + 1.5, bottomY).toDouble());
       canvas.drawRect(rect, Paint()..color = color);
     }
     void drawEma(int period, Color color) {
