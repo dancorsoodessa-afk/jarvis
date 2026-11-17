@@ -124,7 +124,6 @@ class _DashboardPageState extends State<DashboardPage> {
     _candleRefresh?.cancel();
     _cycleRetry?.cancel();
     _candleRefresh = Timer.periodic(const Duration(seconds: 20), (_) => _refreshCandles());
-    _prices.clear();
     _bookImbalance = 0;
     _tradeDelta = 0;
     _feed = _market.events.listen(_onMarketEvent);
@@ -138,6 +137,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final data = await _market.loadCandles(instrument.id, bar: _bar, limit: 100);
       if (mounted) setState(() {
         _candles = data;
+        if (data.isNotEmpty) _price = data.last.close;
         _prices..clear()..addAll(data.map((c) => c.close));
       });
     } catch (e) {
@@ -268,15 +268,16 @@ class _DashboardPageState extends State<DashboardPage> {
     final signal = _signal;
     if (_marketType == 'SPOT' && signal.direction == 'SHORT') {
       _toast('Spot не поддерживает открытие SHORT. Агент продолжит поиск LONG.');
-      if (_autoCycleEnabled) Future.microtask(_scanNextOpportunity);
+      if (_autoCycleEnabled) { _cycleRetry?.cancel(); _cycleRetry = Timer(const Duration(seconds: 20), _scanNextOpportunity); }
       return;
     }
     if (signal.confidence < 58) {
       _toast('Сигнал слабый: ${signal.confidence.toStringAsFixed(1)}%. Ожидание.');
+      if (_autoCycleEnabled) { _cycleRetry?.cancel(); _cycleRetry = Timer(const Duration(seconds: 20), _scanNextOpportunity); }
       return;
     }
     final plan = _tryAllocationPlan(signal.direction);
-    if (plan == null) { _toast('Проверь баланс, процент и чистую цель.'); return; }
+    if (plan == null) { _toast('Проверь баланс, процент и чистую цель.'); if (_autoCycleEnabled) { _cycleRetry?.cancel(); _cycleRetry = Timer(const Duration(seconds: 20), _scanNextOpportunity); } return; }
     if (_confirmMode) {
       final approved = await showDialog<bool>(
         context: context,
