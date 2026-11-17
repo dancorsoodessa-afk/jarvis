@@ -632,12 +632,12 @@ class _DashboardPageState extends State<DashboardPage> {
     child: Row(children: [
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('БАЛАНС PAPER', style: TextStyle(color: _muted, fontSize: 9, fontWeight: FontWeight.bold)),
-        Text(_paperReady ? '\${_paper.equity.toStringAsFixed(2)} USDT' : '—', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-        Text('Доступно \${_paperReady ? _paper.availableBalance.toStringAsFixed(2) : '—'} USDT', style: const TextStyle(color: _muted, fontSize: 9)),
+        Text(_paperReady ? '${_paper.equity.toStringAsFixed(2)} USDT' : '—', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+        Text('Доступно ${_paperReady ? _paper.availableBalance.toStringAsFixed(2) : '—'} USDT', style: const TextStyle(color: _muted, fontSize: 9)),
       ])),
       Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Text('PnL \${_paper.netAccountPnl >= 0 ? '+' : ''}\${_paper.netAccountPnl.toStringAsFixed(2)} USDT', style: TextStyle(color: _paper.netAccountPnl >= 0 ? _green : _red, fontSize: 11, fontWeight: FontWeight.bold)),
-        Text('Залог \${_paper.marginUsed.toStringAsFixed(2)} USDT', style: const TextStyle(color: _muted, fontSize: 9)),
+        Text('PnL ${_paper.netAccountPnl >= 0 ? '+' : ''}${_paper.netAccountPnl.toStringAsFixed(2)} USDT', style: TextStyle(color: _paper.netAccountPnl >= 0 ? _green : _red, fontSize: 11, fontWeight: FontWeight.bold)),
+        Text('Залог ${_paper.marginUsed.toStringAsFixed(2)} USDT', style: const TextStyle(color: _muted, fontSize: 9)),
       ]),
     ]),
   );
