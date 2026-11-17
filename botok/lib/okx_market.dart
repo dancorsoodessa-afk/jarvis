@@ -22,6 +22,37 @@ class MarketInstrument {
   String get label => '$base/$quote';
 }
 
+
+class MarketCandle {
+  const MarketCandle({
+    required this.time,
+    required this.open,
+    required this.high,
+    required this.low,
+    required this.close,
+    required this.volume,
+    required this.confirmed,
+  });
+
+  final DateTime time;
+  final double open;
+  final double high;
+  final double low;
+  final double close;
+  final double volume;
+  final bool confirmed;
+
+  factory MarketCandle.fromOkx(List<dynamic> row) => MarketCandle(
+    time: DateTime.fromMillisecondsSinceEpoch(int.parse(row[0].toString()), isUtc: true),
+    open: double.parse(row[1].toString()),
+    high: double.parse(row[2].toString()),
+    low: double.parse(row[3].toString()),
+    close: double.parse(row[4].toString()),
+    volume: double.tryParse(row[5].toString()) ?? 0,
+    confirmed: row.length > 8 && row[8].toString() == '1',
+  );
+}
+
 class OkxMarket {
   HttpClient? _http;
   WebSocketChannel? _socket;
@@ -29,6 +60,30 @@ class OkxMarket {
   Timer? _heartbeat;
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get events => _events.stream;
+
+
+  Future<List<MarketCandle>> loadCandles(
+    String instrumentId, {
+    String bar = '5m',
+    int limit = 120,
+  }) async {
+    final client = _http ??= HttpClient();
+    final uri = Uri.https('www.okx.com', '/api/v5/market/candles', {
+      'instId': instrumentId,
+      'bar': bar,
+      'limit': limit.clamp(1, 300).toString(),
+    });
+    final request = await client.getUrl(uri).timeout(const Duration(seconds: 15));
+    final response = await request.close().timeout(const Duration(seconds: 15));
+    final body = await response.transform(utf8.decoder).join();
+    if (response.statusCode != 200) {
+      throw HttpException('OKX candles HTTP ${response.statusCode}');
+    }
+    final decoded = jsonDecode(body) as Map<String, dynamic>;
+    if (decoded['code'] != '0') throw FormatException('OKX candles: ${decoded['msg']}');
+    final rows = (decoded['data'] as List<dynamic>).cast<List<dynamic>>();
+    return rows.map(MarketCandle.fromOkx).toList().reversed.toList();
+  }
 
   Future<List<MarketInstrument>> loadInstruments(String type) async {
     final client = _http ??= HttpClient();
