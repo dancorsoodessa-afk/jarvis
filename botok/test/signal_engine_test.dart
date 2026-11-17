@@ -7,6 +7,38 @@ import 'package:botok/okx_market.dart';
 void main() {
   group('signal engine', () {
 
+
+    test('BTC correlation uses aligned timestamped returns and stays bounded', () {
+      final benchmark = List.generate(100, (index) {
+        final close = 100 + index.toDouble();
+        return MarketCandle(
+          timestamp: DateTime.utc(2026).add(Duration(minutes: index)),
+          open: close - 1,
+          high: close + 1,
+          low: close - 2,
+          close: close,
+          volume: 100,
+          isClosed: true,
+        );
+      });
+      final correlated = List.generate(100, (index) {
+        final close = 200 + index * 2.0;
+        return MarketCandle(
+          timestamp: DateTime.utc(2026).add(Duration(minutes: index)),
+          open: close - 2,
+          high: close + 2,
+          low: close - 3,
+          close: close,
+          volume: 80,
+          isClosed: true,
+        );
+      });
+      final result = calculateReturnCorrelation(correlated, benchmark);
+      expect(result, isNotNull);
+      expect(result!, inInclusiveRange(-1, 1));
+      expect(result, closeTo(1, 0.0001));
+    });
+
     test('technical indicators calculate finite MACD, Bollinger, ATR, VWAP, OBV and Stoch RSI', () {
       var price = 100.0;
       final candles = List.generate(80, (index) {
