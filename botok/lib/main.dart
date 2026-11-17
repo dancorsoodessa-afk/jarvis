@@ -50,6 +50,8 @@ class _DashboardPageState extends State<DashboardPage> {
   final _capital = TextEditingController(text: '100');
   final _allocation = TextEditingController(text: '10');
   final _targetNet = TextEditingController(text: '1.0');
+  final _allocation = TextEditingController(text: '10');
+  final _targetNet = TextEditingController(text: '1.0');
   List<MarketCandle> _candles = [];
   String _bar = '5m';
   Timer? _candleRefresh;
@@ -255,6 +257,8 @@ class _DashboardPageState extends State<DashboardPage> {
     _market.dispose();
     _search.dispose();
     _capital.dispose();
+    _allocation.dispose();
+    _targetNet.dispose();
     _allocation.dispose();
     _targetNet.dispose();
     super.dispose();
