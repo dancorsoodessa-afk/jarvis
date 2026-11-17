@@ -249,7 +249,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (best != null && bestScore >= 60 && _autoCycleEnabled && _paperPosition == null) {
         if (mounted) setState(() {
           _selected = best;
-          _status = 'АГЕНТ: выбрана \${best!.id} • оценка \${bestScore.toStringAsFixed(1)}%';
+          _status = 'АГЕНТ: выбрана ${best!.id} • оценка ${bestScore.toStringAsFixed(1)}%';
         });
         await _connectSelected();
         if (_autoCycleEnabled && _paperPosition == null && _signal.confidence >= 58) {
