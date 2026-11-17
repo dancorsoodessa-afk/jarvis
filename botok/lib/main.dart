@@ -108,8 +108,6 @@ class _DashboardPageState extends State<DashboardPage> {
     openInterestChangePercent: _openInterestChangePercent,
   );
 
-  TradeSignal get _signal => _analysis.signal;
-
   List<MarketInstrument> get _filtered {
     final q = _search.text.trim().toUpperCase();
     if (q.isEmpty) return _instruments.take(120).toList();
@@ -488,6 +486,16 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> _closePaper() async {
+    final trade = _paper.closeManually(_price > 0 ? _price : null);
+    if (trade == null) return;
+    setState(() => _positionState = 'Закрыта вручную • NET ${(trade.realizedPnl - trade.fees).toStringAsFixed(2)} USDT');
+    await _persistPaper();
+    _guardStatus = 'позиция закрыта вручную';
+    _guardRunning = false;
+    stopPaperGuardService();
+  }
+
   void _toast(String message) {
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -629,6 +637,7 @@ class _DashboardPageState extends State<DashboardPage> {
       ]));
   }
 
+  // ignore: unused_element
   Widget _btcCorrelationCard() {
     final correlation = calculateReturnCorrelation(
       _candlesByTimeframe['1m'] ?? const <MarketCandle>[],
@@ -649,6 +658,7 @@ class _DashboardPageState extends State<DashboardPage> {
     ]));
   }
 
+  // ignore: unused_element
   Widget _derivativesFeedCard() => _card(
     title: 'ДЕРИВАТИВНЫЕ ДАННЫЕ OKX • LIVE',
     child: Column(children: [
@@ -696,6 +706,7 @@ class _DashboardPageState extends State<DashboardPage> {
     child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
   );
 
+  // ignore: unused_element
   Widget _instrumentCard(MarketInstrument? instrument) => _card(
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
@@ -715,6 +726,7 @@ class _DashboardPageState extends State<DashboardPage> {
     ]),
   );
 
+  // ignore: unused_element
   Widget _chartCard() => _card(
     title: 'OKX • СВЕЧИ $_selectedTimeframe • LONG / SHORT ЗОНЫ',
     child: Column(children: [
@@ -733,6 +745,7 @@ class _DashboardPageState extends State<DashboardPage> {
     ]),
   );
 
+  // ignore: unused_element
   Widget _forecastCard() {
     final closedCandles = _candles.where((candle) => candle.isClosed).toList();
     final forecast = buildMarketForecast(closedCandles);
@@ -763,6 +776,7 @@ class _DashboardPageState extends State<DashboardPage> {
         ]));
   }
 
+  // ignore: unused_element
   Widget _timeframeConfluenceCard() {
     final analysis = _analysis;
     final signal = analysis.signal;
@@ -795,6 +809,7 @@ class _DashboardPageState extends State<DashboardPage> {
     ]));
   }
 
+  // ignore: unused_element
   Widget _backtestCard() => _card(title: 'ИСТОРИЧЕСКИЙ БЭКТЕСТ • $_selectedTimeframe', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     Text('${_candles.length} свечей • комиссия 0,1% • проскальзывание 3 bps • старт 1 000 USDT', style: const TextStyle(color: _muted, fontSize: 10)),
     const SizedBox(height: 8),
@@ -813,6 +828,7 @@ class _DashboardPageState extends State<DashboardPage> {
     ],
   ]));
 
+  // ignore: unused_element
   Widget _signalCard(TradeSignal signal) => _card(
     title: 'СОВМЕЩЁННЫЙ СИГНАЛ • LONG / SHORT',
     child: Column(children: [
@@ -850,6 +866,7 @@ class _DashboardPageState extends State<DashboardPage> {
     ClipRRect(borderRadius: BorderRadius.circular(6), child: LinearProgressIndicator(value: value / 100, minHeight: 8, color: color, backgroundColor: Colors.white10)),
   ]);
 
+  // ignore: unused_element
   Widget _tradePlanCard(TradeSignal signal) {
     final plan = _paperReady && _price > 0 && _paper.availableBalance > 0 && _analysis.isAligned
       ? _tryPlan(signal.direction)
@@ -910,6 +927,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   String selectedBase() => _selected?.base ?? 'coin';
 
+  // ignore: unused_element
   Widget _walletCard() => _card(
     title: 'ДЕМО-КОШЕЛЁК • PAPER USDT',
     child: !_paperReady
@@ -935,6 +953,7 @@ class _DashboardPageState extends State<DashboardPage> {
         ]),
   );
 
+  // ignore: unused_element
   Widget _paperCard() {
     final p = _paper.openPosition;
     final pnl = _paper.positionNetPnl;
@@ -982,6 +1001,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _universeCard() => _card(
     title: 'СКАНЕР РЫНКА • ВСЕ ДОСТУПНЫЕ ИНСТРУМЕНТЫ',
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
