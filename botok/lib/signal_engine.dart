@@ -291,7 +291,7 @@ TradeSignal calculateSignal({
           (technical.vwapDistancePercent / 2).clamp(-1.0, 1.0) * 0.06 +
           technical.obvTrend * 0.05 +
           (-fundingRate / 0.0005).clamp(-1.0, 1.0) * 0.06 +
-          (openInterestChangePercent / 2).clamp(-1.0, 1.0) * 0.04)
+          (trend * (openInterestChangePercent / 2).clamp(0.0, 1.0)) * 0.04)
       .clamp(-1.0, 1.0)
       .toDouble();
   final long = (50 + raw * 45).clamp(5.0, 95.0).toDouble();
