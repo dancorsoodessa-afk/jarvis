@@ -81,6 +81,31 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   double _backgroundPrice = 0;
   double _backgroundLong = 50;
   double _backgroundShort = 50;
+  double _backgroundBalance = 100;
+  double _backgroundRealizedPnl = 0;
+  String _backgroundPositionText = 'Нет фоновой PAPER-позиции';
+
+  Map<String, dynamic> _backgroundConfig({
+    String? instrumentId,
+    String? marketType,
+  }) => {
+    'instrumentId': instrumentId ?? _selected?.id ??
+        (_marketType == 'SPOT' ? 'BTC-USDT' : 'BTC-USDT-SWAP'),
+    'marketType': marketType ?? _marketType,
+    'bar': _bar,
+    'autoCycle': _autoCycleEnabled,
+    'quoteBalance': double.tryParse(_capital.text.replaceAll(',', '.')) ?? 100,
+    'allocationPercent': double.tryParse(_allocation.text.replaceAll(',', '.')) ?? 10,
+    'targetNetPercent': double.tryParse(_targetNet.text.replaceAll(',', '.')) ?? 1,
+    'feeRate': 0.001,
+  };
+
+  Future<void> _syncBackgroundConfig() async {
+    if (!await FlutterForegroundTask.isRunningService) return;
+    final config = _backgroundConfig();
+    await FlutterForegroundTask.saveData(key: 'botok_config', value: config);
+    FlutterForegroundTask.sendDataToTask(config);
+  }
 
   TradeSignal get _signal => calculateSignal(
     prices: _prices,
@@ -142,6 +167,14 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       _backgroundPrice = (data['price'] as num?)?.toDouble() ?? _backgroundPrice;
       _backgroundLong = (data['longProbability'] as num?)?.toDouble() ?? 50;
       _backgroundShort = (data['shortProbability'] as num?)?.toDouble() ?? 50;
+      _backgroundBalance = (data['paperBalance'] as num?)?.toDouble() ?? _backgroundBalance;
+      _backgroundRealizedPnl = (data['realizedPnl'] as num?)?.toDouble() ?? _backgroundRealizedPnl;
+      final position = data['position'];
+      _backgroundPositionText = position is Map
+          ? '${position['direction']} ${position['instrumentId']} • вход ${position['entry']} • SL ${position['stopLoss']} • TP ${position['takeProfit']}'
+          : (state == 'paper_closed'
+              ? (data['message']?.toString() ?? 'PAPER-позиция закрыта')
+              : 'Нет фоновой PAPER-позиции');
     });
   }
 
@@ -169,10 +202,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         await FlutterForegroundTask.requestIgnoreBatteryOptimization();
       }
 
-      final config = <String, dynamic>{
-        'instrumentId': _selected?.id ?? (_marketType == 'SPOT' ? 'BTC-USDT' : 'BTC-USDT-SWAP'),
-        'marketType': _marketType,
-      };
+      final config = _backgroundConfig();
       await FlutterForegroundTask.saveData(key: 'botok_config', value: config);
 
       if (await FlutterForegroundTask.isRunningService) {
@@ -244,10 +274,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     final instrument = _selected;
     if (instrument == null) return;
     if (await FlutterForegroundTask.isRunningService) {
-      final config = <String, dynamic>{
-        'instrumentId': instrument.id,
-        'marketType': _marketType,
-      };
+      final config = _backgroundConfig(instrumentId: instrument.id);
       await FlutterForegroundTask.saveData(key: 'botok_config', value: config);
       FlutterForegroundTask.sendDataToTask(config);
     }
@@ -538,6 +565,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           _miniMetric('LONG / SHORT', '${_backgroundLong.toStringAsFixed(0)}% / ${_backgroundShort.toStringAsFixed(0)}%', _green),
         ]),
         const SizedBox(height: 7),
+        _miniMetric('PAPER БАЛАНС', '${_backgroundBalance.toStringAsFixed(2)} USDT', _green),
+        _miniMetric('РЕАЛИЗОВАННЫЙ PNL', '${_backgroundRealizedPnl.toStringAsFixed(4)} USDT', _backgroundRealizedPnl >= 0 ? _green : _red),
+        const SizedBox(height: 6),
+        Text(_backgroundPositionText, style: const TextStyle(color: _muted, fontSize: 10)),
       ],
       const Text(
         'Работает с постоянным уведомлением. Android может ограничивать длительность фоновой службы и останавливать приложение при принудительной остановке или ограничениях производителя.',
@@ -710,7 +741,11 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           onChanged: (v) {
             setState(() { _autoCycleEnabled = v; if (v) _confirmMode = false; });
             _cycleRetry?.cancel();
-            if (v) _scanNextOpportunity();
+            if (FlutterForegroundTask.isRunningService) {
+              _syncBackgroundConfig();
+            } else if (v) {
+              _scanNextOpportunity();
+            }
           }),
         SwitchListTile(contentPadding: EdgeInsets.zero,
           title: const Text('Подтверждение каждой сделки', style: TextStyle(fontSize: 12)),
