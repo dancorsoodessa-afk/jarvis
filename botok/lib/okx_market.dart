@@ -41,6 +41,14 @@ class MarketInstrument {
     required this.quote,
     required this.type,
     required this.turnover,
+    this.lastPrice = 0,
+    this.spreadPercent = 0,
+    this.contractSize = 0,
+    this.lotSize = 0,
+    this.minSize = 0,
+    this.tickSize = 0,
+    this.contractType = '',
+    this.state = 'live',
   });
 
   final String id;
@@ -48,6 +56,14 @@ class MarketInstrument {
   final String quote;
   final String type;
   final double turnover;
+  final double lastPrice;
+  final double spreadPercent;
+  final double contractSize;
+  final double lotSize;
+  final double minSize;
+  final double tickSize;
+  final String contractType;
+  final String state;
 
   String get label => '$base/$quote';
 }
@@ -76,19 +92,51 @@ class OkxMarket {
     final decoded = jsonDecode(body) as Map<String, dynamic>;
     if (decoded['code'] != '0') throw FormatException('OKX: ${decoded['msg']}');
     final rows = (decoded['data'] as List<dynamic>).cast<Map<String, dynamic>>();
+    final metadataUri = Uri.https('www.okx.com', '/api/v5/public/instruments', {'instType': kind});
+    final metadataRequest = await client.getUrl(metadataUri).timeout(const Duration(seconds: 15));
+    final metadataResponse = await metadataRequest.close().timeout(const Duration(seconds: 15));
+    final metadataBody = await metadataResponse.transform(utf8.decoder).join();
+    if (metadataResponse.statusCode != 200) {
+      throw HttpException('OKX instrument metadata HTTP ${metadataResponse.statusCode}');
+    }
+    final metadataDecoded = jsonDecode(metadataBody) as Map<String, dynamic>;
+    if (metadataDecoded['code'] != '0') {
+      throw FormatException('OKX instrument metadata: ${metadataDecoded['msg']}');
+    }
+    final metadataRows = (metadataDecoded['data'] as List<dynamic>).cast<Map<String, dynamic>>();
+    final metadataById = {for (final item in metadataRows) item['instId']?.toString() ?? '': item};
+    double number(Map<String, dynamic> row, String key) =>
+        double.tryParse(row[key]?.toString() ?? '') ?? 0;
     return rows.map((row) {
       final id = row['instId'] as String? ?? '';
       final parts = id.split('-');
       final base = parts.isNotEmpty ? parts[0] : id;
       final quote = parts.length > 1 ? parts[1] : '';
+      final metadata = metadataById[id] ?? const <String, dynamic>{};
+      final last = number(row, 'last');
+      final bid = number(row, 'bidPx');
+      final ask = number(row, 'askPx');
+      final midpoint = (bid + ask) / 2;
+      final rawTurnover = number(row, 'volCcy24h');
+      final turnover = kind == 'SWAP' ? rawTurnover * last : rawTurnover;
       return MarketInstrument(
         id: id,
         base: base,
         quote: quote,
         type: kind,
-        turnover: double.tryParse(row['volCcy24h']?.toString() ?? '') ?? 0,
+        turnover: turnover,
+        lastPrice: last,
+        spreadPercent: bid > 0 && ask >= bid && midpoint > 0
+            ? (ask - bid) / midpoint * 100
+            : 100,
+        contractSize: kind == 'SWAP' ? number(metadata, 'ctVal') : 0,
+        lotSize: number(metadata, 'lotSz'),
+        minSize: number(metadata, 'minSz'),
+        tickSize: number(metadata, 'tickSz'),
+        contractType: metadata['ctType']?.toString() ?? '',
+        state: metadata['state']?.toString() ?? 'unknown',
       );
-    }).where((item) => item.id.isNotEmpty).toList()
+    }).where((item) => item.id.isNotEmpty && item.state == 'live').toList()
       ..sort((a, b) => b.turnover.compareTo(a.turnover));
   }
 
