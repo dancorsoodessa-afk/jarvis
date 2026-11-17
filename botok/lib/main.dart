@@ -93,6 +93,7 @@ class _DashboardPageState extends State<DashboardPage> {
     pricesByTimeframe: _candlesByTimeframe.map(
       (bar, candles) => MapEntry(bar, candles.map((candle) => candle.close).toList()),
     ),
+    candlesByTimeframe: _candlesByTimeframe,
     bookImbalance: _bookImbalance,
     tradeDelta: _tradeDelta,
   );
@@ -663,6 +664,15 @@ class _DashboardPageState extends State<DashboardPage> {
         _miniMetric('RSI 14', signal.rsi.toStringAsFixed(1), Colors.white),
         _miniMetric('EMA 9', signal.emaFast == 0 ? '—' : _fmt(signal.emaFast), _blue),
         _miniMetric('EMA 21', signal.emaSlow == 0 ? '—' : _fmt(signal.emaSlow), _blue),
+      ]),
+      const SizedBox(height: 8),
+      Wrap(spacing: 10, runSpacing: 8, children: [
+        _miniMetric('MACD hist', signal.macdHistogram.toStringAsFixed(3), signal.macdHistogram >= 0 ? _green : _red),
+        _miniMetric('Bollinger %', (signal.bollingerPosition * 100).toStringAsFixed(0), _blue),
+        _miniMetric('ATR %', signal.atrPercent.toStringAsFixed(2), Colors.orange),
+        _miniMetric('VWAP Δ%', signal.vwapDistancePercent.toStringAsFixed(2), signal.vwapDistancePercent >= 0 ? _green : _red),
+        _miniMetric('OBV trend', signal.obvTrend.toStringAsFixed(2), signal.obvTrend >= 0 ? _green : _red),
+        _miniMetric('Stoch RSI', signal.stochasticRsi.toStringAsFixed(0), _blue),
       ]),
       const SizedBox(height: 8),
       const Text('Проценты — эвристический скоринг нескольких индикаторов и потоков данных, а не обученная и откалиброванная вероятность.', style: TextStyle(color: _muted, fontSize: 10)),
