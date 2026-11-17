@@ -716,7 +716,7 @@ class _DashboardPageState extends State<DashboardPage> {
       const SizedBox(height: 8),
       for (final tf in MarketTimeframe.all) _timeframeRow(tf),
       Text(aligned ? 'Сигналы согласованы по нескольким горизонтам.' : 'Недостаточно согласованных таймфреймов: автоматическое открытие сделки заблокировано.', style: const TextStyle(color: _muted, fontSize: 9)),
-      const Text('Внутри: EMA, RSI, стакан и поток сделок. Проценты — модельный скоринг, не статистически подтверждённая вероятность.', style: TextStyle(color: _muted, fontSize: 9)),
+      const Text('Внутри: EMA, RSI, MACD, Bollinger, ATR, VWAP, OBV, Stoch RSI, стакан, сделки, funding и динамика OI. Проценты — модельный скоринг, не статистически подтверждённая вероятность.', style: TextStyle(color: _muted, fontSize: 9)),
     ]));
   }
 
