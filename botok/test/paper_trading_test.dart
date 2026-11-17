@@ -40,6 +40,26 @@ void main() {
       expect(closed.realizedPnl / (autoPlan.entry * autoPlan.quantity / autoPlan.leverage) * 100, greaterThanOrEqualTo(5));
     });
 
+    test('automatic target is net of entry and exit fees on ten USDT collateral', () {
+      final autoPlan = buildTradePlan(
+        direction: 'LONG',
+        entry: 100,
+        capital: 10,
+        riskPercent: 1,
+        leverage: 5,
+        useFullCollateral: true,
+        autoProfitTargetPercent: 5,
+      );
+      final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0.001);
+      paper.open(autoPlan, instrumentId: 'BTC-USDT-SWAP');
+      expect(paper.markPrice(101.0), isNull);
+      final closed = paper.markPrice(101.3);
+      expect(closed, isNotNull);
+      expect(closed!.reason, 'AUTO_PROFIT_TARGET');
+      expect(closed.realizedPnl - closed.fees, greaterThanOrEqualTo(0.5));
+      expect(paper.openPosition, isNull);
+    });
+
     test('automatic profit target persists after wallet restore', () {
       final autoPlan = buildTradePlan(
         direction: 'SHORT',
