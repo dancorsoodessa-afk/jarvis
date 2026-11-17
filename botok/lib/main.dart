@@ -488,6 +488,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       }
     }
     setState(() {
+      _paperBalance = double.tryParse(_capital.text.replaceAll(',', '.')) ?? _paperBalance;
       _paperPosition = plan;
       _positionState = 'PAPER ${plan.direction} • открыта';
     });
@@ -762,7 +763,11 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       title: 'АВТОНОМНЫЙ РАСЧЁТ СДЕЛКИ',
       child: Column(children: [
         TextField(controller: _capital, keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Баланс USDT'), onChanged: (_) => setState(() {})),
+          decoration: const InputDecoration(labelText: 'Стартовый Paper-баланс USDT'), onChanged: (_) => setState(() {
+            if (_paperPosition == null && _paperRealizedPnl == 0) {
+              _paperBalance = double.tryParse(_capital.text.replaceAll(',', '.')) ?? _paperBalance;
+            }
+          })),
         const SizedBox(height: 9),
         Row(children: [
           Expanded(child: TextField(controller: _allocation, keyboardType: const TextInputType.numberWithOptions(decimal: true),
