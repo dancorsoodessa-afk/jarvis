@@ -524,6 +524,8 @@ class _DashboardPageState extends State<DashboardPage> {
         setState(() {
           _selected = opportunity.instrument;
           _price = opportunity.price;
+          _candlesByTimeframe.clear();
+          _candles.clear();
           _autoScanStatus = 'Кандидат: ${opportunity.instrument.id} • ${opportunity.analysis.signal.direction}';
         });
       }
@@ -636,6 +638,7 @@ class _DashboardPageState extends State<DashboardPage> {
         contractSize: _selected!.contractSize,
         lotSize: _selected!.lotSize,
         minSize: _selected!.minSize,
+        tickSize: _selected!.tickSize,
         autoProfitTargetPercent: automatic ? (double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0) : 0,
       );
     } catch (e) {
