@@ -114,7 +114,7 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
 
     try {
       final socket = await WebSocket.connect(
-        'wss://ws.okx.com:8443/ws/v5/public',
+        'wss://ws.okx.com/ws/v5/public',
       ).timeout(const Duration(seconds: 12));
       service.invoke('guardStatus', {'status': 'OKX подключён • SL/TP контролируются'});
       activeSocket = socket;
