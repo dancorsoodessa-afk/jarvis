@@ -8,6 +8,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'paper_trading.dart';
+import 'market_scanner.dart';
+import 'okx_market.dart';
+import 'signal_engine.dart';
 
 const String paperWalletPreferenceKey = 'botok.paper.wallet.v1';
 const String _guardChannelId = 'botok_paper_guard';
@@ -75,6 +78,7 @@ void paperGuardOnStart(ServiceInstance service) {
 
 Future<void> _runPaperGuard(ServiceInstance service) async {
   final prefs = await SharedPreferences.getInstance();
+  final market = OkxMarket();
   WebSocket? activeSocket;
   var stopping = false;
   Timer? textHeartbeat;
@@ -94,6 +98,7 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
     final saved = prefs.getString(paperWalletPreferenceKey);
     if (saved == null) {
       service.invoke('guardStopped');
+      await market.dispose();
       service.stopSelf();
       return;
     }
@@ -103,33 +108,111 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
       engine = PaperTradingEngine.decode(saved);
     } catch (error) {
       service.invoke('guardError', {'message': 'Не удалось прочитать PAPER-счёт: $error'});
+      await market.dispose();
       service.stopSelf();
       return;
     }
 
-    final position = engine.openPosition;
+    var position = engine.openPosition;
     if (position == null) {
-      service.invoke('guardStopped');
-      service.stopSelf();
-      return;
+      final autoEnabled = prefs.getBool('botok.auto.enabled') ?? false;
+      if (!autoEnabled) {
+        service.invoke('guardStopped');
+        await market.dispose();
+        service.stopSelf();
+        return;
+      }
+
+      final margin = double.tryParse(
+        (prefs.getString('botok.auto.margin') ?? '10').replaceAll(',', '.'),
+      ) ?? 0;
+      final target = double.tryParse(
+        (prefs.getString('botok.auto.target') ?? '5').replaceAll(',', '.'),
+      ) ?? 0;
+      final marketType = prefs.getString('botok.auto.marketType') ?? 'SPOT';
+      final leverage = marketType == 'SPOT'
+          ? 1.0
+          : (prefs.getDouble('botok.auto.leverage') ?? 1).clamp(1, 20).toDouble();
+      final lastEntryMs = prefs.getInt('botok.auto.lastEntryMs') ?? 0;
+      if (DateTime.now().millisecondsSinceEpoch - lastEntryMs < 180000) {
+        service.invoke('guardStatus', {'status': 'Пауза между сделками • следующий поиск через минуту'});
+        await Future<void>.delayed(const Duration(seconds: 60));
+        continue;
+      }
+      if (!margin.isFinite || margin <= 0 || !target.isFinite || target <= 0 ||
+          target > 100 || engine.availableBalance < margin) {
+        service.invoke('guardStatus', {'status': 'Автоагент ждёт корректные настройки или свободный баланс'});
+        await Future<void>.delayed(const Duration(seconds: 60));
+        continue;
+      }
+
+      try {
+        service.invoke('guardStatus', {'status': 'Сканирование OKX • поиск лучшей пары'});
+        final instruments = await market.loadInstruments(marketType);
+        final opportunity = await const MarketOpportunityScanner().scan(
+          instruments: instruments,
+          marketType: marketType,
+          loadCandles: (instrumentId, timeframe, limit) =>
+              market.loadCandles(instrumentId, bar: timeframe, limit: limit),
+        );
+        if (opportunity == null) {
+          service.invoke('guardStatus', {'status': 'Сильного сигнала нет • повторный поиск через минуту'});
+          await Future<void>.delayed(const Duration(seconds: 60));
+          continue;
+        }
+        final plan = buildTradePlan(
+          direction: opportunity.analysis.signal.direction,
+          entry: opportunity.price,
+          capital: margin,
+          riskPercent: 1,
+          leverage: leverage,
+          useFullCollateral: true,
+          contractSize: opportunity.instrument.contractSize,
+          lotSize: opportunity.instrument.lotSize,
+          minSize: opportunity.instrument.minSize,
+          tickSize: opportunity.instrument.tickSize,
+          autoProfitTargetPercent: target,
+        );
+        engine.open(plan, instrumentId: opportunity.instrument.id);
+        position = engine.openPosition;
+        if (position == null) {
+          service.invoke('guardError', {'message': 'PAPER-позиция не создалась после сигнала'});
+          await Future<void>.delayed(const Duration(seconds: 30));
+          continue;
+        }
+        final encoded = engine.encode();
+        await prefs.setString(paperWalletPreferenceKey, encoded);
+        await prefs.setInt('botok.auto.lastEntryMs', DateTime.now().millisecondsSinceEpoch);
+        service.invoke('paperUpdate', {
+          'wallet': encoded,
+          'price': opportunity.price,
+          'autoOpened': true,
+        });
+        service.invoke('guardStatus', {
+          'status': 'PAPER ${position.instrumentId} ${position.plan.direction} • залог ${position.margin.toStringAsFixed(2)} USDT',
+        });
+      } catch (error) {
+        service.invoke('guardError', {'message': 'Ошибка автосканера/расчёта PAPER: $error'});
+        await Future<void>.delayed(const Duration(seconds: 60));
+        continue;
+      }
     }
 
     try {
       final socket = await WebSocket.connect(
         'wss://ws.okx.com/ws/v5/public',
       ).timeout(const Duration(seconds: 12));
-      service.invoke('guardStatus', {'status': 'OKX подключён • SL/TP контролируются'});
+      service.invoke('guardStatus', {'status': 'OKX подключён • SL/TP и чистая цель контролируются'});
       activeSocket = socket;
       socket.pingInterval = const Duration(seconds: 15);
       textHeartbeat?.cancel();
-      // OKX expects application-level text ping/pong, not only WebSocket control frames.
       textHeartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
         try { socket.add('ping'); } catch (_) {}
       });
       socket.add(jsonEncode({
         'op': 'subscribe',
         'args': [
-          {'channel': 'tickers', 'instId': position.instrumentId}
+          {'channel': 'tickers', 'instId': position!.instrumentId}
         ],
       }));
 
@@ -200,4 +283,5 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
       await Future<void>.delayed(const Duration(seconds: 2));
     }
   }
+  await market.dispose();
 }
