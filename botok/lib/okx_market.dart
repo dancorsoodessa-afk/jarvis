@@ -178,7 +178,10 @@ class OkxMarket {
           {'channel': 'open-interest', 'instId': instrumentId},
           {'channel': 'funding-rate', 'instId': instrumentId},
           {'channel': 'liquidation-orders', 'instType': 'SWAP'},
-        ],
+          if (instrumentId != 'BTC-USDT-SWAP')
+            {'channel': 'candle1m', 'instId': 'BTC-USDT-SWAP'},
+        ] else if (instrumentId != 'BTC-USDT')
+          {'channel': 'candle1m', 'instId': 'BTC-USDT'},
       ],
     }));
     _subscription = socket.stream.listen((message) {
