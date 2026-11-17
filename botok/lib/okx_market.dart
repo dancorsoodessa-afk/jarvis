@@ -42,6 +42,8 @@ class MarketInstrument {
     required this.type,
     required this.turnover,
     this.lastPrice = 0,
+    this.bidPrice = 0,
+    this.askPrice = 0,
     this.spreadPercent = 0,
     this.contractSize = 0,
     this.lotSize = 0,
@@ -57,6 +59,8 @@ class MarketInstrument {
   final String type;
   final double turnover;
   final double lastPrice;
+  final double bidPrice;
+  final double askPrice;
   final double spreadPercent;
   final double contractSize;
   final double lotSize;
@@ -126,6 +130,8 @@ class OkxMarket {
         type: kind,
         turnover: turnover,
         lastPrice: last,
+        bidPrice: bid,
+        askPrice: ask,
         spreadPercent: bid > 0 && ask >= bid && midpoint > 0
             ? (ask - bid) / midpoint * 100
             : 100,

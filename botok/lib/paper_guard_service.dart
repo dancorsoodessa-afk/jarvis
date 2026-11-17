@@ -230,7 +230,11 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
             final rows = decoded['data'];
             if (rows is! List || rows.isEmpty) return;
             final row = rows.first as Map<String, dynamic>;
-            final price = double.tryParse(row['last']?.toString() ?? '') ?? 0;
+            final last = double.tryParse(row['last']?.toString() ?? '') ?? 0;
+            final bid = double.tryParse(row['bidPx']?.toString() ?? '') ?? 0;
+            final ask = double.tryParse(row['askPx']?.toString() ?? '') ?? 0;
+            final openPosition = engine.openPosition;
+            final price = openPosition == null ? last : openPosition.isLong ? (bid > 0 ? bid : last) : (ask > 0 ? ask : last);
             if (price <= 0 || !price.isFinite) return;
 
             final closed = engine.markPrice(price);

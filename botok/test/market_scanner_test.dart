@@ -26,6 +26,9 @@ void main() {
         quote: 'USDT',
         type: type,
         turnover: turnover,
+        lastPrice: 100,
+        bidPrice: 99.9,
+        askPrice: 100.1,
         contractSize: type == 'SWAP' ? 0.01 : 0,
         lotSize: type == 'SWAP' ? 1 : 0.001,
         minSize: type == 'SWAP' ? 1 : 0.001,
@@ -45,6 +48,7 @@ void main() {
     expect(result!.instrument.id, 'BBB-USDT-SWAP');
     expect(result.analysis.isAligned, isTrue);
     expect(result.analysis.signal.direction, 'LONG');
+    expect(result.price, 100.1);
   });
 
   test('scanner never returns SHORT for spot instruments', () async {

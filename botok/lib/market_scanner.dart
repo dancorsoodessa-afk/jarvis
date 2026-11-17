@@ -93,7 +93,10 @@ class MarketOpportunityScanner {
           continue;
         }
 
-        final price = byTimeframe['5m']!.last.close;
+        final lastPrice = instrument.lastPrice > 0 ? instrument.lastPrice : byTimeframe['5m']!.last.close;
+        final price = analysis.signal.direction == 'LONG'
+            ? (instrument.askPrice > 0 ? instrument.askPrice : lastPrice)
+            : (instrument.bidPrice > 0 ? instrument.bidPrice : lastPrice);
         final liquidityScore = math.log(instrument.turnover + 1);
         final score = analysis.signal.confidence * 0.55 +
             analysis.agreementPercent * 0.40 +

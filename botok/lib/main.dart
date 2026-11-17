@@ -229,6 +229,8 @@ class _DashboardPageState extends State<DashboardPage> {
           (i) => i.id == wantedInstrument,
           orElse: () => items.isNotEmpty ? items.first : throw StateError('OKX returned no instruments'),
         );
+        _bid = _selected!.bidPrice;
+        _ask = _selected!.askPrice;
         _status = 'OKX: ${items.length} инструментов загружено';
       });
       await _connectSelected();
@@ -251,6 +253,8 @@ class _DashboardPageState extends State<DashboardPage> {
       _candles..clear()..addAll(_candlesByTimeframe[_selectedTimeframe] ?? const []);
       final oneMinute = _candlesByTimeframe['1m'] ?? const <MarketCandle>[];
       if (oneMinute.isNotEmpty) _price = oneMinute.last.close;
+      _bid = instrument.bidPrice;
+      _ask = instrument.askPrice;
       _btcCandles.clear();
       final benchmarkId = instrument.id.endsWith('-SWAP') ? 'BTC-USDT-SWAP' : 'BTC-USDT';
       if (instrument.id != benchmarkId) {
@@ -315,9 +319,17 @@ class _DashboardPageState extends State<DashboardPage> {
     final row = rows.first as Map<String, dynamic>;
     if (type == 'tickers') {
       final last = double.tryParse(row['last']?.toString() ?? '') ?? 0;
+      final bid = double.tryParse(row['bidPx']?.toString() ?? '') ?? 0;
+      final ask = double.tryParse(row['askPx']?.toString() ?? '') ?? 0;
+      if (bid > 0) _bid = bid;
+      if (ask > 0) _ask = ask;
       if (last > 0) {
         _price = last;
-        if (_paper.openPosition != null) _checkPaperGuard(last);
+        final position = _paper.openPosition;
+        if (position != null) {
+          final executableMark = position.isLong ? (_bid > 0 ? _bid : last) : (_ask > 0 ? _ask : last);
+          _checkPaperGuard(executableMark);
+        }
       }
     } else if (type == 'books5') {
       final bids = (row['bids'] as List<dynamic>? ?? []);
@@ -436,7 +448,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _selectInstrument(MarketInstrument instrument) async {
     if (_paper.openPosition != null) { _toast('Сначала закройте PAPER-позицию на текущем инструменте.'); return; }
     Navigator.pop(context);
-    setState(() { _selected = instrument; _price = 0; _candles.clear(); });
+    setState(() { _selected = instrument; _price = instrument.lastPrice; _bid = instrument.bidPrice; _ask = instrument.askPrice; _candles.clear(); });
     try {
       await _connectSelected();
     } catch (e) {
@@ -564,7 +576,9 @@ class _DashboardPageState extends State<DashboardPage> {
       if (mounted) {
         setState(() {
           _selected = opportunity.instrument;
-          _price = opportunity.price;
+          _price = opportunity.instrument.lastPrice > 0 ? opportunity.instrument.lastPrice : opportunity.price;
+          _bid = opportunity.instrument.bidPrice;
+          _ask = opportunity.instrument.askPrice;
           _candlesByTimeframe.clear();
           _candles.clear();
           _autoScanStatus = 'Кандидат: ${opportunity.instrument.id} • ${opportunity.analysis.signal.direction}';
@@ -669,9 +683,17 @@ class _DashboardPageState extends State<DashboardPage> {
         _toast('Недостаточно свободного баланса для заданного залога.');
         return;
       }
+      final instrument = _selected;
+      if (instrument == null) {
+        _toast('Не выбран инструмент OKX.');
+        return;
+      }
+      final executableEntry = signal.direction == 'LONG'
+          ? (_ask > 0 ? _ask : instrument.askPrice > 0 ? instrument.askPrice : _price)
+          : (_bid > 0 ? _bid : instrument.bidPrice > 0 ? instrument.bidPrice : _price);
       plan = buildTradePlan(
         direction: signal.direction,
-        entry: _price,
+        entry: executableEntry,
         capital: requestedMargin,
         riskPercent: _riskPercent,
         leverage: _marketType == 'SPOT' ? 1 : _leverage,
@@ -723,7 +745,9 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _closePaper() async {
-    final trade = _paper.closeManually(_price > 0 ? _price : null);
+    final position = _paper.openPosition;
+    final executableExit = position == null ? _price : position.isLong ? (_bid > 0 ? _bid : _price) : (_ask > 0 ? _ask : _price);
+    final trade = _paper.closeManually(executableExit > 0 ? executableExit : null);
     if (trade == null) return;
     setState(() => _positionState = 'Закрыта вручную • NET ${(trade.realizedPnl - trade.fees).toStringAsFixed(2)} USDT');
     await _persistPaper();
