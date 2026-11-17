@@ -85,7 +85,7 @@ void main() {
       const analysis = MultiTimeframeAnalysis(
         signal: TradeSignal(longProbability: 70, shortProbability: 30, rsi: 60, emaFast: 101, emaSlow: 100, bookImbalance: 0, tradeDelta: 0),
         byTimeframe: {},
-        activeTimeframes: 2,
+        activeTimeframes: 3,
         agreementPercent: 60,
         weightedScore: 0.4,
       );
