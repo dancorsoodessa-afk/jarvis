@@ -622,7 +622,7 @@ class _DashboardPageState extends State<DashboardPage> {
           items: MarketTimeframe.all.map((tf) => DropdownMenuItem(value: tf.bar, child: Text(tf.label, style: const TextStyle(fontSize: 10)))).toList(),
           onChanged: (v) { if (v != null) _setTimeframe(v); }),
       ]),
-      SizedBox(height: 190, child: _candles.length < 2 ? const Center(child: Text('Загрузка свечей…', style: TextStyle(color: _muted, fontSize: 10)))
+      SizedBox(height: 340, child: _candles.length < 2 ? const Center(child: Text('Загрузка свечей…', style: TextStyle(color: _muted, fontSize: 10)))
         : CustomPaint(painter: _CandlePainter(List<MarketCandle>.from(_candles), forecast: buildMarketForecast(_candles.where((c) => c.isClosed).toList()), position: _paper.openPosition), child: const SizedBox.expand())),
     ]));
 
@@ -633,6 +633,9 @@ class _DashboardPageState extends State<DashboardPage> {
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('БАЛАНС PAPER', style: TextStyle(color: _muted, fontSize: 9, fontWeight: FontWeight.bold)),
         Text(_paperReady ? '${_paper.equity.toStringAsFixed(2)} USDT' : '—', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+        if (_paper.openPosition != null)
+          Text('Текущая сделка NET ${_paper.positionNetPnl >= 0 ? '+' : ''}${_paper.positionNetPnl.toStringAsFixed(2)} USDT', style: TextStyle(color: _paper.positionNetPnl >= 0 ? _green : _red, fontSize: 10, fontWeight: FontWeight.bold)),
+        Text('Комиссии всего ${_paper.totalFees.toStringAsFixed(2)} USDT • выход сейчас ≈ ${_paper.estimatedExitFee.toStringAsFixed(2)}', style: const TextStyle(color: _muted, fontSize: 9)),
         Text('Доступно ${_paperReady ? _paper.availableBalance.toStringAsFixed(2) : '—'} USDT', style: const TextStyle(color: _muted, fontSize: 9)),
       ])),
       Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -699,7 +702,7 @@ class _DashboardPageState extends State<DashboardPage> {
         ]),
         SizedBox(width: double.infinity, child: FilledButton(
           onPressed: _paperReady && _paper.openPosition == null && rec != 'ЖДАТЬ' && !(_marketType == 'SPOT' && rec == 'SHORT') ? _openPaper : null,
-          child: Text(_paper.openPosition != null ? 'ПОЗИЦИЯ ОТКРЫТА' : rec == 'ЖДАТЬ' ? 'ЖДЁМ СИГНАЛ' : 'ОТКРЫТЬ PAPER • ${rec}'),
+          child: Text(_paper.openPosition != null ? 'ПОЗИЦИЯ ОТКРЫТА' : rec == 'ЖДАТЬ' ? 'ЖДЁМ СИГНАЛ' : 'ОТКРЫТЬ PAPER ПО СИГНАЛУ • ${rec}'),
         )),
       ]));
   }
@@ -1194,7 +1197,8 @@ class _CandlePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (candles.length < 2) return;
-    final visible = candles.length > 120 ? candles.sublist(candles.length - 120) : candles;
+    // Fewer, larger candles improve readability on a phone screen.
+    final visible = candles.length > 64 ? candles.sublist(candles.length - 64) : candles;
     final projected = forecast?.points ?? const <ForecastPoint>[];
     final values = <double>[
       ...visible.expand((c) => [c.high, c.low]),
@@ -1210,10 +1214,10 @@ class _CandlePainter extends CustomPainter {
     final plotWidth = size.width - left - right, plotHeight = size.height - top - bottom;
     double y(double price) => top + (high - price) / range * plotHeight;
 
-    final futureWidth = projected.isEmpty ? 0.0 : plotWidth * 0.28;
+    final futureWidth = projected.isEmpty ? 0.0 : plotWidth * 0.30;
     final candleWidth = plotWidth - futureWidth;
     final step = candleWidth / visible.length;
-    final bodyWidth = math.max(1.5, step * 0.58).toDouble();
+    final bodyWidth = math.max(2.6, step * 0.72).toDouble();
     for (var i = 0; i < visible.length; i++) {
       final candle = visible[i], x = left + step * (i + 0.5);
       final color = candle.close >= candle.open ? _green : _red;
