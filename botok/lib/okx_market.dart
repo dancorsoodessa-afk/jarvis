@@ -147,6 +147,25 @@ class OkxMarket {
   }
 
 
+  Future<double> loadFundingRate(String instrumentId) async {
+    final client = _http ??= HttpClient();
+    final uri = Uri.https('www.okx.com', '/api/v5/public/funding-rate', {'instId': instrumentId});
+    final request = await client.getUrl(uri).timeout(const Duration(seconds: 12));
+    final response = await request.close().timeout(const Duration(seconds: 12));
+    final body = await response.transform(utf8.decoder).join();
+    if (response.statusCode != 200) {
+      throw HttpException('OKX funding rate HTTP ${response.statusCode}');
+    }
+    final decoded = jsonDecode(body) as Map<String, dynamic>;
+    if (decoded['code'] != '0') {
+      throw FormatException('OKX funding rate: ${decoded['msg']}');
+    }
+    final rows = decoded['data'] as List<dynamic>;
+    if (rows.isEmpty) return 0;
+    final row = rows.first as Map<String, dynamic>;
+    return double.tryParse(row['fundingRate']?.toString() ?? '') ?? 0;
+  }
+
   Future<List<MarketCandle>> loadCandles(String instrumentId, {String bar = '1m', int limit = 100}) async {
     final client = _http ??= HttpClient();
     final safeLimit = limit.clamp(1, 300);
