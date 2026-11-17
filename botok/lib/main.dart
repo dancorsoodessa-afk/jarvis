@@ -64,6 +64,7 @@ class _DashboardPageState extends State<DashboardPage> {
   WalkForwardResult? _walkForwardResult;
   final _search = TextEditingController();
   final _capital = TextEditingController(text: '1000');
+  final _autoProfitTarget = TextEditingController(text: '5');
   StreamSubscription<Map<String, dynamic>>? _feed;
   StreamSubscription<Map<String, dynamic>?>? _guardFeed;
   StreamSubscription<Map<String, dynamic>?>? _guardStatusFeed;
@@ -96,6 +97,9 @@ class _DashboardPageState extends State<DashboardPage> {
   String _positionState = 'Нет открытой paper-позиции';
   bool _loading = false;
   bool _confirmMode = true;
+  bool _autoProfitEnabled = false;
+  bool _autoEntryInProgress = false;
+  DateTime _lastAutoEntryAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   MultiTimeframeAnalysis get _analysis => calculateMultiTimeframeAnalysis(
     pricesByTimeframe: _candlesByTimeframe.map(
@@ -301,6 +305,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (last > 0) {
         _price = last;
         if (_paper.openPosition != null) _checkPaperGuard(last);
+        else if (_autoProfitEnabled) _maybeAutoOpen();
       }
     } else if (type == 'books5') {
       final bids = (row['bids'] as List<dynamic>? ?? []);
@@ -420,7 +425,17 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  Future<void> _openPaper() async {
+  Future<void> _maybeAutoOpen() async {
+    if (!_autoProfitEnabled || _autoEntryInProgress || _paper.openPosition != null || !_paperReady || _price <= 0) return;
+    if (DateTime.now().difference(_lastAutoEntryAt) < const Duration(minutes: 3)) return;
+    final target = double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0;
+    if (target <= 0 || target > 100) return;
+    if (_analysis.recommendation == 'ЖДАТЬ') return;
+    _autoEntryInProgress = true;
+    try { await _openPaper(automatic: true); } finally { _autoEntryInProgress = false; }
+  }
+
+  Future<void> _openPaper({bool automatic = false}) async {
     if (!_paperReady) { _toast('Демо-кошелёк ещё загружается.'); return; }
     if (_paper.openPosition != null) { _toast('Сначала закройте текущую PAPER-позицию.'); return; }
     if (_price <= 0) { _toast('Нет актуальной цены OKX'); return; }
@@ -446,12 +461,13 @@ class _DashboardPageState extends State<DashboardPage> {
         capital: _paper.availableBalance,
         riskPercent: _riskPercent,
         leverage: _leverage,
+        autoProfitTargetPercent: automatic ? (double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0) : 0,
       );
     } catch (e) {
       _toast('Не удалось рассчитать сделку: $e');
       return;
     }
-    if (_confirmMode) {
+    if (_confirmMode && !automatic) {
       final approved = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -468,7 +484,8 @@ class _DashboardPageState extends State<DashboardPage> {
     }
     try {
       _paper.open(plan, instrumentId: _selected!.id);
-      setState(() => _positionState = 'PAPER ${plan.direction} • SL/TP активны');
+      if (automatic) _lastAutoEntryAt = DateTime.now();
+      setState(() => _positionState = automatic ? 'АВТО PAPER ${plan.direction} • цель ${plan.autoProfitTargetPercent.toStringAsFixed(1)}% от залога' : 'PAPER ${plan.direction} • SL/TP активны');
       await _persistPaper();
     } catch (e) {
       _toast('PAPER-сделка не открыта: $e');
@@ -515,6 +532,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _market.dispose();
     _search.dispose();
     _capital.dispose();
+    _autoProfitTarget.dispose();
     super.dispose();
   }
 
@@ -532,7 +550,7 @@ class _DashboardPageState extends State<DashboardPage> {
       body: SafeArea(child: RefreshIndicator(onRefresh: _loadMarket, child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
         children: [
-          _statusBar(), const SizedBox(height: 7), _marketSelector(), const SizedBox(height: 7),
+          _statusBar(), const SizedBox(height: 6), _topBalanceCard(), const SizedBox(height: 7), _marketSelector(), const SizedBox(height: 7),
           _compactInstrumentCard(selected), const SizedBox(height: 7),
           Container(padding: const EdgeInsets.all(13), decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withValues(alpha: .45))),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -546,7 +564,7 @@ class _DashboardPageState extends State<DashboardPage> {
               if (_marketType == 'SPOT' && rec == 'SHORT') const Text('Для SHORT переключите рынок на FUTURES / SWAP.', style: TextStyle(color: Colors.orange, fontSize: 10)),
             ])),
           const SizedBox(height: 7), _compactForecastCard(), const SizedBox(height: 7), _compactChartCard(), const SizedBox(height: 7),
-          _quickControlsCard(rec), const SizedBox(height: 7), _compactPositionCard(),
+          _autoProfitCard(), const SizedBox(height: 7), _quickControlsCard(rec), const SizedBox(height: 7), _compactPositionCard(),
           const SizedBox(height: 6),
           const Text('Котировки OKX LIVE • Только PAPER Trading, реальные ордера не отправляются.', textAlign: TextAlign.center, style: TextStyle(color: _muted, fontSize: 9)),
         ],
@@ -596,6 +614,50 @@ class _DashboardPageState extends State<DashboardPage> {
       SizedBox(height: 190, child: _candles.length < 2 ? const Center(child: Text('Загрузка свечей…', style: TextStyle(color: _muted, fontSize: 10)))
         : CustomPaint(painter: _CandlePainter(List<MarketCandle>.from(_candles), forecast: buildMarketForecast(_candles.where((c) => c.isClosed).toList()), position: _paper.openPosition), child: const SizedBox.expand())),
     ]));
+
+  Widget _topBalanceCard() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+    decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(13)),
+    child: Row(children: [
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('БАЛАНС PAPER', style: TextStyle(color: _muted, fontSize: 9, fontWeight: FontWeight.bold)),
+        Text(_paperReady ? '\${_paper.equity.toStringAsFixed(2)} USDT' : '—', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+        Text('Доступно \${_paperReady ? _paper.availableBalance.toStringAsFixed(2) : '—'} USDT', style: const TextStyle(color: _muted, fontSize: 9)),
+      ])),
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text('PnL \${_paper.netAccountPnl >= 0 ? '+' : ''}\${_paper.netAccountPnl.toStringAsFixed(2)} USDT', style: TextStyle(color: _paper.netAccountPnl >= 0 ? _green : _red, fontSize: 11, fontWeight: FontWeight.bold)),
+        Text('Залог \${_paper.marginUsed.toStringAsFixed(2)} USDT', style: const TextStyle(color: _muted, fontSize: 9)),
+      ]),
+    ]),
+  );
+
+  Widget _autoProfitCard() => Container(
+    padding: const EdgeInsets.all(11),
+    decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(13), border: Border.all(color: _autoProfitEnabled ? _blue.withValues(alpha: .6) : Colors.transparent)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Expanded(child: Text('АВТОПРИБЫЛЬ АГЕНТА', style: TextStyle(fontSize: 10, color: _muted, fontWeight: FontWeight.bold))),
+        Switch(value: _autoProfitEnabled, onChanged: _paper.openPosition != null ? null : (v) {
+          final target = double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0;
+          if (v && (target <= 0 || target > 100)) { _toast('Укажите цель от 0,1% до 100%.'); return; }
+          setState(() => _autoProfitEnabled = v);
+          if (v) _maybeAutoOpen();
+        }),
+      ]),
+      Row(children: [
+        const Text('Цель прибыли', style: TextStyle(color: _muted, fontSize: 10)),
+        const SizedBox(width: 9),
+        SizedBox(width: 82, child: TextField(controller: _autoProfitTarget, enabled: !_autoProfitEnabled && _paper.openPosition == null, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: const TextStyle(fontSize: 13), decoration: const InputDecoration(isDense: true, suffixText: '%', contentPadding: EdgeInsets.symmetric(horizontal: 9, vertical: 8)))),
+        const Spacer(),
+        Text(_autoProfitEnabled ? 'АГЕНТ АКТИВЕН' : 'ВЫКЛЮЧЕН', style: TextStyle(color: _autoProfitEnabled ? _green : _muted, fontSize: 9, fontWeight: FontWeight.bold)),
+      ]),
+      const SizedBox(height: 5),
+      Text(_autoProfitEnabled
+        ? 'Агент ждёт сигнал LONG/SHORT, открывает PAPER и закрывает при достижении чистой цели от залога. Входы работают, пока приложение открыто; защита открытой позиции продолжает работать через фоновый сервис.'
+        : 'Введите, например, 5%. Агент сам выберет LONG или SHORT по сигналу. Только виртуальные сделки.',
+        style: const TextStyle(color: _muted, fontSize: 9)),
+    ]),
+  );
 
   Widget _quickControlsCard(String rec) {
     final plan = _paperReady && _price > 0 && _paper.availableBalance > 0 && rec != 'ЖДАТЬ' ? _tryPlan(rec) : null;
