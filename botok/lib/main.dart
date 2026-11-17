@@ -136,6 +136,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (wallet is! String) return;
       try {
         _paper = PaperTradingEngine.decode(wallet);
+        if (event['autoOpened'] == true) _lastAutoEntryAt = DateTime.now();
         final price = double.tryParse(event['price']?.toString() ?? '') ?? 0;
         if (price > 0) _price = price;
         final reason = event['closedReason'];
@@ -454,6 +455,7 @@ class _DashboardPageState extends State<DashboardPage> {
     await prefs.setString('botok.auto.margin', _perTradeMargin.text.trim());
     await prefs.setString('botok.auto.target', _autoProfitTarget.text.trim());
     await prefs.setDouble('botok.auto.leverage', _leverage);
+    await prefs.setString('botok.auto.marketType', _marketType);
   }
 
   Future<void> _setAutoProfit(bool enabled) async {
@@ -467,6 +469,7 @@ class _DashboardPageState extends State<DashboardPage> {
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('botok.auto.enabled', false);
+        refreshPaperGuardService();
       } catch (_) {}
       return;
     }
@@ -489,15 +492,25 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('botok.auto.enabled', true);
-    } catch (_) {}
+      await _persistPaper();
+      await startPaperGuardService();
+      _guardRunning = await FlutterBackgroundService().isRunning();
+      _guardStatus = _guardRunning ? 'фоновый автосканер запущен' : 'фоновый сервис не подтвердил запуск';
+    } catch (error) {
+      _guardRunning = false;
+      _guardStatus = 'ошибка запуска фонового агента: $error';
+    }
     _autoScanTimer?.cancel();
     _autoScanTimer = Timer.periodic(const Duration(seconds: 60), (_) => _maybeAutoOpen());
-    await _maybeAutoOpen();
+    if (!_guardRunning) await _maybeAutoOpen();
   }
 
   Future<void> _maybeAutoOpen() async {
     if (!_autoProfitEnabled || _autoScanBusy || _autoEntryInProgress ||
         _paper.openPosition != null || !_paperReady || _instruments.isEmpty) return;
+    try {
+      if (await FlutterBackgroundService().isRunning()) return;
+    } catch (_) {}
     if (DateTime.now().difference(_lastAutoEntryAt) < const Duration(minutes: 3)) return;
     final margin = double.tryParse(_perTradeMargin.text.replaceAll(',', '.')) ?? 0;
     final target = double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0;
