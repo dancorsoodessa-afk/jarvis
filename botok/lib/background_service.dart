@@ -133,7 +133,7 @@ class BotokMarketTaskHandler extends TaskHandler {
       _retry = 0;
       _lastEventAt = DateTime.now();
       await FlutterForegroundTask.updateService(
-        notificationTitle: 'BOTok • OKX \${_autoCycle ? 'AUTO PAPER' : 'мониторинг'}',
+        notificationTitle: 'BOTok • OKX ${_autoCycle ? 'AUTO PAPER' : 'мониторинг'}',
         notificationText: 'Подключено: $_instrumentId',
       );
       _sendStatus('connected');
@@ -174,10 +174,10 @@ class BotokMarketTaskHandler extends TaskHandler {
         }
         _sendStatus('live', signal: signal);
         unawaited(FlutterForegroundTask.updateService(
-          notificationTitle: 'BOTok • \${_autoCycle ? 'AUTO PAPER' : 'OKX LIVE'}',
+          notificationTitle: 'BOTok • ${_autoCycle ? 'AUTO PAPER' : 'OKX LIVE'}',
           notificationText: _position == null
-              ? '$_instrumentId • \${price.toStringAsFixed(6)}'
-              : '\${_position!.direction} $_instrumentId • SL \${_position!.stopLoss.toStringAsFixed(6)}',
+              ? '$_instrumentId • ${price.toStringAsFixed(6)}'
+              : '${_position!.direction} $_instrumentId • SL ${_position!.stopLoss.toStringAsFixed(6)}',
         ));
       }
     } else if (type == 'books5') {
@@ -227,7 +227,7 @@ class BotokMarketTaskHandler extends TaskHandler {
     final label = reason == PaperExitReason.stopLoss ? 'STOP LOSS' : 'TAKE PROFIT';
     _sendStatus(
       'paper_closed',
-      message: '$label • \${pnl >= 0 ? '+' : ''}\${pnl.toStringAsFixed(4)} USDT net',
+      message: '$label • ${pnl >= 0 ? '+' : ''}${pnl.toStringAsFixed(4)} USDT net',
     );
     if (_autoCycle) _scheduleScan(const Duration(seconds: 3));
   }
@@ -257,7 +257,7 @@ class BotokMarketTaskHandler extends TaskHandler {
       _sendStatus(
         'paper_opened',
         signal: signal,
-        message: '\${plan.direction} $_instrumentId • PAPER',
+        message: '${plan.direction} $_instrumentId • PAPER',
       );
     } catch (error) {
       _sendStatus('paper_plan_error', message: error.toString());
@@ -306,7 +306,7 @@ class BotokMarketTaskHandler extends TaskHandler {
         await _connect();
         _sendStatus(
           'candidate_selected',
-          message: '\${best.id} • \${bestScore.toStringAsFixed(1)}%',
+          message: '${best.id} • ${bestScore.toStringAsFixed(1)}%',
         );
       } else if (_autoCycle && _position == null) {
         _scheduleScan(const Duration(seconds: 25));
