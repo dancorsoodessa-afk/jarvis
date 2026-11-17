@@ -244,9 +244,15 @@ class _DashboardPageState extends State<DashboardPage> {
     } catch (e) {
       if (mounted) setState(() => _status = 'Свечной архив OKX недоступен: $e');
     }
-    await _market.watch(instrument.id);
     _bookImbalance = 0;
     _tradeDelta = 0;
+    _fundingRate = 0;
+    _openInterestUsd = 0;
+    _openInterestChangePercent = 0;
+    _recentLiquidationEvents = 0;
+    _longLiquidationContracts = 0;
+    _shortLiquidationContracts = 0;
+    await _market.watch(instrument.id);
     _feed = _market.events.listen(_onMarketEvent);
     if (mounted) setState(() => _status = 'LIVE • ${instrument.id}');
   }
