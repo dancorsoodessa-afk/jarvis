@@ -80,7 +80,9 @@ class OkxMarket {
       throw HttpException('OKX candles HTTP ${response.statusCode}');
     }
     final decoded = jsonDecode(body) as Map<String, dynamic>;
-    if (decoded['code'] != '0') throw FormatException('OKX candles: ${decoded['msg']}');
+    if (decoded['code'] != '0') {
+      throw FormatException('OKX candles: ${decoded['msg']}');
+    }
     final rows = (decoded['data'] as List<dynamic>).cast<List<dynamic>>();
     return rows.map(MarketCandle.fromOkx).toList().reversed.toList();
   }
