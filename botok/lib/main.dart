@@ -436,7 +436,7 @@ class _DashboardPageState extends State<DashboardPage> {
       _toast('SHORT нельзя открыть на спотовом рынке. Переключите рынок на SWAP.');
       return;
     }
-    if (signal.confidence < 58) {
+    if (signal.confidence < 56) {
       _toast('Сигнал слабый: ${signal.confidence.toStringAsFixed(1)}%. Ожидание.');
       return;
     }
