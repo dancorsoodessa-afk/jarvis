@@ -706,6 +706,8 @@ class _DashboardPageState extends State<DashboardPage> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('PAPER ${p.plan.direction} • ${p.instrumentId}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
         Text('PnL ${_paper.positionNetPnl.toStringAsFixed(2)} USDT • SL ${_fmt(p.effectiveStopLoss)} • TP ${_fmt(p.plan.takeProfit1)}', style: const TextStyle(color: _muted, fontSize: 10)),
+        if (p.plan.autoProfitTargetPercent > 0)
+          Text('Автозакрытие: +${p.plan.autoProfitTargetPercent.toStringAsFixed(1)}% от начального залога', style: const TextStyle(color: _green, fontSize: 10)),
         Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _closePaper, child: const Text('ЗАКРЫТЬ'))),
       ]));
   }
