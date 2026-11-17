@@ -37,6 +37,7 @@ class BotokApp extends StatelessWidget {
       scaffoldBackgroundColor: _bg,
       colorScheme: const ColorScheme.dark(primary: _blue, surface: _panel),
       useMaterial3: true,
+      snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating, backgroundColor: Color(0xFF1B2940), contentTextStyle: TextStyle(color: Colors.white, fontSize: 13), insetPadding: EdgeInsets.fromLTRB(16, 0, 16, 18)),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: _panel,
@@ -427,8 +428,8 @@ class _DashboardPageState extends State<DashboardPage> {
     if (_price <= 0) { _toast('Нет актуальной цены OKX'); return; }
     final analysis = _analysis;
     final signal = analysis.signal;
-    if (!analysis.isAligned) {
-      _toast('Сделка заблокирована: нужно минимум 3 активных таймфрейма и согласие направлений не ниже 60%.');
+    if (analysis.recommendation == 'ЖДАТЬ') {
+      _toast('Сейчас рекомендация: ЖДАТЬ. Сигнал недостаточно устойчивый.');
       return;
     }
     if (_marketType == 'SPOT' && signal.direction == 'SHORT') {
@@ -488,7 +489,10 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(content: Text(message, maxLines: 2, overflow: TextOverflow.ellipsis), duration: const Duration(seconds: 3), behavior: SnackBarBehavior.floating, width: 420));
   }
 
   String _fmt(double value) => value >= 100 ? value.toStringAsFixed(2) : value.toStringAsFixed(5);
@@ -509,70 +513,121 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     final selected = _selected;
-    final signal = _signal;
+    final analysis = _analysis;
+    final signal = analysis.signal;
+    final rec = analysis.recommendation;
+    final color = rec == 'LONG' ? _green : rec == 'SHORT' ? _red : Colors.orange;
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: _bg,
-        title: const Row(children: [
-          Icon(Icons.auto_graph_rounded, color: _blue),
-          SizedBox(width: 9),
-          Text('BOTok', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1.2)),
-          SizedBox(width: 8),
-          Text('OKX AI TRADER', style: TextStyle(fontSize: 10, color: _muted)),
-        ]),
-        actions: [
-          IconButton(onPressed: _loading ? null : _loadMarket, icon: const Icon(Icons.refresh)),
+      appBar: AppBar(backgroundColor: _bg, toolbarHeight: 52,
+        title: const Row(children: [Icon(Icons.auto_graph_rounded, color: _blue), SizedBox(width: 8), Text('BOTok', style: TextStyle(fontWeight: FontWeight.w800)), SizedBox(width: 8), Text('OKX', style: TextStyle(fontSize: 11, color: _muted))]),
+        actions: [IconButton(onPressed: _loading ? null : _loadMarket, icon: const Icon(Icons.refresh))]),
+      body: SafeArea(child: RefreshIndicator(onRefresh: _loadMarket, child: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
+        children: [
+          _statusBar(), const SizedBox(height: 7), _marketSelector(), const SizedBox(height: 7),
+          _compactInstrumentCard(selected), const SizedBox(height: 7),
+          Container(padding: const EdgeInsets.all(13), decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withValues(alpha: .45))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('РЕКОМЕНДАЦИЯ АГЕНТА', style: TextStyle(color: _muted, fontSize: 10, fontWeight: FontWeight.bold)),
+              Row(children: [Expanded(child: Text(rec, style: TextStyle(color: color, fontSize: 32, fontWeight: FontWeight.w900))), Text('Сила ${signal.confidence.toStringAsFixed(0)}/100', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]),
+              Text(rec == 'ЖДАТЬ' ? 'Направление не подтверждено — ждём.' : rec == 'LONG' ? 'Преимущество сценария роста.' : 'Преимущество сценария снижения.', style: const TextStyle(color: _muted, fontSize: 11)),
+              const SizedBox(height: 9),
+              Row(children: [Expanded(child: _probability('РОСТ', signal.longProbability, _green)), const SizedBox(width: 10), Expanded(child: _probability('СНИЖЕНИЕ', signal.shortProbability, _red))]),
+              const SizedBox(height: 6),
+              Text('Согласие интервалов ${analysis.agreementPercent.toStringAsFixed(0)}% • активны ${analysis.activeTimeframes}/7', style: const TextStyle(color: _muted, fontSize: 10)),
+              if (_marketType == 'SPOT' && rec == 'SHORT') const Text('Для SHORT переключите рынок на FUTURES / SWAP.', style: TextStyle(color: Colors.orange, fontSize: 10)),
+            ])),
+          const SizedBox(height: 7), _compactForecastCard(), const SizedBox(height: 7), _compactChartCard(), const SizedBox(height: 7),
+          _quickControlsCard(rec), const SizedBox(height: 7), _compactPositionCard(),
+          const SizedBox(height: 6),
+          const Text('Котировки OKX LIVE • Только PAPER Trading, реальные ордера не отправляются.', textAlign: TextAlign.center, style: TextStyle(color: _muted, fontSize: 9)),
         ],
-      ),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadMarket,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
-            children: [
-              _statusBar(),
-              const SizedBox(height: 14),
-              _marketSelector(),
-              const SizedBox(height: 12),
-              _instrumentCard(selected),
-              if (_marketType == 'SWAP') ...[
-                const SizedBox(height: 12),
-                _derivativesFeedCard(),
-              ],
-              const SizedBox(height: 12),
-              _walletCard(),
-              const SizedBox(height: 12),
-              _chartCard(),
-              const SizedBox(height: 12),
-              _forecastCard(),
-              const SizedBox(height: 12),
-              _timeframeConfluenceCard(),
-              if (_btcCandles.isNotEmpty && selected?.id != 'BTC-USDT' && selected?.id != 'BTC-USDT-SWAP') ...[
-                const SizedBox(height: 12),
-                _btcCorrelationCard(),
-              ],
-              const SizedBox(height: 12),
-              _backtestCard(),
-              const SizedBox(height: 12),
-              _signalCard(signal),
-              const SizedBox(height: 12),
-              _tradePlanCard(signal),
-              const SizedBox(height: 12),
-              _paperCard(),
-              const SizedBox(height: 12),
-              _universeCard(),
-              const SizedBox(height: 12),
-              const Text('Источники: публичный OKX API • обновления WebSocket', style: TextStyle(color: _muted, fontSize: 11)),
-              const SizedBox(height: 5),
-              const Text('Только Paper Trading. Реальные ордера и ключи OKX не используются.', style: TextStyle(color: _muted, fontSize: 11)),
-            ],
-          ),
-        ),
-      ),
+      ))),
     );
   }
 
+  Widget _compactInstrumentCard(MarketInstrument? instrument) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+    decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(13)),
+    child: Row(children: [
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(instrument?.id ?? 'Загрузка…', style: const TextStyle(color: _muted, fontSize: 10)),
+        Text(_price > 0 ? _fmt(_price) : '—', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+      ])),
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text('BID ${_bid > 0 ? _fmt(_bid) : '—'}', style: const TextStyle(color: _green, fontSize: 10)),
+        Text('ASK ${_ask > 0 ? _fmt(_ask) : '—'}', style: const TextStyle(color: _red, fontSize: 10)),
+      ]),
+    ]),
+  );
 
+  Widget _compactForecastCard() {
+    final candles = (_candlesByTimeframe['15m'] ?? _candles).where((c) => c.isClosed).toList();
+    final f = buildMarketForecast(candles);
+    return Container(padding: const EdgeInsets.all(11), decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(13)),
+      child: f == null ? const Text('Прогноз формируется: недостаточно закрытых свечей.', style: TextStyle(color: _muted, fontSize: 10))
+      : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('ПРОГНОЗ ДВИЖЕНИЯ • 15 МИН', style: TextStyle(color: _muted, fontSize: 10, fontWeight: FontWeight.bold)),
+        Row(children: [
+          Expanded(child: Text(f.projectedMedian >= f.currentPrice ? 'Ожидается рост' : 'Ожидается снижение', style: TextStyle(color: f.projectedMedian >= f.currentPrice ? _green : _red, fontSize: 16, fontWeight: FontWeight.bold))),
+          Text('${f.volatilityPercent.toStringAsFixed(2)}% волат.', style: const TextStyle(color: _muted, fontSize: 10)),
+        ]),
+        Text('Ориентир ${_fmt(f.projectedMedian)} • диапазон ${_fmt(f.projectedLower)} — ${_fmt(f.projectedUpper)}', style: const TextStyle(fontSize: 10)),
+        const Text('Модельный сценарий, не гарантия результата.', style: TextStyle(color: _muted, fontSize: 9)),
+      ]));
+  }
+
+  Widget _compactChartCard() => Container(padding: const EdgeInsets.fromLTRB(10, 2, 10, 8), decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(13)),
+    child: Column(children: [
+      Row(children: [
+        const Expanded(child: Text('ГРАФИК', style: TextStyle(color: _muted, fontSize: 10, fontWeight: FontWeight.bold))),
+        DropdownButton<String>(value: _selectedTimeframe, dropdownColor: _panel, underline: const SizedBox.shrink(), isDense: true,
+          items: MarketTimeframe.all.map((tf) => DropdownMenuItem(value: tf.bar, child: Text(tf.label, style: const TextStyle(fontSize: 10)))).toList(),
+          onChanged: (v) { if (v != null) _setTimeframe(v); }),
+      ]),
+      SizedBox(height: 140, child: _candles.length < 2 ? const Center(child: Text('Загрузка свечей…', style: TextStyle(color: _muted, fontSize: 10)))
+        : CustomPaint(painter: _CandlePainter(List<MarketCandle>.from(_candles), forecastPrice: _price, position: _paper.openPosition), child: const SizedBox.expand())),
+    ]));
+
+  Widget _quickControlsCard(String rec) {
+    final plan = _paperReady && _price > 0 && _paper.availableBalance > 0 && rec != 'ЖДАТЬ' ? _tryPlan(rec) : null;
+    return Container(padding: const EdgeInsets.all(11), decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(13)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [const Expanded(child: Text('ПАРАМЕТРЫ СДЕЛКИ', style: TextStyle(color: _muted, fontSize: 10, fontWeight: FontWeight.bold)), Text('Риск ${_riskPercent.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 10))]),
+        Slider(value: _riskPercent, min: .25, max: 3, divisions: 11, onChanged: (v) => setState(() => _riskPercent = v)),
+        Row(children: [
+          const Text('Плечо', style: TextStyle(color: _muted, fontSize: 10)),
+          Expanded(child: Slider(value: _leverage.clamp(1, 20).toDouble(), min: 1, max: 20, divisions: 19, onChanged: _marketType == 'SWAP' ? (v) => setState(() => _leverage = v) : null)),
+          Text(_marketType == 'SWAP' ? '${_leverage.toStringAsFixed(0)}x' : 'SPOT', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+        ]),
+        if (plan != null) Wrap(spacing: 10, runSpacing: 4, children: [
+          Text('Вход ${_fmt(plan.entry)}', style: const TextStyle(fontSize: 10)),
+          Text('SL ${_fmt(plan.stopLoss)}', style: const TextStyle(color: _red, fontSize: 10)),
+          Text('TP ${_fmt(plan.takeProfit1)} / ${_fmt(plan.takeProfit2)}', style: const TextStyle(color: _green, fontSize: 10)),
+          Text('Риск ${plan.riskAmount.toStringAsFixed(2)} USDT', style: const TextStyle(fontSize: 10)),
+        ]),
+        Row(children: [
+          Expanded(child: Text(_confirmMode ? 'Подтверждать открытие' : 'Без подтверждения', style: const TextStyle(color: _muted, fontSize: 10))),
+          Switch(value: _confirmMode, onChanged: (v) => setState(() => _confirmMode = v)),
+        ]),
+        SizedBox(width: double.infinity, child: FilledButton(
+          onPressed: _paperReady && _paper.openPosition == null && rec != 'ЖДАТЬ' && !(_marketType == 'SPOT' && rec == 'SHORT') ? _openPaper : null,
+          child: Text(_paper.openPosition != null ? 'ПОЗИЦИЯ ОТКРЫТА' : rec == 'ЖДАТЬ' ? 'ЖДЁМ СИГНАЛ' : 'ОТКРЫТЬ PAPER • ${rec}'),
+        )),
+      ]));
+  }
+
+  Widget _compactPositionCard() {
+    final p = _paper.openPosition;
+    if (p == null) return Container(padding: const EdgeInsets.all(11), decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(13)),
+      child: Text(_paperReady ? 'PAPER: нет позиции • Баланс ${_paper.availableBalance.toStringAsFixed(2)} USDT' : 'Загрузка PAPER-кошелька…', style: const TextStyle(color: _muted, fontSize: 10)));
+    return Container(padding: const EdgeInsets.all(11), decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(13)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('PAPER ${p.plan.direction} • ${p.instrumentId}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+        Text('PnL ${_paper.positionNetPnl.toStringAsFixed(2)} USDT • SL ${_fmt(p.effectiveStopLoss)} • TP ${_fmt(p.plan.takeProfit1)}', style: const TextStyle(color: _muted, fontSize: 10)),
+        Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _closePaper, child: const Text('ЗАКРЫТЬ'))),
+      ]));
+  }
 
   Widget _btcCorrelationCard() {
     final correlation = calculateReturnCorrelation(
