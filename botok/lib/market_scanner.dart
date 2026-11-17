@@ -25,7 +25,7 @@ class MarketOpportunity {
 
 class MarketOpportunityScanner {
   const MarketOpportunityScanner({
-    this.maxCandidates = 24,
+    this.maxCandidates = 12,
     this.minimumTurnover = 100000,
     this.maximumSpreadPercent = 0.20,
   });
@@ -38,6 +38,7 @@ class MarketOpportunityScanner {
     required List<MarketInstrument> instruments,
     required String marketType,
     required MarketCandleLoader loadCandles,
+    Future<double> Function(String instrumentId)? loadFundingRate,
   }) async {
     final kind = marketType == 'SPOT' ? 'SPOT' : 'SWAP';
     final eligible = instruments.where((item) {
@@ -60,12 +61,16 @@ class MarketOpportunityScanner {
     MarketOpportunity? best;
     for (final instrument in eligible.take(maxCandidates)) {
       try {
-        final loaded = await Future.wait([
-          loadCandles(instrument.id, '5m', 120),
-          loadCandles(instrument.id, '15m', 120),
-          loadCandles(instrument.id, '1H', 120),
-        ]);
-        const timeframes = ['5m', '15m', '1H'];
+        const timeframes = ['1m', '3m', '5m', '15m', '1H', '1D', '1W'];
+        final loaded = await Future.wait(
+          timeframes.map((timeframe) => loadCandles(instrument.id, timeframe, 120)),
+        );
+        var fundingRate = 0.0;
+        if (kind == 'SWAP' && loadFundingRate != null) {
+          try {
+            fundingRate = await loadFundingRate(instrument.id);
+          } catch (_) {}
+        }
         final byTimeframe = <String, List<MarketCandle>>{};
         for (var index = 0; index < timeframes.length; index++) {
           final closed = loaded[index].where((candle) => candle.isClosed).toList()
@@ -86,6 +91,7 @@ class MarketOpportunityScanner {
             ),
           ),
           candlesByTimeframe: byTimeframe,
+          fundingRate: fundingRate,
         );
         if (!analysis.isAligned ||
             analysis.recommendation == 'ЖДАТЬ' ||
