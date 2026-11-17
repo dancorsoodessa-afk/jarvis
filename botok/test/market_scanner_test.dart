@@ -39,15 +39,23 @@ void main() {
 
   test('scanner chooses the highest-ranked aligned USDT swap candidate', () async {
     final scanner = MarketOpportunityScanner();
+    final requestedTimeframes = <String>{};
     final result = await scanner.scan(
       instruments: [instrument('AAA-USDT-SWAP', 1e7), instrument('BBB-USDT-SWAP', 5e7)],
       marketType: 'SWAP',
-      loadCandles: (_, __, ___) async => candles(),
+      loadCandles: (_, timeframe, __) async {
+        requestedTimeframes.add(timeframe);
+        return candles();
+      },
+      loadFundingRate: (_) async => 0.0001,
     );
     expect(result, isNotNull);
     expect(result!.instrument.id, 'BBB-USDT-SWAP');
     expect(result.analysis.isAligned, isTrue);
+    expect(result.analysis.activeTimeframes, 7);
     expect(result.analysis.signal.direction, 'LONG');
+    expect(result.analysis.signal.fundingRate, 0.0001);
+    expect(requestedTimeframes, containsAll(['1m', '3m', '5m', '15m', '1H', '1D', '1W']));
     expect(result.price, 100.1);
   });
 
