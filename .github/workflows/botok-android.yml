@@ -44,8 +44,28 @@ jobs:
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
           s = s.replace('android:label="botok"', 'android:label="BOTok"')
-          if 'android.permission.INTERNET' not in s:
-              s = s.replace('<application', '    <uses-permission android:name="android.permission.INTERNET" />\n    <application', 1)
+          permissions = [
+              "android.permission.INTERNET",
+              "android.permission.FOREGROUND_SERVICE",
+              "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+              "android.permission.POST_NOTIFICATIONS",
+              "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+          ]
+          for permission in permissions:
+              marker = f'android:name="{permission}"'
+              if marker not in s:
+                  s = s.replace(
+                      "<application",
+                      f'    <uses-permission android:name="{permission}" />\\n    <application',
+                      1,
+                  )
+          service = """    <service
+                  android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+                  android:foregroundServiceType="dataSync"
+                  android:exported="false" />
+          """
+          if "com.pravera.flutter_foreground_task.service.ForegroundService" not in s:
+              s = s.replace("</application>", service + "\\n</application>")
           p.write_text(s)
           PY
       - run: flutter pub get
@@ -77,8 +97,28 @@ jobs:
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
           s = s.replace('android:label="botok"', 'android:label="BOTok"')
-          if 'android.permission.INTERNET' not in s:
-              s = s.replace('<application', '    <uses-permission android:name="android.permission.INTERNET" />\n    <application', 1)
+          permissions = [
+              "android.permission.INTERNET",
+              "android.permission.FOREGROUND_SERVICE",
+              "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+              "android.permission.POST_NOTIFICATIONS",
+              "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+          ]
+          for permission in permissions:
+              marker = f'android:name="{permission}"'
+              if marker not in s:
+                  s = s.replace(
+                      "<application",
+                      f'    <uses-permission android:name="{permission}" />\\n    <application',
+                      1,
+                  )
+          service = """    <service
+                  android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+                  android:foregroundServiceType="dataSync"
+                  android:exported="false" />
+          """
+          if "com.pravera.flutter_foreground_task.service.ForegroundService" not in s:
+              s = s.replace("</application>", service + "\\n</application>")
           p.write_text(s)
           PY
       - run: flutter pub get
