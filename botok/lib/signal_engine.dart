@@ -172,21 +172,28 @@ class TechnicalIndicators {
   final double stochasticRsi;
 }
 
-double _emaSeries(List<double> values, int period) => _ema(values, period);
-
 TechnicalIndicators? calculateTechnicalIndicators(List<MarketCandle> input) {
   final candles = input.where((c) => c.isClosed && c.close > 0).toList()
     ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   if (candles.length < 35) return null;
   final closes = candles.map((c) => c.close).toList();
   final last = candles.last;
-  final macdSeries = <double>[];
+  final fastK = 2 / 13;
+  final slowK = 2 / 27;
+  final signalK = 2 / 10;
+  var fastEma = closes.first;
+  var slowEma = closes.first;
+  var signalEma = 0.0;
+  var macdValue = 0.0;
   for (var i = 0; i < closes.length; i++) {
-    final slice = closes.sublist(0, i + 1);
-    macdSeries.add(_emaSeries(slice, 12) - _emaSeries(slice, 26));
+    if (i > 0) {
+      fastEma = closes[i] * fastK + fastEma * (1 - fastK);
+      slowEma = closes[i] * slowK + slowEma * (1 - slowK);
+    }
+    macdValue = fastEma - slowEma;
+    signalEma = i == 0 ? macdValue : macdValue * signalK + signalEma * (1 - signalK);
   }
-  final macdSignal = _emaSeries(macdSeries, 9);
-  final macdHistogram = ((macdSeries.last - macdSignal) / last.close * 1000)
+  final macdHistogram = ((macdValue - signalEma) / last.close * 1000)
       .clamp(-1.0, 1.0).toDouble();
 
   final window = candles.skip(candles.length - 20).toList();
