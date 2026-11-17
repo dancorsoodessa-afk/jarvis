@@ -243,6 +243,14 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   Future<void> _connectSelected() async {
     final instrument = _selected;
     if (instrument == null) return;
+    if (await FlutterForegroundTask.isRunningService) {
+      final config = <String, dynamic>{
+        'instrumentId': instrument.id,
+        'marketType': _marketType,
+      };
+      await FlutterForegroundTask.saveData(key: 'botok_config', value: config);
+      FlutterForegroundTask.sendDataToTask(config);
+    }
     await _feed?.cancel();
     await _market.watch(instrument.id);
     await _refreshCandles();
