@@ -2,11 +2,16 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+import 'background_service.dart';
 import 'okx_market.dart';
 import 'signal_engine.dart';
 
-void main() => runApp(const BotokApp());
+void main() {
+  FlutterForegroundTask.initCommunicationPort();
+  runApp(const BotokApp());
+}
 
 const _bg = Color(0xFF080D18);
 const _panel = Color(0xFF111B2C);
@@ -43,7 +48,7 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserver {
   final _market = OkxMarket();
   final _prices = <double>[];
   final _search = TextEditingController();
@@ -71,6 +76,11 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _autoCycleEnabled = false;
   bool _cycleRunning = false;
   Timer? _cycleRetry;
+  bool _backgroundActive = false;
+  String _backgroundState = 'Фоновый мониторинг выключен';
+  double _backgroundPrice = 0;
+  double _backgroundLong = 50;
+  double _backgroundShort = 50;
 
   TradeSignal get _signal => calculateSignal(
     prices: _prices,
@@ -87,8 +97,126 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initForegroundService();
+    FlutterForegroundTask.addTaskDataCallback(_onBackgroundData);
+    _refreshBackgroundState();
     _loadMarket();
     _search.addListener(() { if (mounted) setState(() {}); });
+  }
+
+
+  void _initForegroundService() {
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'botok_okx_monitor',
+        channelName: 'BOTok OKX мониторинг',
+        channelDescription: 'Показывает состояние фонового подключения к OKX.',
+        onlyAlertOnce: true,
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: false,
+        playSound: false,
+      ),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.repeat(15000),
+        autoRunOnBoot: false,
+        autoRunOnMyPackageReplaced: true,
+        allowWakeLock: true,
+        allowWifiLock: true,
+      ),
+    );
+  }
+
+  void _onBackgroundData(Object data) {
+    if (data is! Map || !mounted) return;
+    final state = data['state']?.toString() ?? 'unknown';
+    setState(() {
+      _backgroundState = switch (state) {
+        'connected' => 'Фоновый сервис подключается к OKX',
+        'live' => 'ФОН • OKX LIVE • \${data['instrumentId'] ?? ''}',
+        'reconnecting' => 'ФОН • переподключение к OKX',
+        'reconnect_error' => 'ФОН • ошибка: \${data['message'] ?? ''}',
+        _ => 'Фоновый мониторинг: $state',
+      };
+      _backgroundPrice = (data['price'] as num?)?.toDouble() ?? _backgroundPrice;
+      _backgroundLong = (data['longProbability'] as num?)?.toDouble() ?? 50;
+      _backgroundShort = (data['shortProbability'] as num?)?.toDouble() ?? 50;
+    });
+  }
+
+  Future<void> _refreshBackgroundState() async {
+    final running = await FlutterForegroundTask.isRunningService;
+    if (!mounted) return;
+    setState(() {
+      _backgroundActive = running;
+      if (!running) _backgroundState = 'Фоновый мониторинг выключен';
+    });
+  }
+
+  Future<void> _startBackgroundService() async {
+    try {
+      var permission = await FlutterForegroundTask.checkNotificationPermission();
+      if (permission != NotificationPermission.granted) {
+        permission = await FlutterForegroundTask.requestNotificationPermission();
+      }
+      if (permission != NotificationPermission.granted) {
+        _toast('Разреши уведомления Android: без постоянного уведомления сервис не запустится.');
+        return;
+      }
+
+      if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      }
+
+      final config = <String, dynamic>{
+        'instrumentId': _selected?.id ?? (_marketType == 'SPOT' ? 'BTC-USDT' : 'BTC-USDT-SWAP'),
+        'marketType': _marketType,
+      };
+      await FlutterForegroundTask.saveData(key: 'botok_config', value: config);
+
+      if (await FlutterForegroundTask.isRunningService) {
+        FlutterForegroundTask.sendDataToTask(config);
+        await FlutterForegroundTask.restartService();
+      } else {
+        await FlutterForegroundTask.startService(
+          serviceId: 801,
+          serviceTypes: const [ForegroundServiceTypes.dataSync],
+          notificationTitle: 'BOTok • OKX мониторинг',
+          notificationText: 'Запуск фонового соединения…',
+          notificationButtons: const [
+            NotificationButton(id: 'stop', text: 'Остановить'),
+          ],
+          callback: startBotokBackgroundService,
+        );
+      }
+      await _refreshBackgroundState();
+      if (mounted) setState(() => _backgroundState = 'Фоновый сервис запущен • ожидаем OKX');
+    } catch (error) {
+      if (mounted) {
+        setState(() => _backgroundState = 'Ошибка фонового сервиса: $error');
+        _toast('Не удалось запустить фон: $error');
+      }
+    }
+  }
+
+  Future<void> _stopBackgroundService() async {
+    try {
+      await FlutterForegroundTask.stopService();
+      if (mounted) setState(() {
+        _backgroundActive = false;
+        _backgroundState = 'Фоновый мониторинг выключен';
+      });
+    } catch (error) {
+      if (mounted) _toast('Ошибка остановки фонового сервиса: $error');
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshBackgroundState();
+    }
   }
 
   Future<void> _loadMarket() async {
@@ -314,6 +442,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    FlutterForegroundTask.removeTaskDataCallback(_onBackgroundData);
     _feed?.cancel();
     _candleRefresh?.cancel();
     _market.dispose();
@@ -349,6 +479,8 @@ class _DashboardPageState extends State<DashboardPage> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
             children: [
               _statusBar(),
+              const SizedBox(height: 10),
+              _backgroundCard(),
               const SizedBox(height: 14),
               _marketSelector(),
               const SizedBox(height: 12),
@@ -373,6 +505,38 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
+
+
+  Widget _backgroundCard() => _card(
+    title: 'ФОНОВАЯ РАБОТА ANDROID',
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Держать OKX подключённым при сворачивании', style: TextStyle(fontSize: 12)),
+        subtitle: Text(_backgroundState, style: const TextStyle(color: _muted, fontSize: 10)),
+        value: _backgroundActive,
+        onChanged: (enabled) {
+          if (enabled) {
+            _startBackgroundService();
+          } else {
+            _stopBackgroundService();
+          }
+        },
+      ),
+      if (_backgroundActive) ...[
+        Row(children: [
+          _miniMetric('ФОНОВАЯ ЦЕНА', _backgroundPrice > 0 ? _fmt(_backgroundPrice) : 'ОЖИДАНИЕ', _blue),
+          const Spacer(),
+          _miniMetric('LONG / SHORT', '\${_backgroundLong.toStringAsFixed(0)}% / \${_backgroundShort.toStringAsFixed(0)}%', _green),
+        ]),
+        const SizedBox(height: 7),
+      ],
+      const Text(
+        'Работает с постоянным уведомлением. Android может ограничивать длительность фоновой службы и останавливать приложение при принудительной остановке или ограничениях производителя.',
+        style: TextStyle(color: _muted, fontSize: 10),
+      ),
+    ]),
+  );
 
   Widget _statusBar() => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
