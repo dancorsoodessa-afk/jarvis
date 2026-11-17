@@ -71,6 +71,8 @@ class _DashboardPageState extends State<DashboardPage> {
   String _positionState = 'Нет открытой paper-позиции';
   bool _loading = false;
   bool _confirmMode = true;
+  bool _autoCycleEnabled = false;
+  bool _cycleRunning = false;
 
   TradeSignal get _signal => calculateSignal(
     prices: _prices,
@@ -132,7 +134,10 @@ class _DashboardPageState extends State<DashboardPage> {
     if (instrument == null) return;
     try {
       final data = await _market.loadCandles(instrument.id, bar: _bar, limit: 100);
-      if (mounted) setState(() => _candles = data);
+      if (mounted) setState(() {
+        _candles = data;
+        _prices..clear()..addAll(data.map((c) => c.close));
+      });
     } catch (e) {
       if (mounted) setState(() => _status = 'Свечи: $e');
     }
@@ -189,6 +194,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if ((isLong && last <= position.stopLoss) || (!isLong && last >= position.stopLoss)) {
       _paperPosition = null;
       _positionState = 'PAPER закрыта по Stop Loss • ${_fmt(last)}';
+      if (_autoCycleEnabled) Future.microtask(_scanNextOpportunity);
     } else if ((isLong && last >= position.takeProfit) || (!isLong && last <= position.takeProfit)) {
       _paperPosition = null;
       _positionState = 'PAPER закрыта по Take Profit 2 • ${_fmt(last)}';
@@ -214,9 +220,55 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> _scanNextOpportunity() async {
+    if (!_autoCycleEnabled || _cycleRunning || _paperPosition != null) return;
+    _cycleRunning = true;
+    if (mounted) setState(() => _status = 'АГЕНТ: сканирование лучших пар по ликвидности и свечным сигналам…');
+    try {
+      MarketInstrument? best;
+      var bestScore = 0.0;
+      final candidates = _instruments.take(24).toList();
+      for (final instrument in candidates) {
+        if (!_autoCycleEnabled || _paperPosition != null) break;
+        try {
+          final candles = await _market.loadCandles(instrument.id, bar: _bar, limit: 80);
+          if (candles.length < 30) continue;
+          final signal = calculateSignal(prices: candles.map((c) => c.close).toList());
+          if (_marketType == 'SPOT' && signal.direction != 'LONG') continue;
+          final score = signal.confidence;
+          if (score > bestScore) {
+            bestScore = score;
+            best = instrument;
+          }
+        } catch (_) {
+          // Continue scanning when one instrument has unavailable candle data.
+        }
+      }
+      if (best != null && bestScore >= 60 && _autoCycleEnabled && _paperPosition == null) {
+        if (mounted) setState(() {
+          _selected = best;
+          _status = 'АГЕНТ: выбрана \${best!.id} • оценка \${bestScore.toStringAsFixed(1)}%';
+        });
+        await _connectSelected();
+        if (_autoCycleEnabled && _paperPosition == null && _signal.confidence >= 58) {
+          await _openPaper();
+        }
+      } else if (mounted && _autoCycleEnabled) {
+        setState(() => _status = 'АГЕНТ: подходящей пары пока нет • повторный поиск через 20 сек');
+      }
+    } finally {
+      _cycleRunning = false;
+    }
+  }
+
   Future<void> _openPaper() async {
     if (_price <= 0) { _toast('Нет актуальной цены OKX'); return; }
     final signal = _signal;
+    if (_marketType == 'SPOT' && signal.direction == 'SHORT') {
+      _toast('Spot не поддерживает открытие SHORT. Агент продолжит поиск LONG.');
+      if (_autoCycleEnabled) Future.microtask(_scanNextOpportunity);
+      return;
+    }
     if (signal.confidence < 58) {
       _toast('Сигнал слабый: ${signal.confidence.toStringAsFixed(1)}%. Ожидание.');
       return;
@@ -469,6 +521,14 @@ class _DashboardPageState extends State<DashboardPage> {
           _planLine('Чистая прибыль', '${plan.netTarget.toStringAsFixed(4)} USDT', _green),
         ] else
           const Text('Введите баланс, процент капитала и чистую целевую прибыль.', style: TextStyle(color: _muted, fontSize: 11)),
+        SwitchListTile(contentPadding: EdgeInsets.zero,
+          title: const Text('Автоцикл: поиск → вход → чистая цель → следующий поиск', style: TextStyle(fontSize: 12)),
+          subtitle: const Text('Автоматически только в PAPER; Spot открывает только LONG.', style: TextStyle(color: _muted, fontSize: 10)),
+          value: _autoCycleEnabled,
+          onChanged: (v) {
+            setState(() { _autoCycleEnabled = v; if (v) _confirmMode = false; });
+            if (v) _scanNextOpportunity();
+          }),
         SwitchListTile(contentPadding: EdgeInsets.zero,
           title: const Text('Подтверждение каждой сделки', style: TextStyle(fontSize: 12)),
           value: _confirmMode, onChanged: (v) => setState(() => _confirmMode = v)),
