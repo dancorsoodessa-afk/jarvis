@@ -73,6 +73,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _confirmMode = true;
   bool _autoCycleEnabled = false;
   bool _cycleRunning = false;
+  Timer? _cycleRetry;
 
   TradeSignal get _signal => calculateSignal(
     prices: _prices,
@@ -121,6 +122,7 @@ class _DashboardPageState extends State<DashboardPage> {
     await _market.watch(instrument.id);
     await _refreshCandles();
     _candleRefresh?.cancel();
+    _cycleRetry?.cancel();
     _candleRefresh = Timer.periodic(const Duration(seconds: 20), (_) => _refreshCandles());
     _prices.clear();
     _bookImbalance = 0;
@@ -255,6 +257,8 @@ class _DashboardPageState extends State<DashboardPage> {
         }
       } else if (mounted && _autoCycleEnabled) {
         setState(() => _status = 'АГЕНТ: подходящей пары пока нет • повторный поиск через 20 сек');
+        _cycleRetry?.cancel();
+        _cycleRetry = Timer(const Duration(seconds: 20), _scanNextOpportunity);
       }
     } finally {
       _cycleRunning = false;
@@ -527,6 +531,7 @@ class _DashboardPageState extends State<DashboardPage> {
           value: _autoCycleEnabled,
           onChanged: (v) {
             setState(() { _autoCycleEnabled = v; if (v) _confirmMode = false; });
+            _cycleRetry?.cancel();
             if (v) _scanNextOpportunity();
           }),
         SwitchListTile(contentPadding: EdgeInsets.zero,
