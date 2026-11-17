@@ -59,7 +59,7 @@ class MultiTimeframeAnalysis {
   bool get isAligned => activeTimeframes >= 3 && agreementPercent >= 60;
 
   String get recommendation {
-    if (activeTimeframes < 2 || signal.confidence < 56 || agreementPercent < 55) return 'ЖДАТЬ';
+    if (!isAligned || signal.confidence < 60) return 'ЖДАТЬ';
     return signal.direction;
   }
 }
@@ -416,22 +416,52 @@ TradePlan buildTradePlan({
   double secondTargetR = 2.5,
   double trailingStopPercent = 1.0,
   double autoProfitTargetPercent = 0,
+  bool useFullCollateral = false,
+  double contractSize = 0,
+  double lotSize = 0,
+  double minSize = 0,
 }) {
-  if (entry <= 0 ||
-      capital <= 0 ||
-      riskPercent <= 0 ||
-      leverage <= 0 ||
-      stopPercent <= 0 ||
+  if (!entry.isFinite || entry <= 0 ||
+      !capital.isFinite || capital <= 0 ||
+      !riskPercent.isFinite || riskPercent <= 0 ||
+      !leverage.isFinite || leverage < 1 || leverage > 100 ||
+      !stopPercent.isFinite || stopPercent <= 0 ||
+      !autoProfitTargetPercent.isFinite || autoProfitTargetPercent < 0 ||
+      !contractSize.isFinite || contractSize < 0 ||
+      !lotSize.isFinite || lotSize < 0 ||
+      !minSize.isFinite || minSize < 0 ||
       (direction != 'LONG' && direction != 'SHORT')) {
-    throw ArgumentError('Entry, capital, risk, stop, direction and leverage must be valid.');
+    throw ArgumentError('Entry, collateral, risk, stop, direction, leverage and instrument sizes must be valid.');
   }
   final isLong = direction == 'LONG';
   final stopDistance = entry * stopPercent / 100;
   final stop = isLong ? entry - stopDistance : entry + stopDistance;
   final requestedRisk = capital * riskPercent / 100;
   final riskLimitedQuantity = requestedRisk / stopDistance;
-  final marginLimitedQuantity = capital * leverage * 0.998 / entry;
-  final quantity = math.min(riskLimitedQuantity, marginLimitedQuantity).toDouble();
+  final marginLimitedQuantity = capital * leverage / entry;
+  var quantity = useFullCollateral
+      ? marginLimitedQuantity
+      : math.min(riskLimitedQuantity, marginLimitedQuantity * 0.998).toDouble();
+  if (lotSize > 0) {
+    if (contractSize > 0) {
+      final rawContracts = quantity / contractSize;
+      final roundedContracts = (rawContracts / lotSize).floorToDouble() * lotSize;
+      if (roundedContracts < minSize) {
+        throw ArgumentError('Position is below the OKX minimum contract size.');
+      }
+      quantity = roundedContracts * contractSize;
+    } else {
+      quantity = (quantity / lotSize).floorToDouble() * lotSize;
+      if (quantity < minSize) {
+        throw ArgumentError('Position is below the OKX minimum order size.');
+      }
+    }
+  } else if (minSize > 0 && quantity < minSize) {
+    throw ArgumentError('Position is below the instrument minimum size.');
+  }
+  if (!quantity.isFinite || quantity <= 0) {
+    throw ArgumentError('Calculated order quantity is below the instrument minimum.');
+  }
   final risk = quantity * stopDistance;
   final tp1 = isLong
       ? entry + stopDistance * firstTargetR
