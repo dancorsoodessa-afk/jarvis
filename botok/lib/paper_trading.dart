@@ -190,8 +190,12 @@ class PaperTradingEngine {
   double get totalFees => _totalFees;
   double get unrealizedPnl => _position?.unrealizedPnl ?? 0;
   double get positionNetPnl => _position == null ? 0 : _position!.partialRealizedPnl + _position!.unrealizedPnl - _position!.entryFee - _position!.partialFees - (_position!.currentPrice * _position!.quantity * feeRate);
+  double get estimatedExitFee => _position == null
+      ? 0
+      : _position!.currentPrice * _position!.quantity * feeRate;
   double get netAccountPnl => equity - _initialBalance;
-  double get equity => _cashBalance + unrealizedPnl;
+  // Equity is marked to market after entry, partial and estimated exit fees.
+  double get equity => _cashBalance + unrealizedPnl - estimatedExitFee;
   PaperPosition? get openPosition => _position;
   List<PaperClosedTrade> get closedTrades => List.unmodifiable(_closedTrades);
 
