@@ -85,12 +85,8 @@ jobs:
               )
               if "multiDexEnabled" not in gradle:
                   gradle = gradle.replace("defaultConfig {", "defaultConfig {\n        multiDexEnabled = true", 1)
-              if "coreLibraryDesugaring(" not in gradle:
-                  dependency = 'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}'
-                  if "dependencies {" in gradle:
-                      gradle = gradle.replace("dependencies {", dependency, 1)
-                  else:
-                      gradle += "\n" + dependency + "\n"
+              if "com.android.tools:desugar_jdk_libs" not in gradle:
+                  gradle += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
               kotlin_gradle.write_text(gradle)
           elif groovy_gradle.exists():
               gradle = groovy_gradle.read_text()
@@ -101,12 +97,8 @@ jobs:
               )
               if "multiDexEnabled" not in gradle:
                   gradle = gradle.replace("defaultConfig {", "defaultConfig {\n        multiDexEnabled true", 1)
-              if "coreLibraryDesugaring " not in gradle:
-                  dependency = "dependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}"
-                  if "dependencies {" in gradle:
-                      gradle = gradle.replace("dependencies {", dependency, 1)
-                  else:
-                      gradle += "\n" + dependency + "\n"
+              if "com.android.tools:desugar_jdk_libs" not in gradle:
+                  gradle += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
               groovy_gradle.write_text(gradle)
           PY
       - run: flutter pub get
