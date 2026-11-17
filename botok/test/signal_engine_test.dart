@@ -140,6 +140,29 @@ void main() {
       expect(plan.takeProfit2, lessThan(plan.takeProfit1));
     });
 
+    test('automatic plan rounds contract quantity and price levels to OKX increments', () {
+      final plan = buildTradePlan(
+        direction: 'LONG',
+        entry: 333,
+        capital: 10,
+        riskPercent: 1,
+        leverage: 5,
+        useFullCollateral: true,
+        contractSize: 0.01,
+        lotSize: 1,
+        minSize: 1,
+        tickSize: 0.1,
+        autoProfitTargetPercent: 5,
+      );
+      final contracts = plan.quantity / 0.01;
+      expect(contracts, closeTo(contracts.roundToDouble(), 1e-8));
+      expect(plan.entry * plan.quantity / plan.leverage, lessThanOrEqualTo(10));
+      expect(plan.entry * plan.quantity / plan.leverage, greaterThan(9.9));
+      expect((plan.stopLoss / 0.1), closeTo((plan.stopLoss / 0.1).roundToDouble(), 1e-8));
+      expect(plan.autoProfitTargetPercent, 5);
+      expect(plan.tickSize, 0.1);
+    });
+
     test('automatic plan uses the requested collateral as margin, not as risk budget', () {
       final plan = buildTradePlan(
         direction: 'LONG',

@@ -241,9 +241,15 @@ class PaperTradingEngine {
         ? math.max(position.bestPrice, price).toDouble()
         : math.min(position.bestPrice, price).toDouble();
     final trailPercent = position.plan.trailingStopPercent;
-    final candidateTrail = position.isLong
+    final rawCandidateTrail = position.isLong
         ? bestPrice * (1 - trailPercent / 100)
         : bestPrice * (1 + trailPercent / 100);
+    final tick = position.plan.tickSize;
+    final candidateTrail = tick > 0
+        ? (position.isLong
+            ? (rawCandidateTrail / tick).floorToDouble()
+            : (rawCandidateTrail / tick).ceilToDouble()) * tick
+        : rawCandidateTrail;
     final previousTrail = position.trailingStopPrice;
     final trailingStop = trailPercent <= 0
         ? previousTrail
@@ -386,6 +392,7 @@ Map<String, dynamic> _planToJson(TradePlan plan) => {
   'leverage': plan.leverage,
   'trailingStopPercent': plan.trailingStopPercent,
   'autoProfitTargetPercent': plan.autoProfitTargetPercent,
+  'tickSize': plan.tickSize,
 };
 
 TradePlan _planFromJson(Map<String, dynamic> json) => TradePlan(
@@ -399,4 +406,5 @@ TradePlan _planFromJson(Map<String, dynamic> json) => TradePlan(
   leverage: (json['leverage'] as num).toDouble(),
   trailingStopPercent: (json['trailingStopPercent'] as num?)?.toDouble() ?? 1.0,
   autoProfitTargetPercent: (json['autoProfitTargetPercent'] as num?)?.toDouble() ?? 0,
+  tickSize: (json['tickSize'] as num?)?.toDouble() ?? 0,
 );

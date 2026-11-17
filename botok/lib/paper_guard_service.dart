@@ -184,7 +184,7 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
         onTimeout: () {},
       );
       await subscription.cancel();
-      textHeartbeat?.cancel();
+      textHeartbeat.cancel();
       textHeartbeat = null;
       await socket.close();
     } catch (error) {
