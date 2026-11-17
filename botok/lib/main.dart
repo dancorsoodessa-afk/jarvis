@@ -7,6 +7,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'background_service.dart';
 import 'okx_market.dart';
 import 'signal_engine.dart';
+import 'trend_outlook.dart';
 
 void main() {
   FlutterForegroundTask.initCommunicationPort();
@@ -70,6 +71,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   double _tradeDelta = 0;
   final double _leverage = 1;
   AllocationPlan? _paperPosition;
+  double _paperBalance = 100;
+  double _paperRealizedPnl = 0;
   String _positionState = 'Нет открытой paper-позиции';
   bool _loading = false;
   bool _confirmMode = true;
@@ -107,6 +110,20 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     FlutterForegroundTask.sendDataToTask(config);
     return true;
   }
+
+  TrendOutlook get _trendOutlook => calculateTrendOutlook(_candles.map((c) => c.close).toList());
+
+  double _paperPnlAt(AllocationPlan p, double markPrice) {
+    if (markPrice <= 0) return 0;
+    final gross = p.direction == 'LONG'
+        ? p.quantity * (markPrice - p.entry)
+        : p.quantity * (p.entry - markPrice);
+    final fees = p.notional * 0.001 + p.quantity * markPrice * 0.001;
+    return gross - fees;
+  }
+
+  double get _paperUnrealizedPnl => _paperPosition == null ? 0 : _paperPnlAt(_paperPosition!, _price);
+  double get _paperEquity => _paperBalance + _paperUnrealizedPnl;
 
   TradeSignal get _signal => calculateSignal(
     prices: _prices,
@@ -357,14 +374,20 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     if (position == null) return;
     final isLong = position.direction == 'LONG';
     if ((isLong && last <= position.stopLoss) || (!isLong && last >= position.stopLoss)) {
+      final pnl = _paperPnlAt(position, last);
+      _paperBalance += pnl;
+      _paperRealizedPnl += pnl;
       _paperPosition = null;
-      _positionState = 'PAPER закрыта по Stop Loss • ${_fmt(last)}';
+      _positionState = 'PAPER закрыта по Stop Loss • ${pnl >= 0 ? '+' : ''}${pnl.toStringAsFixed(4)} USDT';
       if (_autoCycleEnabled) {
         Future.microtask(_scanNextOpportunity);
       }
     } else if ((isLong && last >= position.takeProfit) || (!isLong && last <= position.takeProfit)) {
+      final pnl = _paperPnlAt(position, last);
+      _paperBalance += pnl;
+      _paperRealizedPnl += pnl;
       _paperPosition = null;
-      _positionState = 'PAPER закрыта по чистой целевой прибыли • ${_fmt(last)}';
+      _positionState = 'PAPER закрыта по цели • ${pnl >= 0 ? '+' : ''}${pnl.toStringAsFixed(4)} USDT';
       if (_autoCycleEnabled) Future.microtask(_scanNextOpportunity);
     }
   }
@@ -466,7 +489,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     }
     setState(() {
       _paperPosition = plan;
-      _positionState = 'PAPER ${plan.direction} • цель рассчитана после комиссий';
+      _positionState = 'PAPER ${plan.direction} • открыта';
     });
   }
 
@@ -523,6 +546,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
               _instrumentCard(selected),
               const SizedBox(height: 12),
               _chartCard(),
+              const SizedBox(height: 12),
+              _trendCard(),
               const SizedBox(height: 12),
               _signalCard(signal),
               const SizedBox(height: 12),
@@ -680,6 +705,29 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     return 100 - 100 / (1 + gains / losses);
   }
 
+  Widget _trendCard() {
+    final outlook = _trendOutlook;
+    final color = outlook.direction == 'BULLISH' ? _green : outlook.direction == 'BEARISH' ? _red : _muted;
+    final label = outlook.direction == 'BULLISH' ? 'ВОСХОДЯЩИЙ' : outlook.direction == 'BEARISH' ? 'НИСХОДЯЩИЙ' : 'БОКОВОЙ / НЕЙТРАЛЬНЫЙ';
+    return _card(
+      title: 'ПРОГНОЗ ТРЕНДА • ${outlook.horizonLabel.toUpperCase()}',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(label, style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w800)),
+          Text('${outlook.confidence.toStringAsFixed(0)}% оценка', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+        ]),
+        const SizedBox(height: 9),
+        _planLine('Текущая цена', outlook.lastPrice > 0 ? _fmt(outlook.lastPrice) : '—'),
+        _planLine('Прогноз через 1 свечу', outlook.projectedPrices.isNotEmpty ? _fmt(outlook.projectedPrices[0]) : '—', color),
+        _planLine('Прогноз через 2 свечи', outlook.projectedPrices.length > 1 ? _fmt(outlook.projectedPrices[1]) : '—', color),
+        _planLine('Прогноз через 3 свечи', outlook.projectedPrices.length > 2 ? _fmt(outlook.projectedPrices[2]) : '—', color),
+        _planLine('Импульс', '${outlook.momentumPercent >= 0 ? '+' : ''}${outlook.momentumPercent.toStringAsFixed(3)}% / свечу', color),
+        _planLine('RSI 14', outlook.rsi.toStringAsFixed(1)),
+        const Text('Расчёт по EMA и линейному наклону последних 24 свечей. Это техническая экстраполяция, не гарантия будущей цены.', style: TextStyle(color: _muted, fontSize: 10)),
+      ]),
+    );
+  }
+
   Widget _signalCard(TradeSignal signal) => _card(
     title: 'AI SIGNAL • LONG / SHORT',
     child: Column(children: [
@@ -761,7 +809,9 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       return buildAllocationPlan(
         direction: direction,
         entry: _price,
-        quoteBalance: double.parse(_capital.text.replaceAll(',', '.')),
+        quoteBalance: _paperPosition == null && _paperRealizedPnl == 0
+            ? (double.tryParse(_capital.text.replaceAll(',', '.')) ?? _paperBalance)
+            : _paperBalance,
         allocationPercent: double.parse(_allocation.text.replaceAll(',', '.')),
         targetNetPercent: double.parse(_targetNet.text.replaceAll(',', '.')),
         leverage: _marketType == 'SPOT' ? 1 : _leverage,
@@ -769,21 +819,44 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     } catch (_) { return null; }
   }
 
-  Widget _paperCard() => _card(
-    title: 'PAPER TRADING',
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(_positionState, style: const TextStyle(fontSize: 12, color: _muted)),
-      if (_paperPosition case final p?) ...[
-        const SizedBox(height: 8),
-        _planLine('Направление', p.direction, p.direction == 'LONG' ? _green : _red),
-        _planLine('SL / чистая цель', '${_fmt(p.stopLoss)} / ${_fmt(p.takeProfit)}'),
-        SizedBox(width: double.infinity, child: OutlinedButton(
-          onPressed: () { setState(() { _paperPosition = null; _positionState = 'PAPER позиция закрыта вручную'; }); if (_autoCycleEnabled) _scanNextOpportunity(); },
-          child: const Text('ЗАКРЫТЬ PAPER-ПОЗИЦИЮ'),
-        )),
-      ],
-    ]),
-  );
+  Widget _paperCard() {
+    final p = _paperPosition;
+    final pnl = p == null ? 0.0 : _paperPnlAt(p, _price);
+    final pnlColor = pnl >= 0 ? _green : _red;
+    return _card(
+      title: 'ОТКРЫТАЯ СДЕЛКА • PAPER',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _planLine('Баланс счёта', '${_paperEquity.toStringAsFixed(4)} USDT', _paperEquity >= _paperBalance ? _green : _red),
+        _planLine('Реализованный PnL', '${_paperRealizedPnl >= 0 ? '+' : ''}${_paperRealizedPnl.toStringAsFixed(4)} USDT', _paperRealizedPnl >= 0 ? _green : _red),
+        Text(_positionState, style: const TextStyle(fontSize: 12, color: _muted)),
+        if (p != null) ...[
+          const Divider(color: Colors.white12, height: 18),
+          _planLine('Инструмент / сторона', '${_selected?.id ?? '—'} • ${p.direction}', p.direction == 'LONG' ? _green : _red),
+          _planLine('Цена входа', _fmt(p.entry)),
+          _planLine('Текущая цена', _price > 0 ? _fmt(_price) : 'ожидание'),
+          _planLine('Размер позиции', '${p.notional.toStringAsFixed(4)} USDT'),
+          _planLine('Плавающий PnL после комиссий', '${pnl >= 0 ? '+' : ''}${pnl.toStringAsFixed(4)} USDT', pnlColor),
+          _planLine('Доходность позиции', '${p.marginUsed > 0 ? (pnl / p.marginUsed * 100).toStringAsFixed(2) : '0.00'}%', pnlColor),
+          _planLine('Баланс с учётом PnL', '${_paperEquity.toStringAsFixed(4)} USDT', _paperEquity >= _paperBalance ? _green : _red),
+          _planLine('SL / TP', '${_fmt(p.stopLoss)} / ${_fmt(p.takeProfit)}'),
+          SizedBox(width: double.infinity, child: OutlinedButton(
+            onPressed: _price > 0 ? () {
+              final realized = _paperPnlAt(p, _price);
+              setState(() {
+                _paperBalance += realized;
+                _paperRealizedPnl += realized;
+                _paperPosition = null;
+                _positionState = 'Закрыта вручную • ${realized >= 0 ? '+' : ''}${realized.toStringAsFixed(4)} USDT';
+              });
+              if (_autoCycleEnabled) _scanNextOpportunity();
+            } : null,
+            child: const Text('ЗАКРЫТЬ ПО ТЕКУЩЕЙ ЦЕНЕ'),
+          )),
+        ] else
+          const Padding(padding: EdgeInsets.only(top: 8), child: Text('Открытой сделки нет. Баланс изменяется после закрытия Paper-сделки.', style: TextStyle(color: _muted, fontSize: 11))),
+      ]),
+    );
+  }
 
   Widget _universeCard() => _card(
     title: 'СКАНЕР РЫНКА • ВСЕ ДОСТУПНЫЕ ИНСТРУМЕНТЫ',
