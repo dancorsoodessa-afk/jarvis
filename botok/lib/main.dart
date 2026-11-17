@@ -79,6 +79,12 @@ class _DashboardPageState extends State<DashboardPage> {
   double _ask = 0;
   double _bookImbalance = 0;
   double _tradeDelta = 0;
+  double _fundingRate = 0;
+  double _openInterestUsd = 0;
+  double _openInterestChangePercent = 0;
+  int _recentLiquidationEvents = 0;
+  double _longLiquidationContracts = 0;
+  double _shortLiquidationContracts = 0;
   double _leverage = 1;
   double _riskPercent = 1;
   late PaperTradingEngine _paper;
@@ -96,6 +102,8 @@ class _DashboardPageState extends State<DashboardPage> {
     candlesByTimeframe: _candlesByTimeframe,
     bookImbalance: _bookImbalance,
     tradeDelta: _tradeDelta,
+    fundingRate: _fundingRate,
+    openInterestChangePercent: _openInterestChangePercent,
   );
 
   TradeSignal get _signal => _analysis.signal;
@@ -289,6 +297,33 @@ class _DashboardPageState extends State<DashboardPage> {
       final side = row['side']?.toString();
       final size = double.tryParse(row['sz']?.toString() ?? '') ?? 0;
       _tradeDelta = (_tradeDelta * 0.85 + (side == 'buy' ? 1 : -1) * (size / (size + 1)) * 0.15).clamp(-1.0, 1.0).toDouble();
+    } else if (type == 'funding-rate') {
+      _fundingRate = double.tryParse(row['fundingRate']?.toString() ?? '') ?? _fundingRate;
+    } else if (type == 'open-interest') {
+      final nextOi = double.tryParse(row['oiUsd']?.toString() ?? '') ?? 0;
+      if (nextOi > 0 && _openInterestUsd > 0) {
+        _openInterestChangePercent = ((nextOi - _openInterestUsd) / _openInterestUsd * 100).clamp(-20.0, 20.0).toDouble();
+      }
+      if (nextOi > 0) _openInterestUsd = nextOi;
+    } else if (type == 'liquidation-orders') {
+      var events = 0;
+      var longContracts = 0.0;
+      var shortContracts = 0.0;
+      for (final item in rows) {
+        if (item is! Map<String, dynamic>) continue;
+        final details = item['details'];
+        if (details is! List) continue;
+        for (final detail in details) {
+          if (detail is! Map<String, dynamic>) continue;
+          final size = double.tryParse(detail['sz']?.toString() ?? '') ?? 0;
+          events++;
+          if (detail['posSide'] == 'long') longContracts += size;
+          if (detail['posSide'] == 'short') shortContracts += size;
+        }
+      }
+      _recentLiquidationEvents = events;
+      _longLiquidationContracts = longContracts;
+      _shortLiquidationContracts = shortContracts;
     }
     setState(() {});
   }
@@ -476,6 +511,10 @@ class _DashboardPageState extends State<DashboardPage> {
               _marketSelector(),
               const SizedBox(height: 12),
               _instrumentCard(selected),
+              if (_marketType == 'SWAP') ...[
+                const SizedBox(height: 12),
+                _derivativesFeedCard(),
+              ],
               const SizedBox(height: 12),
               _walletCard(),
               const SizedBox(height: 12),
@@ -504,6 +543,25 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
+
+
+  Widget _derivativesFeedCard() => _card(
+    title: 'ДЕРИВАТИВНЫЕ ДАННЫЕ OKX • LIVE',
+    child: Column(children: [
+      Row(children: [
+        Expanded(child: _miniMetric('FUNDING RATE', '${(_fundingRate * 100).toStringAsFixed(4)}%', _fundingRate >= 0 ? _red : _green)),
+        Expanded(child: _miniMetric('OPEN INTEREST', _openInterestUsd > 0 ? '${(_openInterestUsd / 1000000).toStringAsFixed(2)}M USD' : '—', _blue)),
+        Expanded(child: _miniMetric('OI Δ', '${_openInterestChangePercent >= 0 ? '+' : ''}${_openInterestChangePercent.toStringAsFixed(2)}%', _openInterestChangePercent >= 0 ? _green : _red)),
+      ]),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: _miniMetric('LIQ. EVENTS', '$_recentLiquidationEvents', Colors.orange)),
+        Expanded(child: _miniMetric('LONG LIQ.', _longLiquidationContracts.toStringAsFixed(2), _red)),
+        Expanded(child: _miniMetric('SHORT LIQ.', _shortLiquidationContracts.toStringAsFixed(2), _green)),
+      ]),
+      const Text('Ликвидации — только недавние события канала OKX, не полный объём ликвидаций рынка. OI Δ — изменение между последними полученными обновлениями.', style: TextStyle(color: _muted, fontSize: 9)),
+    ]),
+  );
 
   Widget _statusBar() => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
