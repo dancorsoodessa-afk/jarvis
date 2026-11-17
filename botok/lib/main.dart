@@ -568,6 +568,7 @@ class _DashboardPageState extends State<DashboardPage> {
         marketType: _marketType,
         loadCandles: (instrumentId, timeframe, limit) =>
             _market.loadCandles(instrumentId, bar: timeframe, limit: limit),
+        loadFundingRate: _market.loadFundingRate,
       );
       if (!_autoProfitEnabled || _paper.openPosition != null || opportunity == null) {
         if (mounted) setState(() => _autoScanStatus = 'Подходящего сигнала нет • продолжаю поиск');
