@@ -154,6 +154,7 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
           marketType: marketType,
           loadCandles: (instrumentId, timeframe, limit) =>
               market.loadCandles(instrumentId, bar: timeframe, limit: limit),
+          loadFundingRate: market.loadFundingRate,
         );
         if (opportunity == null) {
           service.invoke('guardStatus', {'status': 'Сильного сигнала нет • повторный поиск через минуту'});
