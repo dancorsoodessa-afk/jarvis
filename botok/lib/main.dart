@@ -50,8 +50,6 @@ class _DashboardPageState extends State<DashboardPage> {
   final _capital = TextEditingController(text: '100');
   final _allocation = TextEditingController(text: '10');
   final _targetNet = TextEditingController(text: '1.0');
-  final _allocation = TextEditingController(text: '10');
-  final _targetNet = TextEditingController(text: '1.0');
   List<MarketCandle> _candles = [];
   String _bar = '5m';
   Timer? _candleRefresh;
@@ -201,6 +199,7 @@ class _DashboardPageState extends State<DashboardPage> {
       _paperPosition = null;
       _positionState = 'PAPER закрыта по чистой целевой прибыли • ${_fmt(last)}';
       if (_autoCycleEnabled) Future.microtask(_scanNextOpportunity);
+    }
   }
 
   Future<void> _switchMarket(String type) async {
@@ -681,8 +680,8 @@ class _CandlePainter extends CustomPainter {
       final color = rising ? const Color(0xFF20D6A0) : const Color(0xFFFF647C);
       wick.color = color;
       canvas.drawLine(Offset(x, y(c.high)), Offset(x, y(c.low)), wick);
-      final topY = math.min(y(c.open), y(c.close));
-      final bottomY = math.max(y(c.open), y(c.close));
+      final topY = math.min(y(c.open), y(c.close)).toDouble();
+      final bottomY = math.max(y(c.open), y(c.close)).toDouble();
       final rect = Rect.fromLTRB(x - bodyWidth / 2, topY, x + bodyWidth / 2, math.max(topY + 1.5, bottomY).toDouble());
       canvas.drawRect(rect, Paint()..color = color);
     }
