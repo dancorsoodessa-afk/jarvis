@@ -43,6 +43,8 @@ jobs:
           from pathlib import Path
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           text = manifest.read_text()
+          if "xmlns:tools=" not in text:
+              text = text.replace("<manifest ", '<manifest xmlns:tools="http://schemas.android.com/tools" ', 1)
           text = text.replace('android:label="botok"', 'android:label="BOTok"')
           permissions = [
               "android.permission.INTERNET",
@@ -58,7 +60,7 @@ jobs:
                   text = text.replace("<application", f"    {entry}\n    <application", 1)
           service = (
               '<service android:name="id.flutter.flutter_background_service.BackgroundService" '
-              'android:exported="false" android:stopWithTask="false" '
+              'android:exported="false" tools:replace="android:exported" android:stopWithTask="false" '
               'android:foregroundServiceType="dataSync" />'
           )
           if "id.flutter.flutter_background_service.BackgroundService" not in text:
@@ -129,6 +131,8 @@ jobs:
           from pathlib import Path
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           text = manifest.read_text()
+          if "xmlns:tools=" not in text:
+              text = text.replace("<manifest ", '<manifest xmlns:tools="http://schemas.android.com/tools" ', 1)
           text = text.replace('android:label="botok"', 'android:label="BOTok"')
           permissions = [
               "android.permission.INTERNET",
@@ -144,7 +148,7 @@ jobs:
                   text = text.replace("<application", f"    {entry}\n    <application", 1)
           service = (
               '<service android:name="id.flutter.flutter_background_service.BackgroundService" '
-              'android:exported="false" android:stopWithTask="false" '
+              'android:exported="false" tools:replace="android:exported" android:stopWithTask="false" '
               'android:foregroundServiceType="dataSync" />'
           )
           if "id.flutter.flutter_background_service.BackgroundService" not in text:
