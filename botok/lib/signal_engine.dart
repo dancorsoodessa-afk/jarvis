@@ -75,6 +75,7 @@ class TradePlan {
     required this.direction,
     required this.leverage,
     this.trailingStopPercent = 1.0,
+    this.autoProfitTargetPercent = 0,
   });
 
   final double entry;
@@ -86,6 +87,7 @@ class TradePlan {
   final String direction;
   final double leverage;
   final double trailingStopPercent;
+  final double autoProfitTargetPercent;
 }
 
 double _ema(List<double> values, int period) {
@@ -413,6 +415,7 @@ TradePlan buildTradePlan({
   double firstTargetR = 1.5,
   double secondTargetR = 2.5,
   double trailingStopPercent = 1.0,
+  double autoProfitTargetPercent = 0,
 }) {
   if (entry <= 0 ||
       capital <= 0 ||
