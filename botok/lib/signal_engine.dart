@@ -172,7 +172,7 @@ TechnicalIndicators? calculateTechnicalIndicators(List<MarketCandle> input) {
   final obvValues = <double>[0];
   for (var i = 1; i < candles.length; i++) {
     final direction = candles[i].close.compareTo(candles[i - 1].close);
-    obv += direction * candles[i].volume;
+    obv += direction.toDouble() * candles[i].volume;
     obvValues.add(obv);
   }
   final obvRecent = obvValues.skip(obvValues.length - 10).reduce((a, b) => a + b) / 10;
@@ -185,8 +185,8 @@ TechnicalIndicators? calculateTechnicalIndicators(List<MarketCandle> input) {
     rsiValues.add(_rsi(closes.sublist(0, i)));
   }
   final recentRsi = rsiValues.skip(math.max(0, rsiValues.length - 14).toInt()).toList();
-  final minRsi = recentRsi.reduce(math.min);
-  final maxRsi = recentRsi.reduce(math.max);
+  final minRsi = recentRsi.reduce((a, b) => math.min(a, b).toDouble());
+  final maxRsi = recentRsi.reduce((a, b) => math.max(a, b).toDouble());
   final stochastic = maxRsi == minRsi ? 50.0 : ((recentRsi.last - minRsi) / (maxRsi - minRsi) * 100).clamp(0.0, 100.0).toDouble();
 
   return TechnicalIndicators(
