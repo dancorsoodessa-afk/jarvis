@@ -52,6 +52,7 @@ Future<void> startPaperGuardService() async {
   } else {
     service.invoke('refreshPosition');
   }
+  textHeartbeat?.cancel();
 }
 
 void refreshPaperGuardService() {
@@ -77,9 +78,11 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
   final prefs = await SharedPreferences.getInstance();
   WebSocket? activeSocket;
   var stopping = false;
+  Timer? textHeartbeat;
 
   service.on('stop').listen((_) {
     stopping = true;
+    textHeartbeat?.cancel();
     activeSocket?.close();
     service.stopSelf();
   });
@@ -119,6 +122,11 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
       service.invoke('guardStatus', {'status': 'OKX подключён • SL/TP контролируются'});
       activeSocket = socket;
       socket.pingInterval = const Duration(seconds: 15);
+      textHeartbeat?.cancel();
+      // OKX expects application-level text ping/pong, not only WebSocket control frames.
+      textHeartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
+        try { socket.add('ping'); } catch (_) {}
+      });
       socket.add(jsonEncode({
         'op': 'subscribe',
         'args': [
@@ -177,11 +185,15 @@ Future<void> _runPaperGuard(ServiceInstance service) async {
         onTimeout: () {},
       );
       await subscription.cancel();
+      textHeartbeat?.cancel();
+      textHeartbeat = null;
       await socket.close();
     } catch (error) {
       service.invoke('guardStatus', {'status': 'переподключение к OKX'});
       service.invoke('guardError', {'message': 'OKX Paper Guard переподключается: $error'});
     } finally {
+      textHeartbeat?.cancel();
+      textHeartbeat = null;
       activeSocket = null;
     }
 
