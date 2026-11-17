@@ -55,5 +55,33 @@ void main() {
         leverage: 1,
       ), throwsArgumentError);
     });
+
+    test('percentage allocation and net target include both trading fees', () {
+      final plan = buildAllocationPlan(
+        direction: 'LONG',
+        entry: 100,
+        quoteBalance: 100,
+        allocationPercent: 10,
+        targetNetPercent: 1,
+        feeRate: 0.001,
+      );
+      expect(plan.marginUsed, closeTo(10, 1e-8));
+      expect(plan.notional, closeTo(10, 1e-8));
+      expect(plan.netTarget, closeTo(0.1, 1e-8));
+      expect(plan.takeProfit, greaterThan(100));
+      expect(plan.feesEstimate, greaterThan(0));
+    });
+
+    test('short net target is below entry and fees are included', () {
+      final plan = buildAllocationPlan(
+        direction: 'SHORT',
+        entry: 100,
+        quoteBalance: 100,
+        allocationPercent: 10,
+        targetNetPercent: 1,
+      );
+      expect(plan.takeProfit, lessThan(100));
+      expect(plan.netTarget, closeTo(0.1, 1e-8));
+    });
   });
 }
