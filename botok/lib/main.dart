@@ -86,6 +86,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   double _backgroundShort = 50;
   double _backgroundBalance = 100;
   double _backgroundRealizedPnl = 0;
+  double _backgroundUnrealizedPnl = 0;
+  double _backgroundEquity = 100;
   String _backgroundPositionText = 'Нет фоновой PAPER-позиции';
 
   Map<String, dynamic> _backgroundConfig({
@@ -187,6 +189,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       _backgroundShort = (data['shortProbability'] as num?)?.toDouble() ?? 50;
       _backgroundBalance = (data['paperBalance'] as num?)?.toDouble() ?? _backgroundBalance;
       _backgroundRealizedPnl = (data['realizedPnl'] as num?)?.toDouble() ?? _backgroundRealizedPnl;
+      _backgroundUnrealizedPnl = (data['unrealizedPnl'] as num?)?.toDouble() ?? 0;
+      _backgroundEquity = (data['equity'] as num?)?.toDouble() ?? _backgroundBalance + _backgroundUnrealizedPnl;
       final position = data['position'];
       _backgroundPositionText = position is Map
           ? '${position['direction']} ${position['instrumentId']} • вход ${position['entry']} • SL ${position['stopLoss']} • TP ${position['takeProfit']}'
@@ -594,6 +598,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         const SizedBox(height: 7),
         _miniMetric('PAPER БАЛАНС', '${_backgroundBalance.toStringAsFixed(2)} USDT', _green),
         _miniMetric('РЕАЛИЗОВАННЫЙ PNL', '${_backgroundRealizedPnl.toStringAsFixed(4)} USDT', _backgroundRealizedPnl >= 0 ? _green : _red),
+        _miniMetric('ПЛАВАЮЩИЙ PNL', '${_backgroundUnrealizedPnl >= 0 ? '+' : ''}${_backgroundUnrealizedPnl.toStringAsFixed(4)} USDT', _backgroundUnrealizedPnl >= 0 ? _green : _red),
+        _miniMetric('БАЛАНС С PNL', '${_backgroundEquity.toStringAsFixed(4)} USDT', _backgroundEquity >= _backgroundBalance ? _green : _red),
         const SizedBox(height: 6),
         Text(_backgroundPositionText, style: const TextStyle(color: _muted, fontSize: 10)),
       ],
