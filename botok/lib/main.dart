@@ -593,8 +593,8 @@ class _DashboardPageState extends State<DashboardPage> {
           items: MarketTimeframe.all.map((tf) => DropdownMenuItem(value: tf.bar, child: Text(tf.label, style: const TextStyle(fontSize: 10)))).toList(),
           onChanged: (v) { if (v != null) _setTimeframe(v); }),
       ]),
-      SizedBox(height: 140, child: _candles.length < 2 ? const Center(child: Text('Загрузка свечей…', style: TextStyle(color: _muted, fontSize: 10)))
-        : CustomPaint(painter: _CandlePainter(List<MarketCandle>.from(_candles), forecastPrice: _price, position: _paper.openPosition), child: const SizedBox.expand())),
+      SizedBox(height: 190, child: _candles.length < 2 ? const Center(child: Text('Загрузка свечей…', style: TextStyle(color: _muted, fontSize: 10)))
+        : CustomPaint(painter: _CandlePainter(List<MarketCandle>.from(_candles), forecast: buildMarketForecast(_candles.where((c) => c.isClosed).toList()), position: _paper.openPosition), child: const SizedBox.expand())),
     ]));
 
   Widget _quickControlsCard(String rec) {
@@ -1105,108 +1105,78 @@ class _ForecastPainter extends CustomPainter {
 }
 
 class _CandlePainter extends CustomPainter {
-  _CandlePainter(this.candles, {required this.forecastPrice, required this.position});
+  _CandlePainter(this.candles, {required this.forecast, required this.position});
   final List<MarketCandle> candles;
-  final double forecastPrice;
+  final MarketForecast? forecast;
   final PaperPosition? position;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (candles.length < 2) return;
-    final visibleCandles = candles.length > 160
-        ? candles.sublist(candles.length - 160)
-        : candles;
-    final last = forecastPrice > 0 ? forecastPrice : visibleCandles.last.close;
-    final unit = last * 0.008;
-    final levels = <({String label, double price, Color color})>[
-      (label: 'LONG SL', price: last - unit, color: _red),
-      (label: 'LONG TP1', price: last + unit * 1.5, color: _green),
-      (label: 'LONG TP2', price: last + unit * 2.5, color: _green),
-      (label: 'SHORT SL', price: last + unit, color: _red),
-      (label: 'SHORT TP1', price: last - unit * 1.5, color: _green),
-      (label: 'SHORT TP2', price: last - unit * 2.5, color: _green),
-    ];
+    final visible = candles.length > 120 ? candles.sublist(candles.length - 120) : candles;
+    final projected = forecast?.points ?? const <ForecastPoint>[];
     final values = <double>[
-      ...visibleCandles.expand((c) => [c.high, c.low]),
-      ...levels.map((l) => l.price),
-      if (position != null) ...[
-        position!.plan.entry, position!.effectiveStopLoss,
-        position!.plan.takeProfit1, position!.plan.takeProfit2,
-      ],
+      ...visible.expand((c) => [c.high, c.low]),
+      if (projected.isNotEmpty) ...projected.expand((p) => [p.lower, p.upper, p.median]),
+      if (position != null) ...[position!.plan.entry, position!.effectiveStopLoss, position!.plan.takeProfit2],
     ];
-    final minV = values.reduce((a, b) => math.min(a, b).toDouble());
-    final maxV = values.reduce((a, b) => math.max(a, b).toDouble());
-    final range = math.max(maxV - minV, maxV.abs() * 0.00001).toDouble();
-    const left = 5.0;
-    const right = 72.0;
-    const top = 8.0;
-    const bottom = 8.0;
-    final plotWidth = size.width - left - right;
-    final plotHeight = size.height - top - bottom;
-    double y(double price) => top + (maxV - price) / range * plotHeight;
+    final minV = values.reduce(math.min), maxV = values.reduce(math.max);
+    final padding = (maxV - minV) * 0.08;
+    final low = minV - padding, high = maxV + padding;
+    final range = math.max(high - low, high.abs() * 0.00001);
+    const left = 5.0, right = 58.0, top = 7.0, bottom = 7.0;
+    final plotWidth = size.width - left - right, plotHeight = size.height - top - bottom;
+    double y(double price) => top + (high - price) / range * plotHeight;
 
-    final candleStep = plotWidth / visibleCandles.length;
-    final bodyWidth = math.max(2.0, candleStep * 0.58).toDouble();
-    for (var i = 0; i < visibleCandles.length; i++) {
-      final candle = visibleCandles[i];
-      final x = left + candleStep * (i + 0.5);
-      final rising = candle.close >= candle.open;
-      final color = rising ? _green : _red;
-      final wick = Paint()..color = color..strokeWidth = 1.2;
-      canvas.drawLine(Offset(x, y(candle.high)), Offset(x, y(candle.low)), wick);
-      final bodyTop = y(math.max(candle.open, candle.close).toDouble());
-      final bodyBottom = y(math.min(candle.open, candle.close).toDouble());
-      final rect = Rect.fromLTRB(
-        x - bodyWidth / 2, bodyTop, x + bodyWidth / 2,
-        math.max(bodyTop + 1.5, bodyBottom).toDouble(),
-      );
-      canvas.drawRect(rect, Paint()..color = color);
+    final futureWidth = projected.isEmpty ? 0.0 : plotWidth * 0.28;
+    final candleWidth = plotWidth - futureWidth;
+    final step = candleWidth / visible.length;
+    final bodyWidth = math.max(1.5, step * 0.58);
+    for (var i = 0; i < visible.length; i++) {
+      final candle = visible[i], x = left + step * (i + 0.5);
+      final color = candle.close >= candle.open ? _green : _red;
+      canvas.drawLine(Offset(x, y(candle.high)), Offset(x, y(candle.low)), Paint()..color = color..strokeWidth = 1);
+      final bodyTop = y(math.max(candle.open, candle.close)), bodyBottom = y(math.min(candle.open, candle.close));
+      canvas.drawRect(Rect.fromLTRB(x - bodyWidth / 2, bodyTop, x + bodyWidth / 2, math.max(bodyTop + 1.2, bodyBottom)), Paint()..color = color);
     }
 
-    void drawLevel(double price, Color color, String label, {bool solid = false}) {
-      final yy = y(price);
-      final paint = Paint()
-        ..color = color.withValues(alpha: 0.85)
-        ..strokeWidth = solid ? 1.7 : 1;
-      final xEnd = size.width - right + 2;
-      if (solid) {
-        canvas.drawLine(Offset(left, yy), Offset(xEnd, yy), paint);
-      } else {
-        const dash = 4.0;
-        var x = left;
-        while (x < xEnd) {
-          canvas.drawLine(Offset(x, yy), Offset(math.min(x + dash, xEnd).toDouble(), yy), paint);
-          x += dash * 2;
-        }
+    if (projected.isNotEmpty) {
+      final startX = left + candleWidth, futureStep = futureWidth / projected.length;
+      final band = Path();
+      for (var i = 0; i < projected.length; i++) {
+        final x = startX + futureStep * (i + 0.5);
+        if (i == 0) band.moveTo(x, y(projected[i].upper)); else band.lineTo(x, y(projected[i].upper));
       }
-      final text = TextPainter(
-        text: TextSpan(
-          text: '$label ${price.toStringAsFixed(price >= 100 ? 1 : 4)}',
-          style: TextStyle(color: color, fontSize: 7, fontWeight: FontWeight.w600),
-        ),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-      )..layout(maxWidth: right - 4);
-      text.paint(canvas, Offset(size.width - right + 5, (yy - 5).clamp(0.0, size.height - 10).toDouble()));
+      for (var i = projected.length - 1; i >= 0; i--) {
+        band.lineTo(startX + futureStep * (i + 0.5), y(projected[i].lower));
+      }
+      band.close();
+      canvas.drawPath(band, Paint()..color = _blue.withValues(alpha: .14));
+      final path = Path()..moveTo(startX, y(visible.last.close));
+      for (var i = 0; i < projected.length; i++) {
+        path.lineTo(startX + futureStep * (i + 0.5), y(projected[i].median));
+      }
+      final rising = projected.last.median >= visible.last.close;
+      canvas.drawPath(path, Paint()..color = (rising ? _green : _red)..style = PaintingStyle.stroke..strokeWidth = 2.2..strokeCap = StrokeCap.round);
+      canvas.drawLine(Offset(startX, top), Offset(startX, size.height - bottom), Paint()..color = _muted.withValues(alpha: .55));
+      final label = TextPainter(text: const TextSpan(text: 'ПРОГНОЗ', style: TextStyle(color: _blue, fontSize: 7, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
+      label.paint(canvas, Offset(startX + 2, top + 1));
     }
 
-    for (final level in levels) {
-      drawLevel(level.price, level.color, level.label);
+    void drawLevel(double price, Color color, String label) {
+      final yy = y(price);
+      canvas.drawLine(Offset(left, yy), Offset(size.width - right, yy), Paint()..color = color.withValues(alpha: .9)..strokeWidth = 1.3);
+      final tp = TextPainter(text: TextSpan(text: label, style: TextStyle(color: color, fontSize: 7, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout(maxWidth: right - 3);
+      tp.paint(canvas, Offset(size.width - right + 3, (yy - 4).clamp(0.0, size.height - 9)));
     }
     if (position != null) {
-      drawLevel(position!.plan.entry, _blue, 'ENTRY', solid: true);
-      drawLevel(position!.effectiveStopLoss, _red, 'ACTIVE SL', solid: true);
-      if (position!.trailingStopPrice != null) {
-        drawLevel(position!.trailingStopPrice!, _blue, 'TRAILING SL', solid: true);
-      }
-      drawLevel(position!.plan.takeProfit1, _green, 'ACTIVE TP1', solid: true);
-      drawLevel(position!.plan.takeProfit2, _green, 'ACTIVE TP2', solid: true);
+      drawLevel(position!.plan.entry, _blue, 'ВХОД');
+      drawLevel(position!.effectiveStopLoss, _red, 'SL');
+      drawLevel(position!.plan.takeProfit2, _green, 'TP');
     }
   }
 
   @override
-  bool shouldRepaint(covariant _CandlePainter oldDelegate) =>
-      oldDelegate.candles != candles ||
-      oldDelegate.forecastPrice != forecastPrice ||
-      oldDelegate.position != position;
+  bool shouldRepaint(covariant _CandlePainter old) =>
+      old.candles != candles || old.forecast != forecast || old.position != position;
 }
