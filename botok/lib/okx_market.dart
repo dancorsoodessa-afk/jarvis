@@ -216,10 +216,6 @@ class OkxMarket {
         {'channel': 'funding-rate', 'instId': instrumentId},
         {'channel': 'liquidation-orders', 'instType': 'SWAP'},
       ],
-      if (instrumentId.endsWith('-SWAP') && instrumentId != 'BTC-USDT-SWAP')
-        {'channel': 'tickers', 'instId': 'BTC-USDT-SWAP'}
-      else if (!instrumentId.endsWith('-SWAP') && instrumentId != 'BTC-USDT')
-        {'channel': 'tickers', 'instId': 'BTC-USDT'},
     ];
     publicSocket.sink.add(jsonEncode({'op': 'subscribe', 'args': publicArgs}));
     _listenSocket(publicSocket, business: false);
@@ -230,9 +226,12 @@ class OkxMarket {
     await businessSocket.ready.timeout(const Duration(seconds: 12));
     businessSocket.sink.add(jsonEncode({
       'op': 'subscribe',
-      'args': ['1m', '3m', '5m', '15m', '1H', '1D', '1W']
-          .map((bar) => {'channel': 'candle$bar', 'instId': instrumentId})
-          .toList(),
+      'args': [
+        ...['1m', '3m', '5m', '15m', '1H', '1D', '1W']
+            .map((bar) => {'channel': 'candle$bar', 'instId': instrumentId}),
+        if (instrumentId != 'BTC-USDT' && instrumentId != 'BTC-USDT-SWAP')
+          {'channel': 'candle1m', 'instId': instrumentId.endsWith('-SWAP') ? 'BTC-USDT-SWAP' : 'BTC-USDT'},
+      ],
     }));
     _listenSocket(businessSocket, business: true);
   }
