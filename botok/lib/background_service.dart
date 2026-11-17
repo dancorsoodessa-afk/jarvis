@@ -133,8 +133,9 @@ class BotokMarketTaskHandler extends TaskHandler {
 
   void _scheduleReconnect() {
     if (_destroyed || _reconnectTimer?.isActive == true) return;
-    final seconds = (1 << _retry.clamp(0, 5)).clamp(1, 60);
-    _retry = (_retry + 1).clamp(0, 6);
+    final exponent = _retry.clamp(0, 5).toInt();
+    final seconds = (1 << exponent).clamp(1, 60).toInt();
+    _retry = (_retry + 1).clamp(0, 6).toInt();
     _reconnectTimer = Timer(Duration(seconds: seconds), () {
       _reconnectTimer = null;
       unawaited(_connect());
