@@ -134,9 +134,9 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     setState(() {
       _backgroundState = switch (state) {
         'connected' => 'Фоновый сервис подключается к OKX',
-        'live' => 'ФОН • OKX LIVE • \${data['instrumentId'] ?? ''}',
+        'live' => 'ФОН • OKX LIVE • ${data['instrumentId'] ?? ''}',
         'reconnecting' => 'ФОН • переподключение к OKX',
-        'reconnect_error' => 'ФОН • ошибка: \${data['message'] ?? ''}',
+        'reconnect_error' => 'ФОН • ошибка: ${data['message'] ?? ''}',
         _ => 'Фоновый мониторинг: $state',
       };
       _backgroundPrice = (data['price'] as num?)?.toDouble() ?? _backgroundPrice;
@@ -535,7 +535,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         Row(children: [
           _miniMetric('ФОНОВАЯ ЦЕНА', _backgroundPrice > 0 ? _fmt(_backgroundPrice) : 'ОЖИДАНИЕ', _blue),
           const Spacer(),
-          _miniMetric('LONG / SHORT', '\${_backgroundLong.toStringAsFixed(0)}% / \${_backgroundShort.toStringAsFixed(0)}%', _green),
+          _miniMetric('LONG / SHORT', '${_backgroundLong.toStringAsFixed(0)}% / ${_backgroundShort.toStringAsFixed(0)}%', _green),
         ]),
         const SizedBox(height: 7),
       ],
