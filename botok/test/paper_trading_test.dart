@@ -22,6 +22,39 @@ void main() {
       expect(paper.openPosition, isNotNull);
     });
 
+    test('automatic profit target closes full position at net percentage of initial margin', () {
+      final autoPlan = buildTradePlan(
+        direction: 'LONG',
+        entry: 100,
+        capital: 1000,
+        riskPercent: 1,
+        leverage: 2,
+        autoProfitTargetPercent: 5,
+      );
+      final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0);
+      paper.open(autoPlan, instrumentId: 'BTC-USDT-SWAP');
+      final closed = paper.markPrice(102.6);
+      expect(closed, isNotNull);
+      expect(closed!.reason, 'AUTO_PROFIT_TARGET');
+      expect(paper.openPosition, isNull);
+      expect(closed.realizedPnl / (autoPlan.entry * autoPlan.quantity / autoPlan.leverage) * 100, greaterThanOrEqualTo(5));
+    });
+
+    test('automatic profit target persists after wallet restore', () {
+      final autoPlan = buildTradePlan(
+        direction: 'SHORT',
+        entry: 100,
+        capital: 1000,
+        riskPercent: 1,
+        leverage: 3,
+        autoProfitTargetPercent: 4.5,
+      );
+      final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0);
+      paper.open(autoPlan, instrumentId: 'BTC-USDT-SWAP');
+      final restored = PaperTradingEngine.decode(paper.encode());
+      expect(restored.openPosition!.plan.autoProfitTargetPercent, 4.5);
+    });
+
     test('mark price updates unrealized PnL and equity', () {
       final paper = PaperTradingEngine(initialBalance: 1000, feeRate: 0);
       paper.open(plan(), instrumentId: 'BTC-USDT');
