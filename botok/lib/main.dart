@@ -1182,10 +1182,11 @@ class _CandlePainter extends CustomPainter {
       if (projected.isNotEmpty) ...projected.expand((p) => [p.lower, p.upper, p.median]),
       if (position != null) ...[position!.plan.entry, position!.effectiveStopLoss, position!.plan.takeProfit2],
     ];
-    final minV = values.reduce(math.min), maxV = values.reduce(math.max);
+    final minV = values.reduce((a, b) => math.min(a, b).toDouble());
+    final maxV = values.reduce((a, b) => math.max(a, b).toDouble());
     final padding = (maxV - minV) * 0.08;
     final low = minV - padding, high = maxV + padding;
-    final range = math.max(high - low, high.abs() * 0.00001);
+    final range = math.max(high - low, high.abs() * 0.00001).toDouble();
     const left = 5.0, right = 58.0, top = 7.0, bottom = 7.0;
     final plotWidth = size.width - left - right, plotHeight = size.height - top - bottom;
     double y(double price) => top + (high - price) / range * plotHeight;
@@ -1193,7 +1194,7 @@ class _CandlePainter extends CustomPainter {
     final futureWidth = projected.isEmpty ? 0.0 : plotWidth * 0.28;
     final candleWidth = plotWidth - futureWidth;
     final step = candleWidth / visible.length;
-    final bodyWidth = math.max(1.5, step * 0.58);
+    final bodyWidth = math.max(1.5, step * 0.58).toDouble();
     for (var i = 0; i < visible.length; i++) {
       final candle = visible[i], x = left + step * (i + 0.5);
       final color = candle.close >= candle.open ? _green : _red;
