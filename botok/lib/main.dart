@@ -140,11 +140,13 @@ class _DashboardPageState extends State<DashboardPage> {
         final price = double.tryParse(event['price']?.toString() ?? '') ?? 0;
         if (price > 0) _price = price;
         final reason = event['closedReason'];
-        _guardRunning = reason is! String || reason.isEmpty;
+        _guardRunning = reason is! String || reason.isEmpty || _autoProfitEnabled;
         if (reason is String && reason.isNotEmpty) {
           _positionState = 'PAPER закрыта фоновым контроллером: $reason';
-          _guardStatus = 'позиция закрыта';
-          stopPaperGuardService();
+          _guardStatus = _autoProfitEnabled
+              ? 'позиция закрыта • автопоиск следующей сделки'
+              : 'позиция закрыта';
+          if (!_autoProfitEnabled) stopPaperGuardService();
         }
         setState(() {});
       } catch (error) {
