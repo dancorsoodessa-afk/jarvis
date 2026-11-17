@@ -57,6 +57,7 @@ class _DashboardPageState extends State<DashboardPage> {
   final _market = OkxMarket();
   final _candles = <MarketCandle>[];
   final Map<String, List<MarketCandle>> _candlesByTimeframe = {};
+  final List<MarketCandle> _btcCandles = [];
   String _selectedTimeframe = '1m';
   BacktestResult? _backtestResult;
   WalkForwardResult? _walkForwardResult;
@@ -235,6 +236,11 @@ class _DashboardPageState extends State<DashboardPage> {
       _candles..clear()..addAll(_candlesByTimeframe[_selectedTimeframe] ?? const []);
       final oneMinute = _candlesByTimeframe['1m'] ?? const <MarketCandle>[];
       if (oneMinute.isNotEmpty) _price = oneMinute.last.close;
+      _btcCandles.clear();
+      final benchmarkId = instrument.id.endsWith('-SWAP') ? 'BTC-USDT-SWAP' : 'BTC-USDT';
+      if (instrument.id != benchmarkId) {
+        try { _btcCandles.addAll(await _market.loadCandles(benchmarkId, bar: '1m', limit: 300)); } catch (_) {}
+      }
     } catch (e) {
       if (mounted) setState(() => _status = 'Свечной архив OKX недоступен: $e');
     }
@@ -260,6 +266,18 @@ class _DashboardPageState extends State<DashboardPage> {
     if (rows is! List || rows.isEmpty) return;
     if (type is String && type.startsWith('candle')) {
       final bar = type.substring(6);
+      final eventInstrument = event['instId']?.toString();
+      if (bar == '1m' && eventInstrument != null && eventInstrument != _selected?.id && eventInstrument.startsWith('BTC-')) {
+        for (final raw in rows) {
+          try {
+            final candle = MarketCandle.fromOkx(raw as List<dynamic>);
+            final index = _btcCandles.indexWhere((item) => item.timestamp == candle.timestamp);
+            if (index >= 0) { _btcCandles[index] = candle; } else { _btcCandles.add(candle); if (_btcCandles.length > 500) _btcCandles.removeAt(0); }
+          } catch (_) {}
+        }
+        setState(() {});
+        return;
+      }
       final series = _candlesByTimeframe.putIfAbsent(bar, () => <MarketCandle>[]);
       for (final raw in rows) {
         try {
@@ -523,6 +541,10 @@ class _DashboardPageState extends State<DashboardPage> {
               _forecastCard(),
               const SizedBox(height: 12),
               _timeframeConfluenceCard(),
+              if (_btcCandles.isNotEmpty && selected?.id != 'BTC-USDT' && selected?.id != 'BTC-USDT-SWAP') ...[
+                const SizedBox(height: 12),
+                _btcCorrelationCard(),
+              ],
               const SizedBox(height: 12),
               _backtestCard(),
               const SizedBox(height: 12),
@@ -544,6 +566,27 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+
+
+  Widget _btcCorrelationCard() {
+    final correlation = calculateReturnCorrelation(
+      _candlesByTimeframe['1m'] ?? const <MarketCandle>[],
+      _btcCandles,
+    );
+    final value = correlation == null ? 'Недостаточно данных' : correlation.toStringAsFixed(3);
+    final interpretation = correlation == null
+        ? 'Нужно минимум 30 совпадающих доходностей.'
+        : correlation >= 0.7
+            ? 'Сильная положительная связь с BTC.'
+            : correlation <= -0.7
+                ? 'Сильная обратная связь с BTC.'
+                : 'Связь с BTC умеренная или слабая.';
+    return _card(title: 'КОРРЕЛЯЦИЯ С BTC • 1m', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _blue)),
+      Text(interpretation, style: const TextStyle(color: _muted, fontSize: 10)),
+      const Text('Pearson correlation по совпадающим минутным доходностям; это контекст риска, не направление сделки.', style: TextStyle(color: _muted, fontSize: 9)),
+    ]));
+  }
 
   Widget _derivativesFeedCard() => _card(
     title: 'ДЕРИВАТИВНЫЕ ДАННЫЕ OKX • LIVE',
