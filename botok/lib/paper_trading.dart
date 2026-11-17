@@ -265,6 +265,12 @@ class PaperTradingEngine {
               : updated.trailingStopPrice! < updated.plan.stopLoss);
       return _close(price, trailingIsActive ? 'TRAILING_STOP' : 'STOP_LOSS');
     }
+    final targetPercent = updated.plan.autoProfitTargetPercent;
+    final initialMargin = updated.plan.entry * updated.plan.quantity / updated.plan.leverage;
+    final estimatedNet = updated.partialRealizedPnl + updated.unrealizedPnl - updated.entryFee - updated.partialFees - (price * updated.quantity * feeRate);
+    if (targetPercent > 0 && initialMargin > 0 && estimatedNet >= initialMargin * targetPercent / 100) {
+      return _close(price, 'AUTO_PROFIT_TARGET');
+    }
     final reachedTp1 = updated.isLong
         ? price >= updated.plan.takeProfit1
         : price <= updated.plan.takeProfit1;
@@ -375,6 +381,7 @@ Map<String, dynamic> _planToJson(TradePlan plan) => {
   'direction': plan.direction,
   'leverage': plan.leverage,
   'trailingStopPercent': plan.trailingStopPercent,
+  'autoProfitTargetPercent': plan.autoProfitTargetPercent,
 };
 
 TradePlan _planFromJson(Map<String, dynamic> json) => TradePlan(
@@ -387,4 +394,5 @@ TradePlan _planFromJson(Map<String, dynamic> json) => TradePlan(
   direction: json['direction'] as String,
   leverage: (json['leverage'] as num).toDouble(),
   trailingStopPercent: (json['trailingStopPercent'] as num?)?.toDouble() ?? 1.0,
+  autoProfitTargetPercent: (json['autoProfitTargetPercent'] as num?)?.toDouble() ?? 0,
 );
