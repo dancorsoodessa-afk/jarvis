@@ -174,6 +174,11 @@ class OkxMarket {
         ...['1m', '3m', '5m', '15m', '1H', '1D', '1W'].map((bar) => {'channel': 'candle$bar', 'instId': instrumentId}),
         {'channel': 'books5', 'instId': instrumentId},
         {'channel': 'trades', 'instId': instrumentId},
+        if (instrumentId.endsWith('-SWAP')) ...[
+          {'channel': 'open-interest', 'instId': instrumentId},
+          {'channel': 'funding-rate', 'instId': instrumentId},
+          {'channel': 'liquidation-orders', 'instType': 'SWAP'},
+        ],
       ],
     }));
     _subscription = socket.stream.listen((message) {
@@ -186,6 +191,7 @@ class OkxMarket {
           } else if (decoded['arg'] is Map && decoded['data'] is List) {
             _events.add({
               'type': decoded['arg']['channel'],
+              'instId': decoded['arg']['instId'],
               'data': decoded['data'],
             });
           }
