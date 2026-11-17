@@ -15,8 +15,8 @@ void main() {
         return MarketCandle(
           timestamp: DateTime.utc(2026).add(Duration(minutes: index)),
           open: open,
-          high: math.max(open, price) * 1.002,
-          low: math.min(open, price) * 0.998,
+          high: math.max(open, price).toDouble() * 1.002,
+          low: math.min(open, price).toDouble() * 0.998,
           close: price,
           volume: 10 + index.toDouble(),
           isClosed: true,
