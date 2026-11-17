@@ -163,7 +163,7 @@ class OkxMarket {
   Future<void> watch(String instrumentId) async {
     await disconnect();
     final socket = WebSocketChannel.connect(
-      Uri.parse('wss://ws.okx.com:8443/ws/v5/public'),
+      Uri.parse('wss://ws.okx.com/ws/v5/public'),
     );
     _socket = socket;
     await socket.ready.timeout(const Duration(seconds: 12));
