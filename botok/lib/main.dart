@@ -187,7 +187,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if ((isLong && last <= position.stopLoss) || (!isLong && last >= position.stopLoss)) {
       _paperPosition = null;
       _positionState = 'PAPER закрыта по Stop Loss • ${_fmt(last)}';
-    } else if ((isLong && last >= position.takeProfit) || (!isLong && last <= position.takeProfit2)) {
+    } else if ((isLong && last >= position.takeProfit) || (!isLong && last <= position.takeProfit)) {
       _paperPosition = null;
       _positionState = 'PAPER закрыта по Take Profit 2 • ${_fmt(last)}';
     } else if ((isLong && last >= position.takeProfit1) || (!isLong && last <= position.takeProfit1)) {
@@ -216,7 +216,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (_price <= 0) { _toast('Нет актуальной цены OKX'); return; }
     final signal = _signal;
     if (signal.confidence < 58) {
-      _toast('Сигнал слабый: \${signal.confidence.toStringAsFixed(1)}%. Ждём.');
+      _toast('Сигнал слабый: \${signal.confidence.toStringAsFixed(1)}%. Ожидание.');
       return;
     }
     final plan = _tryAllocationPlan(signal.direction);
@@ -227,7 +227,7 @@ class _DashboardPageState extends State<DashboardPage> {
         builder: (context) => AlertDialog(
           backgroundColor: _panel,
           title: const Text('Подтвердить PAPER-сделку?'),
-          content: Text('\${plan.direction} • \${_selected?.id}\nВход: \${_fmt(plan.entry)}\nОбъём: \${plan.notional.toStringAsFixed(2)} USDT\nSL: \${_fmt(plan.stopLoss)}\nВыход с чистой целью: \${_fmt(plan.takeProfit)}\nЧистая прибыль после комиссий: \${plan.netTarget.toStringAsFixed(4)} USDT'),
+          content: Text('\${plan.direction} • \${_selected?.id}\nВход: \${_fmt(plan.entry)}\nОбъём: \${plan.notional.toStringAsFixed(2)} USDT\nSL: \${_fmt(plan.stopLoss)}\nВыход для чистой цели: \${_fmt(plan.takeProfit)}\nЧистая прибыль: \${plan.netTarget.toStringAsFixed(4)} USDT'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
             FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Подтвердить')),
@@ -365,9 +365,9 @@ class _DashboardPageState extends State<DashboardPage> {
         for (final tf in ['1m', '5m', '15m', '1H', '4H', '1D'])
           ChoiceChip(
             label: Text(tf, style: const TextStyle(fontSize: 10)),
-            selected: _bar == tf.toLowerCase(),
+            selected: _bar.toLowerCase() == tf.toLowerCase(),
             onSelected: (_) {
-              setState(() => _bar = tf.toLowerCase());
+              setState(() => _bar = tf == '1H' ? '1H' : (tf == '4H' ? '4H' : (tf == '1D' ? '1D' : tf)));
               _refreshCandles();
             },
             visualDensity: VisualDensity.compact,
@@ -446,29 +446,27 @@ class _DashboardPageState extends State<DashboardPage> {
       title: 'АВТОНОМНЫЙ РАСЧЁТ СДЕЛКИ',
       child: Column(children: [
         TextField(controller: _capital, keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Баланс USDT', prefixIcon: Icon(Icons.account_balance_wallet_outlined)),
-          onChanged: (_) => setState(() {})),
+          decoration: const InputDecoration(labelText: 'Баланс USDT'), onChanged: (_) => setState(() {})),
         const SizedBox(height: 9),
         Row(children: [
           Expanded(child: TextField(controller: _allocation, keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Объём сделки, % баланса'), onChanged: (_) => setState(() {}))),
+            decoration: const InputDecoration(labelText: 'Объём, % баланса'), onChanged: (_) => setState(() {}))),
           const SizedBox(width: 10),
           Expanded(child: TextField(controller: _targetNet, keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(labelText: 'Чистая цель, %'), onChanged: (_) => setState(() {}))),
         ]),
-        const SizedBox(height: 10),
         if (plan != null) ...[
           _planLine('Направление', plan.direction, plan.direction == 'LONG' ? _green : _red),
           _planLine('Вход', _fmt(plan.entry)),
           _planLine('Объём позиции', '\${plan.notional.toStringAsFixed(2)} USDT'),
-          _planLine('Средства в сделке', '\${plan.marginUsed.toStringAsFixed(2)} USDT'),
+          _planLine('Задействовано', '\${plan.marginUsed.toStringAsFixed(2)} USDT'),
           _planLine('Количество', plan.quantity.toStringAsFixed(6)),
           _planLine('Stop Loss', _fmt(plan.stopLoss), _red),
           _planLine('Цена выхода для чистой цели', _fmt(plan.takeProfit), _green),
-          _planLine('Комиссии round-trip', '\${plan.feesEstimate.toStringAsFixed(4)} USDT'),
-          _planLine('Чистая прибыль после комиссий', '\${plan.netTarget.toStringAsFixed(4)} USDT', _green),
+          _planLine('Комиссии вход + выход', '\${plan.feesEstimate.toStringAsFixed(4)} USDT'),
+          _planLine('Чистая прибыль', '\${plan.netTarget.toStringAsFixed(4)} USDT', _green),
         ] else
-          const Text('Введите баланс, процент капитала и целевую чистую прибыль.', style: TextStyle(color: _muted, fontSize: 11)),
+          const Text('Введите баланс, процент капитала и чистую целевую прибыль.', style: TextStyle(color: _muted, fontSize: 11)),
         SwitchListTile(contentPadding: EdgeInsets.zero,
           title: const Text('Подтверждение каждой сделки', style: TextStyle(fontSize: 12)),
           value: _confirmMode, onChanged: (v) => setState(() => _confirmMode = v)),
@@ -594,8 +592,8 @@ class _CandlePainter extends CustomPainter {
     if (candles.isEmpty) return;
     const left = 8.0, right = 58.0, top = 10.0, bottom = 18.0;
     final plot = Rect.fromLTRB(left, top, size.width - right, size.height - bottom);
-    final minPrice = candles.map((c) => c.low).reduce(math.min);
-    final maxPrice = candles.map((c) => c.high).reduce(math.max);
+    final minPrice = candles.map((c) => c.low).reduce((a, b) => math.min(a, b).toDouble());
+    final maxPrice = candles.map((c) => c.high).reduce((a, b) => math.max(a, b).toDouble());
     final range = math.max(maxPrice - minPrice, maxPrice.abs() * 0.0001);
     double y(double p) => plot.bottom - ((p - minPrice) / range) * plot.height;
     final grid = Paint()..color = Colors.white.withValues(alpha: .10)..strokeWidth = 1;
