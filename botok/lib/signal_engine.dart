@@ -57,6 +57,11 @@ class MultiTimeframeAnalysis {
   final double weightedScore;
 
   bool get isAligned => activeTimeframes >= 3 && agreementPercent >= 60;
+
+  String get recommendation {
+    if (activeTimeframes < 2 || signal.confidence < 56 || agreementPercent < 55) return 'ЖДАТЬ';
+    return signal.direction;
+  }
 }
 
 class TradePlan {
