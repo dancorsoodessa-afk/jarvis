@@ -63,8 +63,7 @@ class _DashboardPageState extends State<DashboardPage> {
   double _ask = 0;
   double _bookImbalance = 0;
   double _tradeDelta = 0;
-  double _leverage = 1;
-  double _riskPercent = 1;
+  final double _leverage = 1;
   AllocationPlan? _paperPosition;
   String _positionState = 'Нет открытой paper-позиции';
   bool _loading = false;
@@ -155,7 +154,9 @@ class _DashboardPageState extends State<DashboardPage> {
       setState(() => _status = 'Соединение закрыто — переподключите инструмент');
       return;
     }
-    if (rows is! List || rows.isEmpty) return;
+    if (rows is! List || rows.isEmpty) {
+      return;
+    }
     final row = rows.first as Map<String, dynamic>;
     if (type == 'tickers') {
       final last = double.tryParse(row['last']?.toString() ?? '') ?? 0;
@@ -194,7 +195,9 @@ class _DashboardPageState extends State<DashboardPage> {
     if ((isLong && last <= position.stopLoss) || (!isLong && last >= position.stopLoss)) {
       _paperPosition = null;
       _positionState = 'PAPER закрыта по Stop Loss • ${_fmt(last)}';
-      if (_autoCycleEnabled) Future.microtask(_scanNextOpportunity);
+      if (_autoCycleEnabled) {
+        Future.microtask(_scanNextOpportunity);
+      }
     } else if ((isLong && last >= position.takeProfit) || (!isLong && last <= position.takeProfit)) {
       _paperPosition = null;
       _positionState = 'PAPER закрыта по чистой целевой прибыли • ${_fmt(last)}';
@@ -263,7 +266,10 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _openPaper() async {
-    if (_price <= 0) { _toast('Нет актуальной цены OKX'); return; }
+    if (_price <= 0) {
+      _toast('Нет актуальной цены OKX');
+      return;
+    }
     final signal = _signal;
     if (_marketType == 'SPOT' && signal.direction == 'SHORT') {
       _toast('Spot не поддерживает открытие SHORT. Агент продолжит поиск LONG.');
@@ -290,7 +296,9 @@ class _DashboardPageState extends State<DashboardPage> {
           ],
         ),
       );
-      if (approved != true) return;
+      if (approved != true) {
+        return;
+      }
     }
     setState(() {
       _paperPosition = plan;
@@ -409,7 +417,7 @@ class _DashboardPageState extends State<DashboardPage> {
         const SizedBox(width: 18),
         _miniMetric('ASK', _ask > 0 ? _fmt(_ask) : '—', _red),
         const Spacer(),
-        Text(instrument == null ? '' : '${instrument.type}', style: const TextStyle(color: _muted, fontSize: 10)),
+        Text(instrument?.type ?? '', style: const TextStyle(color: _muted, fontSize: 10)),
       ]),
     ]),
   );
