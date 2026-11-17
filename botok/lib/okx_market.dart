@@ -55,8 +55,11 @@ class MarketInstrument {
 class OkxMarket {
   HttpClient? _http;
   WebSocketChannel? _socket;
+  WebSocketChannel? _businessSocket;
   StreamSubscription<dynamic>? _subscription;
+  StreamSubscription<dynamic>? _businessSubscription;
   Timer? _heartbeat;
+  Timer? _businessHeartbeat;
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get events => _events.stream;
 
@@ -160,37 +163,14 @@ class OkxMarket {
     return result.length > target ? result.sublist(result.length - target) : result;
   }
 
-  Future<void> watch(String instrumentId) async {
-    await disconnect();
-    final socket = WebSocketChannel.connect(
-      Uri.parse('wss://ws.okx.com/ws/v5/public'),
-    );
-    _socket = socket;
-    await socket.ready.timeout(const Duration(seconds: 12));
-    socket.sink.add(jsonEncode({
-      'op': 'subscribe',
-      'args': [
-        {'channel': 'tickers', 'instId': instrumentId},
-        ...['1m', '3m', '5m', '15m', '1H', '1D', '1W'].map((bar) => {'channel': 'candle$bar', 'instId': instrumentId}),
-        {'channel': 'books5', 'instId': instrumentId},
-        {'channel': 'trades', 'instId': instrumentId},
-        if (instrumentId.endsWith('-SWAP')) ...[
-          {'channel': 'open-interest', 'instId': instrumentId},
-          {'channel': 'funding-rate', 'instId': instrumentId},
-          {'channel': 'liquidation-orders', 'instType': 'SWAP'},
-          if (instrumentId != 'BTC-USDT-SWAP')
-            {'channel': 'candle1m', 'instId': 'BTC-USDT-SWAP'},
-        ] else if (instrumentId != 'BTC-USDT')
-          {'channel': 'candle1m', 'instId': 'BTC-USDT'},
-      ],
-    }));
-    _subscription = socket.stream.listen((message) {
+  void _listenSocket(WebSocketChannel socket, {required bool business}) {
+    final subscription = socket.stream.listen((message) {
       if (message is! String) return;
       try {
         final decoded = jsonDecode(message);
         if (decoded is Map<String, dynamic>) {
           if (decoded['event'] == 'error') {
-            _events.add({'type': 'error', 'message': decoded['msg'] ?? 'WebSocket error'});
+            _events.add({'type': 'error', 'message': decoded['msg'] ?? 'OKX WebSocket error', 'channel': business ? 'business' : 'public'});
           } else if (decoded['arg'] is Map && decoded['data'] is List) {
             _events.add({
               'type': decoded['arg']['channel'],
@@ -200,26 +180,76 @@ class OkxMarket {
           }
         }
       } catch (_) {
-        // Ignore malformed public-feed frames; the next valid frame continues the stream.
+        // Ignore malformed frames; keep the live feed running.
       }
     }, onError: (Object error) {
-      _events.add({'type': 'error', 'message': error.toString()});
+      _events.add({'type': 'error', 'message': error.toString(), 'channel': business ? 'business' : 'public'});
     }, onDone: () {
-      _events.add({'type': 'disconnected'});
+      _events.add({'type': 'disconnected', 'channel': business ? 'business' : 'public'});
     });
-    _heartbeat?.cancel();
-    _heartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
-      socket.sink.add('ping');
-    });
+    if (business) {
+      _businessSubscription = subscription;
+      _businessHeartbeat?.cancel();
+      _businessHeartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
+        _businessSocket?.sink.add('ping');
+      });
+    } else {
+      _subscription = subscription;
+      _heartbeat?.cancel();
+      _heartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
+        _socket?.sink.add('ping');
+      });
+    }
+  }
+
+  Future<void> watch(String instrumentId) async {
+    await disconnect();
+    final publicSocket = WebSocketChannel.connect(Uri.parse('wss://ws.okx.com/ws/v5/public'));
+    _socket = publicSocket;
+    await publicSocket.ready.timeout(const Duration(seconds: 12));
+    final publicArgs = <Map<String, String>>[
+      {'channel': 'tickers', 'instId': instrumentId},
+      {'channel': 'books5', 'instId': instrumentId},
+      {'channel': 'trades', 'instId': instrumentId},
+      if (instrumentId.endsWith('-SWAP')) ...[
+        {'channel': 'open-interest', 'instId': instrumentId},
+        {'channel': 'funding-rate', 'instId': instrumentId},
+        {'channel': 'liquidation-orders', 'instType': 'SWAP'},
+      ],
+      if (instrumentId.endsWith('-SWAP') && instrumentId != 'BTC-USDT-SWAP')
+        {'channel': 'tickers', 'instId': 'BTC-USDT-SWAP'}
+      else if (!instrumentId.endsWith('-SWAP') && instrumentId != 'BTC-USDT')
+        {'channel': 'tickers', 'instId': 'BTC-USDT'},
+    ];
+    publicSocket.sink.add(jsonEncode({'op': 'subscribe', 'args': publicArgs}));
+    _listenSocket(publicSocket, business: false);
+
+    // OKX candle/K-line subscriptions belong to the business WebSocket endpoint.
+    final businessSocket = WebSocketChannel.connect(Uri.parse('wss://ws.okx.com/ws/v5/business'));
+    _businessSocket = businessSocket;
+    await businessSocket.ready.timeout(const Duration(seconds: 12));
+    businessSocket.sink.add(jsonEncode({
+      'op': 'subscribe',
+      'args': ['1m', '3m', '5m', '15m', '1H', '1D', '1W']
+          .map((bar) => {'channel': 'candle$bar', 'instId': instrumentId})
+          .toList(),
+    }));
+    _listenSocket(businessSocket, business: true);
   }
 
   Future<void> disconnect() async {
     _heartbeat?.cancel();
     _heartbeat = null;
+    _businessHeartbeat?.cancel();
+    _businessHeartbeat = null;
     await _subscription?.cancel();
     _subscription = null;
+    await _businessSubscription?.cancel();
+    _businessSubscription = null;
     await _socket?.sink.close();
     _socket = null;
+    await _businessSocket?.sink.close();
+    _businessSocket = null;
   }
 
   Future<void> dispose() async {
