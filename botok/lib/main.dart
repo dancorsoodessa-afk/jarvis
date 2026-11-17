@@ -648,12 +648,18 @@ class _DashboardPageState extends State<DashboardPage> {
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         const Expanded(child: Text('АВТОПРИБЫЛЬ АГЕНТА', style: TextStyle(fontSize: 10, color: _muted, fontWeight: FontWeight.bold))),
-        Switch(value: _autoProfitEnabled, onChanged: _paper.openPosition != null ? null : (v) {
-          final target = double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0;
-          if (v && (target <= 0 || target > 100)) { _toast('Укажите цель от 0,1% до 100%.'); return; }
-          setState(() => _autoProfitEnabled = v);
-          if (v) _maybeAutoOpen();
-        }),
+        FilledButton.icon(
+          onPressed: () {
+            final next = !_autoProfitEnabled;
+            final target = double.tryParse(_autoProfitTarget.text.replaceAll(',', '.')) ?? 0;
+            if (next && (target <= 0 || target > 100)) { _toast('Укажите цель от 0,1% до 100%.'); return; }
+            setState(() => _autoProfitEnabled = next);
+            if (next) _maybeAutoOpen();
+          },
+          icon: Icon(_autoProfitEnabled ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 16),
+          label: Text(_autoProfitEnabled ? 'ОСТАНОВИТЬ' : 'ЗАПУСТИТЬ'),
+          style: FilledButton.styleFrom(backgroundColor: _autoProfitEnabled ? Colors.orange.withValues(alpha: .18) : _blue.withValues(alpha: .2), foregroundColor: _autoProfitEnabled ? Colors.orange : _blue, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+        ),
       ]),
       Row(children: [
         const Text('Цель прибыли', style: TextStyle(color: _muted, fontSize: 10)),
