@@ -2,7 +2,7 @@ name: BOTok Android APK
 
 on:
   push:
-    branches: [BOTok]
+    branches: [BOTok, BOTok-fix-trading-ui, BOTok-forecast-backtest-risk]
     paths:
       - "botok/**"
       - ".github/workflows/botok-android.yml"
@@ -41,12 +41,67 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path("android/app/src/main/AndroidManifest.xml")
-          s = p.read_text()
-          s = s.replace('android:label="botok"', 'android:label="BOTok"')
-          if 'android.permission.INTERNET' not in s:
-              s = s.replace('<application', '    <uses-permission android:name="android.permission.INTERNET" />\n    <application', 1)
-          p.write_text(s)
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          text = manifest.read_text()
+          if "xmlns:tools=" not in text:
+              text = text.replace("<manifest ", '<manifest xmlns:tools="http://schemas.android.com/tools" ', 1)
+          text = text.replace('android:label="botok"', 'android:label="BOTok"')
+          permissions = [
+              "android.permission.INTERNET",
+              "android.permission.FOREGROUND_SERVICE",
+              "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+              "android.permission.RECEIVE_BOOT_COMPLETED",
+              "android.permission.WAKE_LOCK",
+              "android.permission.POST_NOTIFICATIONS",
+          ]
+          for permission in permissions:
+              entry = f'<uses-permission android:name="{permission}" />'
+              if permission not in text:
+                  text = text.replace("<application", f"    {entry}\n    <application", 1)
+          service = (
+              '<service android:name="id.flutter.flutter_background_service.BackgroundService" '
+              'android:exported="false" tools:replace="android:exported" android:stopWithTask="false" '
+              'android:foregroundServiceType="dataSync" />'
+          )
+          if "id.flutter.flutter_background_service.BackgroundService" not in text:
+              text = text.replace("</application>", f"    {service}\n  </application>", 1)
+          manifest.write_text(text)
+
+          icon = Path("android/app/src/main/res/drawable/ic_bg_service_small.xml")
+          icon.parent.mkdir(parents=True, exist_ok=True)
+          icon.write_text("""<vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="24dp" android:height="24dp"
+              android:viewportWidth="24" android:viewportHeight="24">
+              <path android:fillColor="#FFFFFFFF"
+                  android:pathData="M12,2A10,10 0,1 0,12 22A10,10 0,1 0,12 2M11,6h2v7h-2zM11,15h2v2h-2z"/>
+          </vector>""")
+
+          kotlin_gradle = Path("android/app/build.gradle.kts")
+          groovy_gradle = Path("android/app/build.gradle")
+          if kotlin_gradle.exists():
+              gradle = kotlin_gradle.read_text()
+              gradle = gradle.replace(
+                  "compileOptions {",
+                  "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
+                  1,
+              )
+              if "multiDexEnabled" not in gradle:
+                  gradle = gradle.replace("defaultConfig {", "defaultConfig {\n        multiDexEnabled = true", 1)
+              if "com.android.tools:desugar_jdk_libs" not in gradle:
+                  gradle += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+              kotlin_gradle.write_text(gradle)
+          elif groovy_gradle.exists():
+              gradle = groovy_gradle.read_text()
+              gradle = gradle.replace(
+                  "compileOptions {",
+                  "compileOptions {\n        coreLibraryDesugaringEnabled true",
+                  1,
+              )
+              if "multiDexEnabled" not in gradle:
+                  gradle = gradle.replace("defaultConfig {", "defaultConfig {\n        multiDexEnabled true", 1)
+              if "com.android.tools:desugar_jdk_libs" not in gradle:
+                  gradle += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
+              groovy_gradle.write_text(gradle)
           PY
       - run: flutter pub get
       - run: dart format lib test
@@ -74,12 +129,67 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path("android/app/src/main/AndroidManifest.xml")
-          s = p.read_text()
-          s = s.replace('android:label="botok"', 'android:label="BOTok"')
-          if 'android.permission.INTERNET' not in s:
-              s = s.replace('<application', '    <uses-permission android:name="android.permission.INTERNET" />\n    <application', 1)
-          p.write_text(s)
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          text = manifest.read_text()
+          if "xmlns:tools=" not in text:
+              text = text.replace("<manifest ", '<manifest xmlns:tools="http://schemas.android.com/tools" ', 1)
+          text = text.replace('android:label="botok"', 'android:label="BOTok"')
+          permissions = [
+              "android.permission.INTERNET",
+              "android.permission.FOREGROUND_SERVICE",
+              "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+              "android.permission.RECEIVE_BOOT_COMPLETED",
+              "android.permission.WAKE_LOCK",
+              "android.permission.POST_NOTIFICATIONS",
+          ]
+          for permission in permissions:
+              entry = f'<uses-permission android:name="{permission}" />'
+              if permission not in text:
+                  text = text.replace("<application", f"    {entry}\n    <application", 1)
+          service = (
+              '<service android:name="id.flutter.flutter_background_service.BackgroundService" '
+              'android:exported="false" tools:replace="android:exported" android:stopWithTask="false" '
+              'android:foregroundServiceType="dataSync" />'
+          )
+          if "id.flutter.flutter_background_service.BackgroundService" not in text:
+              text = text.replace("</application>", f"    {service}\n  </application>", 1)
+          manifest.write_text(text)
+
+          icon = Path("android/app/src/main/res/drawable/ic_bg_service_small.xml")
+          icon.parent.mkdir(parents=True, exist_ok=True)
+          icon.write_text("""<vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="24dp" android:height="24dp"
+              android:viewportWidth="24" android:viewportHeight="24">
+              <path android:fillColor="#FFFFFFFF"
+                  android:pathData="M12,2A10,10 0,1 0,12 22A10,10 0,1 0,12 2M11,6h2v7h-2zM11,15h2v2h-2z"/>
+          </vector>""")
+
+          kotlin_gradle = Path("android/app/build.gradle.kts")
+          groovy_gradle = Path("android/app/build.gradle")
+          if kotlin_gradle.exists():
+              gradle = kotlin_gradle.read_text()
+              gradle = gradle.replace(
+                  "compileOptions {",
+                  "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
+                  1,
+              )
+              if "multiDexEnabled" not in gradle:
+                  gradle = gradle.replace("defaultConfig {", "defaultConfig {\n        multiDexEnabled = true", 1)
+              if "com.android.tools:desugar_jdk_libs" not in gradle:
+                  gradle += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+              kotlin_gradle.write_text(gradle)
+          elif groovy_gradle.exists():
+              gradle = groovy_gradle.read_text()
+              gradle = gradle.replace(
+                  "compileOptions {",
+                  "compileOptions {\n        coreLibraryDesugaringEnabled true",
+                  1,
+              )
+              if "multiDexEnabled" not in gradle:
+                  gradle = gradle.replace("defaultConfig {", "defaultConfig {\n        multiDexEnabled true", 1)
+              if "com.android.tools:desugar_jdk_libs" not in gradle:
+                  gradle += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
+              groovy_gradle.write_text(gradle)
           PY
       - run: flutter pub get
       - run: flutter build apk --release
