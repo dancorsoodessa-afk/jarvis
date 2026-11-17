@@ -1,8 +1,37 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:botok/signal_engine.dart';
+import 'package:botok/okx_market.dart';
 
 void main() {
   group('signal engine', () {
+
+    test('technical indicators calculate finite MACD, Bollinger, ATR, VWAP, OBV and Stoch RSI', () {
+      var price = 100.0;
+      final candles = List.generate(80, (index) {
+        final open = price;
+        price *= 1 + (index.isEven ? 0.0015 : -0.0004);
+        return MarketCandle(
+          timestamp: DateTime.utc(2026).add(Duration(minutes: index)),
+          open: open,
+          high: math.max(open, price) * 1.002,
+          low: math.min(open, price) * 0.998,
+          close: price,
+          volume: 10 + index.toDouble(),
+          isClosed: true,
+        );
+      });
+      final result = calculateTechnicalIndicators(candles);
+      expect(result, isNotNull);
+      expect(result!.macdHistogram.isFinite, isTrue);
+      expect(result.bollingerPosition, inInclusiveRange(-1, 1));
+      expect(result.atrPercent, greaterThan(0));
+      expect(result.vwapDistancePercent.isFinite, isTrue);
+      expect(result.obvTrend, inInclusiveRange(-1, 1));
+      expect(result.stochasticRsi, inInclusiveRange(0, 100));
+    });
+
     test('neutral input starts at 50/50', () {
       final signal = calculateSignal(prices: [100, 100]);
       expect(signal.longProbability, 50);
