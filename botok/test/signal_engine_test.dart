@@ -70,6 +70,39 @@ void main() {
       expect(signal.shortProbability, 50);
     });
 
+    test('recommendation waits when fewer than two timeframes are active', () {
+      const analysis = MultiTimeframeAnalysis(
+        signal: TradeSignal(longProbability: 80, shortProbability: 20, rsi: 60, emaFast: 101, emaSlow: 100, bookImbalance: 0, tradeDelta: 0),
+        byTimeframe: {},
+        activeTimeframes: 1,
+        agreementPercent: 100,
+        weightedScore: 0.6,
+      );
+      expect(analysis.recommendation, 'ЖДАТЬ');
+    });
+
+    test('recommendation returns LONG when score and timeframe agreement are sufficient', () {
+      const analysis = MultiTimeframeAnalysis(
+        signal: TradeSignal(longProbability: 70, shortProbability: 30, rsi: 60, emaFast: 101, emaSlow: 100, bookImbalance: 0, tradeDelta: 0),
+        byTimeframe: {},
+        activeTimeframes: 2,
+        agreementPercent: 60,
+        weightedScore: 0.4,
+      );
+      expect(analysis.recommendation, 'LONG');
+    });
+
+    test('recommendation waits when timeframe agreement is weak', () {
+      const analysis = MultiTimeframeAnalysis(
+        signal: TradeSignal(longProbability: 70, shortProbability: 30, rsi: 60, emaFast: 101, emaSlow: 100, bookImbalance: 0, tradeDelta: 0),
+        byTimeframe: {},
+        activeTimeframes: 2,
+        agreementPercent: 50,
+        weightedScore: 0.4,
+      );
+      expect(analysis.recommendation, 'ЖДАТЬ');
+    });
+
     test('probabilities always sum to 100 and stay bounded', () {
       final signal = calculateSignal(
         prices: List<double>.generate(40, (i) => 100 + i.toDouble()),
